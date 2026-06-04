@@ -61,6 +61,45 @@ impl SpectralData {
     }
 }
 
+/// Parse a 5-column dye CSV (`wavelength,D_C,D_M,D_Y,D_min`, header + rows) into
+/// (wavelengths, [D_C,D_M,D_Y], D_min).
+fn parse_dye_csv(text: &str) -> (Vec<f32>, [Vec<f32>; 3], Vec<f32>) {
+    let mut w = Vec::new();
+    let (mut dc, mut dm, mut dy, mut dmin) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+    for line in text.lines().skip(1).filter(|l| !l.trim().is_empty()) {
+        let f: Vec<f32> = line.split(',').map(|s| s.trim().parse().unwrap()).collect();
+        w.push(f[0]);
+        dc.push(f[1]);
+        dm.push(f[2]);
+        dy.push(f[3]);
+        dmin.push(f[4]);
+    }
+    (w, [dc, dm, dy], dmin)
+}
+
+/// Parse a 2-column illuminant CSV (`wavelength,power`, header + rows) into power values.
+fn parse_illuminant_csv(text: &str) -> Vec<f32> {
+    text.lines()
+        .skip(1)
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| l.split(',').nth(1).unwrap().trim().parse().unwrap())
+        .collect()
+}
+
+/// Load bundled spectral data for a stock: real dye densities + D55 illuminant +
+/// the analytic Gaussian sensor, all on the shared grid.
+pub fn load_stock(stock: Stock) -> SpectralData {
+    let dye_csv = match stock {
+        Stock::Portra400 => include_str!("../data/dye_portra400.csv"),
+        Stock::FujiC200 => include_str!("../data/dye_fujic200.csv"),
+    };
+    let illum_csv = include_str!("../data/illuminant_d55.csv");
+    let (wavelengths, dye, d_min) = parse_dye_csv(dye_csv);
+    let illuminant = parse_illuminant_csv(illum_csv);
+    let sensor = analytic_sensor(&wavelengths);
+    SpectralData { wavelengths, dye, d_min, illuminant, sensor }
+}
+
 /// Deterministic synthetic spectral data with deliberately OVERLAPPING dyes
 /// (primary band + a secondary lobe), so the recovered M_post is non-trivial.
 /// Used only by tests — keeps the fit math independent of the bundled CSVs.
@@ -128,5 +167,53 @@ mod tests {
         let red_drop = (base[0] - cyan[0]) / base[0];
         let blue_drop = (base[2] - cyan[2]) / base[2];
         assert!(red_drop > blue_drop, "red_drop {red_drop} !> blue_drop {blue_drop}");
+    }
+
+    #[test]
+    fn load_stock_returns_consistent_grid() {
+        for stock in [Stock::Portra400, Stock::FujiC200] {
+            let d = load_stock(stock);
+            let n = d.wavelengths.len();
+            assert_eq!(n, 71, "{stock:?} grid len");
+            assert_eq!(d.dye[0].len(), n);
+            assert_eq!(d.dye[1].len(), n);
+            assert_eq!(d.dye[2].len(), n);
+            assert_eq!(d.d_min.len(), n);
+            assert_eq!(d.illuminant.len(), n);
+            assert!(d.wavelengths.windows(2).all(|w| w[1] > w[0]));
+        }
+    }
+
+    #[test]
+    fn real_stock_yields_nontrivial_unmixing() {
+        use crate::calibrate::fit_m_post;
+        let data = load_stock(Stock::Portra400);
+        let m = fit_m_post(&data);
+        let base = data.base();
+        let held = [0.2f32, 0.6, 1.0, 1.4, 1.8];
+        let (mut sse_fit, mut sse_id, mut count) = (0.0f32, 0.0f32, 0u32);
+        for &cc in &held {
+            for &mm in &held {
+                for &yy in &held {
+                    let c = [cc, mm, yy];
+                    let i = data.simulate(c);
+                    let dens = nalgebra::Vector3::new(
+                        -(i[0] / base[0]).max(1e-8).log10(),
+                        -(i[1] / base[1]).max(1e-8).log10(),
+                        -(i[2] / base[2]).max(1e-8).log10(),
+                    );
+                    let rec = m * dens;
+                    for k in 0..3 {
+                        sse_fit += (rec[k] - c[k]).powi(2);
+                        sse_id += (dens[k] - c[k]).powi(2);
+                        count += 1;
+                    }
+                }
+            }
+        }
+        let rms_fit = (sse_fit / count as f32).sqrt();
+        let rms_id = (sse_id / count as f32).sqrt();
+        println!("REAL DATA Portra400: rms_fit={rms_fit} rms_id={rms_id} ratio={}", rms_fit / rms_id);
+        assert!(rms_fit <= rms_id, "real-data fit RMS {rms_fit} should not exceed identity {rms_id}");
     }
 }
