@@ -28,6 +28,35 @@ real V600 + GFX files (Phase 6), which needs sample files.
 Verified: `cargo build --release`, `cargo test` (16 pass), `cargo clippy --all-targets` (clean).
 Smoke-tested CLI single + compare on synthetic TIFF fixtures.
 
+## Real-file verdict (2026-06-03) — PIPELINE VALIDATED ✅
+
+Ran `film-cli --compare` on both user files.
+
+- **`Image 4.dng`** (Epson V600, color negative): confirmed a **linear RGB DNG**. Routed via
+  `decode_tiff` (NOT rawler). Auto-detected orange mask `[0.43, 0.19, 0.11]` (R>G>B ✓).
+  Inverted to a believable color positive (street/crosswalk frame). The linear-DNG open item
+  is RESOLVED: `.dng` with PhotometricInterpretation=RGB must go through `decode_tiff`.
+- **`_DSF0072.RAF`** (GFX100RF, 207MB/102MP): a camera photo of a **Shanghai GP3 B&W negative**
+  strip on a lightbox. Decoded via rawler in ~8s full-res (3 inversions). Inverted correctly.
+
+**Key findings:**
+1. **B == C right now** (identity `M_pre`/`M_post`) — byte-identical output. The engine is
+   currently negadoctor-level (per-channel log-density). It modestly beats naive (better
+   shadows/highlights), but the scientific differentiator (cross-channel matrices) is unfit
+   and therefore inert. **Fitting `M_pre`/`M_post` is the #1 substantive next step.**
+2. **Base auto-sampling is too naive for camera scans.** Whole-image 95th percentile grabbed
+   the white lightbox surround (GFX) rather than the film rebate, giving a wrong base. Camera
+   scans include rebate + sprockets + lightbox. Need **frame/rebate detection + crop** before
+   base sampling. (Scanner DNG was fine because it's tightly cropped to the frame.)
+3. **Perf is acceptable:** 102MP/207MB full-res invert in ~8s on CPU; proxy preview will make
+   the UI interactive.
+
+### Prioritized next work (post-POC)
+1. **Frame + rebate detection / crop** (biggest immediate quality lever for camera scans).
+2. **`M_pre`/`M_post` calibration fitting** (the real "more scientific than NLP" differentiator).
+3. White-balance + tone defaults for pleasing out-of-box color.
+4. Then Phase 7 Tauri shell with proxy preview.
+
 ## Open items to resolve with real files (Phase 6)
 
 1. **Linear-DNG vs Bayer path (most important).** The CLI sends `.dng` → `decode_raw`
