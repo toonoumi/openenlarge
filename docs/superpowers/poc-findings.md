@@ -63,6 +63,41 @@ shippable default.
 
 ---
 
+## Library-first develop workflow + preview quality (2026-06-04)
+
+Implemented the import → "Develop all" → Develop flow with a Preview Quality setting. All
+backend (13) + frontend (5 vitest) tests green; builds clean.
+
+**What shipped:**
+- **Light import** — `import_image` no longer full-decodes; it reads the DNG embedded preview
+  for the thumbnail + metadata + stores the path. (`develop_image` does the heavy decode.)
+- **`develop_image`** — decodes → builds the working image at the **quality cap** (Performance
+  4096 / Quality full) + a 256px auto-WB thumb + base; **drops full_res** (memory-bounded).
+- **`set_quality`** + render/export now operate on the developed working image; **export always
+  re-decodes full-res** from the path.
+- **UI** — "Develop all" button (Source panel), full-screen **progress overlay**, auto-switch to
+  Develop, **Develop tab disabled when empty**, **confirm popup** on early jump, right-click
+  **Quality context menu** (changing quality re-develops all).
+
+**Measured (real DNG, release/dev-optimized):**
+- Light-import thumbnail via `decode_tiff` embedded preview: works (173×256). ~1.1s/image **from
+  external disk** (IO-bound; far faster than old full decode; quicker from internal SSD). Each
+  file is currently read twice (preview at import, full at develop) — a future optimization.
+- Develop: decode → working 1549×2292 → orange-mask base `[0.44,0.20,0.11]` ✓.
+
+**Memory model:** cache = N × working-image (Performance ≈ 147MB cap) + thumbnails; full_res only
+transient during `develop_image`/export. Bounded for medium-format on 16GB; Quality mode is the
+user's opt-in via the context menu.
+
+**Manual E2E checklist (run live, `npm run tauri dev`):** drop a batch → instant-ish Library +
+metadata; Develop tab disabled when empty; "Develop all" → progress → lands in Develop at Fit
+(no first-frame magnify); jump-to-Develop-early → popup; Performance vs Quality sharpness; export
+full-res in both. (GUI checks pending — done by the user.)
+
+**Known follow-ups:** RAF (non-TIFF) light-import falls back to a placeholder thumbnail (no
+embedded-preview extraction yet); files read twice (import preview + develop decode); quality is
+session-global (not persisted); develop is sequential (no parallelism).
+
 ## Real-file verdict (2026-06-03) — PIPELINE VALIDATED ✅
 
 Ran `film-cli --compare` on both user files.
