@@ -41,12 +41,10 @@ const EPS: f32 = 1e-5;
 /// Naive baseline: normalize against base, then invert by `1 - x`. No log, no
 /// matrices. This is the strawman the density engine must beat.
 pub fn invert_naive(rgb: [f32; 3], p: &InversionParams) -> [f32; 3] {
-    let mut out = [0.0f32; 3];
-    for c in 0..3 {
+    std::array::from_fn(|c| {
         let norm = (rgb[c] / p.base[c].max(EPS)).clamp(0.0, 1.0);
-        out[c] = 1.0 - norm;
-    }
-    out
+        1.0 - norm
+    })
 }
 
 /// Apply exposure, black point, and output gamma to a linear density-output value.
@@ -58,13 +56,11 @@ fn tone(mut v: f32, p: &InversionParams) -> f32 {
 /// Mode C: per-channel log-density. density = log10(base / I); higher film
 /// density (less transmission) → brighter positive. Normalized by base density.
 pub fn invert_c(rgb: [f32; 3], p: &InversionParams) -> [f32; 3] {
-    let mut out = [0.0f32; 3];
-    for c in 0..3 {
+    std::array::from_fn(|c| {
         let t = (rgb[c] / p.base[c].max(EPS)).clamp(EPS, 1.0);
         let density = -t.log10(); // 0 at base, grows as pixel darkens
-        out[c] = tone(density, p);
-    }
-    out
+        tone(density, p)
+    })
 }
 
 /// Mode B: Ĉ = M_post · log10(M_pre · (base / I)), then per-channel tone.
@@ -127,8 +123,8 @@ mod tests {
     fn naive_inverts_white_base_to_black() {
         let p = InversionParams { base: [0.8, 0.6, 0.4], ..Default::default() };
         let out = invert_naive([0.8, 0.6, 0.4], &p);
-        for c in 0..3 {
-            assert!(out[c].abs() < 1e-4, "channel {c} = {}", out[c]);
+        for (c, &v) in out.iter().enumerate() {
+            assert!(v.abs() < 1e-4, "channel {c} = {v}");
         }
     }
 
@@ -136,8 +132,8 @@ mod tests {
     fn naive_inverts_dark_pixel_to_bright() {
         let p = InversionParams { base: [0.8, 0.8, 0.8], ..Default::default() };
         let out = invert_naive([0.0, 0.0, 0.0], &p);
-        for c in 0..3 {
-            assert!((out[c] - 1.0).abs() < 1e-4, "channel {c} = {}", out[c]);
+        for (c, &v) in out.iter().enumerate() {
+            assert!((v - 1.0).abs() < 1e-4, "channel {c} = {v}");
         }
     }
 
@@ -145,8 +141,8 @@ mod tests {
     fn mode_c_base_pixel_is_zero_density() {
         let p = InversionParams { base: [0.5, 0.5, 0.5], gamma: 1.0, ..Default::default() };
         let out = invert_c([0.5, 0.5, 0.5], &p);
-        for c in 0..3 {
-            assert!(out[c].abs() < 1e-4, "channel {c} = {}", out[c]);
+        for (c, &v) in out.iter().enumerate() {
+            assert!(v.abs() < 1e-4, "channel {c} = {v}");
         }
     }
 
@@ -173,8 +169,8 @@ mod tests {
     fn mode_b_base_pixel_is_black() {
         let p = InversionParams { base: [0.7, 0.6, 0.5], gamma: 1.0, ..Default::default() };
         let out = invert_b([0.7, 0.6, 0.5], &p);
-        for ch in 0..3 {
-            assert!(out[ch].abs() < 1e-4, "ch {ch} = {}", out[ch]);
+        for (ch, &v) in out.iter().enumerate() {
+            assert!(v.abs() < 1e-4, "ch {ch} = {v}");
         }
     }
 
