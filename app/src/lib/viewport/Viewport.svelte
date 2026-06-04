@@ -1,7 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { api, type InvertParams } from "../api";
-  import { fitScale } from "./view";
 
   export let id: string | null;
   export let params: InvertParams;
@@ -23,7 +22,10 @@
   let prevId: string | null = null;
   let timer: ReturnType<typeof setTimeout> | null = null;
 
-  $: fit = fitScale(imgW, imgH, vpW, vpH);
+  // Only treat dimensions as usable once both image AND viewport are measured;
+  // otherwise `fit` would be a bogus 1.0 (=100%) and the first frame magnifies.
+  $: ready = imgW > 0 && imgH > 0 && vpW > 0 && vpH > 0;
+  $: fit = ready ? Math.min(vpW / imgW, vpH / imgH) : 0;
   $: eff = interactive ? (scale > 0 ? scale : fit) : fit; // effective display scale
   $: zoomed = interactive && eff > fit + 1e-6;
   $: label = eff <= fit + 1e-6 ? "Fit" : Math.round(eff * 100) + "%";
