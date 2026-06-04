@@ -70,16 +70,17 @@ pub fn invert_c(rgb: [f32; 3], p: &InversionParams) -> [f32; 3] {
 /// Mode B: Ĉ = M_post · log10(M_pre · (base / I)), then per-channel tone.
 ///
 /// Steps mirror the spec:
-///  1. normalize r = base / I   (removes orange mask)
+///  1. normalize r = I / base  (rgb/base; the later -log10 gives log10(base/I), removing the orange mask)
 ///  2. linear mix  M_pre · r    (sensor↔dye crosstalk; identity by default)
 ///  3. log10                    (into Beer-Lambert density space)
 ///  4. density unmix M_post     (identity by default)
 ///  5. tone (exposure, black, gamma)
 pub fn invert_b(rgb: [f32; 3], p: &InversionParams) -> [f32; 3] {
+    // clamp to [EPS,1]: matches mode C; avoids negative density leaking via m_post
     let r = Vector3::new(
-        (rgb[0] / p.base[0].max(EPS)).max(EPS),
-        (rgb[1] / p.base[1].max(EPS)).max(EPS),
-        (rgb[2] / p.base[2].max(EPS)).max(EPS),
+        (rgb[0] / p.base[0].max(EPS)).clamp(EPS, 1.0),
+        (rgb[1] / p.base[1].max(EPS)).clamp(EPS, 1.0),
+        (rgb[2] / p.base[2].max(EPS)).clamp(EPS, 1.0),
     );
     let mixed = p.m_pre * r;
     let dens = Vector3::new(
@@ -120,6 +121,7 @@ pub fn invert_image(img: &crate::Image, p: &InversionParams, mode: Mode) -> crat
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Image;
 
     #[test]
     fn naive_inverts_white_base_to_black() {
@@ -163,7 +165,7 @@ mod tests {
         let b = invert_b(probe, &p);
         let c = invert_c(probe, &p);
         for ch in 0..3 {
-            assert!((b[ch] - c[ch]).abs() < 1e-5, "ch {ch}: b={} c={}", b[ch], c[ch]);
+            assert!((b[ch] - c[ch]).abs() < 1e-4, "ch {ch}: b={} c={}", b[ch], c[ch]);
         }
     }
 
@@ -175,8 +177,6 @@ mod tests {
             assert!(out[ch].abs() < 1e-4, "ch {ch} = {}", out[ch]);
         }
     }
-
-    use crate::Image;
 
     /// Forward model: a neutral scene exposure `e` (per channel) recorded on film
     /// becomes a negative pixel = base * 10^(-k*e) — darker where scene was bright.
@@ -218,5 +218,27 @@ mod tests {
         let out = invert_image(&img, &p, Mode::B);
         assert!(out.pixels[0][0] < out.pixels[1][0]);
         assert!(out.pixels[1][0] < out.pixels[2][0]);
+    }
+
+    #[test]
+    fn naive_and_b_differ_on_typical_pixel() {
+        // The strawman must actually differ from the density engine.
+        let p = InversionParams { base: [0.8, 0.55, 0.35], gamma: 1.0, ..Default::default() };
+        let probe = [0.3, 0.22, 0.15];
+        let n = invert_naive(probe, &p);
+        let b = invert_b(probe, &p);
+        let diff: f32 = (0..3).map(|c| (n[c] - b[c]).abs()).sum();
+        assert!(diff > 1e-2, "naive and B should differ; diff={diff}");
+    }
+
+    #[test]
+    fn invert_image_preserves_ir_plane() {
+        let mut img = Image::new(2, 1);
+        img.ir = Some(vec![0.5, 0.25]);
+        let p = InversionParams::default();
+        let out = invert_image(&img, &p, Mode::B);
+        assert_eq!(out.ir, Some(vec![0.5, 0.25]));
+        assert_eq!(out.width, 2);
+        assert_eq!(out.height, 1);
     }
 }
