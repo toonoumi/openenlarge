@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use clap::{Parser, ValueEnum};
 use film_core::calibrate::{sample_base, Rect};
+use film_core::spectral::Stock;
 use film_core::decode::decode_tiff;
 use film_core::engine::{invert_image, InversionParams, Mode};
 use film_core::export::write_tiff16;
@@ -19,6 +20,23 @@ impl From<CliMode> for Mode {
             CliMode::B => Mode::B,
             CliMode::C => Mode::C,
             CliMode::Naive => Mode::Naive,
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, ValueEnum)]
+enum CliStock {
+    None,
+    Portra400,
+    FujiC200,
+}
+
+impl CliStock {
+    fn to_stock(self) -> Option<Stock> {
+        match self {
+            CliStock::None => None,
+            CliStock::Portra400 => Some(Stock::Portra400),
+            CliStock::FujiC200 => Some(Stock::FujiC200),
         }
     }
 }
@@ -46,6 +64,9 @@ struct Cli {
     /// Emit B, C, and naive outputs side by side (writes <output stem>_{b,c,naive}.tiff)
     #[arg(long)]
     compare: bool,
+    /// Film stock for Mode B density unmixing (fits M_post). `none` = identity.
+    #[arg(long, value_enum, default_value = "none")]
+    stock: CliStock,
 }
 
 fn main() -> Result<()> {
@@ -80,6 +101,14 @@ fn main() -> Result<()> {
         ..Default::default()
     };
 
+    let b_params = match cli.stock.to_stock() {
+        Some(s) => {
+            eprintln!("using fitted M_post for stock {:?}", cli.stock);
+            film_core::engine::params_for_stock(s, base, cli.exposure, cli.black, cli.gamma)
+        }
+        None => params.clone(),
+    };
+
     if cli.compare {
         let stem = cli
             .output
@@ -89,7 +118,8 @@ fn main() -> Result<()> {
             .to_string();
         let dir = cli.output.parent().map(|p| p.to_path_buf()).unwrap_or_default();
         for (mode, suffix) in [(Mode::B, "b"), (Mode::C, "c"), (Mode::Naive, "naive")] {
-            let out = invert_image(&img, &params, mode);
+            let p = if mode == Mode::B { &b_params } else { &params };
+            let out = invert_image(&img, p, mode);
             let path = dir.join(format!("{stem}_{suffix}.tiff"));
             write_tiff16(&out, &path).context("writing compare output")?;
             eprintln!("wrote {path:?}");
@@ -97,7 +127,9 @@ fn main() -> Result<()> {
         return Ok(());
     }
 
-    let out = invert_image(&img, &params, cli.mode.into());
+    let mode: Mode = cli.mode.into();
+    let chosen = if mode == Mode::B { &b_params } else { &params };
+    let out = invert_image(&img, chosen, mode);
     write_tiff16(&out, &cli.output).context("writing output")?;
     eprintln!("wrote {:?} ({:?} mode)", cli.output, cli.mode);
     Ok(())
