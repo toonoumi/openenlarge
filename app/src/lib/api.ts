@@ -27,6 +27,7 @@ export interface ViewSpec {
   out_w: number;
   out_h: number;
   raw: boolean;
+  finish?: boolean; // omit/true = backend applies finishing; false = GPU does it
 }
 
 export const api = {
