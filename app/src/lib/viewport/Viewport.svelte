@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { api, type InvertParams } from "../api";
-  import { deriveView, fitScale } from "./view";
+  import { fitScale } from "./view";
 
   export let id: string | null;
   export let params: InvertParams;
@@ -10,24 +10,41 @@
   export let raw = false;
   export let interactive = true;
 
+  // Max rendered long edge. The whole image is rendered at the zoom resolution
+  // (capped here) so panning is pure CSS with no re-fetch. True 1:1 for images
+  // up to this size; larger files (e.g. 100MP) are rendered slightly soft.
+  const CAP = 5000;
+
   let el: HTMLDivElement;
   let src = "";
   let vpW = 0, vpH = 0;
-  let scale = 0;
-  let cx = 0, cy = 0;
+  let scale = 0;        // display px per image px (0 = uninitialised → Fit)
+  let cx = 0, cy = 0;   // image-space point centred in the viewport
   let prevId: string | null = null;
   let timer: ReturnType<typeof setTimeout> | null = null;
 
   $: fit = fitScale(imgW, imgH, vpW, vpH);
-  $: zoomed = interactive && scale > fit + 1e-6;
-  $: label = scale <= fit + 1e-6 ? "Fit" : Math.round(scale * 100) + "%";
+  $: eff = interactive ? (scale > 0 ? scale : fit) : fit; // effective display scale
+  $: zoomed = interactive && eff > fit + 1e-6;
+  $: label = eff <= fit + 1e-6 ? "Fit" : Math.round(eff * 100) + "%";
+
+  // Keep (cx,cy) so the image always covers the viewport when zoomed in.
+  function clampCenter() {
+    const halfW = vpW / 2 / eff, halfH = vpH / 2 / eff;
+    cx = imgW * eff <= vpW ? imgW / 2 : Math.max(halfW, Math.min(imgW - halfW, cx));
+    cy = imgH * eff <= vpH ? imgH / 2 : Math.max(halfH, Math.min(imgH - halfH, cy));
+  }
+
+  // Bitmap = the whole image at `eff` scale; position it so (cx,cy) is centred.
+  $: dispW = imgW * eff;
+  $: dispH = imgH * eff;
+  $: left = vpW / 2 - cx * eff;
+  $: top = vpH / 2 - cy * eff;
 
   function measure() {
     if (!el) return;
     vpW = el.clientWidth; vpH = el.clientHeight;
-    if (scale === 0 && imgW) { scale = fit; cx = imgW / 2; cy = imgH / 2; }
   }
-
   onMount(() => {
     measure();
     const ro = new ResizeObserver(measure);
@@ -35,82 +52,71 @@
     return () => ro.disconnect();
   });
 
-  $: if (id !== prevId) { prevId = id; scale = fit || 1; cx = imgW / 2; cy = imgH / 2; }
+  // Reset to Fit when the image changes — but only once `fit` is known, so the
+  // first frame is never accidentally magnified to 100%.
+  $: if (id !== prevId) { prevId = id; scale = 0; cx = imgW / 2; cy = imgH / 2; }
+  $: if (interactive && scale === 0 && fit > 0) scale = fit;
 
+  // Render the WHOLE image at the effective scale (capped). Pan does NOT call
+  // this — only image/params/zoom-level/viewport changes do.
   async function render() {
     if (!id || !imgW || !vpW) { src = ""; return; }
-    const v = deriveView(interactive ? scale : fit, cx, cy, imgW, imgH, vpW, vpH, raw);
+    const rscale = Math.min(eff, CAP / Math.max(imgW, imgH));
+    const out_w = Math.max(1, Math.round(imgW * rscale));
+    const out_h = Math.max(1, Math.round(imgH * rscale));
     try {
-      src = await api.renderView(id, params, v);
-      // New bitmap matches the committed view → drop the live pan transform.
-      tx = 0; ty = 0;
+      src = await api.renderView(id, params, { crop: [0, 0, imgW, imgH], out_w, out_h, raw });
     } catch { /* keep previous frame */ }
   }
-  function schedule() { if (timer) clearTimeout(timer); timer = setTimeout(render, 100); }
+  function schedule() { if (timer) clearTimeout(timer); timer = setTimeout(render, 80); }
+  function scheduleIfReady() { if (id && vpW && imgW) { clampCenter(); schedule(); } }
 
-  function maybeRender() {
-    if (id && vpW && imgW) schedule();
-  }
-  // Re-render whenever any of these change (listed as a reactive dependency
-  // sequence so their *values* aren't used as a gating condition).
-  $: id, vpW, imgH, imgW, params, scale, cx, cy, raw, maybeRender();
+  // Re-render on image / params / zoom-level / viewport changes (NOT on pan).
+  $: id, vpW, vpH, imgW, imgH, params, raw, eff, scheduleIfReady();
 
   function imgPoint(e: { clientX: number; clientY: number }): [number, number] {
-    const v = deriveView(scale, cx, cy, imgW, imgH, vpW, vpH);
     const rect = el.getBoundingClientRect();
-    const offX = (vpW - v.out_w) / 2, offY = (vpH - v.out_h) / 2;
-    const px = (e.clientX - rect.left - offX) / v.out_w;
-    const py = (e.clientY - rect.top - offY) / v.out_h;
-    return [v.crop[0] + px * v.crop[2], v.crop[1] + py * v.crop[3]];
+    return [(e.clientX - rect.left - left) / eff, (e.clientY - rect.top - top) / eff];
   }
 
   function onWheel(e: WheelEvent) {
     if (!interactive) return;
     e.preventDefault();
     const [ix, iy] = imgPoint(e);
-    const ns = Math.min(8, Math.max(fit, scale * Math.exp(-e.deltaY * 0.0015)));
-    cx = ix + (cx - ix) * (scale / ns);
-    cy = iy + (cy - iy) * (scale / ns);
+    const ns = Math.min(8, Math.max(fit, eff * Math.exp(-e.deltaY * 0.0015)));
+    cx = ix + (cx - ix) * (eff / ns);
+    cy = iy + (cy - iy) * (eff / ns);
     scale = ns;
   }
 
-  // Unified pointer gesture: a tap toggles zoom, a drag pans. During a pan we
-  // apply an instant CSS translate (tx,ty) to the current bitmap for smooth
-  // feedback, then commit to cx/cy + render on release (transform cleared when
-  // the new bitmap arrives, so there's no jump).
+  // Tap toggles Fit↔100%; drag pans (only when zoomed). Pan moves (cx,cy) which
+  // repositions the bitmap via CSS instantly — no re-render.
   let lastX = 0, lastY = 0, downX = 0, downY = 0, moved = false, panning = false;
-  let tx = 0, ty = 0;
   function onDown(e: PointerEvent) {
     if (!interactive) return;
-    downX = lastX = e.clientX; downY = lastY = e.clientY;
-    moved = false;
-    panning = zoomed; // only pan when already zoomed in
+    downX = lastX = e.clientX; downY = lastY = e.clientY; moved = false;
+    panning = zoomed;
     (e.target as Element).setPointerCapture?.(e.pointerId);
   }
   function onMove(e: PointerEvent) {
     if (!interactive || !(e.buttons & 1)) return;
     if (Math.abs(e.clientX - downX) > 3 || Math.abs(e.clientY - downY) > 3) moved = true;
     if (panning && moved) {
-      tx += e.clientX - lastX;
-      ty += e.clientY - lastY;
+      cx -= (e.clientX - lastX) / eff;
+      cy -= (e.clientY - lastY) / eff;
+      clampCenter();
     }
     lastX = e.clientX; lastY = e.clientY;
   }
   function onUp(e: PointerEvent) {
-    if (!interactive) return;
-    if (panning && moved) {
-      // commit the live translate into the image-space centre, keep tx/ty until
-      // the re-render lands (render() clears them) to avoid a flash-back.
-      cx -= tx / scale;
-      cy -= ty / scale;
-    } else if (!moved) {
+    if (interactive && !moved) {
       const [ix, iy] = imgPoint(e);
       if (zoomed) { scale = fit; cx = imgW / 2; cy = imgH / 2; }
       else { scale = 1.0; cx = ix; cy = iy; }
     }
     panning = false; moved = false;
   }
-  function onCancel() { tx = 0; ty = 0; panning = false; moved = false; }
+  function onCancel() { panning = false; moved = false; }
 </script>
 
 <div
@@ -119,18 +125,23 @@
   on:wheel={onWheel}
   on:pointerdown={onDown} on:pointermove={onMove} on:pointerup={onUp} on:pointercancel={onCancel}
 >
-  {#if src}<img {src} alt="preview" draggable="false" style="transform: translate({tx}px, {ty}px)" />{:else}<div class="hint">…</div>{/if}
+  {#if src}
+    <img
+      {src} alt="preview" draggable="false"
+      style="position:absolute; width:{dispW}px; height:{dispH}px; left:{left}px; top:{top}px;"
+    />
+  {:else}<div class="hint">…</div>{/if}
   {#if id && interactive}<div class="zoom">{label}</div>{/if}
 </div>
 
 <style>
-  .vp { position: relative; width: 100%; height: 100%; display: grid; place-items: center;
-    overflow: hidden; user-select: none; }
+  .vp { position: relative; width: 100%; height: 100%; overflow: hidden; user-select: none;
+    border-radius: 10px; }
   .vp.interactive { cursor: zoom-in; }
   .vp.zoomed { cursor: grab; }
   .vp.zoomed:active { cursor: grabbing; }
-  img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 10px; display: block; }
-  .hint { color: var(--text-dim); }
+  img { display: block; will-change: left, top, width, height; }
+  .hint { color: var(--text-dim); position: absolute; inset: 0; display: grid; place-items: center; }
   .zoom { position: absolute; bottom: 8px; right: 10px; font-size: 11px; color: var(--text-dim);
-    background: rgba(0,0,0,0.45); padding: 2px 8px; border-radius: 6px; }
+    background: rgba(0,0,0,0.45); padding: 2px 8px; border-radius: 6px; z-index: 2; }
 </style>
