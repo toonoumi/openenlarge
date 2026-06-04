@@ -15,3 +15,7 @@ export const developProgress = writable<{ active: boolean; done: number; total: 
 
 export const hasImages = derived(images, ($i) => $i.length > 0);
 export const allDeveloped = derived(images, ($i) => $i.length > 0 && $i.every((x) => x.developed));
+
+export const selectedFolder = writable<string | null>(null);
+export const gridZoom = writable<number>(55);
+export const undevelopedCount = derived(images, ($i) => $i.filter((x) => !x.developed).length);

@@ -5,7 +5,7 @@ export interface Metadata {
   aperture?: string; width: number; height: number; file_size: number; date?: string;
 }
 export interface ImageEntry {
-  id: string; file_name: string; thumbnail: string; metadata: Metadata; developed: boolean;
+  id: string; path: string; file_name: string; thumbnail: string; metadata: Metadata; developed: boolean;
 }
 export type Quality = "performance" | "quality";
 export interface InvertParams {
@@ -30,6 +30,7 @@ export const api = {
     invoke<void>("export_image", { id, params, outPath }),
   developImage: (id: string) => invoke<ImageEntry>("develop_image", { id }),
   setQuality: (quality: Quality) => invoke<void>("set_quality", { quality }),
+  thumbnail: (id: string, params: InvertParams) => invoke<string>("thumbnail", { id, params }),
 };
 
 export const defaultParams = (): InvertParams => ({
