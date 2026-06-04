@@ -28,6 +28,41 @@ real V600 + GFX files (Phase 6), which needs sample files.
 Verified: `cargo build --release`, `cargo test` (16 pass), `cargo clippy --all-targets` (clean).
 Smoke-tested CLI single + compare on synthetic TIFF fixtures.
 
+## M_post fitting — results (2026-06-03)
+
+Built the density-unmixing matrix fitter from a physical forward model (real per-dye spectral
+densities from spektrafilm, analytic Gaussian sensor, Planckian-D55 stand-in illuminant).
+
+**The math works strongly (synthetic + real-data held-out):**
+- Synthetic overlapping dyes: fitted `M_post` beats identity by >20% on held-out patches.
+- **Real Portra 400 dye data: RMS ΔC 0.094 (fit) vs 0.303 (identity) — a 3.2× error reduction**
+  on held-out concentration patches, with significant off-diagonal crosstalk terms.
+  → Spec Assumption #2 RESOLVED positively: the physical model produces a *strongly*
+  non-trivial unmixing matrix. The "more scientific" differentiator is real, not marginal.
+
+**But on a real scan, the generic matrix shifts color rather than clearly improving it.**
+- V600 color frame, Mode B with `--stock portra400` vs identity: outputs DIFFER (as designed),
+  but the Portra matrix pushes the image visibly **warmer / magenta**, not obviously "more
+  correct."
+- Cause: the matrix was fit against an *assumed* Gaussian sensor + Planckian illuminant that do
+  NOT match the V600's actual sensor spectral sensitivity and lamp. The unmixing is calibrated
+  to the wrong optics, so on a mismatched scanner it re-tints instead of neutralizing.
+
+**Verdict / honest conclusion:** the M_post machinery and the physics are validated; real dye
+data gives a large *modeled* improvement. Converting that into a real-scan quality win requires
+matching the **sensor term** to the actual capture device. So the clear next unlock is
+**per-camera/scanner spectral-sensitivity fitting** (e.g. from a ColorChecker shot) — it is the
+gating step, not an optional refinement. The generic baked matrices are a stepping stone, not a
+shippable default.
+
+### Revised next priorities
+1. **Per-camera/scanner SS fitting** (ColorChecker) — the real unlock; makes `M_post` correct
+   for the actual device.
+2. Frame/rebate detection + crop (camera-scan base sampling).
+3. Then Phase 7 Tauri shell + WB/tone defaults.
+
+---
+
 ## Real-file verdict (2026-06-03) — PIPELINE VALIDATED ✅
 
 Ran `film-cli --compare` on both user files.
