@@ -4,10 +4,10 @@
     const dir = i.path.replace(/\\/g, "/").split("/").slice(0, -1).join("/");
     return dir === $selectedFolder;
   });
-  $: minCol = 120 + ($gridZoom / 100) * 220;
+  $: colW = 130 + ($gridZoom / 100) * 230; // 130–360px column width
 
   // ctrl/cmd + scroll (and trackpad pinch, which arrives as a ctrl-wheel) resize
-  // the thumbnails; plain scroll keeps scrolling the grid.
+  // the thumbnails; plain scroll keeps scrolling the view.
   function onWheel(e: WheelEvent) {
     if (e.ctrlKey || e.metaKey) {
       e.preventDefault();
@@ -21,12 +21,14 @@
     <div class="where"><b>{$selectedFolder?.split("/").pop() ?? "—"}</b> · {shown.length} image{shown.length === 1 ? "" : "s"}</div>
     <div class="right">Thumb size <input class="zoom" type="range" min="0" max="100" bind:value={$gridZoom} /></div>
   </div>
-  <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax({minCol}px,1fr))" on:wheel={onWheel}>
-    {#each shown as img (img.id)}
-      <button class="cell" class:sel={$activeId === img.id} on:click={() => activeId.set(img.id)}>
-        <div class="ratio"><img src={img.thumbnail} alt={img.file_name} /></div>
-      </button>
-    {/each}
+  <div class="scroll" on:wheel={onWheel}>
+    <div class="masonry" style="column-width:{colW}px">
+      {#each shown as img (img.id)}
+        <button class="cell" class:sel={$activeId === img.id} on:click={() => activeId.set(img.id)}>
+          <img src={img.thumbnail} alt={img.file_name} />
+        </button>
+      {/each}
+    </div>
     {#if shown.length === 0}<div class="empty">Select a folder with images</div>{/if}
   </div>
 </div>
@@ -38,13 +40,14 @@
   .right { margin-left: auto; display: flex; align-items: center; gap: 9px; color: var(--text-faint); font-size: 12px; }
   .zoom { appearance: none; width: 120px; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.14); outline: 0; }
   .zoom::-webkit-slider-thumb { appearance: none; width: 13px; height: 13px; border-radius: 50%; background: var(--accent); }
-  .grid { flex: 1; overflow: auto; display: grid; gap: 12px; align-content: start; padding-right: 4px; }
-  .cell { display: block; padding: 0; border: 1px solid var(--glass-brd); border-radius: 11px;
-    overflow: hidden; background: #111; cursor: pointer; transition: transform 0.12s, box-shadow 0.12s; }
-  .cell:hover { transform: translateY(-2px); box-shadow: 0 12px 26px rgba(0,0,0,0.5); }
-  .cell.sel { box-shadow: 0 0 0 2px var(--accent), 0 12px 26px rgba(0,0,0,0.5); }
-  /* reliable 3:2 box (aspect-ratio on grid items is flaky in the webview) */
-  .ratio { position: relative; width: 100%; height: 0; padding-bottom: 66.67%; }
-  .ratio img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+  .scroll { flex: 1; overflow-y: auto; padding-right: 4px; }
+  /* masonry: full-frame thumbnails (natural aspect, no crop) flowing in columns */
+  .masonry { column-gap: 12px; }
+  .cell { display: block; width: 100%; padding: 0; margin: 0 0 12px; break-inside: avoid;
+    -webkit-column-break-inside: avoid; border: 1px solid var(--glass-brd); border-radius: 11px;
+    overflow: hidden; background: #111; cursor: pointer; transition: box-shadow 0.12s; }
+  .cell:hover { box-shadow: 0 10px 24px rgba(0,0,0,0.5); }
+  .cell.sel { box-shadow: 0 0 0 2px var(--accent), 0 10px 24px rgba(0,0,0,0.5); }
+  .cell img { width: 100%; height: auto; display: block; }
   .empty { color: var(--text-faint); padding: 16px; }
 </style>
