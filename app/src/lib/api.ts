@@ -12,9 +12,16 @@ export interface InvertParams {
   mode: "b" | "c";
   stock: "none" | "portra400" | "fujic200";
   base_rect: [number, number, number, number] | null;
-  exposure: number; black: number; gamma: number;
-  auto_wb: boolean; temp: number; tint: number;
+  exposure: number; // EV stops (−5..5)
+  black: number; gamma: number;
+  auto_wb: boolean;
+  temp: number; // Kelvin
+  tint: number; // −150..150
+  contrast: number; highlights: number; shadows: number;
+  whites: number; blacks: number;
+  texture: number; vibrance: number; saturation: number;
 }
+export interface AsShotWb { temp: number; tint: number }
 export interface ViewSpec {
   crop: [number, number, number, number];
   out_w: number;
@@ -31,9 +38,13 @@ export const api = {
   developImage: (id: string) => invoke<ImageEntry>("develop_image", { id }),
   setQuality: (quality: Quality) => invoke<void>("set_quality", { quality }),
   thumbnail: (id: string, params: InvertParams) => invoke<string>("thumbnail", { id, params }),
+  asShotWb: (id: string) => invoke<AsShotWb>("as_shot_wb", { id }),
 };
 
 export const defaultParams = (): InvertParams => ({
-  mode: "b", stock: "none", base_rect: null, exposure: 1, black: 0, gamma: 0.4545,
-  auto_wb: true, temp: 0, tint: 0,
+  mode: "b", stock: "none", base_rect: null,
+  exposure: 0, black: 0, gamma: 0.4545,
+  auto_wb: true, temp: 5500, tint: 0,
+  contrast: 0, highlights: 0, shadows: 0, whites: 0, blacks: 0,
+  texture: 0, vibrance: 0, saturation: 0,
 });
