@@ -36,6 +36,21 @@
     </select>
   </div>
 
+  <div class="grp wb">
+    <label class="toggle">
+      <span>Auto white balance</span>
+      <input type="checkbox" bind:checked={$params.auto_wb} />
+    </label>
+  </div>
+  <div class="grp">
+    <label>Temperature <span>{$params.temp.toFixed(2)}</span></label>
+    <input type="range" min="-1" max="1" step="0.01" bind:value={$params.temp} />
+  </div>
+  <div class="grp">
+    <label>Tint <span>{$params.tint.toFixed(2)}</span></label>
+    <input type="range" min="-1" max="1" step="0.01" bind:value={$params.tint} />
+  </div>
+
   <div class="grp">
     <label>Exposure <span>{$params.exposure.toFixed(2)}</span></label>
     <input type="range" min="0.2" max="3" step="0.01" bind:value={$params.exposure} />
@@ -67,6 +82,8 @@
   select { width: 100%; padding: 7px; border-radius: 8px; background: var(--bg-1);
     color: var(--text); border: 1px solid var(--glass-brd); }
   input[type="range"] { width: 100%; accent-color: var(--accent); }
+  .toggle { margin-bottom: 0; align-items: center; }
+  .toggle input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px; }
   .export { width: 100%; margin-top: 8px; padding: 10px; border: 0; border-radius: 10px;
     background: var(--accent); color: white; font-weight: 600; }
   .export:disabled { opacity: 0.5; }

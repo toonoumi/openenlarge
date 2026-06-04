@@ -12,6 +12,7 @@ export interface InvertParams {
   stock: "none" | "portra400" | "fujic200";
   base_rect: [number, number, number, number] | null;
   exposure: number; black: number; gamma: number;
+  auto_wb: boolean; temp: number; tint: number;
 }
 
 export const api = {
@@ -25,4 +26,5 @@ export const api = {
 
 export const defaultParams = (): InvertParams => ({
   mode: "b", stock: "none", base_rect: null, exposure: 1, black: 0, gamma: 0.4545,
+  auto_wb: true, temp: 0, tint: 0,
 });

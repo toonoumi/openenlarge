@@ -15,6 +15,9 @@ pub struct InvertParams {
     pub exposure: f32,
     pub black: f32,
     pub gamma: f32,
+    pub auto_wb: bool,
+    pub temp: f32,
+    pub tint: f32,
 }
 
 #[derive(Debug, Clone, Serialize)]

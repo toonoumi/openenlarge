@@ -4,7 +4,7 @@ use crate::convert::proxy;
 use crate::encode::to_png_b64;
 use crate::metadata::extract;
 use crate::session::{CachedImage, ImageEntry, InvertParams, Session};
-use film_core::calibrate::{sample_base, Rect};
+use film_core::calibrate::{auto_wb_gains, sample_base, Rect};
 use film_core::decode::{decode_raw, decode_tiff};
 use film_core::engine::{invert_image, params_for_stock, InversionParams, Mode};
 use film_core::spectral::Stock;
@@ -41,6 +41,31 @@ fn build_params(p: &InvertParams, base: [f32; 3]) -> InversionParams {
     }
 }
 
+/// Manual white-balance gains from Temp/Tint controls (each ~[-1,1]).
+/// temp>0 warms (more R, less B); tint>0 pushes magenta (less G).
+fn wb_from_temp_tint(temp: f32, tint: f32) -> [f32; 3] {
+    let r = (1.0 + 0.4 * temp + 0.2 * tint).max(0.1);
+    let g = (1.0 - 0.4 * tint).max(0.1);
+    let b = (1.0 - 0.4 * temp + 0.2 * tint).max(0.1);
+    [r, g, b]
+}
+
+/// Build the final inversion params: matrices/exposure from `build_params`, plus
+/// manual Temp/Tint WB and (if `auto_wb`) gray-world gains from a first pass over
+/// the proxy. Auto gains are always computed on the proxy (fast) for consistency
+/// between preview and export.
+fn resolve_params(p: &InvertParams, proxy_img: &film_core::Image, base: [f32; 3]) -> InversionParams {
+    let manual = wb_from_temp_tint(p.temp, p.tint);
+    let mut ip = build_params(p, base);
+    ip.wb = manual;
+    if p.auto_wb {
+        let first = invert_image(proxy_img, &ip, mode_from(&p.mode));
+        let auto = auto_wb_gains(&first);
+        ip.wb = [manual[0] * auto[0], manual[1] * auto[1], manual[2] * auto[2]];
+    }
+    ip
+}
+
 #[tauri::command]
 pub fn import_image(path: String, session: State<Session>) -> Result<ImageEntry, String> {
     let p = Path::new(&path);
@@ -67,7 +92,8 @@ pub fn inverted_preview(id: String, params: InvertParams, session: State<Session
     let img = images.get(&id).ok_or("unknown image id")?;
     let rect = params.base_rect.map(|r| Rect { x: r[0], y: r[1], w: r[2], h: r[3] });
     let base = sample_base(&img.proxy, rect);
-    let inv = invert_image(&img.proxy, &build_params(&params, base), mode_from(&params.mode));
+    let ip = resolve_params(&params, &img.proxy, base);
+    let inv = invert_image(&img.proxy, &ip, mode_from(&params.mode));
     to_png_b64(&inv, false)
 }
 
@@ -77,6 +103,7 @@ pub fn export_image(id: String, params: InvertParams, out_path: String, session:
     let img = images.get(&id).ok_or("unknown image id")?;
     let rect = params.base_rect.map(|r| Rect { x: r[0], y: r[1], w: r[2], h: r[3] });
     let base = sample_base(&img.proxy, rect);
-    let inv = invert_image(&img.full_res, &build_params(&params, base), mode_from(&params.mode));
+    let ip = resolve_params(&params, &img.proxy, base);
+    let inv = invert_image(&img.full_res, &ip, mode_from(&params.mode));
     film_core::export::write_tiff16(&inv, Path::new(&out_path)).map_err(|e| format!("{e}"))
 }
