@@ -14,12 +14,17 @@ export interface InvertParams {
   exposure: number; black: number; gamma: number;
   auto_wb: boolean; temp: number; tint: number;
 }
+export interface ViewSpec {
+  crop: [number, number, number, number];
+  out_w: number;
+  out_h: number;
+  raw: boolean;
+}
 
 export const api = {
   importImage: (path: string) => invoke<ImageEntry>("import_image", { path }),
-  rawPreview: (id: string) => invoke<string>("raw_preview", { id }),
-  invertedPreview: (id: string, params: InvertParams) =>
-    invoke<string>("inverted_preview", { id, params }),
+  renderView: (id: string, params: InvertParams, view: ViewSpec) =>
+    invoke<string>("render_view", { id, params, view }),
   exportImage: (id: string, params: InvertParams, outPath: string) =>
     invoke<void>("export_image", { id, params, outPath }),
 };
