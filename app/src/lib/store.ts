@@ -1,6 +1,7 @@
 import { writable, derived } from "svelte/store";
 import type { ImageEntry, Quality } from "./api";
 import { defaultParams } from "./api";
+import type { CropRect } from "./crop/types";
 import { createPerImageParams } from "./perImage";
 
 export const images = writable<ImageEntry[]>([]);
@@ -12,6 +13,11 @@ const _perImage = createPerImageParams(activeId, defaultParams);
 export const params = _perImage.params;
 export const editsById = _perImage.editsById;
 export const quality = writable<Quality>("performance");
+
+/** Per-image committed crop (null = full image). */
+export const cropById = writable<Record<string, CropRect | null>>({});
+/** The active image's committed crop. */
+export const activeCrop = derived([cropById, activeId], ([m, id]) => (id ? m[id] ?? null : null));
 
 /** Develop-all progress. active=true shows the overlay. */
 export const developProgress = writable<{ active: boolean; done: number; total: number }>({

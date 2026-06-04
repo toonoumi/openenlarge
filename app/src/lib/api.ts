@@ -28,14 +28,15 @@ export interface ViewSpec {
   out_h: number;
   raw: boolean;
   finish?: boolean; // omit/true = backend applies finishing; false = GPU does it
+  image_crop?: [number, number, number, number] | null; // normalized persistent crop
 }
 
 export const api = {
   importImage: (path: string) => invoke<ImageEntry>("import_image", { path }),
   renderView: (id: string, params: InvertParams, view: ViewSpec) =>
     invoke<string>("render_view", { id, params, view }),
-  exportImage: (id: string, params: InvertParams, outPath: string) =>
-    invoke<void>("export_image", { id, params, outPath }),
+  exportImage: (id: string, params: InvertParams, outPath: string, imageCrop: [number, number, number, number] | null = null) =>
+    invoke<void>("export_image", { id, params, outPath, imageCrop }),
   developImage: (id: string) => invoke<ImageEntry>("develop_image", { id }),
   setQuality: (quality: Quality) => invoke<void>("set_quality", { quality }),
   thumbnail: (id: string, params: InvertParams) => invoke<string>("thumbnail", { id, params }),
