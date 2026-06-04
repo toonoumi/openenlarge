@@ -95,6 +95,28 @@ pub fn invert_b(rgb: [f32; 3], p: &InversionParams) -> [f32; 3] {
     ]
 }
 
+/// Which inversion to run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Mode {
+    /// Density-matrix (the product engine).
+    B,
+    /// Per-channel log-density baseline.
+    C,
+    /// 1 - x strawman.
+    Naive,
+}
+
+/// Invert a whole image (returns a new Image, same dims).
+pub fn invert_image(img: &crate::Image, p: &InversionParams, mode: Mode) -> crate::Image {
+    let f = match mode {
+        Mode::B => invert_b,
+        Mode::C => invert_c,
+        Mode::Naive => invert_naive,
+    };
+    let pixels = img.pixels.iter().map(|&px| f(px, p)).collect();
+    crate::Image { width: img.width, height: img.height, pixels, ir: img.ir.clone() }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -152,5 +174,49 @@ mod tests {
         for ch in 0..3 {
             assert!(out[ch].abs() < 1e-4, "ch {ch} = {}", out[ch]);
         }
+    }
+
+    use crate::Image;
+
+    /// Forward model: a neutral scene exposure `e` (per channel) recorded on film
+    /// becomes a negative pixel = base * 10^(-k*e) — darker where scene was bright.
+    fn synth_negative(scene: [f32; 3], base: [f32; 3], k: f32) -> [f32; 3] {
+        [
+            base[0] * 10f32.powf(-k * scene[0]),
+            base[1] * 10f32.powf(-k * scene[1]),
+            base[2] * 10f32.powf(-k * scene[2]),
+        ]
+    }
+
+    #[test]
+    fn mode_b_recovers_neutrals_as_neutral() {
+        let base = [0.8, 0.55, 0.35];
+        let k = 0.6;
+        let scene_grays = [[0.2, 0.2, 0.2], [0.5, 0.5, 0.5], [0.8, 0.8, 0.8]];
+        let mut img = Image::new(3, 1);
+        for (i, g) in scene_grays.iter().enumerate() {
+            img.pixels[i] = synth_negative(*g, base, k);
+        }
+        let p = InversionParams { base, gamma: 1.0, ..Default::default() };
+        let out = invert_image(&img, &p, Mode::B);
+        for px in &out.pixels {
+            let max = px.iter().cloned().fold(f32::MIN, f32::max);
+            let min = px.iter().cloned().fold(f32::MAX, f32::min);
+            assert!(max - min < 1e-3, "non-neutral recovery: {px:?}");
+        }
+    }
+
+    #[test]
+    fn mode_b_recovers_monotonic_brightness_order() {
+        let base = [0.8, 0.55, 0.35];
+        let k = 0.6;
+        let mut img = Image::new(3, 1);
+        img.pixels[0] = synth_negative([0.2; 3], base, k);
+        img.pixels[1] = synth_negative([0.5; 3], base, k);
+        img.pixels[2] = synth_negative([0.8; 3], base, k);
+        let p = InversionParams { base, gamma: 1.0, ..Default::default() };
+        let out = invert_image(&img, &p, Mode::B);
+        assert!(out.pixels[0][0] < out.pixels[1][0]);
+        assert!(out.pixels[1][0] < out.pixels[2][0]);
     }
 }
