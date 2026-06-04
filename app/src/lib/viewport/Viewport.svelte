@@ -11,6 +11,7 @@
   export let imgH = 0;
   export let raw = false;
   export let interactive = true;
+  export let imageCrop: [number, number, number, number] | null = null;
 
   const CAP = 5000;
   const PAD = 60;
@@ -89,6 +90,7 @@
     try {
       const data = await api.renderView(id, params, {
         crop: [0, 0, imgW, imgH], out_w, out_h, raw, finish: !(useGL && renderer),
+        image_crop: imageCrop,
       });
       if (useGL && renderer) {
         const im = await loadImage(data);
@@ -118,7 +120,7 @@
 
   // Re-fetch the SOURCE only when the inversion / zoom / view changes. In Plan 2A
   // exposure/temp/tint are still baked by the backend, so they live in this key.
-  $: srcKey = `${id}|${raw}|${eff}|${vpW}|${vpH}|${params.mode}|${params.stock}|${params.exposure}|${params.temp}|${params.tint}`;
+  $: srcKey = `${id}|${raw}|${eff}|${vpW}|${vpH}|${params.mode}|${params.stock}|${params.exposure}|${params.temp}|${params.tint}|${imageCrop ? imageCrop.join(',') : 'full'}`;
   $: srcKey, imgW, imgH, scheduleIfReady();
 
   // Finishing-only change → GPU redraw, no backend fetch.
