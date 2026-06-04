@@ -28,3 +28,12 @@ image = "0.25"
 base64 = "0.22"
 rawler = "0.7"
 
+
+# Fast `tauri dev`: optimize dependencies (RAW decode, resize, inversion live in
+# film-core/rawler/image) while keeping the app crate lightly optimized for quick
+# rebuilds. Without this, debug builds run heavy image math 5-10x slower.
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3

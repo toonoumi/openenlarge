@@ -60,13 +60,6 @@
     return [v.crop[0] + px * v.crop[2], v.crop[1] + py * v.crop[3]];
   }
 
-  function onClick(e: MouseEvent) {
-    if (!interactive) return;
-    const [ix, iy] = imgPoint(e);
-    if (zoomed) { scale = fit; cx = imgW / 2; cy = imgH / 2; }
-    else { scale = 1.0; cx = ix; cy = iy; }
-  }
-
   function onWheel(e: WheelEvent) {
     if (!interactive) return;
     e.preventDefault();
@@ -77,25 +70,40 @@
     scale = ns;
   }
 
-  let dragging = false, lastX = 0, lastY = 0;
+  // Unified pointer gesture: distinguish a tap (toggle zoom) from a drag (pan).
+  // Using on:click separately caused the post-drag click to snap back to Fit.
+  let lastX = 0, lastY = 0, downX = 0, downY = 0, moved = false, panning = false;
   function onDown(e: PointerEvent) {
-    if (!zoomed) return;
-    dragging = true; lastX = e.clientX; lastY = e.clientY;
+    if (!interactive) return;
+    downX = lastX = e.clientX; downY = lastY = e.clientY;
+    moved = false;
+    panning = zoomed; // only pan when already zoomed in
     (e.target as Element).setPointerCapture?.(e.pointerId);
   }
   function onMove(e: PointerEvent) {
-    if (!dragging) return;
-    cx -= (e.clientX - lastX) / scale;
-    cy -= (e.clientY - lastY) / scale;
+    if (!interactive || !(e.buttons & 1)) return;
+    if (Math.abs(e.clientX - downX) > 3 || Math.abs(e.clientY - downY) > 3) moved = true;
+    if (panning && moved) {
+      cx -= (e.clientX - lastX) / scale;
+      cy -= (e.clientY - lastY) / scale;
+    }
     lastX = e.clientX; lastY = e.clientY;
   }
-  function onUp() { dragging = false; }
+  function onUp(e: PointerEvent) {
+    if (interactive && !moved) {
+      // tap → toggle Fit <-> 100% centered on the tapped point
+      const [ix, iy] = imgPoint(e);
+      if (zoomed) { scale = fit; cx = imgW / 2; cy = imgH / 2; }
+      else { scale = 1.0; cx = ix; cy = iy; }
+    }
+    panning = false; moved = false;
+  }
 </script>
 
 <div
   class="vp" class:interactive class:zoomed
   bind:this={el}
-  on:click={onClick} on:wheel={onWheel}
+  on:wheel={onWheel}
   on:pointerdown={onDown} on:pointermove={onMove} on:pointerup={onUp} on:pointerleave={onUp}
 >
   {#if src}<img {src} alt="preview" draggable="false" />{:else}<div class="hint">…</div>{/if}
