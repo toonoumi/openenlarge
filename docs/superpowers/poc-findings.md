@@ -98,6 +98,32 @@ full-res in both. (GUI checks pending — done by the user.)
 embedded-preview extraction yet); files read twice (import preview + develop decode); quality is
 session-global (not persisted); develop is sequential (no parallelism).
 
+## Library redesign + app polish (2026-06-04)
+
+Mockup validated via the visual companion, then implemented. Backend 13 + vitest 8 green; builds clean.
+
+**Shipped:**
+- **Window opens at 90% of screen, titled "RedRoom"** (sized at startup from the monitor).
+- **Library = folder navigator + zoomable grid** (replaces the bottom filmstrip in Library;
+  Develop keeps its filmstrip). macOS-style tree (inline Lucide icons: hard-drive/folder/chevron),
+  per-folder counts, built from this session's imported paths (`buildTree`, vitest-tested). Import
+  button at the bottom (label "Import").
+- **Grid just shows the images** (no badges/wash); selecting a cell sets the active image; a
+  "Thumb size" slider scales cells (120–320px).
+- **Live thumbnails:** `develop_image` now renders an **inverted** thumbnail (grid flips to
+  positive after develop); editing the active image refreshes its grid cell via a new
+  `thumbnail(id,params)` command (debounced) — reflects white/black/tone edits.
+- **Develop tab badge** = count of undeveloped images.
+- Polish: tightened spacing, Lucide iconography, glass panels, `--text-faint` token.
+
+**Out of scope (separate task):** file persistence (remembering imports across launches); the
+navigator is session-only for now.
+
+**Manual E2E (run live, `npm run tauri dev`):** window opens ~90% titled RedRoom; import from two
+folders → tree shows both volumes/folders with counts → select each → grid filters; thumb-size
+slider; "Develop all" → thumbnails flip to positives; edit black/white on the active image → its
+grid thumbnail updates; Develop badge counts undeveloped.
+
 ## Real-file verdict (2026-06-03) — PIPELINE VALIDATED ✅
 
 Ran `film-cli --compare` on both user files.
