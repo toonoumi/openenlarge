@@ -3,25 +3,32 @@
   import Adjustments from "../panels/Adjustments.svelte";
   import Filmstrip from "../panels/Filmstrip.svelte";
   import Viewport from "../viewport/Viewport.svelte";
+  import QualityMenu from "../viewport/QualityMenu.svelte";
 
   $: active = $images.find((i) => i.id === $activeId);
+  let menu: { x: number; y: number } | null = null;
+  function onContext(e: MouseEvent) { e.preventDefault(); menu = { x: e.clientX, y: e.clientY }; }
 </script>
 
-<div class="layout">
+<div class="layout" on:contextmenu={onContext}>
   <aside class="left"></aside>
   <section class="center">
-    <Viewport id={$activeId} params={$params}
-              imgW={active?.metadata.width ?? 0} imgH={active?.metadata.height ?? 0} />
+    {#if active?.developed}
+      <Viewport id={$activeId} params={$params}
+                imgW={active.metadata.width} imgH={active.metadata.height} />
+    {:else}<div class="hint">Not developed yet</div>{/if}
   </section>
   <aside class="right"><Adjustments /></aside>
   <footer class="bottom"><Filmstrip /></footer>
 </div>
+{#if menu}<QualityMenu x={menu.x} y={menu.y} on:close={() => (menu = null)} />{/if}
 
 <style>
   .layout { display: grid; height: 100%; gap: 12px;
     grid-template-columns: 220px 1fr 260px; grid-template-rows: 1fr 88px;
     grid-template-areas: "left center right" "bottom bottom bottom"; }
   .left { grid-area: left; } .right { grid-area: right; }
-  .center { grid-area: center; min-height: 0; }
+  .center { grid-area: center; min-height: 0; display: grid; place-items: center; }
+  .hint { color: var(--text-dim); }
   .bottom { grid-area: bottom; }
 </style>

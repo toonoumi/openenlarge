@@ -1,19 +1,15 @@
 <script lang="ts">
-  import { activeId, params, images } from "../store";
+  import { activeId, images } from "../store";
   import Source from "../panels/Source.svelte";
   import Metadata from "../panels/Metadata.svelte";
   import Filmstrip from "../panels/Filmstrip.svelte";
-  import Viewport from "../viewport/Viewport.svelte";
-
   $: active = $images.find((i) => i.id === $activeId);
 </script>
 
 <div class="layout">
   <aside class="left"><Source /></aside>
   <section class="center">
-    {#if active}
-      <Viewport id={$activeId} params={$params} raw={true} interactive={false}
-                imgW={active.metadata.width} imgH={active.metadata.height} />
+    {#if active}<img src={active.thumbnail} alt={active.file_name} />
     {:else}<div class="hint">Import a film scan to begin</div>{/if}
   </section>
   <aside class="right"><Metadata /></aside>
@@ -26,6 +22,7 @@
     grid-template-areas: "left center right" "bottom bottom bottom"; }
   .left { grid-area: left; } .right { grid-area: right; }
   .center { grid-area: center; display: grid; place-items: center; min-height: 0; }
+  .center img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 10px; }
   .hint { color: var(--text-dim); }
   .bottom { grid-area: bottom; }
 </style>
