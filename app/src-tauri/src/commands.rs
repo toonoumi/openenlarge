@@ -68,6 +68,16 @@ fn resolve_params(p: &InvertParams, _autowb_src: &film_core::Image, base: [f32; 
 
 fn finish_default() -> bool { true }
 
+/// Map a normalized crop rect [x,y,w,h] (0..1) to integer pixels on a w×h image,
+/// clamped to bounds with a 1px minimum.
+fn crop_px(norm: [f64; 4], w: usize, h: usize) -> (usize, usize, usize, usize) {
+    let x = (norm[0] * w as f64).round().clamp(0.0, (w - 1) as f64) as usize;
+    let y = (norm[1] * h as f64).round().clamp(0.0, (h - 1) as f64) as usize;
+    let cw = (norm[2] * w as f64).round().clamp(1.0, (w - x) as f64) as usize;
+    let ch = (norm[3] * h as f64).round().clamp(1.0, (h - y) as f64) as usize;
+    (x, y, cw, ch)
+}
+
 fn finish_from(p: &InvertParams) -> FinishParams {
     FinishParams {
         contrast: p.contrast / 100.0,
@@ -154,6 +164,10 @@ pub struct ViewSpec {
     /// (the GPU applies finishing live). Defaults true for the legacy path/export.
     #[serde(default = "finish_default")]
     pub finish: bool,
+    /// Normalized [x,y,w,h] persistent crop on the original image; applied before
+    /// the zoom/view crop. None = whole image.
+    #[serde(default)]
+    pub image_crop: Option<[f64; 4]>,
 }
 
 #[tauri::command]
@@ -163,13 +177,19 @@ pub fn render_view(id: String, params: InvertParams, view: ViewSpec, session: St
     let dev = img.developed.as_ref().ok_or("not developed")?;
 
     let s_scale = dev.working.width as f64 / img.metadata.width.max(1) as f64;
-
+    // Persistent crop first (in working px), so the view crop is relative to it.
+    let base_img = match view.image_crop {
+        Some(nc) => {
+            let (ix, iy, iw, ih) = crop_px(nc, dev.working.width, dev.working.height);
+            crop(&dev.working, ix, iy, iw, ih)
+        }
+        None => dev.working.clone(),
+    };
     let cx = (view.crop[0] * s_scale).max(0.0).round() as usize;
     let cy = (view.crop[1] * s_scale).max(0.0).round() as usize;
     let cw = (view.crop[2] * s_scale).round().max(1.0) as usize;
     let ch = (view.crop[3] * s_scale).round().max(1.0) as usize;
-
-    let cropped = crop(&dev.working, cx, cy, cw, ch);
+    let cropped = crop(&base_img, cx, cy, cw, ch);
     if cropped.pixels.is_empty() {
         return Err("empty crop".into());
     }
@@ -200,7 +220,10 @@ pub fn thumbnail(id: String, params: InvertParams, session: State<Session>) -> R
 
 /// Re-decode the file at full resolution and export a 16-bit TIFF.
 #[tauri::command]
-pub fn export_image(id: String, params: InvertParams, out_path: String, session: State<Session>) -> Result<(), String> {
+pub fn export_image(
+    id: String, params: InvertParams, out_path: String,
+    image_crop: Option<[f64; 4]>, session: State<Session>,
+) -> Result<(), String> {
     let (path, base, thumb) = {
         let images = session.images.lock().unwrap();
         let img = images.get(&id).ok_or("unknown image id")?;
@@ -208,6 +231,13 @@ pub fn export_image(id: String, params: InvertParams, out_path: String, session:
         (img.path.clone(), dev.base, dev.thumb.clone())
     };
     let full = decode_any(Path::new(&path))?;
+    let full = match image_crop {
+        Some(nc) => {
+            let (x, y, w, h) = crop_px(nc, full.width, full.height);
+            crop(&full, x, y, w, h)
+        }
+        None => full,
+    };
     let ip = resolve_params(&params, &thumb, base);
     let inv = invert_image(&full, &ip, mode_from(&params.mode));
     let fin = finish_image(&inv, &finish_from(&params));
@@ -248,6 +278,14 @@ mod tests {
         let f: ViewSpec = serde_json::from_str(
             r#"{"crop":[0,0,10,10],"out_w":10,"out_h":10,"raw":false,"finish":false}"#).unwrap();
         assert!(!f.finish);
+    }
+
+    #[test]
+    fn crop_px_maps_and_clamps_normalized_rect() {
+        assert_eq!(crop_px([0.0, 0.0, 1.0, 1.0], 100, 80), (0, 0, 100, 80));
+        assert_eq!(crop_px([0.25, 0.25, 0.5, 0.5], 100, 80), (25, 20, 50, 40));
+        let (x, y, w, h) = crop_px([0.9, 0.9, 0.5, 0.5], 100, 80);
+        assert!(x < 100 && y < 80 && w >= 1 && h >= 1 && x + w <= 100 && y + h <= 80);
     }
 
     #[test]
