@@ -1,11 +1,16 @@
 import { writable, derived } from "svelte/store";
-import type { ImageEntry, InvertParams, Quality } from "./api";
+import type { ImageEntry, Quality } from "./api";
 import { defaultParams } from "./api";
+import { createPerImageParams } from "./perImage";
 
 export const images = writable<ImageEntry[]>([]);
 export const activeId = writable<string | null>(null);
 export const module = writable<"library" | "develop">("library");
-export const params = writable<InvertParams>(defaultParams());
+// Per-image edits: $params is the ACTIVE image's params; writes go to the active
+// image only. activeId is declared above, which createPerImageParams subscribes to.
+const _perImage = createPerImageParams(activeId, defaultParams);
+export const params = _perImage.params;
+export const editsById = _perImage.editsById;
 export const quality = writable<Quality>("performance");
 
 /** Develop-all progress. active=true shows the overlay. */
