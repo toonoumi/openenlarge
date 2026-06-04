@@ -49,6 +49,24 @@ pub fn invert_naive(rgb: [f32; 3], p: &InversionParams) -> [f32; 3] {
     out
 }
 
+/// Apply exposure, black point, and output gamma to a linear density-output value.
+fn tone(mut v: f32, p: &InversionParams) -> f32 {
+    v = (v * p.exposure - p.black).max(0.0);
+    v.powf(p.gamma)
+}
+
+/// Mode C: per-channel log-density. density = log10(base / I); higher film
+/// density (less transmission) → brighter positive. Normalized by base density.
+pub fn invert_c(rgb: [f32; 3], p: &InversionParams) -> [f32; 3] {
+    let mut out = [0.0f32; 3];
+    for c in 0..3 {
+        let t = (rgb[c] / p.base[c].max(EPS)).clamp(EPS, 1.0);
+        let density = -t.log10(); // 0 at base, grows as pixel darkens
+        out[c] = tone(density, p);
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -69,5 +87,22 @@ mod tests {
         for c in 0..3 {
             assert!((out[c] - 1.0).abs() < 1e-4, "channel {c} = {}", out[c]);
         }
+    }
+
+    #[test]
+    fn mode_c_base_pixel_is_zero_density() {
+        let p = InversionParams { base: [0.5, 0.5, 0.5], gamma: 1.0, ..Default::default() };
+        let out = invert_c([0.5, 0.5, 0.5], &p);
+        for c in 0..3 {
+            assert!(out[c].abs() < 1e-4, "channel {c} = {}", out[c]);
+        }
+    }
+
+    #[test]
+    fn mode_c_darker_pixel_has_higher_output() {
+        let p = InversionParams { base: [1.0, 1.0, 1.0], gamma: 1.0, ..Default::default() };
+        let bright = invert_c([0.5, 0.5, 0.5], &p);
+        let dark = invert_c([0.1, 0.1, 0.1], &p);
+        assert!(dark[0] > bright[0]);
     }
 }
