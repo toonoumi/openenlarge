@@ -8,6 +8,27 @@
 pub enum Stock {
     Portra400,
     FujiC200,
+    Portra160,
+    Portra800,
+    Ektar100,
+    Gold200,
+    Ultramax400,
+    FujiPro400H,
+    FujiXtra400,
+    Vision350D,
+    Vision3200T,
+    Vision3250D,
+    Vision3500T,
+}
+
+impl Stock {
+    /// Every bundled stock, for enumeration in tests/UI-parity checks.
+    pub const ALL: [Stock; 13] = [
+        Stock::Portra400, Stock::FujiC200, Stock::Portra160, Stock::Portra800,
+        Stock::Ektar100, Stock::Gold200, Stock::Ultramax400, Stock::FujiPro400H,
+        Stock::FujiXtra400, Stock::Vision350D, Stock::Vision3200T, Stock::Vision3250D,
+        Stock::Vision3500T,
+    ];
 }
 
 /// Spectral curves on a shared wavelength grid (nm). All Vecs are the same length.
@@ -92,6 +113,17 @@ pub fn load_stock(stock: Stock) -> SpectralData {
     let dye_csv = match stock {
         Stock::Portra400 => include_str!("../data/dye_portra400.csv"),
         Stock::FujiC200 => include_str!("../data/dye_fujic200.csv"),
+        Stock::Portra160 => include_str!("../data/dye_portra160.csv"),
+        Stock::Portra800 => include_str!("../data/dye_portra800.csv"),
+        Stock::Ektar100 => include_str!("../data/dye_ektar100.csv"),
+        Stock::Gold200 => include_str!("../data/dye_gold200.csv"),
+        Stock::Ultramax400 => include_str!("../data/dye_ultramax400.csv"),
+        Stock::FujiPro400H => include_str!("../data/dye_fujipro400h.csv"),
+        Stock::FujiXtra400 => include_str!("../data/dye_fujixtra400.csv"),
+        Stock::Vision350D => include_str!("../data/dye_vision350d.csv"),
+        Stock::Vision3200T => include_str!("../data/dye_vision3200t.csv"),
+        Stock::Vision3250D => include_str!("../data/dye_vision3250d.csv"),
+        Stock::Vision3500T => include_str!("../data/dye_vision3500t.csv"),
     };
     let illum_csv = include_str!("../data/illuminant_d55.csv");
     let (wavelengths, dye, d_min) = parse_dye_csv(dye_csv);
@@ -171,7 +203,7 @@ mod tests {
 
     #[test]
     fn load_stock_returns_consistent_grid() {
-        for stock in [Stock::Portra400, Stock::FujiC200] {
+        for stock in Stock::ALL {
             let d = load_stock(stock);
             let n = d.wavelengths.len();
             assert_eq!(n, 71, "{stock:?} grid len");
@@ -181,6 +213,18 @@ mod tests {
             assert_eq!(d.d_min.len(), n);
             assert_eq!(d.illuminant.len(), n);
             assert!(d.wavelengths.windows(2).all(|w| w[1] > w[0]));
+        }
+    }
+
+    #[test]
+    fn every_stock_loads_and_fits_finite_nonidentity_mpost() {
+        use crate::calibrate::fit_m_post;
+        let id = nalgebra::Matrix3::identity();
+        for stock in Stock::ALL {
+            let data = load_stock(stock);
+            let m = fit_m_post(&data);
+            assert!(m.iter().all(|v| v.is_finite()), "{stock:?} M_post not finite");
+            assert!((m - id).norm() > 1e-3, "{stock:?} M_post unexpectedly identity");
         }
     }
 
