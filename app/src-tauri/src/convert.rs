@@ -137,6 +137,23 @@ fn sample_bilinear(img: &Image, sx: f32, sy: f32) -> [f32; 3] {
     })
 }
 
+/// Bilinear sample a single-channel plane; 0.0 for out-of-bounds (mirrors sample_bilinear).
+fn sample_scalar_bilinear(plane: &[f32], w: usize, h: usize, sx: f32, sy: f32) -> f32 {
+    let (wi, hi) = (w as i32, h as i32);
+    if sx < 0.0 || sy < 0.0 || sx >= wi as f32 || sy >= hi as f32 {
+        return 0.0;
+    }
+    let x0 = sx.floor() as i32; let y0 = sy.floor() as i32;
+    let fx = sx - x0 as f32; let fy = sy - y0 as f32;
+    let get = |x: i32, y: i32| -> f32 {
+        let xc = x.clamp(0, wi - 1) as usize; let yc = y.clamp(0, hi - 1) as usize;
+        plane[yc * w + xc]
+    };
+    let a = get(x0, y0) * (1.0 - fx) + get(x0 + 1, y0) * fx;
+    let b = get(x0, y0 + 1) * (1.0 - fx) + get(x0 + 1, y0 + 1) * fx;
+    a * (1.0 - fy) + b * fy
+}
+
 /// Straighten: rotate clockwise by `deg` about the centre into a same-size canvas.
 /// Out-of-bounds samples are black. No-op below 1e-4 deg.
 pub fn rotate(img: &Image, deg: f32) -> Image {
@@ -146,14 +163,18 @@ pub fn rotate(img: &Image, deg: f32) -> Image {
     let (sin, cos) = rad.sin_cos();
     let cx = w as f32 / 2.0; let cy = h as f32 / 2.0;
     let mut px = vec![[0.0_f32; 3]; w * h];
+    let mut ir = img.ir.as_ref().map(|_| vec![0.0_f32; w * h]);
     for oy in 0..h { for ox in 0..w {
         let dx = ox as f32 + 0.5 - cx;
         let dy = oy as f32 + 0.5 - cy;
         let sx = cos * dx + sin * dy + cx - 0.5;
         let sy = -sin * dx + cos * dy + cy - 0.5;
         px[oy * w + ox] = sample_bilinear(img, sx, sy);
+        if let (Some(d), Some(s)) = (ir.as_mut(), img.ir.as_ref()) {
+            d[oy * w + ox] = sample_scalar_bilinear(s, w, h, sx, sy);
+        }
     } }
-    Image { width: w, height: h, pixels: px, ir: None }
+    Image { width: w, height: h, pixels: px, ir }
 }
 
 /// Resize to exactly `w x h` (Triangle filter). No-op if already that size.
@@ -358,5 +379,23 @@ mod tests {
         for i in 0..r.pixels.len() {
             assert_eq!(r.pixels[i][0], ir[i]);
         }
+    }
+
+    #[test]
+    fn rotate_zero_preserves_ir() {
+        let img = ramp_ir(3, 3);
+        let r = rotate(&img, 0.0);
+        assert_eq!(r.ir.as_ref().map(|v| v.len()), Some(9));
+    }
+
+    #[test]
+    fn rotate_carries_ir_and_blacks_corners() {
+        let img = ramp_ir(5, 5);
+        let r = rotate(&img, 30.0);
+        let ir = r.ir.expect("rotate carries ir");
+        assert_eq!(ir.len(), 25);
+        // Top-left corner is rotated out of frame → ir 0.0 (same as RGB black).
+        assert_eq!(r.pixels[0], [0.0, 0.0, 0.0]);
+        assert_eq!(ir[0], 0.0);
     }
 }
