@@ -1,9 +1,11 @@
 <script lang="ts">
   import { get } from "svelte/store";
   import { t } from "$lib/i18n";
-  import { params, activeId } from "../store";
+  import { params, activeId, images, folderBaseByPath } from "../store";
   import { api, defaultParams } from "../api";
   import { reseedActive } from "./historyStore";
+  import { withEffectiveBase } from "./base";
+  import { imageDir } from "../library/folderScope";
   import Icon from "../icons/Icon.svelte";
   import Slider from "./Slider.svelte";
   import { TEMP_GRADIENT, TINT_GRADIENT, SAT_GRADIENT, signed, ev, kelvin } from "./gradients";
@@ -12,24 +14,28 @@
 
   let open = true;
 
+  $: activeImg = $images.find((i) => i.id === $activeId);
+  $: dir = activeImg ? imageDir(activeImg) : "";
+  $: effBase = $params.base_override ?? (dir ? $folderBaseByPath[dir] : null) ?? null;
+
   // Seed Temp/Tint from the estimated as-shot white point when the image OR the
-  // film profile changes. The estimate runs against the current stock/mode, so
-  // switching a profile re-balances to its colour space (prevents the cast that
-  // appears when a profile's M_post rotates colours under a stale white balance).
+  // film profile changes (or the effective base changes). The estimate runs
+  // against the effective base and stock/mode, so switching a profile or
+  // applying a roll calibration re-balances to the correct neutral point.
   let seededFor: string | null = null;
-  async function seed(id: string | null, stock: string) {
-    const key = id ? `${id}:${stock}` : null;
+  async function seed(id: string | null, stock: string, baseKey: string) {
+    const key = id ? `${id}:${stock}:${baseKey}` : null;
     if (!key || seededFor === key) return;
     seededFor = key;
     try {
-      const wb = await api.asShotWb(id!, get(params));
+      const wb = await api.asShotWb(id!, withEffectiveBase(get(params), dir));
       params.update((p) => ({ ...p, temp: wb.temp, tint: wb.tint }));
       reseedActive();
     } catch { /* not developed yet */ }
   }
-  $: seed($activeId, $params.stock);
+  $: seed($activeId, $params.stock, JSON.stringify(effBase));
 
-  function autoWb() { seededFor = null; seed($activeId, $params.stock); }
+  function autoWb() { seededFor = null; seed($activeId, $params.stock, JSON.stringify(effBase)); }
 
   // Reset every Basic-section control to its default, leaving all other develop
   // state (mode, base_override, black/gamma, tone curve, color grading) untouched.
