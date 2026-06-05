@@ -170,3 +170,14 @@ Ran `film-cli --compare` on both user files.
 ## Deferred (Phase 7)
 
 Tauri shell, GPU/proxy preview, M_pre/M_post calibration fitting, ICC/spectral, AI dust/color.
+
+## GPU Develop Pipeline — Phase 0 spike (2026-06-05)
+
+Spec: `specs/2026-06-04-gpu-develop-pipeline-design.md`, Assumption #1.
+
+**Verdict: `[SPIKE float16] ok=true reason="RGBA16F render target OK"`** — the app's WKWebView
+WebGL2 supports `EXT_color_buffer_float` and an `RGBA16F` render target is framebuffer-complete.
+
+→ **Green light.** Plans 2–3 (float-texture upload, GPU inversion, offscreen tiled export) proceed
+as designed; no RGBA8 encoded-range fallback or WebGPU detour needed. Probe added in
+`app/src/lib/viewport/gl/renderer.ts::float16RenderTargetSupported()`.
