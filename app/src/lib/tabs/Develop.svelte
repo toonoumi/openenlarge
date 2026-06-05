@@ -12,7 +12,7 @@
   import CropView from "../crop/CropView.svelte";
   import CropPanel from "../crop/CropPanel.svelte";
   import EraserPanel from "../develop/EraserPanel.svelte";
-  import { addStroke, undoStroke, resetDust, emptyDust, type DustStroke } from "../develop/dust";
+  import { addStroke, undoStroke, resetDust, emptyDust, type DustStroke, type DustEdits } from "../develop/dust";
   import type { Rect, CropRect } from "../crop/types";
   import { default80, conform, constrainToRotated } from "../crop/cropMath";
   import { presetNormAspect } from "../crop/presets";
@@ -127,21 +127,15 @@
   let dustRev = 0;            // bumped on any dust change to force Viewport re-render
   $: dust = $activeDust;
 
-  function commitStroke(s: DustStroke) {
+  // Apply a reducer to the active image's dust edits and force a Viewport re-render.
+  function updateDust(fn: (d: DustEdits) => DustEdits) {
     const id = $activeId; if (!id) return;
-    dustById.update((m) => ({ ...m, [id]: addStroke(m[id] ?? emptyDust(), s) }));
+    dustById.update((m) => ({ ...m, [id]: fn(m[id] ?? emptyDust()) }));
     dustRev++;
   }
-  function undoDust() {
-    const id = $activeId; if (!id) return;
-    dustById.update((m) => ({ ...m, [id]: undoStroke(m[id] ?? emptyDust()) }));
-    dustRev++;
-  }
-  function resetDustEdits() {
-    const id = $activeId; if (!id) return;
-    dustById.update((m) => ({ ...m, [id]: resetDust() }));
-    dustRev++;
-  }
+  const commitStroke = (s: DustStroke) => updateDust((d) => addStroke(d, s));
+  const undoDust = () => updateDust((d) => undoStroke(d));
+  const resetDustEdits = () => updateDust(() => resetDust());
 
   let menu: { x: number; y: number } | null = null;
   function onContext(e: MouseEvent) { e.preventDefault(); menu = { x: e.clientX, y: e.clientY }; }
