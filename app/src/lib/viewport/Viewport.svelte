@@ -109,6 +109,7 @@
   // Fetch the source preview. With GL, request the PRE-FINISH image (finish:false)
   // and apply finishing in the shader; otherwise fetch the finished image.
   async function render() {
+    if (gpuEligible) return; // GPU path owns eligible images; this is the CPU fallback only
     if (!id || !imgW || !vpW) { src = ""; return; }
     const rscale = Math.min(eff, CAP / Math.max(imgW, imgH));
     const out_w = Math.max(1, Math.round(imgW * rscale));

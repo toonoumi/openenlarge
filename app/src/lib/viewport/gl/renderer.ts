@@ -200,6 +200,7 @@ export class FinishRenderer {
   /** Upload a decoded preview image as the source texture; sizes the canvas. */
   setSource(img: TexImageSource, w: number, h: number) {
     const gl = this.gl; if (!gl || !this.tex) return;
+    this.useFloat = false; // 8-bit CPU-fallback source → draw() uses the single finishing pass
     this.srcW = w; this.srcH = h;
     this.canvas.width = w; this.canvas.height = h;
     gl.bindTexture(gl.TEXTURE_2D, this.tex);
