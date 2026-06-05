@@ -148,7 +148,7 @@ mod tests {
 
     #[test]
     fn png8_writes_decodable_file() {
-        let p = std::env::temp_dir().join("filmrev_t1_png8.png");
+        let p = std::env::temp_dir().join("openenlarge_t1_png8.png");
         write_png(&gradient(8, 4), &p, 8).unwrap();
         let d = image::open(&p).unwrap();
         assert_eq!((d.width(), d.height()), (8, 4));
@@ -156,7 +156,7 @@ mod tests {
 
     #[test]
     fn png16_writes_decodable_file() {
-        let p = std::env::temp_dir().join("filmrev_t1_png16.png");
+        let p = std::env::temp_dir().join("openenlarge_t1_png16.png");
         write_png(&gradient(8, 4), &p, 16).unwrap();
         let d = image::open(&p).unwrap();
         assert_eq!((d.width(), d.height()), (8, 4));
@@ -165,7 +165,7 @@ mod tests {
 
     #[test]
     fn tiff8_writes_decodable_file() {
-        let p = std::env::temp_dir().join("filmrev_t1_tiff8.tiff");
+        let p = std::env::temp_dir().join("openenlarge_t1_tiff8.tiff");
         write_tiff8(&gradient(6, 3), &p).unwrap();
         let d = image::open(&p).unwrap();
         assert_eq!((d.width(), d.height()), (6, 3));
@@ -185,7 +185,7 @@ mod tests {
         let big = encode_jpeg_bytes(&g, 95).unwrap().len() as u64;
         let floor = encode_jpeg_bytes(&g, 1).unwrap().len() as u64;
         let cap = (big / 4).max(1);
-        let p = std::env::temp_dir().join("filmrev_t1_cap.jpg");
+        let p = std::env::temp_dir().join("openenlarge_t1_cap.jpg");
         write_jpeg(&g, &p, 95, Some(cap)).unwrap();
         let got = std::fs::metadata(&p).unwrap().len();
         assert!(got <= cap || got == floor, "got {got} cap {cap} floor {floor}");
