@@ -1,5 +1,7 @@
 <script lang="ts">
   import "../styles/theme.css";
+  import { onMount } from "svelte";
+  import { hydrate, initPersistence } from "$lib/catalog";
   import { module, hasImages, images, undevelopedCount, deleteTarget } from "$lib/store";
   import { developAll, deleteImage } from "$lib/workflow";
   import Library from "$lib/tabs/Library.svelte";
@@ -11,6 +13,12 @@
   import Icon from "$lib/icons/Icon.svelte";
   import { hasDeveloped } from "$lib/export/eligible";
   import ExportModal from "$lib/export/ExportModal.svelte";
+
+  onMount(() => {
+    let flush: (() => void) | undefined;
+    hydrate().finally(() => { flush = initPersistence(); });
+    return () => flush?.();
+  });
 
   let confirmCount = 0;
   let confirming = false;

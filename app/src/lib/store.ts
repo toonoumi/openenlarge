@@ -11,11 +11,8 @@ export const activeId = writable<string | null>(null);
 export const module = writable<"library" | "develop">("library");
 
 /** Global develop mode (B·density / C·per-chan). Set once in Settings; applies to
- * every image, current and future. Persisted across sessions. */
-const storedMode = typeof localStorage !== "undefined" ? localStorage.getItem("developMode") : null;
-export const developMode = writable<"b" | "c">(storedMode === "c" ? "c" : "b");
-if (typeof localStorage !== "undefined")
-  developMode.subscribe((m) => { try { localStorage.setItem("developMode", m); } catch { /* ignore */ } });
+ * every image. Persisted via the catalog (see catalog.ts). */
+export const developMode = writable<"b" | "c">("b");
 
 // Per-image edits: $params is the ACTIVE image's params; writes go to the active
 // image only. New images inherit the current global develop mode.
