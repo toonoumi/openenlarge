@@ -1,7 +1,9 @@
-# Tauri + SvelteKit + TypeScript
+# OpenEnlarge — app shell
 
-This template should help get you started developing with Tauri, SvelteKit and TypeScript in Vite.
+This directory is the Tauri 2 + SvelteKit desktop shell. For project overview, build, and CLI usage, see the [root README](../README.md).
 
-## Recommended IDE Setup
-
-[VS Code](https://code.visualstudio.com/) + [Svelte](https://marketplace.visualstudio.com/items?itemName=svelte.svelte-vscode) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer).
+```bash
+npm install
+npm run tauri dev     # run the desktop app
+npm run tauri build   # build a release installer
+```
