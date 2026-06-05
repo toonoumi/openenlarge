@@ -1,9 +1,11 @@
 <script lang="ts">
   import { params, activeId } from "../store";
-  import { api } from "../api";
+  import { api, defaultParams } from "../api";
   import Icon from "../icons/Icon.svelte";
   import Slider from "./Slider.svelte";
   import { TEMP_GRADIENT, TINT_GRADIENT, SAT_GRADIENT, signed, ev, kelvin } from "./gradients";
+  import { slide } from "svelte/transition";
+  import { cubicInOut } from "svelte/easing";
 
   let open = true;
 
@@ -20,16 +22,36 @@
   $: seed($activeId);
 
   function autoWb() { seededFor = null; seed($activeId); }
+
+  // Reset every Basic-section control to its default, leaving all other develop
+  // state (mode, base_rect, black/gamma, tone curve, color grading) untouched.
+  // Temp/Tint are re-seeded to the as-shot white point rather than the hard
+  // slider defaults, matching the Auto button.
+  function resetBasic() {
+    const d = defaultParams();
+    params.update((p) => ({
+      ...p,
+      stock: d.stock,
+      exposure: d.exposure,
+      contrast: d.contrast, highlights: d.highlights, shadows: d.shadows,
+      whites: d.whites, blacks: d.blacks,
+      texture: d.texture, vibrance: d.vibrance, saturation: d.saturation,
+    }));
+    autoWb();
+  }
 </script>
 
 <div class="section">
-  <button class="head" on:click={() => (open = !open)}>
-    <Icon name={open ? "chevron-down" : "chevron-right"} size={14} />
-    <span>Basic</span>
-  </button>
+  <div class="head">
+    <button class="toggle" on:click={() => (open = !open)}>
+      <Icon name={open ? "chevron-down" : "chevron-right"} size={14} />
+      <span>Basic</span>
+    </button>
+    <button class="reset" on:click={resetBasic}>Reset</button>
+  </div>
 
   {#if open}
-    <div class="body">
+    <div class="body" transition:slide={{ duration: 280, easing: cubicInOut }}>
       <!-- Film Profile -->
       <div class="sub">Film Profile</div>
       <select bind:value={$params.stock}>
@@ -69,9 +91,13 @@
 
 <style>
   .section { margin-bottom: 12px; }
-  .head { display: flex; align-items: center; gap: 6px; width: 100%;
+  .head { display: flex; align-items: center; justify-content: space-between;
+    width: 100%; padding: 4px 0; }
+  .toggle { display: flex; align-items: center; gap: 6px;
     background: transparent; border: 0; color: var(--text); font-weight: 600;
-    padding: 4px 0; cursor: pointer; }
+    padding: 0; cursor: pointer; }
+  .reset { background: transparent; border: 1px solid var(--glass-brd); color: var(--text-dim);
+    border-radius: 6px; padding: 2px 8px; font-size: 11px; cursor: pointer; }
   .sub { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;
     color: var(--text-dim); margin: 12px 0 4px; }
   select { width: 100%; padding: 10px 12px; border-radius: 9px; background: var(--bg-1);

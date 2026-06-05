@@ -5,6 +5,8 @@
   import CurveEditor from "./CurveEditor.svelte";
   import { signed } from "./gradients";
   import { IDENTITY_CURVE, type CurvePoint } from "../api";
+  import { slide } from "svelte/transition";
+  import { cubicInOut } from "svelte/easing";
 
   let open = true;
 
@@ -21,19 +23,29 @@
   function onCurve(e: CustomEvent<CurvePoint[]>) {
     params.update((p) => ({ ...p, [key]: e.detail }));
   }
-  function resetCurve() {
-    params.update((p) => ({ ...p, [key]: IDENTITY_CURVE.map((q) => [...q] as CurvePoint) }));
+  // Reset the entire Tone Curve section on the active image: all four curves
+  // (master + R/G/B) back to identity and every region slider back to 0.
+  function resetTone() {
+    const identity = () => IDENTITY_CURVE.map((q) => [...q] as CurvePoint);
+    params.update((p) => ({
+      ...p,
+      tc_curve: identity(), tc_red: identity(), tc_green: identity(), tc_blue: identity(),
+      tc_highlights: 0, tc_lights: 0, tc_darks: 0, tc_shadows: 0,
+    }));
   }
 </script>
 
 <div class="section">
-  <button class="head" on:click={() => (open = !open)}>
-    <Icon name={open ? "chevron-down" : "chevron-right"} size={14} />
-    <span>Tone Curve</span>
-  </button>
+  <div class="head">
+    <button class="toggle" on:click={() => (open = !open)}>
+      <Icon name={open ? "chevron-down" : "chevron-right"} size={14} />
+      <span>Tone Curve</span>
+    </button>
+    <button class="reset" on:click={resetTone}>Reset</button>
+  </div>
 
   {#if open}
-    <div class="body">
+    <div class="body" transition:slide={{ duration: 280, easing: cubicInOut }}>
       <div class="adjust">
         <span class="adjlabel">Adjust</span>
         <div class="dots">
@@ -42,7 +54,6 @@
           <button class="dot g" class:on={mode === "g"} on:click={() => (mode = "g")} title="Green" aria-label="Green curve"></button>
           <button class="dot b" class:on={mode === "b"} on:click={() => (mode = "b")} title="Blue" aria-label="Blue curve"></button>
         </div>
-        <button class="reset" on:click={resetCurve}>Reset</button>
       </div>
 
       <CurveEditor {points} color={COLOR[mode]} hist={[...HIST[mode]]} on:change={onCurve} />
@@ -58,9 +69,11 @@
 
 <style>
   .section { margin-bottom: 12px; }
-  .head { display: flex; align-items: center; gap: 6px; width: 100%;
+  .head { display: flex; align-items: center; justify-content: space-between;
+    width: 100%; padding: 4px 0; }
+  .toggle { display: flex; align-items: center; gap: 6px;
     background: transparent; border: 0; color: var(--text); font-weight: 600;
-    padding: 4px 0; cursor: pointer; }
+    padding: 0; cursor: pointer; }
   .sub { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;
     color: var(--text-dim); margin: 12px 0 4px; }
   .adjust { display: flex; align-items: center; gap: 10px; margin: 6px 0 8px; }
@@ -71,6 +84,6 @@
   .dot.on { opacity: 1; box-shadow: 0 0 0 2px var(--accent); }
   .dot.m { background: #cfcfcf; } .dot.r { background: #ff6b6b; }
   .dot.g { background: #6bff8b; } .dot.b { background: #6ba8ff; }
-  .reset { margin-left: auto; background: transparent; border: 1px solid var(--glass-brd);
+  .reset { background: transparent; border: 1px solid var(--glass-brd);
     color: var(--text-dim); border-radius: 6px; padding: 2px 8px; font-size: 11px; cursor: pointer; }
 </style>

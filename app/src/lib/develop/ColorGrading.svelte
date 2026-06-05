@@ -1,9 +1,12 @@
 <script lang="ts">
   import { params } from "../store";
+  import { defaultParams } from "../api";
   import Icon from "../icons/Icon.svelte";
   import Slider from "./Slider.svelte";
   import ColorWheel from "./ColorWheel.svelte";
   import { signed } from "./gradients";
+  import { slide } from "svelte/transition";
+  import { cubicInOut } from "svelte/easing";
 
   let open = true;
 
@@ -30,16 +33,34 @@
     const [h, s, l] = KEYS[region];
     params.update((p) => ({ ...p, [h]: d.hue, [s]: d.sat, [l]: d.lum }));
   }
+
+  // Reset every Color Grading control to its default on the active image,
+  // leaving all other develop state untouched. The view-mode selector is local
+  // UI state (which wheel is shown) and is intentionally left unchanged.
+  function resetColorGrading() {
+    const d = defaultParams();
+    params.update((p) => ({
+      ...p,
+      cg_sh_hue: d.cg_sh_hue, cg_sh_sat: d.cg_sh_sat, cg_sh_lum: d.cg_sh_lum,
+      cg_mid_hue: d.cg_mid_hue, cg_mid_sat: d.cg_mid_sat, cg_mid_lum: d.cg_mid_lum,
+      cg_hi_hue: d.cg_hi_hue, cg_hi_sat: d.cg_hi_sat, cg_hi_lum: d.cg_hi_lum,
+      cg_glob_hue: d.cg_glob_hue, cg_glob_sat: d.cg_glob_sat, cg_glob_lum: d.cg_glob_lum,
+      cg_blending: d.cg_blending, cg_balance: d.cg_balance,
+    }));
+  }
 </script>
 
 <div class="section">
-  <button class="head" on:click={() => (open = !open)}>
-    <Icon name={open ? "chevron-down" : "chevron-right"} size={14} />
-    <span>Color Grading</span>
-  </button>
+  <div class="head">
+    <button class="toggle" on:click={() => (open = !open)}>
+      <Icon name={open ? "chevron-down" : "chevron-right"} size={14} />
+      <span>Color Grading</span>
+    </button>
+    <button class="reset" on:click={resetColorGrading}>Reset</button>
+  </div>
 
   {#if open}
-    <div class="body">
+    <div class="body" transition:slide={{ duration: 280, easing: cubicInOut }}>
       <div class="modes">
         {#each MODES as m}
           <button class:on={mode === m.id} on:click={() => (mode = m.id)}>{m.label}</button>
@@ -77,9 +98,13 @@
 
 <style>
   .section { margin-bottom: 12px; }
-  .head { display: flex; align-items: center; gap: 6px; width: 100%;
+  .head { display: flex; align-items: center; justify-content: space-between;
+    width: 100%; padding: 4px 0; }
+  .toggle { display: flex; align-items: center; gap: 6px;
     background: transparent; border: 0; color: var(--text); font-weight: 600;
-    padding: 4px 0; cursor: pointer; }
+    padding: 0; cursor: pointer; }
+  .reset { background: transparent; border: 1px solid var(--glass-brd); color: var(--text-dim);
+    border-radius: 6px; padding: 2px 8px; font-size: 11px; cursor: pointer; }
   .modes { display: flex; gap: 4px; margin: 6px 0 10px; }
   .modes button { flex: 1; background: var(--bg-1); border: 1px solid var(--glass-brd);
     color: var(--text-dim); border-radius: 6px; padding: 4px 2px; font-size: 10px; cursor: pointer; }
