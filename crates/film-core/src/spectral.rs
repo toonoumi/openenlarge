@@ -24,9 +24,18 @@ pub enum Stock {
 impl Stock {
     /// Every bundled stock, for enumeration in tests/UI-parity checks.
     pub const ALL: [Stock; 13] = [
-        Stock::Portra400, Stock::FujiC200, Stock::Portra160, Stock::Portra800,
-        Stock::Ektar100, Stock::Gold200, Stock::Ultramax400, Stock::FujiPro400H,
-        Stock::FujiXtra400, Stock::Vision350D, Stock::Vision3200T, Stock::Vision3250D,
+        Stock::Portra400,
+        Stock::FujiC200,
+        Stock::Portra160,
+        Stock::Portra800,
+        Stock::Ektar100,
+        Stock::Gold200,
+        Stock::Ultramax400,
+        Stock::FujiPro400H,
+        Stock::FujiXtra400,
+        Stock::Vision350D,
+        Stock::Vision3200T,
+        Stock::Vision3250D,
         Stock::Vision3500T,
     ];
 }
@@ -67,7 +76,10 @@ impl SpectralData {
     pub fn simulate(&self, c: [f32; 3]) -> [f32; 3] {
         let mut out = [0.0f32; 3];
         for k in 0..self.wavelengths.len() {
-            let d = self.d_min[k] + c[0] * self.dye[0][k] + c[1] * self.dye[1][k] + c[2] * self.dye[2][k];
+            let d = self.d_min[k]
+                + c[0] * self.dye[0][k]
+                + c[1] * self.dye[1][k]
+                + c[2] * self.dye[2][k];
             let lt = self.illuminant[k] * 10f32.powf(-d);
             for (i, s) in self.sensor.iter().enumerate() {
                 out[i] += lt * s[k];
@@ -129,7 +141,13 @@ pub fn load_stock(stock: Stock) -> SpectralData {
     let (wavelengths, dye, d_min) = parse_dye_csv(dye_csv);
     let illuminant = parse_illuminant_csv(illum_csv);
     let sensor = analytic_sensor(&wavelengths);
-    SpectralData { wavelengths, dye, d_min, illuminant, sensor }
+    SpectralData {
+        wavelengths,
+        dye,
+        d_min,
+        illuminant,
+        sensor,
+    }
 }
 
 /// Deterministic synthetic spectral data with deliberately OVERLAPPING dyes
@@ -155,7 +173,13 @@ pub(crate) fn synthetic_overlapping() -> SpectralData {
     let d_min = w.iter().map(|_| 0.1f32).collect();
     let illuminant = w.iter().map(|_| 1.0f32).collect(); // equal-energy for the synthetic test
     let sensor = analytic_sensor(&w);
-    SpectralData { wavelengths: w, dye: [dye_c, dye_m, dye_y], d_min, illuminant, sensor }
+    SpectralData {
+        wavelengths: w,
+        dye: [dye_c, dye_m, dye_y],
+        d_min,
+        illuminant,
+        sensor,
+    }
 }
 
 #[cfg(test)]
@@ -187,7 +211,12 @@ mod tests {
         let dyed = d.simulate([1.0, 1.0, 1.0]);
         for i in 0..3 {
             assert!(base[i] > 0.0);
-            assert!(dyed[i] < base[i], "channel {i}: dyed {} !< base {}", dyed[i], base[i]);
+            assert!(
+                dyed[i] < base[i],
+                "channel {i}: dyed {} !< base {}",
+                dyed[i],
+                base[i]
+            );
         }
     }
 
@@ -198,7 +227,10 @@ mod tests {
         let cyan = d.simulate([1.5, 0.0, 0.0]);
         let red_drop = (base[0] - cyan[0]) / base[0];
         let blue_drop = (base[2] - cyan[2]) / base[2];
-        assert!(red_drop > blue_drop, "red_drop {red_drop} !> blue_drop {blue_drop}");
+        assert!(
+            red_drop > blue_drop,
+            "red_drop {red_drop} !> blue_drop {blue_drop}"
+        );
     }
 
     #[test]
@@ -223,8 +255,14 @@ mod tests {
         for stock in Stock::ALL {
             let data = load_stock(stock);
             let m = fit_m_post(&data);
-            assert!(m.iter().all(|v| v.is_finite()), "{stock:?} M_post not finite");
-            assert!((m - id).norm() > 1e-3, "{stock:?} M_post unexpectedly identity");
+            assert!(
+                m.iter().all(|v| v.is_finite()),
+                "{stock:?} M_post not finite"
+            );
+            assert!(
+                (m - id).norm() > 1e-3,
+                "{stock:?} M_post unexpectedly identity"
+            );
         }
     }
 
@@ -257,7 +295,13 @@ mod tests {
         }
         let rms_fit = (sse_fit / count as f32).sqrt();
         let rms_id = (sse_id / count as f32).sqrt();
-        println!("REAL DATA Portra400: rms_fit={rms_fit} rms_id={rms_id} ratio={}", rms_fit / rms_id);
-        assert!(rms_fit <= rms_id, "real-data fit RMS {rms_fit} should not exceed identity {rms_id}");
+        println!(
+            "REAL DATA Portra400: rms_fit={rms_fit} rms_id={rms_id} ratio={}",
+            rms_fit / rms_id
+        );
+        assert!(
+            rms_fit <= rms_id,
+            "real-data fit RMS {rms_fit} should not exceed identity {rms_id}"
+        );
     }
 }

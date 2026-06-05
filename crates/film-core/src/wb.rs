@@ -61,7 +61,10 @@ pub fn gains_to_cct(gains: [f32; 3]) -> (f32, f32) {
         let g = wb_from_kelvin(k, 0.0);
         let rb = g[0] / g[2].max(1e-4);
         let err = (rb.ln() - target_rb.ln()).abs();
-        if err < best_err { best_err = err; best_k = k; }
+        if err < best_err {
+            best_err = err;
+            best_k = k;
+        }
     }
     // Residual green vs the neutral-tint model at best_k → tint.
     let model = wb_from_kelvin(best_k, 0.0);
@@ -77,7 +80,9 @@ mod tests {
     #[test]
     fn neutral_is_unity() {
         let g = wb_from_kelvin(NEUTRAL_K, 0.0);
-        for c in 0..3 { assert!((g[c] - 1.0).abs() < 0.05, "c{c}={}", g[c]); }
+        for c in 0..3 {
+            assert!((g[c] - 1.0).abs() < 0.05, "c{c}={}", g[c]);
+        }
     }
 
     #[test]

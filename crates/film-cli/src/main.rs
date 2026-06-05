@@ -1,10 +1,10 @@
 use anyhow::{Context, Result};
 use clap::{Parser, ValueEnum};
 use film_core::calibrate::{sample_base, Rect};
-use film_core::spectral::Stock;
 use film_core::decode::decode_tiff;
 use film_core::engine::{invert_image, InversionParams, Mode};
 use film_core::export::write_tiff16;
+use film_core::spectral::Stock;
 use std::path::PathBuf;
 
 #[derive(Copy, Clone, Debug, ValueEnum)]
@@ -91,7 +91,10 @@ fn main() -> Result<()> {
         match &img.ir {
             Some(ir) => println!(
                 "{:?}: {}x{} RGB+IR (4-channel); ir samples = {}",
-                cli.input, img.width, img.height, ir.len()
+                cli.input,
+                img.width,
+                img.height,
+                ir.len()
             ),
             None => println!(
                 "{:?}: {}x{} RGB only — no infrared plane",
@@ -103,7 +106,12 @@ fn main() -> Result<()> {
 
     let rect = cli.base_rect.as_ref().and_then(|v| {
         if v.len() == 4 {
-            Some(Rect { x: v[0], y: v[1], w: v[2], h: v[3] })
+            Some(Rect {
+                x: v[0],
+                y: v[1],
+                w: v[2],
+                h: v[3],
+            })
         } else {
             None
         }
@@ -134,7 +142,11 @@ fn main() -> Result<()> {
             .and_then(|s| s.to_str())
             .unwrap_or("out")
             .to_string();
-        let dir = cli.output.parent().map(|p| p.to_path_buf()).unwrap_or_default();
+        let dir = cli
+            .output
+            .parent()
+            .map(|p| p.to_path_buf())
+            .unwrap_or_default();
         for (mode, suffix) in [(Mode::B, "b"), (Mode::C, "c"), (Mode::Naive, "naive")] {
             let p = if mode == Mode::B { &b_params } else { &params };
             let out = invert_image(&img, p, mode);

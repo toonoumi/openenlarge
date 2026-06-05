@@ -33,7 +33,11 @@ fn prepare(points: &[[f32; 2]]) -> Prepared {
     }
     let n = xs.len();
     if n <= 1 {
-        return Prepared { xs, ys, m: vec![0.0] };
+        return Prepared {
+            xs,
+            ys,
+            m: vec![0.0],
+        };
     }
 
     let mut d = vec![0.0f32; n - 1]; // secant slopes

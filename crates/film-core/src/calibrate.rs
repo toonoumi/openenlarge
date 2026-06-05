@@ -17,7 +17,12 @@ pub struct Rect {
 /// region — robust to a few dark specks while tracking the bright clear-base value.
 /// If `rect` is None, uses the whole image.
 pub fn sample_base(img: &Image, rect: Option<Rect>) -> [f32; 3] {
-    let r = rect.unwrap_or(Rect { x: 0, y: 0, w: img.width, h: img.height });
+    let r = rect.unwrap_or(Rect {
+        x: 0,
+        y: 0,
+        w: img.width,
+        h: img.height,
+    });
     let mut chans: [Vec<f32>; 3] = [Vec::new(), Vec::new(), Vec::new()];
     for yy in r.y..(r.y + r.h).min(img.height) {
         for xx in r.x..(r.x + r.w).min(img.width) {
@@ -49,7 +54,11 @@ pub fn auto_wb_gains(img: &Image) -> [f32; 3] {
     if img.pixels.is_empty() {
         return [1.0, 1.0, 1.0];
     }
-    let mut lums: Vec<f32> = img.pixels.iter().map(|p| (p[0] + p[1] + p[2]) / 3.0).collect();
+    let mut lums: Vec<f32> = img
+        .pixels
+        .iter()
+        .map(|p| (p[0] + p[1] + p[2]) / 3.0)
+        .collect();
     lums.sort_by(|a, b| a.partial_cmp(b).unwrap());
     let thresh = lums[((lums.len() as f32 * 0.8) as usize).min(lums.len() - 1)];
     let (mut sum, mut n) = ([0.0f64; 3], 0u64);
@@ -107,13 +116,21 @@ pub fn fit_m_post(data: &SpectralData) -> Matrix3<f32> {
     let cmat = DMatrix::from_fn(n, 3, |r, col| rows[r].0[col]);
     let dtd = dmat.transpose() * &dmat; // 3×3
     let dtc = dmat.transpose() * &cmat; // 3×3
-    let inv = dtd.try_inverse().expect("DᵀD must be invertible for a non-degenerate patch set");
+    let inv = dtd
+        .try_inverse()
+        .expect("DᵀD must be invertible for a non-degenerate patch set");
     let mpost_t = inv * dtc; // = M_postᵀ
     let m = mpost_t.transpose();
     Matrix3::new(
-        m[(0, 0)], m[(0, 1)], m[(0, 2)],
-        m[(1, 0)], m[(1, 1)], m[(1, 2)],
-        m[(2, 0)], m[(2, 1)], m[(2, 2)],
+        m[(0, 0)],
+        m[(0, 1)],
+        m[(0, 2)],
+        m[(1, 0)],
+        m[(1, 1)],
+        m[(1, 2)],
+        m[(2, 0)],
+        m[(2, 1)],
+        m[(2, 2)],
     )
 }
 
@@ -163,10 +180,22 @@ mod tests {
         let mut img = Image::new(4, 4);
         for y in 0..4 {
             for x in 0..4 {
-                img.pixels[y * 4 + x] = if x < 2 && y < 2 { [0.9, 0.9, 0.9] } else { [0.1, 0.1, 0.1] };
+                img.pixels[y * 4 + x] = if x < 2 && y < 2 {
+                    [0.9, 0.9, 0.9]
+                } else {
+                    [0.1, 0.1, 0.1]
+                };
             }
         }
-        let base = sample_base(&img, Some(Rect { x: 0, y: 0, w: 2, h: 2 }));
+        let base = sample_base(
+            &img,
+            Some(Rect {
+                x: 0,
+                y: 0,
+                w: 2,
+                h: 2,
+            }),
+        );
         assert!((base[0] - 0.9).abs() < 1e-6);
     }
 
@@ -174,7 +203,15 @@ mod tests {
     fn sample_base_empty_region_is_zero_no_panic() {
         let img = Image::new(4, 4);
         // zero-area rect must not panic
-        let base = sample_base(&img, Some(Rect { x: 0, y: 0, w: 0, h: 0 }));
+        let base = sample_base(
+            &img,
+            Some(Rect {
+                x: 0,
+                y: 0,
+                w: 0,
+                h: 0,
+            }),
+        );
         assert_eq!(base, [0.0, 0.0, 0.0]);
     }
 
@@ -182,10 +219,18 @@ mod tests {
     fn auto_wb_gains_neutralize_a_global_cast() {
         // A uniformly magenta-cast gray (R,B high vs G) -> gains restore neutral.
         let cast = [0.6f32, 0.5, 0.4];
-        let img = Image { width: 4, height: 4, pixels: vec![cast; 16], ir: None };
+        let img = Image {
+            width: 4,
+            height: 4,
+            pixels: vec![cast; 16],
+            ir: None,
+        };
         let g = auto_wb_gains(&img);
         // green is the reference (smallest gain), red/blue corrected toward it
-        assert!(g[2] > g[1] && g[1] > g[0], "expected B>G>R gains, got {g:?}");
+        assert!(
+            g[2] > g[1] && g[1] > g[0],
+            "expected B>G>R gains, got {g:?}"
+        );
         // applying the gains makes the patch neutral
         let corrected = [cast[0] * g[0], cast[1] * g[1], cast[2] * g[2]];
         let mx = corrected.iter().cloned().fold(f32::MIN, f32::max);
@@ -225,7 +270,10 @@ mod tests {
         }
         let rms_fit = (sse_fit / count as f32).sqrt();
         let rms_id = (sse_id / count as f32).sqrt();
-        assert!(rms_fit < rms_id * 0.8, "fit RMS ΔC {rms_fit} not < 0.8 × identity {rms_id}");
+        assert!(
+            rms_fit < rms_id * 0.8,
+            "fit RMS ΔC {rms_fit} not < 0.8 × identity {rms_id}"
+        );
     }
 
     #[test]
@@ -235,26 +283,53 @@ mod tests {
         let raw = fit_m_post(&load_stock(Stock::Portra400));
         let raw_n = raw * Vector3::new(0.5, 0.5, 0.5);
         let raw_spread = raw_n.max() - raw_n.min();
-        assert!(raw_spread > 0.1, "expected the raw fit to cast a neutral; got {raw_spread}");
+        assert!(
+            raw_spread > 0.1,
+            "expected the raw fit to cast a neutral; got {raw_spread}"
+        );
 
         // After balancing, an equal-density (neutral) input maps to equal RGB.
         let m = balance_neutral(raw);
         for d in [0.2f32, 0.5, 1.0, 1.5] {
             let out = m * Vector3::new(d, d, d);
-            assert!(out.max() - out.min() < 1e-3, "neutral not preserved at d={d}: {:?}", out.as_slice());
+            assert!(
+                out.max() - out.min() < 1e-3,
+                "neutral not preserved at d={d}: {:?}",
+                out.as_slice()
+            );
         }
         // Crosstalk correction is retained (off-diagonals survive the row scaling).
-        let off = [m[(0, 1)], m[(0, 2)], m[(1, 0)], m[(1, 2)], m[(2, 0)], m[(2, 1)]];
+        let off = [
+            m[(0, 1)],
+            m[(0, 2)],
+            m[(1, 0)],
+            m[(1, 2)],
+            m[(2, 0)],
+            m[(2, 1)],
+        ];
         let max_off = off.iter().fold(0.0f32, |a, &b| a.max(b.abs()));
-        assert!(max_off > 0.1, "row scaling should preserve crosstalk; max off-diagonal = {max_off}");
+        assert!(
+            max_off > 0.1,
+            "row scaling should preserve crosstalk; max off-diagonal = {max_off}"
+        );
     }
 
     #[test]
     fn fit_m_post_has_significant_off_diagonals() {
         use crate::spectral::synthetic_overlapping;
         let m = fit_m_post(&synthetic_overlapping());
-        let off = [m[(0, 1)], m[(0, 2)], m[(1, 0)], m[(1, 2)], m[(2, 0)], m[(2, 1)]];
+        let off = [
+            m[(0, 1)],
+            m[(0, 2)],
+            m[(1, 0)],
+            m[(1, 2)],
+            m[(2, 0)],
+            m[(2, 1)],
+        ];
         let max_off = off.iter().fold(0.0f32, |a, &b| a.max(b.abs()));
-        assert!(max_off > 0.1, "expected real crosstalk correction; max off-diagonal = {max_off}");
+        assert!(
+            max_off > 0.1,
+            "expected real crosstalk correction; max off-diagonal = {max_off}"
+        );
     }
 }

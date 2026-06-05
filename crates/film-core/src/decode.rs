@@ -43,7 +43,11 @@ pub fn decode_tiff(path: &Path) -> Result<Image, DecodeError> {
     };
     let n = (w as usize) * (h as usize);
     let mut pixels = Vec::with_capacity(n);
-    let mut ir: Option<Vec<f32>> = if channels == 4 { Some(Vec::with_capacity(n)) } else { None };
+    let mut ir: Option<Vec<f32>> = if channels == 4 {
+        Some(Vec::with_capacity(n))
+    } else {
+        None
+    };
     for i in 0..n {
         let base = i * channels;
         pixels.push([floats[base], floats[base + 1], floats[base + 2]]);
@@ -51,7 +55,12 @@ pub fn decode_tiff(path: &Path) -> Result<Image, DecodeError> {
             ir.push(floats[base + 3]);
         }
     }
-    Ok(Image { width: w as usize, height: h as usize, pixels, ir })
+    Ok(Image {
+        width: w as usize,
+        height: h as usize,
+        pixels,
+        ir,
+    })
 }
 
 /// Decode a camera RAW file (Fujifilm `.raf`, `.dng`, or any rawler-supported
@@ -80,8 +89,8 @@ pub fn decode_tiff(path: &Path) -> Result<Image, DecodeError> {
 /// interpolate; they don't amplify). We clamp to [0, 1] as a safety net in
 /// case of hot pixels or sensor artefacts slightly above white level.
 pub fn decode_raw(path: &Path) -> Result<Image, DecodeError> {
-    use rawler::imgop::develop::{ProcessingStep, RawDevelop};
     use rawler::imgop::develop::Intermediate;
+    use rawler::imgop::develop::{ProcessingStep, RawDevelop};
 
     // Step 1: decode the raw file into a mosaic RawImage (integer u16 data,
     // not yet demosaiced).
@@ -144,5 +153,10 @@ pub fn decode_raw(path: &Path) -> Result<Image, DecodeError> {
         }
     };
 
-    Ok(Image { width, height, pixels, ir: None })
+    Ok(Image {
+        width,
+        height,
+        pixels,
+        ir: None,
+    })
 }

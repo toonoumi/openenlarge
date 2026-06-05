@@ -59,7 +59,11 @@ fn rgb2hsl(rgb: [f32; 3]) -> (f32, f32, f32) {
         return (0.0, 0.0, l);
     }
     let d = mx - mn;
-    let s = if l > 0.5 { d / (2.0 - mx - mn) } else { d / (mx + mn) };
+    let s = if l > 0.5 {
+        d / (2.0 - mx - mn)
+    } else {
+        d / (mx + mn)
+    };
     let h = if mx == r {
         (g - b) / d + if g < b { 6.0 } else { 0.0 }
     } else if mx == g {
@@ -72,10 +76,15 @@ fn rgb2hsl(rgb: [f32; 3]) -> (f32, f32, f32) {
 
 fn hue2rgb(p: f32, q: f32, t: f32) -> f32 {
     let t = t.rem_euclid(1.0);
-    if t < 1.0 / 6.0 { p + (q - p) * 6.0 * t }
-    else if t < 0.5 { q }
-    else if t < 2.0 / 3.0 { p + (q - p) * (2.0 / 3.0 - t) * 6.0 }
-    else { p }
+    if t < 1.0 / 6.0 {
+        p + (q - p) * 6.0 * t
+    } else if t < 0.5 {
+        q
+    } else if t < 2.0 / 3.0 {
+        p + (q - p) * (2.0 / 3.0 - t) * 6.0
+    } else {
+        p
+    }
 }
 
 /// HSL → RGB (0..1). Inverse of `rgb2hsl`.
@@ -83,7 +92,11 @@ fn hsl2rgb(h: f32, s: f32, l: f32) -> [f32; 3] {
     if s <= 0.0 {
         return [l, l, l];
     }
-    let q = if l < 0.5 { l * (1.0 + s) } else { l + s - l * s };
+    let q = if l < 0.5 {
+        l * (1.0 + s)
+    } else {
+        l + s - l * s
+    };
     let p = 2.0 * l - q;
     let hk = h / 360.0;
     [
@@ -111,14 +124,20 @@ const PI: f32 = std::f32::consts::PI;
 #[inline]
 fn wrap180(d: f32) -> f32 {
     let mut x = (d + 180.0).rem_euclid(360.0) - 180.0;
-    if x <= -180.0 { x += 360.0; }
+    if x <= -180.0 {
+        x += 360.0;
+    }
     x
 }
 
 #[inline]
 fn band_weight(h: f32, center: f32) -> f32 {
     let d = wrap180(h - center).abs();
-    if d >= CM_FALLOFF_DEG { 0.0 } else { 0.5 * (1.0 + (PI * d / CM_FALLOFF_DEG).cos()) }
+    if d >= CM_FALLOFF_DEG {
+        0.0
+    } else {
+        0.5 * (1.0 + (PI * d / CM_FALLOFF_DEG).cos())
+    }
 }
 
 /// Precomputed Mixer state. Slider values pre-divided to unit (−1..1); sats/lums too.
@@ -133,14 +152,14 @@ pub struct ColorMix {
 /// One Point Color sample, pre-scaled for the per-pixel loop.
 #[derive(Debug, Clone, Copy)]
 pub struct PcSample {
-    pub hue: f32,        // 0..360
-    pub sat: f32,        // 0..1
-    pub lum: f32,        // 0..1
-    pub hue_shift: f32,  // −1..1
+    pub hue: f32,       // 0..360
+    pub sat: f32,       // 0..1
+    pub lum: f32,       // 0..1
+    pub hue_shift: f32, // −1..1
     pub sat_shift: f32,
     pub lum_shift: f32,
-    pub variance: f32,   // −100..100 (raw; used by pc_tol)
-    pub range: f32,      // 0..100 (raw)
+    pub variance: f32, // −100..100 (raw; used by pc_tol)
+    pub range: f32,    // 0..100 (raw)
 }
 
 /// Apply the 8-band HSL Mixer to one pixel.
@@ -152,7 +171,9 @@ fn color_mix(rgb: [f32; 3], cm: &ColorMix) -> [f32; 3] {
     let mut lum_delta = 0.0_f32;
     for i in 0..8 {
         let w = band_weight(h, BAND_CENTERS[i]);
-        if w <= 0.0 { continue; }
+        if w <= 0.0 {
+            continue;
+        }
         hue_delta += w * gate * cm.cm_hue[i] * CM_HUE_SHIFT_MAX;
         sat_factor += w * gate * cm.cm_sat[i];
         lum_delta += w * cm.cm_lum[i] * CM_LUM_GAIN;
@@ -172,29 +193,43 @@ fn pc_tol(base: f32, variance: f32) -> f32 {
 fn pc_hue_weight(h: f32, target: f32, range: f32) -> f32 {
     let hw = PC_RANGE_MIN_DEG + (range / 100.0) * (PC_RANGE_MAX_DEG - PC_RANGE_MIN_DEG);
     let d = wrap180(h - target).abs();
-    if d >= hw { 0.0 } else { 0.5 * (1.0 + (PI * d / hw).cos()) }
+    if d >= hw {
+        0.0
+    } else {
+        0.5 * (1.0 + (PI * d / hw).cos())
+    }
 }
 
 /// Apply all Point Color samples to one pixel. Masks use the input HSL so samples
 /// are order-independent; shifts accumulate then apply once.
 fn point_color(rgb: [f32; 3], samples: &[PcSample]) -> [f32; 3] {
-    if samples.is_empty() { return rgb; }
+    if samples.is_empty() {
+        return rgb;
+    }
     let (h, s, l) = rgb2hsl(rgb);
     let mut hue_delta = 0.0_f32;
     let mut sat_factor = 1.0_f32;
     let mut lum_delta = 0.0_f32;
     for sm in samples {
         let wh = pc_hue_weight(h, sm.hue, sm.range);
-        if wh <= 0.0 { continue; }
+        if wh <= 0.0 {
+            continue;
+        }
         let ws = (1.0 - (s - sm.sat).abs() / pc_tol(PC_SAT_TOL, sm.variance)).clamp(0.0, 1.0);
         let wl = (1.0 - (l - sm.lum).abs() / pc_tol(PC_LUM_TOL, sm.variance)).clamp(0.0, 1.0);
         let w = wh * ws * wl;
-        if w <= 0.0 { continue; }
+        if w <= 0.0 {
+            continue;
+        }
         hue_delta += w * sm.hue_shift * CM_HUE_SHIFT_MAX;
         sat_factor += w * sm.sat_shift;
         lum_delta += w * sm.lum_shift * CM_LUM_GAIN;
     }
-    hsl2rgb(h + hue_delta, (s * sat_factor).clamp(0.0, 1.0), (l + lum_delta).clamp(0.0, 1.0))
+    hsl2rgb(
+        h + hue_delta,
+        (s * sat_factor).clamp(0.0, 1.0),
+        (l + lum_delta).clamp(0.0, 1.0),
+    )
 }
 
 /// Parabolic region bump centered at `c` (finite support, peak 1.0).
@@ -268,11 +303,17 @@ pub struct ColorGrade {
 impl Default for ColorGrade {
     fn default() -> Self {
         ColorGrade {
-            sh_off: [0.0; 3], sh_lum: 0.0,
-            mid_off: [0.0; 3], mid_lum: 0.0,
-            hi_off: [0.0; 3], hi_lum: 0.0,
-            glob_off: [0.0; 3], glob_lum: 0.0,
-            sh_edge: 0.33, hi_edge: 0.66, softness: 0.25,
+            sh_off: [0.0; 3],
+            sh_lum: 0.0,
+            mid_off: [0.0; 3],
+            mid_lum: 0.0,
+            hi_off: [0.0; 3],
+            hi_lum: 0.0,
+            glob_off: [0.0; 3],
+            glob_lum: 0.0,
+            sh_edge: 0.33,
+            hi_edge: 0.66,
+            softness: 0.25,
         }
     }
 }
@@ -289,8 +330,12 @@ impl ColorGrade {
     /// 0..1 (mask overlap width), `balance` −1..1 (shadow↔highlight crossover).
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        sh: ([f32; 2], f32), mid: ([f32; 2], f32), hi: ([f32; 2], f32), glob: ([f32; 2], f32),
-        blending: f32, balance: f32,
+        sh: ([f32; 2], f32),
+        mid: ([f32; 2], f32),
+        hi: ([f32; 2], f32),
+        glob: ([f32; 2], f32),
+        blending: f32,
+        balance: f32,
     ) -> Self {
         let mk = |w: ([f32; 2], f32)| (wheel_offset(w.0[0], w.0[1]), w.1 * CG_LUM_GAIN);
         let (sh_off, sh_lum) = mk(sh);
@@ -298,7 +343,14 @@ impl ColorGrade {
         let (hi_off, hi_lum) = mk(hi);
         let (glob_off, glob_lum) = mk(glob);
         ColorGrade {
-            sh_off, sh_lum, mid_off, mid_lum, hi_off, hi_lum, glob_off, glob_lum,
+            sh_off,
+            sh_lum,
+            mid_off,
+            mid_lum,
+            hi_off,
+            hi_lum,
+            glob_off,
+            glob_lum,
             sh_edge: 0.33 + balance * 0.25,
             hi_edge: 0.66 + balance * 0.25,
             softness: 0.1 + 0.3 * blending,
@@ -345,9 +397,17 @@ pub struct FinishParams {
 impl Default for FinishParams {
     fn default() -> Self {
         FinishParams {
-            contrast: 0.0, highlights: 0.0, shadows: 0.0, whites: 0.0, blacks: 0.0,
-            texture: 0.0, vibrance: 0.0, saturation: 0.0,
-            lut_r: identity_lut(), lut_g: identity_lut(), lut_b: identity_lut(),
+            contrast: 0.0,
+            highlights: 0.0,
+            shadows: 0.0,
+            whites: 0.0,
+            blacks: 0.0,
+            texture: 0.0,
+            vibrance: 0.0,
+            saturation: 0.0,
+            lut_r: identity_lut(),
+            lut_g: identity_lut(),
+            lut_b: identity_lut(),
             cg: ColorGrade::default(),
             cm: ColorMix::default(),
         }
@@ -384,7 +444,11 @@ fn apply_saturation(rgb: [f32; 3], p: &FinishParams) -> [f32; 3] {
 /// Per-pixel finishing. Order: Basic tone curve + saturation → Tone Curve LUT →
 /// Color Grading. (Texture is a separate spatial pass in `finish_image`.)
 pub fn finish_pixel(rgb: [f32; 3], p: &FinishParams) -> [f32; 3] {
-    let toned = [tone_curve(rgb[0], p), tone_curve(rgb[1], p), tone_curve(rgb[2], p)];
+    let toned = [
+        tone_curve(rgb[0], p),
+        tone_curve(rgb[1], p),
+        tone_curve(rgb[2], p),
+    ];
     let sat = apply_saturation(toned, p);
     let curved = [
         sample_lut(&p.lut_r, sat[0]),
@@ -407,7 +471,11 @@ fn blur(img: &Image) -> Image {
         for x in 0..w {
             let xl = x.saturating_sub(1);
             let xr = (x + 1).min(w - 1);
-            let (a, b, c) = (img.pixels[idx(xl, y)], img.pixels[idx(x, y)], img.pixels[idx(xr, y)]);
+            let (a, b, c) = (
+                img.pixels[idx(xl, y)],
+                img.pixels[idx(x, y)],
+                img.pixels[idx(xr, y)],
+            );
             tmp[idx(x, y)] = std::array::from_fn(|i| 0.25 * a[i] + 0.5 * b[i] + 0.25 * c[i]);
         }
     }
@@ -421,7 +489,12 @@ fn blur(img: &Image) -> Image {
             out[idx(x, y)] = std::array::from_fn(|i| 0.25 * a[i] + 0.5 * b[i] + 0.25 * c[i]);
         }
     }
-    Image { width: w, height: h, pixels: out, ir: None } // scratch image: ir restored by apply_texture
+    Image {
+        width: w,
+        height: h,
+        pixels: out,
+        ir: None,
+    } // scratch image: ir restored by apply_texture
 }
 
 /// Unsharp mask: out = v + amount * (v − blur(v)). amount in −1..1.
@@ -429,16 +502,37 @@ fn apply_texture(img: &Image, amount: f32) -> Image {
     let b = blur(img);
     let k = USM_GAIN * amount;
     // par_iter().zip() over two equal-length indexed slices preserves order.
-    let pixels = img.pixels.par_iter().zip(b.pixels.par_iter())
+    let pixels = img
+        .pixels
+        .par_iter()
+        .zip(b.pixels.par_iter())
         .map(|(&v, &lo)| std::array::from_fn(|c| (v[c] + k * (v[c] - lo[c])).clamp(0.0, 1.0)))
         .collect();
-    Image { width: img.width, height: img.height, pixels, ir: img.ir.clone() }
+    Image {
+        width: img.width,
+        height: img.height,
+        pixels,
+        ir: img.ir.clone(),
+    }
 }
 
 pub fn finish_image(img: &Image, p: &FinishParams) -> Image {
-    let pixels = img.pixels.par_iter().map(|&px| finish_pixel(px, p)).collect();
-    let toned = Image { width: img.width, height: img.height, pixels, ir: img.ir.clone() };
-    if p.texture.abs() > EPS { apply_texture(&toned, p.texture) } else { toned }
+    let pixels = img
+        .pixels
+        .par_iter()
+        .map(|&px| finish_pixel(px, p))
+        .collect();
+    let toned = Image {
+        width: img.width,
+        height: img.height,
+        pixels,
+        ir: img.ir.clone(),
+    };
+    if p.texture.abs() > EPS {
+        apply_texture(&toned, p.texture)
+    } else {
+        toned
+    }
 }
 
 #[cfg(test)]
@@ -446,7 +540,12 @@ mod tests {
     use super::*;
 
     fn img_from(pixels: Vec<[f32; 3]>) -> Image {
-        Image { width: pixels.len(), height: 1, pixels, ir: None }
+        Image {
+            width: pixels.len(),
+            height: 1,
+            pixels,
+            ir: None,
+        }
     }
 
     #[test]
@@ -463,7 +562,10 @@ mod tests {
 
     #[test]
     fn positive_contrast_widens_spread() {
-        let p = FinishParams { contrast: 0.5, ..Default::default() };
+        let p = FinishParams {
+            contrast: 0.5,
+            ..Default::default()
+        };
         let dark = tone_curve(0.25, &p);
         let bright = tone_curve(0.75, &p);
         assert!(dark < 0.25, "dark {dark}");
@@ -472,25 +574,37 @@ mod tests {
 
     #[test]
     fn positive_whites_raises_highlights_more_than_mids() {
-        let p = FinishParams { whites: 1.0, ..Default::default() };
+        let p = FinishParams {
+            whites: 1.0,
+            ..Default::default()
+        };
         assert!(tone_curve(0.9, &p) - 0.9 > tone_curve(0.5, &p) - 0.5);
     }
 
     #[test]
     fn positive_blacks_darkens_shadows() {
-        let p = FinishParams { blacks: 1.0, ..Default::default() };
+        let p = FinishParams {
+            blacks: 1.0,
+            ..Default::default()
+        };
         assert!(tone_curve(0.1, &p) < 0.1);
     }
 
     #[test]
     fn positive_shadows_raises_shadows_more_than_mids() {
-        let p = FinishParams { shadows: 1.0, ..Default::default() };
+        let p = FinishParams {
+            shadows: 1.0,
+            ..Default::default()
+        };
         assert!(tone_curve(0.25, &p) - 0.25 > tone_curve(0.6, &p) - 0.6);
     }
 
     #[test]
     fn positive_saturation_increases_chroma() {
-        let p = FinishParams { saturation: 0.5, ..Default::default() };
+        let p = FinishParams {
+            saturation: 0.5,
+            ..Default::default()
+        };
         let px = [0.6, 0.4, 0.3];
         let out = apply_saturation(px, &p);
         let chroma_in = px[0] - px[2];
@@ -500,13 +614,21 @@ mod tests {
 
     #[test]
     fn vibrance_affects_muted_more_than_vivid() {
-        let p = FinishParams { vibrance: 1.0, ..Default::default() };
+        let p = FinishParams {
+            vibrance: 1.0,
+            ..Default::default()
+        };
         let muted = [0.52, 0.50, 0.48];
         let vivid = [0.90, 0.10, 0.05];
         let chroma = |px: [f32; 3]| px[0].max(px[1]).max(px[2]) - px[0].min(px[1]).min(px[2]);
         let ratio = |px: [f32; 3]| chroma(apply_saturation(px, &p)) / chroma(px);
         // Vibrance boosts low-saturation (muted) pixels more than already-vivid ones.
-        assert!(ratio(muted) > ratio(vivid), "muted {} vivid {}", ratio(muted), ratio(vivid));
+        assert!(
+            ratio(muted) > ratio(vivid),
+            "muted {} vivid {}",
+            ratio(muted),
+            ratio(vivid)
+        );
     }
 
     #[test]
@@ -517,7 +639,12 @@ mod tests {
         assert_eq!(out.height, src.height);
         for (o, s) in out.pixels.iter().zip(src.pixels.iter()) {
             for c in 0..3 {
-                assert!((o[c] - s[c]).abs() < 1e-4, "c={c} out={} src={}", o[c], s[c]);
+                assert!(
+                    (o[c] - s[c]).abs() < 1e-4,
+                    "c={c} out={} src={}",
+                    o[c],
+                    s[c]
+                );
             }
         }
     }
@@ -526,12 +653,25 @@ mod tests {
     fn texture_zero_is_identity() {
         // A 5x5 ramp; texture=0 must return the same pixels (up to f32 round-trip).
         let mut px = Vec::new();
-        for i in 0..25 { let v = i as f32 / 25.0; px.push([v, v, v]); }
-        let img = Image { width: 5, height: 5, pixels: px.clone(), ir: None };
+        for i in 0..25 {
+            let v = i as f32 / 25.0;
+            px.push([v, v, v]);
+        }
+        let img = Image {
+            width: 5,
+            height: 5,
+            pixels: px.clone(),
+            ir: None,
+        };
         let out = finish_image(&img, &FinishParams::default());
         for (o, s) in out.pixels.iter().zip(px.iter()) {
             for c in 0..3 {
-                assert!((o[c] - s[c]).abs() < 1e-5, "c={c} out={} src={}", o[c], s[c]);
+                assert!(
+                    (o[c] - s[c]).abs() < 1e-5,
+                    "c={c} out={} src={}",
+                    o[c],
+                    s[c]
+                );
             }
         }
     }
@@ -545,7 +685,11 @@ mod tests {
         let i_sh = (0.125 * 255.0) as usize;
         let i_mid = (0.5 * 255.0) as usize;
         assert!(lr[i_sh] > 0.125, "shadow zone lifted: {}", lr[i_sh]);
-        assert!((lr[i_mid] - 0.5).abs() < 0.02, "mid ~unchanged: {}", lr[i_mid]);
+        assert!(
+            (lr[i_mid] - 0.5).abs() < 0.02,
+            "mid ~unchanged: {}",
+            lr[i_mid]
+        );
     }
 
     #[test]
@@ -553,7 +697,13 @@ mod tests {
         let master = [[0.0, 0.0], [0.5, 0.7], [1.0, 1.0]];
         let (lr, lg, lb) = tone_luts([0.0; 4], &master, &ID, &ID, &ID);
         let i = (0.5 * 255.0) as usize;
-        assert!(lr[i] > 0.55 && lg[i] > 0.55 && lb[i] > 0.55, "{} {} {}", lr[i], lg[i], lb[i]);
+        assert!(
+            lr[i] > 0.55 && lg[i] > 0.55 && lb[i] > 0.55,
+            "{} {} {}",
+            lr[i],
+            lg[i],
+            lb[i]
+        );
     }
 
     #[test]
@@ -562,7 +712,10 @@ mod tests {
         let (lr, lg, lb) = tone_luts([0.0; 4], &ID, &red, &ID, &ID);
         let i = (0.5 * 255.0) as usize;
         assert!(lr[i] > 0.55, "red lifted: {}", lr[i]);
-        assert!((lg[i] - 0.5).abs() < 0.02 && (lb[i] - 0.5).abs() < 0.02, "g/b flat");
+        assert!(
+            (lg[i] - 0.5).abs() < 0.02 && (lb[i] - 0.5).abs() < 0.02,
+            "g/b flat"
+        );
     }
 
     #[test]
@@ -580,20 +733,31 @@ mod tests {
     fn shadow_wheel_tints_darks_more_than_brights() {
         // Red into shadows (hue 0, full sat), nothing elsewhere.
         let cg = ColorGrade::new(
-            ([0.0, 1.0], 0.0), ([0.0, 0.0], 0.0), ([0.0, 0.0], 0.0), ([0.0, 0.0], 0.0),
-            0.5, 0.0,
+            ([0.0, 1.0], 0.0),
+            ([0.0, 0.0], 0.0),
+            ([0.0, 0.0], 0.0),
+            ([0.0, 0.0], 0.0),
+            0.5,
+            0.0,
         );
         let dark = color_grade([0.1, 0.1, 0.1], &cg);
         let bright = color_grade([0.9, 0.9, 0.9], &cg);
-        assert!(dark[0] - 0.1 > (bright[0] - 0.9) + 1e-3, "dark reddened more");
+        assert!(
+            dark[0] - 0.1 > (bright[0] - 0.9) + 1e-3,
+            "dark reddened more"
+        );
         assert!(dark[0] > dark[2], "dark is warmer (R>B)");
     }
 
     #[test]
     fn global_lum_raises_everything() {
         let cg = ColorGrade::new(
-            ([0.0, 0.0], 0.0), ([0.0, 0.0], 0.0), ([0.0, 0.0], 0.0), ([0.0, 0.0], 1.0),
-            0.5, 0.0,
+            ([0.0, 0.0], 0.0),
+            ([0.0, 0.0], 0.0),
+            ([0.0, 0.0], 0.0),
+            ([0.0, 0.0], 1.0),
+            0.5,
+            0.0,
         );
         let out = color_grade([0.5, 0.5, 0.5], &cg);
         assert!(out[0] > 0.5 && out[1] > 0.5 && out[2] > 0.5, "{:?}", out);
@@ -603,14 +767,23 @@ mod tests {
     fn finish_image_matches_scalar_per_pixel_no_texture() {
         // With texture == 0, finish_image is a pure per-pixel map; assert it matches
         // finish_pixel elementwise and in order (guards the parallel collect).
-        let p = FinishParams { contrast: 0.4, saturation: 0.3, ..Default::default() };
+        let p = FinishParams {
+            contrast: 0.4,
+            saturation: 0.3,
+            ..Default::default()
+        };
         let pixels = vec![
             [0.6, 0.4, 0.3],
             [0.1, 0.7, 0.2],
             [0.9, 0.9, 0.1],
             [0.2, 0.2, 0.8],
         ];
-        let img = Image { width: 4, height: 1, pixels: pixels.clone(), ir: None };
+        let img = Image {
+            width: 4,
+            height: 1,
+            pixels: pixels.clone(),
+            ir: None,
+        };
         let out = finish_image(&img, &p);
         for (i, &px) in pixels.iter().enumerate() {
             let want = finish_pixel(px, &p);
@@ -624,12 +797,22 @@ mod tests {
     fn finish_image_with_texture_is_stable_and_clamped() {
         // A non-flat image so blur differs from the source; texture > 0 exercises the
         // apply_texture zip-map path. Output must stay in [0,1] and be deterministic.
-        let p = FinishParams { texture: 1.0, ..Default::default() };
+        let p = FinishParams {
+            texture: 1.0,
+            ..Default::default()
+        };
         let pixels = vec![
-            [0.0, 0.0, 0.0], [1.0, 1.0, 1.0],
-            [0.2, 0.5, 0.8], [0.9, 0.1, 0.4],
+            [0.0, 0.0, 0.0],
+            [1.0, 1.0, 1.0],
+            [0.2, 0.5, 0.8],
+            [0.9, 0.1, 0.4],
         ];
-        let img = Image { width: 2, height: 2, pixels, ir: None };
+        let img = Image {
+            width: 2,
+            height: 2,
+            pixels,
+            ir: None,
+        };
         let a = finish_image(&img, &p);
         let b = finish_image(&img, &p);
         // assert_eq! (bitwise) is intentional: same binary + deterministic arithmetic,
@@ -645,8 +828,13 @@ mod tests {
     #[test]
     fn rgb_hsl_round_trip() {
         let colors = [
-            [0.2_f32, 0.4, 0.6], [0.9, 0.1, 0.3], [0.5, 0.5, 0.5],
-            [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0], [0.7, 0.7, 0.2],
+            [0.2_f32, 0.4, 0.6],
+            [0.9, 0.1, 0.3],
+            [0.5, 0.5, 0.5],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+            [0.7, 0.7, 0.2],
         ];
         for c in colors {
             let (h, s, l) = rgb2hsl(c);
@@ -668,7 +856,9 @@ mod tests {
         let cm = ColorMix::default();
         for c in [[0.2_f32, 0.4, 0.6], [0.8, 0.2, 0.5], [0.5, 0.5, 0.5]] {
             let out = color_mix(c, &cm);
-            for k in 0..3 { assert!((out[k] - c[k]).abs() < 1e-4, "c={c:?} out={out:?}"); }
+            for k in 0..3 {
+                assert!((out[k] - c[k]).abs() < 1e-4, "c={c:?} out={out:?}");
+            }
         }
     }
 
@@ -678,24 +868,46 @@ mod tests {
         // a blue pixel must gain chroma.
         let cm = mix_with(|m| m.cm_sat[5] = 1.0); // blue = index 5, slider +100 → unit 1.0
         let red = color_mix([0.8, 0.1, 0.1], &cm);
-        assert!((red[0] - 0.8).abs() < 0.02 && (red[1] - 0.1).abs() < 0.02, "red moved: {red:?}");
+        assert!(
+            (red[0] - 0.8).abs() < 0.02 && (red[1] - 0.1).abs() < 0.02,
+            "red moved: {red:?}"
+        );
         let blue_in = [0.2, 0.3, 0.8];
         let blue = color_mix(blue_in, &cm);
-        let chroma = |p: [f32; 3]| p.iter().cloned().fold(0.0_f32, f32::max)
-            - p.iter().cloned().fold(1.0_f32, f32::min);
-        assert!(chroma(blue) > chroma(blue_in), "blue chroma: {} -> {}", chroma(blue_in), chroma(blue));
+        let chroma = |p: [f32; 3]| {
+            p.iter().cloned().fold(0.0_f32, f32::max) - p.iter().cloned().fold(1.0_f32, f32::min)
+        };
+        assert!(
+            chroma(blue) > chroma(blue_in),
+            "blue chroma: {} -> {}",
+            chroma(blue_in),
+            chroma(blue)
+        );
     }
 
     #[test]
     fn mixer_gray_pixel_unaffected_by_hue() {
-        let cm = mix_with(|m| { m.cm_hue[0] = 1.0; m.cm_hue[5] = 1.0; });
+        let cm = mix_with(|m| {
+            m.cm_hue[0] = 1.0;
+            m.cm_hue[5] = 1.0;
+        });
         let out = color_mix([0.5, 0.5, 0.5], &cm);
-        for k in 0..3 { assert!((out[k] - 0.5).abs() < 1e-3, "gray moved: {out:?}"); }
+        for k in 0..3 {
+            assert!((out[k] - 0.5).abs() < 1e-3, "gray moved: {out:?}");
+        }
     }
 
     fn sample(hue: f32) -> PcSample {
-        PcSample { hue, sat: 0.6, lum: 0.5, hue_shift: 0.0, sat_shift: 1.0,
-                   lum_shift: 0.0, variance: 0.0, range: 50.0 }
+        PcSample {
+            hue,
+            sat: 0.6,
+            lum: 0.5,
+            hue_shift: 0.0,
+            sat_shift: 1.0,
+            lum_shift: 0.0,
+            variance: 0.0,
+            range: 50.0,
+        }
     }
 
     #[test]
@@ -703,21 +915,34 @@ mod tests {
         let cm = ColorMix::default(); // no samples
         let c = [0.8, 0.2, 0.2];
         let out = point_color(c, &cm.samples);
-        for k in 0..3 { assert!((out[k] - c[k]).abs() < 1e-4, "{out:?}"); }
+        for k in 0..3 {
+            assert!((out[k] - c[k]).abs() < 1e-4, "{out:?}");
+        }
     }
 
     #[test]
     fn point_color_sample_isolation() {
         // Sample targets RED (hue 0); a red pixel gains chroma, a green pixel is untouched.
         let samples = vec![sample(0.0)];
-        let chroma = |p: [f32; 3]| p.iter().cloned().fold(0.0_f32, f32::max)
-            - p.iter().cloned().fold(1.0_f32, f32::min);
+        let chroma = |p: [f32; 3]| {
+            p.iter().cloned().fold(0.0_f32, f32::max) - p.iter().cloned().fold(1.0_f32, f32::min)
+        };
         let red_in = [0.8, 0.25, 0.25];
         let red = point_color(red_in, &samples);
-        assert!(chroma(red) > chroma(red_in), "red chroma {} -> {}", chroma(red_in), chroma(red));
+        assert!(
+            chroma(red) > chroma(red_in),
+            "red chroma {} -> {}",
+            chroma(red_in),
+            chroma(red)
+        );
         let green_in = [0.2, 0.8, 0.25];
         let green = point_color(green_in, &samples);
-        for k in 0..3 { assert!((green[k] - green_in[k]).abs() < 0.02, "green moved {green:?}"); }
+        for k in 0..3 {
+            assert!(
+                (green[k] - green_in[k]).abs() < 0.02,
+                "green moved {green:?}"
+            );
+        }
     }
 
     #[test]
@@ -727,7 +952,9 @@ mod tests {
         let c = [0.6, 0.5, 0.3];
         let ab = point_color(c, &vec![a, b]);
         let ba = point_color(c, &vec![b, a]);
-        for k in 0..3 { assert!((ab[k] - ba[k]).abs() < 1e-5, "order matters {ab:?} {ba:?}"); }
+        for k in 0..3 {
+            assert!((ab[k] - ba[k]).abs() < 1e-5, "order matters {ab:?} {ba:?}");
+        }
     }
 
     #[test]
@@ -737,7 +964,9 @@ mod tests {
         for v in [0.1_f32, 0.35, 0.7, 0.95] {
             let px = [v, v * 0.6, v * 0.3];
             let out = finish_pixel(px, &p);
-            for c in 0..3 { assert!((out[c] - px[c]).abs() < 1e-4, "v={v} c={c} {out:?}"); }
+            for c in 0..3 {
+                assert!((out[c] - px[c]).abs() < 1e-4, "v={v} c={c} {out:?}");
+            }
         }
     }
 
@@ -746,10 +975,21 @@ mod tests {
         // Vertical step edge: left half 0.4, right half 0.6 (5x5).
         let mut px = Vec::new();
         for _y in 0..5 {
-            for x in 0..5 { let v = if x < 2 { 0.4 } else { 0.6 }; px.push([v, v, v]); }
+            for x in 0..5 {
+                let v = if x < 2 { 0.4 } else { 0.6 };
+                px.push([v, v, v]);
+            }
         }
-        let img = Image { width: 5, height: 5, pixels: px, ir: None };
-        let p = FinishParams { texture: 1.0, ..Default::default() };
+        let img = Image {
+            width: 5,
+            height: 5,
+            pixels: px,
+            ir: None,
+        };
+        let p = FinishParams {
+            texture: 1.0,
+            ..Default::default()
+        };
         let out = finish_image(&img, &p);
         // The bright side of the edge (x=2) should be pushed brighter than its
         // flat-region neighbour (x=4).

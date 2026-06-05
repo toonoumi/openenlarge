@@ -118,7 +118,12 @@ pub fn invert_image(img: &crate::Image, p: &InversionParams, mode: Mode) -> crat
     // par_iter + collect into Vec preserves index order, so output is identical
     // to the sequential map; the per-pixel fn `f` is pure (no shared state).
     let pixels = img.pixels.par_iter().map(|&px| f(px, p)).collect();
-    crate::Image { width: img.width, height: img.height, pixels, ir: img.ir.clone() }
+    crate::Image {
+        width: img.width,
+        height: img.height,
+        pixels,
+        ir: img.ir.clone(),
+    }
 }
 
 /// Build inversion params whose `m_post` is fitted from the given film stock's
@@ -154,7 +159,10 @@ mod tests {
 
     #[test]
     fn naive_inverts_white_base_to_black() {
-        let p = InversionParams { base: [0.8, 0.6, 0.4], ..Default::default() };
+        let p = InversionParams {
+            base: [0.8, 0.6, 0.4],
+            ..Default::default()
+        };
         let out = invert_naive([0.8, 0.6, 0.4], &p);
         for (c, &v) in out.iter().enumerate() {
             assert!(v.abs() < 1e-4, "channel {c} = {v}");
@@ -163,7 +171,10 @@ mod tests {
 
     #[test]
     fn naive_inverts_dark_pixel_to_bright() {
-        let p = InversionParams { base: [0.8, 0.8, 0.8], ..Default::default() };
+        let p = InversionParams {
+            base: [0.8, 0.8, 0.8],
+            ..Default::default()
+        };
         let out = invert_naive([0.0, 0.0, 0.0], &p);
         for (c, &v) in out.iter().enumerate() {
             assert!((v - 1.0).abs() < 1e-4, "channel {c} = {v}");
@@ -172,7 +183,11 @@ mod tests {
 
     #[test]
     fn mode_c_base_pixel_is_zero_density() {
-        let p = InversionParams { base: [0.5, 0.5, 0.5], gamma: 1.0, ..Default::default() };
+        let p = InversionParams {
+            base: [0.5, 0.5, 0.5],
+            gamma: 1.0,
+            ..Default::default()
+        };
         let out = invert_c([0.5, 0.5, 0.5], &p);
         for (c, &v) in out.iter().enumerate() {
             assert!(v.abs() < 1e-4, "channel {c} = {v}");
@@ -181,7 +196,11 @@ mod tests {
 
     #[test]
     fn mode_c_darker_pixel_has_higher_output() {
-        let p = InversionParams { base: [1.0, 1.0, 1.0], gamma: 1.0, ..Default::default() };
+        let p = InversionParams {
+            base: [1.0, 1.0, 1.0],
+            gamma: 1.0,
+            ..Default::default()
+        };
         let bright = invert_c([0.5, 0.5, 0.5], &p);
         let dark = invert_c([0.1, 0.1, 0.1], &p);
         assert!(dark[0] > bright[0]);
@@ -189,18 +208,31 @@ mod tests {
 
     #[test]
     fn mode_b_identity_matrices_match_mode_c() {
-        let p = InversionParams { base: [0.7, 0.6, 0.5], gamma: 1.0, ..Default::default() };
+        let p = InversionParams {
+            base: [0.7, 0.6, 0.5],
+            gamma: 1.0,
+            ..Default::default()
+        };
         let probe = [0.3, 0.25, 0.2];
         let b = invert_b(probe, &p);
         let c = invert_c(probe, &p);
         for ch in 0..3 {
-            assert!((b[ch] - c[ch]).abs() < 1e-4, "ch {ch}: b={} c={}", b[ch], c[ch]);
+            assert!(
+                (b[ch] - c[ch]).abs() < 1e-4,
+                "ch {ch}: b={} c={}",
+                b[ch],
+                c[ch]
+            );
         }
     }
 
     #[test]
     fn mode_b_base_pixel_is_black() {
-        let p = InversionParams { base: [0.7, 0.6, 0.5], gamma: 1.0, ..Default::default() };
+        let p = InversionParams {
+            base: [0.7, 0.6, 0.5],
+            gamma: 1.0,
+            ..Default::default()
+        };
         let out = invert_b([0.7, 0.6, 0.5], &p);
         for (ch, &v) in out.iter().enumerate() {
             assert!(v.abs() < 1e-4, "ch {ch} = {v}");
@@ -226,7 +258,11 @@ mod tests {
         for (i, g) in scene_grays.iter().enumerate() {
             img.pixels[i] = synth_negative(*g, base, k);
         }
-        let p = InversionParams { base, gamma: 1.0, ..Default::default() };
+        let p = InversionParams {
+            base,
+            gamma: 1.0,
+            ..Default::default()
+        };
         let out = invert_image(&img, &p, Mode::B);
         for px in &out.pixels {
             let max = px.iter().cloned().fold(f32::MIN, f32::max);
@@ -243,7 +279,11 @@ mod tests {
         img.pixels[0] = synth_negative([0.2; 3], base, k);
         img.pixels[1] = synth_negative([0.5; 3], base, k);
         img.pixels[2] = synth_negative([0.8; 3], base, k);
-        let p = InversionParams { base, gamma: 1.0, ..Default::default() };
+        let p = InversionParams {
+            base,
+            gamma: 1.0,
+            ..Default::default()
+        };
         let out = invert_image(&img, &p, Mode::B);
         assert!(out.pixels[0][0] < out.pixels[1][0]);
         assert!(out.pixels[1][0] < out.pixels[2][0]);
@@ -252,7 +292,11 @@ mod tests {
     #[test]
     fn naive_and_b_differ_on_typical_pixel() {
         // The strawman must actually differ from the density engine.
-        let p = InversionParams { base: [0.8, 0.55, 0.35], gamma: 1.0, ..Default::default() };
+        let p = InversionParams {
+            base: [0.8, 0.55, 0.35],
+            gamma: 1.0,
+            ..Default::default()
+        };
         let probe = [0.3, 0.22, 0.15];
         let n = invert_naive(probe, &p);
         let b = invert_b(probe, &p);
@@ -264,13 +308,20 @@ mod tests {
     fn stock_params_make_b_differ_from_identity() {
         use crate::spectral::Stock;
         let base = [0.5, 0.4, 0.3];
-        let plain = InversionParams { base, gamma: 1.0, ..Default::default() };
+        let plain = InversionParams {
+            base,
+            gamma: 1.0,
+            ..Default::default()
+        };
         let stock = params_for_stock(Stock::Portra400, base, 1.0, 0.0, 1.0);
         let probe = [0.3, 0.22, 0.15];
         let a = invert_b(probe, &plain);
         let b = invert_b(probe, &stock);
         let diff: f32 = (0..3).map(|c| (a[c] - b[c]).abs()).sum();
-        assert!(diff > 1e-3, "stock M_post should change B output; diff={diff}");
+        assert!(
+            diff > 1e-3,
+            "stock M_post should change B output; diff={diff}"
+        );
     }
 
     #[test]
@@ -278,13 +329,32 @@ mod tests {
         // A per-channel wb gain must brighten/darken that channel's output.
         let base = [0.7, 0.6, 0.5];
         let probe = [0.3, 0.25, 0.2];
-        let neutral = InversionParams { base, gamma: 1.0, ..Default::default() };
-        let warmed = InversionParams { base, gamma: 1.0, wb: [1.5, 1.0, 0.5], ..Default::default() };
+        let neutral = InversionParams {
+            base,
+            gamma: 1.0,
+            ..Default::default()
+        };
+        let warmed = InversionParams {
+            base,
+            gamma: 1.0,
+            wb: [1.5, 1.0, 0.5],
+            ..Default::default()
+        };
         let a = invert_b(probe, &neutral);
         let b = invert_b(probe, &warmed);
-        assert!(b[0] > a[0], "R gain 1.5 should brighten R: {} vs {}", b[0], a[0]);
+        assert!(
+            b[0] > a[0],
+            "R gain 1.5 should brighten R: {} vs {}",
+            b[0],
+            a[0]
+        );
         assert!((b[1] - a[1]).abs() < 1e-6, "G gain 1.0 unchanged");
-        assert!(b[2] < a[2], "B gain 0.5 should darken B: {} vs {}", b[2], a[2]);
+        assert!(
+            b[2] < a[2],
+            "B gain 0.5 should darken B: {} vs {}",
+            b[2],
+            a[2]
+        );
     }
 
     #[test]
@@ -292,16 +362,27 @@ mod tests {
         // A multi-pixel image must invert each pixel exactly as the scalar fn does,
         // in the same order — this guards the parallel collect() against reordering.
         // Cover all three modes, since invert_image dispatches each through par_iter.
-        let p = InversionParams { base: [0.8, 0.6, 0.4], ..Default::default() };
+        let p = InversionParams {
+            base: [0.8, 0.6, 0.4],
+            ..Default::default()
+        };
         let pixels = vec![
             [0.8, 0.6, 0.4],
             [0.1, 0.2, 0.3],
             [0.5, 0.5, 0.5],
             [0.05, 0.9, 0.45],
         ];
-        let img = Image { width: 2, height: 2, pixels: pixels.clone(), ir: None };
+        let img = Image {
+            width: 2,
+            height: 2,
+            pixels: pixels.clone(),
+            ir: None,
+        };
         for (mode, scalar) in [
-            (Mode::B, invert_b as fn([f32; 3], &InversionParams) -> [f32; 3]),
+            (
+                Mode::B,
+                invert_b as fn([f32; 3], &InversionParams) -> [f32; 3],
+            ),
             (Mode::C, invert_c),
             (Mode::Naive, invert_naive),
         ] {

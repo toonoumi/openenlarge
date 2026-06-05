@@ -27,7 +27,13 @@ pub struct Mask {
 /// beyond the dabs (clamped to the image) so the inpainter has known source pixels
 /// around the hole. Returns an empty mask if nothing lands inside the image.
 pub fn rasterize(img_w: usize, img_h: usize, stamps: &[Stamp], grow: f32, pad: usize) -> Mask {
-    let empty = Mask { x0: 0, y0: 0, w: 0, h: 0, bits: Vec::new() };
+    let empty = Mask {
+        x0: 0,
+        y0: 0,
+        w: 0,
+        h: 0,
+        bits: Vec::new(),
+    };
     if img_w == 0 || img_h == 0 || stamps.is_empty() {
         return empty;
     }
@@ -110,7 +116,11 @@ pub fn inpaint_masked(img: &mut Image, mask: &Mask, radius: u32) {
         for xx in 0..w {
             if mask.bits[yy * w + xx] {
                 let gi = (mask.y0 + yy) * img.width + (mask.x0 + xx);
-                img.pixels[gi] = [region[[yy, xx, 0]], region[[yy, xx, 1]], region[[yy, xx, 2]]];
+                img.pixels[gi] = [
+                    region[[yy, xx, 0]],
+                    region[[yy, xx, 1]],
+                    region[[yy, xx, 2]],
+                ];
             }
         }
     }
@@ -134,7 +144,13 @@ pub fn apply(img: &mut Image, stamps: &[Stamp]) {
 /// `sensitivity` (0..100 → t 0.5..0.95). `ir==0` (straighten out-of-frame) is never a
 /// defect. The mask is dilated by 1px to cover defect edges.
 pub fn ir_defect_mask(w: usize, h: usize, ir: &[f32], sensitivity: f32) -> Mask {
-    let empty = Mask { x0: 0, y0: 0, w: 0, h: 0, bits: Vec::new() };
+    let empty = Mask {
+        x0: 0,
+        y0: 0,
+        w: 0,
+        h: 0,
+        bits: Vec::new(),
+    };
     if w == 0 || h == 0 || ir.len() != w * h {
         return empty;
     }
@@ -172,7 +188,13 @@ pub fn ir_defect_mask(w: usize, h: usize, ir: &[f32], sensitivity: f32) -> Mask 
             }
         }
     }
-    Mask { x0: 0, y0: 0, w, h, bits }
+    Mask {
+        x0: 0,
+        y0: 0,
+        w,
+        h,
+        bits,
+    }
 }
 
 /// Detect defects from `ir` and inpaint them in place over the whole frame. No-op when
@@ -194,7 +216,17 @@ mod tests {
 
     #[test]
     fn rasterize_marks_a_disc_and_leaves_a_known_border() {
-        let m = rasterize(100, 100, &[Stamp { cx: 50.0, cy: 50.0, r: 3.0 }], 1.0, 4);
+        let m = rasterize(
+            100,
+            100,
+            &[Stamp {
+                cx: 50.0,
+                cy: 50.0,
+                r: 3.0,
+            }],
+            1.0,
+            4,
+        );
         // Center is masked.
         let lx = 50 - m.x0;
         let ly = 50 - m.y0;
@@ -208,7 +240,17 @@ mod tests {
     #[test]
     fn rasterize_clamps_to_image_edge() {
         // Stamp centred 1px outside the left edge; radius=3 → some columns land on-image.
-        let m = rasterize(100, 100, &[Stamp { cx: -1.0, cy: 50.0, r: 3.0 }], 0.0, 0);
+        let m = rasterize(
+            100,
+            100,
+            &[Stamp {
+                cx: -1.0,
+                cy: 50.0,
+                r: 3.0,
+            }],
+            0.0,
+            0,
+        );
         assert_eq!(m.x0, 0, "window clamped to left edge");
         assert!(m.w > 0, "partial dab produces a non-empty mask");
         // pixel (0,50): center (0.5, 50.5), distance ≈1.58 < 3 → masked.
@@ -219,7 +261,17 @@ mod tests {
     #[test]
     fn rasterize_empty_when_no_stamps_or_offscreen() {
         assert_eq!(rasterize(100, 100, &[], 1.0, 4).w, 0);
-        let off = rasterize(100, 100, &[Stamp { cx: -50.0, cy: -50.0, r: 2.0 }], 1.0, 1);
+        let off = rasterize(
+            100,
+            100,
+            &[Stamp {
+                cx: -50.0,
+                cy: -50.0,
+                r: 2.0,
+            }],
+            1.0,
+            1,
+        );
         assert_eq!(off.w, 0, "fully off-image dab → empty mask");
     }
 
@@ -235,11 +287,25 @@ mod tests {
         };
         let mid = (n / 2) * n + (n / 2);
         img.pixels[mid] = [1.0, 1.0, 1.0];
-        let mask = rasterize(n, n, &[Stamp { cx: 10.0, cy: 10.0, r: 1.0 }], 1.0, 4);
+        let mask = rasterize(
+            n,
+            n,
+            &[Stamp {
+                cx: 10.0,
+                cy: 10.0,
+                r: 1.0,
+            }],
+            1.0,
+            4,
+        );
         inpaint_masked(&mut img, &mask, 3);
         // The speck is now close to the surrounding gray, not white.
         let p = img.pixels[mid];
-        assert!(p[0] < 0.6, "speck should be filled toward gray, got {:?}", p);
+        assert!(
+            p[0] < 0.6,
+            "speck should be filled toward gray, got {:?}",
+            p
+        );
         // A far-away pixel is untouched.
         assert_eq!(img.pixels[0], [0.4, 0.4, 0.4]);
     }
@@ -247,15 +313,31 @@ mod tests {
     #[test]
     fn apply_is_noop_without_stamps_and_heals_with_them() {
         let n = 21usize;
-        let mut img = Image { width: n, height: n, pixels: vec![[0.3, 0.5, 0.7]; n * n], ir: None };
+        let mut img = Image {
+            width: n,
+            height: n,
+            pixels: vec![[0.3, 0.5, 0.7]; n * n],
+            ir: None,
+        };
         let before = img.clone();
         apply(&mut img, &[]);
         assert_eq!(img, before, "no stamps → unchanged");
 
         img.pixels[10 * n + 10] = [0.0, 0.0, 0.0];
-        apply(&mut img, &[Stamp { cx: 10.0, cy: 10.0, r: 1.5 }]);
+        apply(
+            &mut img,
+            &[Stamp {
+                cx: 10.0,
+                cy: 10.0,
+                r: 1.5,
+            }],
+        );
         let p = img.pixels[10 * n + 10];
-        assert!(p[0] > 0.1 && p[2] > 0.4, "dark speck healed toward field, got {:?}", p);
+        assert!(
+            p[0] > 0.1 && p[2] > 0.4,
+            "dark speck healed toward field, got {:?}",
+            p
+        );
     }
 
     #[test]
@@ -264,7 +346,11 @@ mod tests {
         let mut ir = vec![0.9_f32; n * n];
         ir[5 * n + 5] = 0.1;
         let m = ir_defect_mask(n, n, &ir, 50.0); // sensitivity 50 → t=0.725 → thr=0.6525
-        assert_eq!((m.x0, m.y0, m.w, m.h), (0, 0, n, n), "ir mask spans the whole frame");
+        assert_eq!(
+            (m.x0, m.y0, m.w, m.h),
+            (0, 0, n, n),
+            "ir mask spans the whole frame"
+        );
         assert!(m.bits[5 * n + 5], "defect pixel flagged");
         assert!(m.bits[4 * n + 5], "pixel above the defect is dilated in");
         assert!(m.bits[5 * n + 4], "pixel left of the defect is dilated in");
@@ -276,10 +362,16 @@ mod tests {
         let n = 11usize;
         let mut ir = vec![0.9_f32; n * n];
         ir[5 * n + 5] = 0.7; // a FAINT defect (just below clean)
-        let low = ir_defect_mask(n, n, &ir, 0.0);   // t=0.5 → thr=0.45 → 0.7 not flagged
+        let low = ir_defect_mask(n, n, &ir, 0.0); // t=0.5 → thr=0.45 → 0.7 not flagged
         let high = ir_defect_mask(n, n, &ir, 100.0); // t=0.95 → thr=0.855 → 0.7 flagged
-        assert!(!low.bits[5 * n + 5], "faint defect missed at low sensitivity");
-        assert!(high.bits[5 * n + 5], "faint defect caught at high sensitivity");
+        assert!(
+            !low.bits[5 * n + 5],
+            "faint defect missed at low sensitivity"
+        );
+        assert!(
+            high.bits[5 * n + 5],
+            "faint defect caught at high sensitivity"
+        );
     }
 
     #[test]
@@ -294,19 +386,33 @@ mod tests {
     #[test]
     fn apply_ir_heals_defect_colocated_with_low_ir() {
         let n = 21usize;
-        let mut img = Image { width: n, height: n, pixels: vec![[0.4, 0.4, 0.4]; n * n], ir: None };
+        let mut img = Image {
+            width: n,
+            height: n,
+            pixels: vec![[0.4, 0.4, 0.4]; n * n],
+            ir: None,
+        };
         let mid = 10 * n + 10;
         img.pixels[mid] = [1.0, 1.0, 1.0];
         let mut ir = vec![0.9_f32; n * n];
         ir[mid] = 0.05;
         apply_ir(&mut img, &ir, 50.0);
-        assert!(img.pixels[mid][0] < 0.6, "speck healed toward field, got {:?}", img.pixels[mid]);
+        assert!(
+            img.pixels[mid][0] < 0.6,
+            "speck healed toward field, got {:?}",
+            img.pixels[mid]
+        );
     }
 
     #[test]
     fn apply_ir_noop_when_no_defects() {
         let n = 8usize;
-        let mut img = Image { width: n, height: n, pixels: vec![[0.4, 0.5, 0.6]; n * n], ir: None };
+        let mut img = Image {
+            width: n,
+            height: n,
+            pixels: vec![[0.4, 0.5, 0.6]; n * n],
+            ir: None,
+        };
         let before = img.clone();
         let ir = vec![0.9_f32; n * n]; // uniformly clean → no defects
         apply_ir(&mut img, &ir, 100.0);
@@ -315,7 +421,12 @@ mod tests {
 
     #[test]
     fn apply_ir_noop_on_length_mismatch() {
-        let mut img = Image { width: 4, height: 4, pixels: vec![[0.3; 3]; 16], ir: None };
+        let mut img = Image {
+            width: 4,
+            height: 4,
+            pixels: vec![[0.3; 3]; 16],
+            ir: None,
+        };
         let before = img.clone();
         apply_ir(&mut img, &[0.1; 9], 50.0);
         assert_eq!(img, before);

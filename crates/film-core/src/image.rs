@@ -13,7 +13,12 @@ pub struct Image {
 
 impl Image {
     pub fn new(width: usize, height: usize) -> Self {
-        Image { width, height, pixels: vec![[0.0; 3]; width * height], ir: None }
+        Image {
+            width,
+            height,
+            pixels: vec![[0.0; 3]; width * height],
+            ir: None,
+        }
     }
 
     pub fn len(&self) -> usize {

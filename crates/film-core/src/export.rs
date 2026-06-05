@@ -48,10 +48,7 @@ mod tests {
         let dir = std::env::temp_dir();
         let path = dir.join("openenlarge_rgba16.tiff");
         // 2x1 RGBA16: pixel0 = (1,0,0.5, ir=0.25), pixel1 = (0,1,0,ir=0.75)
-        let data: Vec<u16> = vec![
-            65535, 0, 32768, 16384,
-            0, 65535, 0, 49151,
-        ];
+        let data: Vec<u16> = vec![65535, 0, 32768, 16384, 0, 65535, 0, 49151];
         {
             let mut file = std::fs::File::create(&path).unwrap();
             let mut enc = TiffEncoder::new(&mut file).unwrap();

@@ -1,12 +1,12 @@
-pub mod image;
-pub mod engine;
 pub mod calibrate;
-pub mod decode;
-pub mod export;
-pub mod spectral;
 pub mod curve;
-pub mod finish;
-pub mod wb;
+pub mod decode;
 pub mod dust;
+pub mod engine;
+pub mod export;
+pub mod finish;
+pub mod image;
+pub mod spectral;
+pub mod wb;
 
 pub use image::Image;
