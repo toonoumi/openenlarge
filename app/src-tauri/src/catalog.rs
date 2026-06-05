@@ -179,6 +179,41 @@ impl Catalog {
         rows.collect()
     }
 
+    /// Upsert a preference (e.g. develop_mode, quality).
+    pub fn save_pref(&self, key: &str, value: &str) -> rusqlite::Result<()> {
+        self.conn.lock().unwrap().execute(
+            "INSERT INTO prefs (key, value) VALUES (?1, ?2)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            rusqlite::params![key, value],
+        )?;
+        Ok(())
+    }
+
+    /// Upsert a session/UI state value (selected_folder, active_id, grid_zoom, module).
+    pub fn save_app_state(&self, key: &str, value: &str) -> rusqlite::Result<()> {
+        self.conn.lock().unwrap().execute(
+            "INSERT INTO app_state (key, value) VALUES (?1, ?2)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            rusqlite::params![key, value],
+        )?;
+        Ok(())
+    }
+
+    fn load_kv(&self, table: &str) -> rusqlite::Result<HashMap<String, String>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(&format!("SELECT key, value FROM {table}"))?;
+        let rows = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
+        rows.collect()
+    }
+
+    pub fn load_prefs(&self) -> rusqlite::Result<HashMap<String, String>> {
+        self.load_kv("prefs")
+    }
+
+    pub fn load_app_state(&self) -> rusqlite::Result<HashMap<String, String>> {
+        self.load_kv("app_state")
+    }
+
     /// Current schema version (for tests).
     pub fn user_version(&self) -> i64 {
         self.conn
@@ -302,5 +337,26 @@ mod tests {
         let edits = cat.load_edits().unwrap();
         assert_eq!(edits.len(), 1);
         assert_eq!(edits[0].params.as_ref().unwrap()["exposure"], 2.0);
+    }
+
+    #[test]
+    fn prefs_round_trip_and_overwrite() {
+        let cat = Catalog::open_in_memory().unwrap();
+        cat.save_pref("develop_mode", "c").unwrap();
+        cat.save_pref("quality", "performance").unwrap();
+        cat.save_pref("develop_mode", "b").unwrap(); // overwrite
+        let prefs = cat.load_prefs().unwrap();
+        assert_eq!(prefs.get("develop_mode").map(String::as_str), Some("b"));
+        assert_eq!(prefs.get("quality").map(String::as_str), Some("performance"));
+    }
+
+    #[test]
+    fn app_state_round_trip() {
+        let cat = Catalog::open_in_memory().unwrap();
+        cat.save_app_state("grid_zoom", "55").unwrap();
+        cat.save_app_state("module", "develop").unwrap();
+        let st = cat.load_app_state().unwrap();
+        assert_eq!(st.get("grid_zoom").map(String::as_str), Some("55"));
+        assert_eq!(st.get("module").map(String::as_str), Some("develop"));
     }
 }
