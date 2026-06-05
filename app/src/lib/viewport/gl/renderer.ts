@@ -346,6 +346,13 @@ export class FinishRenderer {
     // PASS 2: finish interTex → outTex.
     gl.bindFramebuffer(gl.FRAMEBUFFER, outFbo);
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, outTex, 0);
+    // Bail (→ CPU fallback) if this output format isn't renderable on the device
+    // (e.g. RGBA16F render targets unsupported), rather than reading back garbage.
+    if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.deleteFramebuffer(outFbo); gl.deleteTexture(outTex);
+      return null;
+    }
     this.drawFinishPass(w, h);
 
     // Read back.
