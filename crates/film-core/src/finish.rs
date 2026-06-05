@@ -49,6 +49,50 @@ fn hsv_hue_rgb(h: f32) -> [f32; 3] {
     }
 }
 
+/// RGB (0..1) → HSL. Hue in degrees [0,360); s,l in [0,1].
+fn rgb2hsl(rgb: [f32; 3]) -> (f32, f32, f32) {
+    let (r, g, b) = (rgb[0], rgb[1], rgb[2]);
+    let mx = r.max(g).max(b);
+    let mn = r.min(g).min(b);
+    let l = (mx + mn) * 0.5;
+    if (mx - mn).abs() < 1e-7 {
+        return (0.0, 0.0, l);
+    }
+    let d = mx - mn;
+    let s = if l > 0.5 { d / (2.0 - mx - mn) } else { d / (mx + mn) };
+    let h = if mx == r {
+        (g - b) / d + if g < b { 6.0 } else { 0.0 }
+    } else if mx == g {
+        (b - r) / d + 2.0
+    } else {
+        (r - g) / d + 4.0
+    };
+    (h * 60.0, s, l)
+}
+
+fn hue2rgb(p: f32, q: f32, t: f32) -> f32 {
+    let t = t.rem_euclid(1.0);
+    if t < 1.0 / 6.0 { p + (q - p) * 6.0 * t }
+    else if t < 0.5 { q }
+    else if t < 2.0 / 3.0 { p + (q - p) * (2.0 / 3.0 - t) * 6.0 }
+    else { p }
+}
+
+/// HSL → RGB (0..1). Inverse of `rgb2hsl`.
+fn hsl2rgb(h: f32, s: f32, l: f32) -> [f32; 3] {
+    if s <= 0.0 {
+        return [l, l, l];
+    }
+    let q = if l < 0.5 { l * (1.0 + s) } else { l + s - l * s };
+    let p = 2.0 * l - q;
+    let hk = h / 360.0;
+    [
+        hue2rgb(p, q, hk + 1.0 / 3.0),
+        hue2rgb(p, q, hk),
+        hue2rgb(p, q, hk - 1.0 / 3.0),
+    ]
+}
+
 /// Parabolic region bump centered at `c` (finite support, peak 1.0).
 #[inline]
 fn region_bump(v: f32, c: f32) -> f32 {
@@ -486,6 +530,21 @@ mod tests {
         for px in &a.pixels {
             for &v in px.iter() {
                 assert!((0.0..=1.0).contains(&v), "value {v} out of range");
+            }
+        }
+    }
+
+    #[test]
+    fn rgb_hsl_round_trip() {
+        let colors = [
+            [0.2_f32, 0.4, 0.6], [0.9, 0.1, 0.3], [0.5, 0.5, 0.5],
+            [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0], [0.7, 0.7, 0.2],
+        ];
+        for c in colors {
+            let (h, s, l) = rgb2hsl(c);
+            let back = hsl2rgb(h, s, l);
+            for k in 0..3 {
+                assert!((back[k] - c[k]).abs() < 1e-4, "c={c:?} back={back:?}");
             }
         }
     }
