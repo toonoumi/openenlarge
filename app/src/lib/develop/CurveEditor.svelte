@@ -17,20 +17,25 @@
   const HIT_PX = 9; // grab radius in screen pixels (size-independent; ~dot radius)
 
   let svgEl: SVGSVGElement;
-  let dragIdx = -1;
   let moved = false;
-  // Gesture state: a press arms a candidate point; it only becomes a drag once the
+  let active = false; // true once a press becomes a real drag (point or segment)
+  // Gesture state: a press arms a candidate; it only becomes a drag once the
   // pointer moves past DRAG_PX. A press that never moves is a tap (adds a point).
   const DRAG_PX = 4;
   let downPt: CurvePoint | null = null;
   let downClientX = 0, downClientY = 0;
-  let armedIdx = -1;
   let hadHit = false;
-  let grabOffset: CurvePoint = [0, 0]; // press point − grabbed point, so drags don't teleport
+  // Drag target. "point": move a single control point (you grabbed it directly).
+  // "segment": move both control points bounding the grabbed span, weighted by t.
+  let dragMode: "point" | "segment" = "point";
+  let dragIdx = -1;            // point mode: which point
+  let grabOffset: CurvePoint = [0, 0]; // point mode: press − point, so drags don't teleport
+  let segL = 0, segR = 1, segT = 0;    // segment mode: bounding indices + position along
+  let startYL = 0, startYR = 0, startCy = 0; // segment mode: y's at grab + grab cursor y
 
-  // Local working copy; resync from the prop whenever we're not dragging.
+  // Local working copy; resync from the prop whenever we're not actively dragging.
   let pts: CurvePoint[] = points;
-  $: if (dragIdx < 0) pts = points.map((p) => [...p] as CurvePoint);
+  $: if (!active) pts = points.map((p) => [...p] as CurvePoint);
 
   const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
   const sx = (x: number) => x * S;
@@ -85,50 +90,58 @@
 
   function commit() { dispatch("change", pts.map((p) => [...p] as CurvePoint)); }
 
-  /** Index of the existing control point nearest in x (always valid; ≥2 points). */
-  function nearestByX(p: CurvePoint): number {
-    let best = 0, bd = Infinity;
-    for (let i = 0; i < pts.length; i++) {
-      const d = Math.abs(pts[i][0] - p[0]);
-      if (d < bd) { bd = d; best = i; }
-    }
-    return best;
-  }
-
   function onDown(e: PointerEvent) {
     const p = toLocal(e);
     const hit = hitIndex(p, svgEl.getBoundingClientRect());
     hadHit = hit >= 0;
-    // If this becomes a drag, move the point under the cursor, else the nearest one.
-    armedIdx = hadHit ? hit : nearestByX(p);
-    grabOffset = [p[0] - pts[armedIdx][0], p[1] - pts[armedIdx][1]];
+    if (hadHit) {
+      // Grabbed a control point directly → move just that point.
+      dragMode = "point";
+      dragIdx = hit;
+      grabOffset = [p[0] - pts[hit][0], p[1] - pts[hit][1]];
+    } else {
+      // Grabbed the curve between points → move the whole bounding segment.
+      dragMode = "segment";
+      let i = 0;
+      while (i < pts.length - 2 && p[0] > pts[i + 1][0]) i++;
+      segL = i; segR = i + 1;
+      const span = pts[segR][0] - pts[segL][0];
+      segT = span > 1e-6 ? (p[0] - pts[segL][0]) / span : 0.5;
+      startYL = pts[segL][1]; startYR = pts[segR][1]; startCy = p[1];
+    }
     downPt = p;
     downClientX = e.clientX; downClientY = e.clientY;
     moved = false;
-    dragIdx = -1; // not dragging until the pointer moves past the threshold
+    active = false; // not a drag until the pointer moves past the threshold
     svgEl.setPointerCapture(e.pointerId);
   }
   function onMove(e: PointerEvent) {
     if (!downPt) return;
     if (!moved) {
       if (Math.hypot(e.clientX - downClientX, e.clientY - downClientY) < DRAG_PX) return;
-      moved = true;
-      dragIdx = armedIdx; // promote the armed point to an active drag
+      moved = true; active = true;
     }
-    if (dragIdx < 0) return;
     const [cx, cy] = toLocal(e);
-    // Apply the grab offset so the point tracks the cursor without jumping to it.
-    const nx = clamp01(cx - grabOffset[0]);
-    const ny = clamp01(cy - grabOffset[1]);
-    const last = pts.length - 1;
-    const isEnd = dragIdx === 0 || dragIdx === last;
-    let x = pts[dragIdx][0];
-    if (!isEnd) {
-      const lo = pts[dragIdx - 1][0] + 1e-3;
-      const hi = pts[dragIdx + 1][0] - 1e-3;
-      x = Math.min(hi, Math.max(lo, nx));
+    if (dragMode === "point") {
+      // Apply the grab offset so the point tracks the cursor without jumping to it.
+      const nx = clamp01(cx - grabOffset[0]);
+      const ny = clamp01(cy - grabOffset[1]);
+      const last = pts.length - 1;
+      const isEnd = dragIdx === 0 || dragIdx === last;
+      let x = pts[dragIdx][0];
+      if (!isEnd) {
+        const lo = pts[dragIdx - 1][0] + 1e-3;
+        const hi = pts[dragIdx + 1][0] - 1e-3;
+        x = Math.min(hi, Math.max(lo, nx));
+      }
+      pts[dragIdx] = [x, ny];
+    } else {
+      // Move both bounding points in y, weighted by where along the segment we grabbed
+      // (nearer end moves more), so the segment translates instead of pivoting.
+      const dy = cy - startCy;
+      pts[segL] = [pts[segL][0], clamp01(startYL + dy * (1 - segT))];
+      pts[segR] = [pts[segR][0], clamp01(startYR + dy * segT)];
     }
-    pts[dragIdx] = [x, ny];
     pts = pts; // trigger reactivity
     commit();
   }
@@ -140,7 +153,7 @@
         pts = [...pts, downPt].sort((a, b) => a[0] - b[0]);
         commit();
       }
-    } else if (dragIdx >= 0) {
+    } else if (dragMode === "point") {
       // Drag an interior point off the top/bottom to delete it.
       const last = pts.length - 1;
       const isEnd = dragIdx === 0 || dragIdx === last;
@@ -151,7 +164,7 @@
         commit();
       }
     }
-    downPt = null; dragIdx = -1; armedIdx = -1; moved = false;
+    downPt = null; dragIdx = -1; moved = false; active = false;
   }
   function onDblPoint(i: number) {
     const last = pts.length - 1;
