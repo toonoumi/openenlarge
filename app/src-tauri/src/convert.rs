@@ -45,7 +45,7 @@ pub fn proxy(img: &Image, max_edge: u32) -> Image {
 }
 
 /// Crop a rectangle (in pixels) from the image, clamped to its bounds. Returns a
-/// new Image; `ir` is dropped (previews don't need it).
+/// new Image; the IR plane (if present) is cropped alongside the pixels.
 pub fn crop(img: &Image, x: usize, y: usize, w: usize, h: usize) -> Image {
     let x = x.min(img.width);
     let y = y.min(img.height);
