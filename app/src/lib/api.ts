@@ -5,7 +5,17 @@ export type { DustStroke, IrRemoval };
 export interface Metadata {
   camera?: string; lens?: string; iso?: string; shutter?: string;
   aperture?: string; width: number; height: number; file_size: number; date?: string;
+  note?: string;
 }
+/** User-edited metadata overrides (one per image). Only changed, non-blank fields
+ * are stored; an absent/empty field falls back to the source EXIF value. */
+export interface MetaOverride {
+  camera?: string; lens?: string; iso?: string; shutter?: string;
+  aperture?: string; date?: string; note?: string;
+}
+/** The editable EXIF fields, in display order. Drives the metadata panel + reset. */
+export const META_FIELDS = ["camera", "lens", "iso", "shutter", "aperture", "date", "note"] as const;
+export type MetaField = (typeof META_FIELDS)[number];
 export interface ImageEntry {
   id: string; path: string; file_name: string; thumbnail: string;
   metadata: Metadata; developed: boolean; has_ir: boolean; offline: boolean;
@@ -61,10 +71,11 @@ export interface ExportFormat {
   maxBytes?: number | null; // jpeg only
 }
 
-/** One image as returned by load_catalog (no developed/has_ir — all undeveloped on load). */
+/** One image as returned by load_catalog. `developed`/`has_ir` reflect whether a
+ * decoded-image cache exists on disk (pixels load lazily on first view). */
 export interface CatalogImage {
   id: string; path: string; file_name: string; thumbnail: string;
-  metadata: Metadata; offline: boolean;
+  metadata: Metadata; offline: boolean; developed: boolean; has_ir: boolean;
 }
 /** One image's stored edits as returned by load_catalog (JSON already parsed). */
 export interface CatalogEdits {
@@ -72,6 +83,7 @@ export interface CatalogEdits {
   params: InvertParams | null;
   crop: import("./crop/types").CropRect | null;
   dust: import("./develop/dust").DustEdits | null;
+  meta: MetaOverride | null;
 }
 /** The whole catalog returned at launch. */
 export interface CatalogSnapshot {
@@ -96,12 +108,13 @@ export const api = {
     dust: DustStroke[] = [],
     irRemoval: IrRemoval = { enabled: false, sensitivity: 50 },
     format: ExportFormat = { kind: "tiff", bitDepth: 16 },
+    metaOverride: MetaOverride | null = null,
   ) =>
     invoke<void>("export_image", {
       id, params, outPath, imageCrop,
       rot90: geom.rot90 ?? 0, flipH: geom.flip_h ?? false,
       flipV: geom.flip_v ?? false, angle: geom.angle ?? 0,
-      dust: wireDust(dust), irRemoval, format,
+      dust: wireDust(dust), irRemoval, format, metaOverride,
     }),
   developImage: (id: string) => invoke<ImageEntry>("develop_image", { id }),
   setQuality: (quality: Quality) => invoke<void>("set_quality", { quality }),
@@ -116,6 +129,8 @@ export const api = {
     invoke<void>("save_crop", { id, cropJson }),
   saveDust: (id: string, dustJson: string) =>
     invoke<void>("save_dust", { id, dustJson }),
+  saveMeta: (id: string, metaJson: string) =>
+    invoke<void>("save_meta", { id, metaJson }),
   savePref: (key: string, value: string) =>
     invoke<void>("save_pref", { key, value }),
   saveAppState: (key: string, value: string) =>

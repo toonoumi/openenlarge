@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { debounce, applySnapshot } from "./catalog";
 import { get } from "svelte/store";
 import {
-  images, editsById, cropById, dustById, developMode, quality,
+  images, editsById, cropById, dustById, metaById, developMode, quality,
   selectedFolder, gridZoom, module as moduleStore, activeId,
 } from "./store";
 import type { CatalogSnapshot } from "./api";
@@ -39,21 +39,24 @@ describe("applySnapshot", () => {
       images: [{
         id: "a", path: "/x/a.dng", file_name: "a.dng", thumbnail: "t",
         metadata: { width: 100, height: 100, file_size: 0 }, offline: false,
+        developed: true, has_ir: false,
       }],
       edits: [{
         image_id: "a",
         params: { ...defaultParams(), exposure: 1.5 },
         crop: null,
         dust: { strokes: [], irRemoval: { enabled: false, sensitivity: 50 } },
+        meta: { camera: "Leica M6", note: "roll 12" },
       }],
       prefs: { develop_mode: "c", quality: "quality" },
       app_state: { selected_folder: "/x", grid_zoom: "70", module: "develop", active_id: "a" },
     };
     applySnapshot(snap);
     expect(get(images).length).toBe(1);
-    expect(get(images)[0].developed).toBe(false);
+    expect(get(images)[0].developed).toBe(true);
     expect(get(editsById)["a"].exposure).toBe(1.5);
     expect(get(dustById)["a"].irRemoval.sensitivity).toBe(50);
+    expect(get(metaById)["a"].camera).toBe("Leica M6");
     expect(get(developMode)).toBe("c");
     expect(get(quality)).toBe("quality");
     expect(get(selectedFolder)).toBe("/x");

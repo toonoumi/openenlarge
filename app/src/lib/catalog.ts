@@ -1,9 +1,9 @@
 import { get } from "svelte/store";
-import { api, defaultParams, type InvertParams, type CatalogSnapshot, type ImageEntry } from "./api";
+import { api, defaultParams, type InvertParams, type CatalogSnapshot, type ImageEntry, type MetaOverride } from "./api";
 import type { CropRect } from "./crop/types";
 import type { DustEdits } from "./develop/dust";
 import {
-  images, editsById, cropById, dustById, developMode, quality,
+  images, editsById, cropById, dustById, metaById, developMode, quality,
   selectedFolder, gridZoom, module as moduleStore, activeId,
 } from "./store";
 
@@ -42,21 +42,24 @@ export function applySnapshot(snap: CatalogSnapshot): void {
   const editsMap: Record<string, InvertParams> = {};
   const cropMap: Record<string, CropRect | null> = {};
   const dustMap: Record<string, DustEdits> = {};
+  const metaMap: Record<string, MetaOverride> = {};
   for (const e of snap.edits) {
     // Backfill any fields absent from older stored blobs (e.g. tone curve /
     // color grading added later) so the frontend always has a complete schema.
     if (e.params) editsMap[e.image_id] = { ...defaultParams(), ...e.params };
     if (e.crop !== undefined) cropMap[e.image_id] = e.crop;
     if (e.dust) dustMap[e.image_id] = e.dust;
+    if (e.meta) metaMap[e.image_id] = e.meta;
   }
   const entries: ImageEntry[] = snap.images.map((ci) => ({
     id: ci.id, path: ci.path, file_name: ci.file_name, thumbnail: ci.thumbnail,
-    metadata: ci.metadata, developed: false, has_ir: false, offline: ci.offline,
+    metadata: ci.metadata, developed: ci.developed, has_ir: ci.has_ir, offline: ci.offline,
   }));
   images.set(entries);
   editsById.set(editsMap);
   cropById.set(cropMap);
   dustById.set(dustMap);
+  metaById.set(metaMap);
 
   if (snap.prefs.develop_mode === "b" || snap.prefs.develop_mode === "c")
     developMode.set(snap.prefs.develop_mode);
@@ -109,6 +112,7 @@ function perIdSaver(
 const edits = perIdSaver(api.saveEdits);
 const crop = perIdSaver(api.saveCrop);
 const dust = perIdSaver(api.saveDust);
+const meta = perIdSaver(api.saveMeta);
 const savePref = debounce((k: string, v: string) => { void api.savePref(k, v); }, 400);
 const saveState = debounce((k: string, v: string) => { void api.saveAppState(k, v); }, 400);
 
@@ -140,6 +144,7 @@ export function initPersistence(): () => void {
   wireRecord(editsById, edits.save);
   wireRecord(cropById, crop.save);
   wireRecord(dustById, dust.save);
+  wireRecord(metaById, meta.save);
 
   let first = { dm: true, q: true, sf: true, gz: true, mod: true, aid: true };
   developMode.subscribe((m) => { if (first.dm) { first.dm = false; return; } savePref("develop_mode", m); });
@@ -150,7 +155,7 @@ export function initPersistence(): () => void {
   activeId.subscribe((a) => { if (first.aid) { first.aid = false; return; } saveState("active_id", a ?? ""); });
 
   const flush = () => {
-    edits.flushAll(); crop.flushAll(); dust.flushAll();
+    edits.flushAll(); crop.flushAll(); dust.flushAll(); meta.flushAll();
     savePref.flush(); saveState.flush();
   };
   if (typeof window !== "undefined")
