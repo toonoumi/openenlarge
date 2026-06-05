@@ -10,6 +10,7 @@
   import ConfirmDevelop from "$lib/overlay/ConfirmDevelop.svelte";
   import ConfirmDelete from "$lib/overlay/ConfirmDelete.svelte";
   import SettingsMenu from "$lib/settings/SettingsMenu.svelte";
+  import AboutModal from "$lib/about/AboutModal.svelte";
   import Icon from "$lib/icons/Icon.svelte";
   import { hasDeveloped } from "$lib/export/eligible";
   import ExportModal from "$lib/export/ExportModal.svelte";
@@ -24,6 +25,7 @@
   let confirming = false;
   let settingsOpen = false;
   let exporting = false;
+  let aboutOpen = false;
 
   function gotoDevelop() {
     if (!$hasImages) return;
@@ -45,7 +47,9 @@
 
 <div class="app">
   <header class="topbar">
-    <div class="brand"><img class="logo" src="/favicon.png" alt="" /> OpenEnlarge</div>
+    <button class="brand" on:click={() => (aboutOpen = true)} aria-label="About OpenEnlarge">
+      <img class="logo" src="/favicon.png" alt="" /> OpenEnlarge
+    </button>
     <nav class="tabs">
       <button class:active={$module === "library"} on:click={() => module.set("library")}>Library</button>
       <button class:active={$module === "develop"} disabled={!$hasImages} on:click={gotoDevelop}>
@@ -65,6 +69,7 @@
 </div>
 
 {#if settingsOpen}<SettingsMenu on:close={() => (settingsOpen = false)} />{/if}
+{#if aboutOpen}<AboutModal on:close={() => (aboutOpen = false)} />{/if}
 <ProgressOverlay />
 {#if exporting}
   <ExportModal on:close={() => (exporting = false)} />
@@ -85,7 +90,10 @@
   .app { display: flex; flex-direction: column; height: 100vh; }
   .topbar { display: flex; align-items: center; gap: 18px; padding: 10px 16px;
     border-bottom: 1px solid var(--glass-brd); }
-  .brand { font-weight: 600; letter-spacing: 0.3px; display: flex; align-items: center; gap: 8px; }
+  .brand { font-weight: 600; letter-spacing: 0.3px; display: flex; align-items: center; gap: 8px;
+    background: transparent; border: 0; padding: 4px 8px; margin: -4px -8px; border-radius: 8px;
+    color: var(--text); font-size: inherit; cursor: pointer; transition: background 0.12s; }
+  .brand:hover { background: var(--glass-hi); }
   .logo { width: 33px; height: 33px; border-radius: 8px; display: block; flex: none; }
   .tabs button { background: transparent; border: 0; padding: 6px 14px; border-radius: 8px; color: var(--text-dim); position: relative; }
   .tabs button.active { color: var(--text); background: rgba(244,157,78,0.14); box-shadow: inset 0 0 0 1px rgba(244,157,78,0.4); }

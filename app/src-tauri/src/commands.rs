@@ -467,17 +467,57 @@ pub fn render_view(id: String, params: InvertParams, view: ViewSpec, session: St
     to_jpeg_b64(&out, false, PREVIEW_JPEG_QUALITY)
 }
 
+/// The persistent per-image edits that shape a thumbnail's geometry and retouching.
+/// Mirrors the relevant `ViewSpec` fields but without the zoom/view crop — a
+/// thumbnail always shows the whole (cropped) frame. All fields default so the
+/// grid can request a plain develop-only thumbnail with `{}`.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct ThumbView {
+    #[serde(default)] pub image_crop: Option<[f64; 4]>,
+    #[serde(default)] pub rot90: u8,
+    #[serde(default)] pub flip_h: bool,
+    #[serde(default)] pub flip_v: bool,
+    #[serde(default)] pub angle: f32,
+    #[serde(default)] pub dust: Vec<DustStroke>,
+    #[serde(default)] pub ir_removal: IrRemoval,
+}
+
 /// Render a small (~320px) inverted JPEG of the developed image at the given
-/// params — used to live-refresh the Library grid cell while editing.
+/// params and persistent edits — used to live-refresh the Library grid cell and
+/// filmstrip while editing. Applies orientation/straighten/crop, develop params,
+/// dust strokes, and IR removal so the thumbnail matches the viewport.
 #[tauri::command]
-pub fn thumbnail(id: String, params: InvertParams, session: State<Session>) -> Result<String, String> {
+pub fn thumbnail(id: String, params: InvertParams, view: ThumbView, session: State<Session>) -> Result<String, String> {
     ensure_resident(&session, &id)?;
     let images = session.images.lock().unwrap();
     let img = images.get(&id).ok_or("unknown image id")?;
     let dev = img.developed.as_ref().ok_or("not developed")?;
-    let small = proxy(&dev.working, THUMB_EDGE);
+
+    // Geometry: orient (lossless) → straighten → persistent crop. No view crop —
+    // the whole frame is shown, scaled to fit THUMB_EDGE.
+    let oriented = orient(&dev.working, view.rot90, view.flip_h, view.flip_v);
+    let straightened = rotate(&oriented, view.angle);
+    let base_img = match view.image_crop {
+        Some(nc) => {
+            let (ix, iy, iw, ih) = crop_px(nc, straightened.width, straightened.height);
+            crop(&straightened, ix, iy, iw, ih)
+        }
+        None => straightened,
+    };
+    let small = proxy(&base_img, THUMB_EDGE);
+    let (ow, oh) = (small.width as u32, small.height as u32);
     let ip = resolve_params(&params, &dev.thumb, dev.base);
-    let inv = invert_image(&small, &ip, mode_from(&params.mode));
+    let mut inv = invert_image(&small, &ip, mode_from(&params.mode));
+    let stamps = view_stamps(
+        &view.dust, base_img.width, base_img.height,
+        0, 0, base_img.width, base_img.height, ow, oh,
+    );
+    dust::apply(&mut inv, &stamps);
+    if view.ir_removal.enabled {
+        if let Some(ir) = small.ir.as_ref() {
+            dust::apply_ir(&mut inv, ir, view.ir_removal.sensitivity);
+        }
+    }
     let fin = finish_image(&inv, &finish_from(&params));
     to_jpeg_b64(&fin, false, 82)
 }

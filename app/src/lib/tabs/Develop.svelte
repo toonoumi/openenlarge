@@ -147,14 +147,21 @@
     if (thumbTimer) clearTimeout(thumbTimer);
     const id = $activeId;
     if (!id) return;
+    const c = $activeCrop;
+    const d = $activeDust;
+    const view = {
+      image_crop: c ? [c.rect.x, c.rect.y, c.rect.w, c.rect.h] as [number, number, number, number] : null,
+      rot90: c?.rot90 ?? 0, flip_h: c?.flipH ?? false, flip_v: c?.flipV ?? false, angle: c?.angle ?? 0,
+      dust: d.strokes, ir_removal: d.irRemoval,
+    };
     thumbTimer = setTimeout(async () => {
       try {
-        const t = await api.thumbnail(id, $params);
+        const t = await api.thumbnail(id, $params, view);
         images.update((xs) => xs.map((i) => (i.id === id ? { ...i, thumbnail: t } : i)));
       } catch { /* ignore */ }
     }, 400);
   }
-  $: $params, $activeId, refreshThumb();
+  $: $params, $activeId, $activeCrop, $activeDust, refreshThumb();
 
   let brush = 0.03;            // normalized-to-width brush radius
   let dustRev = 0;            // bumped on any dust change to force Viewport re-render
