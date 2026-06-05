@@ -10,26 +10,9 @@ mod session;
 
 #[cfg(test)]
 pub mod commands_test_support {
-    use crate::session::InvertParams;
-    /// A neutral InvertParams for tests (mirrors default_invert_params()).
-    pub fn sample_invert_params() -> InvertParams {
-        InvertParams {
-            mode: "b".into(), stock: "none".into(), base_rect: None,
-            exposure: 0.0, black: 0.0, gamma: 0.4545, auto_wb: true,
-            temp: 5500.0, tint: 0.0,
-            contrast: 0.0, highlights: 0.0, shadows: 0.0, whites: 0.0, blacks: 0.0,
-            texture: 0.0, vibrance: 0.0, saturation: 0.0,
-            tc_highlights: 0.0, tc_lights: 0.0, tc_darks: 0.0, tc_shadows: 0.0,
-            tc_curve: crate::session::identity_curve(),
-            tc_red: crate::session::identity_curve(),
-            tc_green: crate::session::identity_curve(),
-            tc_blue: crate::session::identity_curve(),
-            cg_sh_hue: 0.0, cg_sh_sat: 0.0, cg_sh_lum: 0.0,
-            cg_mid_hue: 0.0, cg_mid_sat: 0.0, cg_mid_lum: 0.0,
-            cg_hi_hue: 0.0, cg_hi_sat: 0.0, cg_hi_lum: 0.0,
-            cg_glob_hue: 0.0, cg_glob_sat: 0.0, cg_glob_lum: 0.0,
-            cg_blending: 50.0, cg_balance: 0.0,
-        }
+    /// A neutral InvertParams for tests (delegates to commands::default_invert_params).
+    pub fn sample_invert_params() -> crate::session::InvertParams {
+        crate::commands::default_invert_params()
     }
 }
 

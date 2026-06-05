@@ -10,6 +10,19 @@ use half::f16;
 /// real GPUs >= 16384; 8192 is a safe, ample bound for the live proxy.
 pub const MAX_GPU_EDGE: u32 = 8192;
 
+/// The capped texture dimensions for `cap` long-edge, WITHOUT allocating pixels.
+/// Mirrors `proxy`'s aspect-preserving downscale + rounding.
+pub fn capped_dims(img: &Image, cap: u32) -> (u32, u32) {
+    let long = img.width.max(img.height) as u32;
+    if long <= cap {
+        return (img.width as u32, img.height as u32);
+    }
+    let scale = cap as f32 / long as f32;
+    let w = (img.width as f32 * scale).round().max(1.0) as u32;
+    let h = (img.height as f32 * scale).round().max(1.0) as u32;
+    (w, h)
+}
+
 /// Downscale (if needed) so the long edge <= `cap`, then pack the linear-RGB
 /// pixels as little-endian half-float RGBA (alpha = 1.0). Returns the (possibly
 /// reduced) dimensions and the byte buffer ready for `texImage2D(RGBA16F)`.
@@ -42,15 +55,8 @@ pub struct ResolvedInversion {
     pub exposure: f32,
     pub black: f32,
     pub gamma: f32,
-    /// 0 = Mode B (density matrix), 1 = Mode C (per-channel), 2 = Naive.
+    /// 0 = Mode B (density matrix), 1 = Mode C (per-channel). (2 = Naive exists in the shader but the app never emits it.)
     pub mode: u8,
-}
-
-/// Copy a nalgebra Matrix3 into a column-major `[f32; 9]`. nalgebra stores
-/// column-major, so `as_slice()` is already in the layout `uniformMatrix3fv`
-/// (transpose=false) expects.
-fn mat3_col_major(s: &[f32]) -> [f32; 9] {
-    [s[0], s[1], s[2], s[3], s[4], s[5], s[6], s[7], s[8]]
 }
 
 /// Resolve the UI params (+ sampled film base) into GPU uniforms, reusing the
@@ -63,11 +69,13 @@ pub fn resolve_to_uniforms(p: &InvertParams, base: [f32; 3]) -> ResolvedInversio
         Mode::C => 1,
         Mode::Naive => 2,
     };
+    let m_pre: [f32; 9] = ip.m_pre.as_slice().try_into().expect("mat3 has 9 elements");
+    let m_post: [f32; 9] = ip.m_post.as_slice().try_into().expect("mat3 has 9 elements");
     ResolvedInversion {
         base: ip.base,
         wb: ip.wb,
-        m_pre: mat3_col_major(ip.m_pre.as_slice()),
-        m_post: mat3_col_major(ip.m_post.as_slice()),
+        m_pre,
+        m_post,
         exposure: ip.exposure,
         black: ip.black,
         gamma: ip.gamma,
@@ -118,6 +126,16 @@ mod tests {
         assert_eq!(u.m_pre, [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]);
         assert_eq!(u.m_post, [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]);
         assert!((u.exposure - 2.0).abs() < 1e-5, "2^1");
+    }
+
+    #[test]
+    fn capped_dims_matches_pack_dims() {
+        let small = Image { width: 3, height: 2, pixels: vec![[0.0; 3]; 6], ir: None };
+        let (pw, ph, _) = pack_rgba16f(&small, 8192);
+        assert_eq!(capped_dims(&small, 8192), (pw, ph));
+        let big = Image { width: 10, height: 4, pixels: vec![[0.0; 3]; 40], ir: None };
+        let (bw, bh, _) = pack_rgba16f(&big, 5);
+        assert_eq!(capped_dims(&big, 5), (bw, bh));
     }
 
     #[test]

@@ -2,6 +2,7 @@
 
 use crate::convert::{crop, orient, orient_dims, proxy, resize_to, rotate};
 use crate::encode::{to_jpeg_b64, to_png_b64, write_jpeg, write_png, write_tiff8};
+use crate::gpu_upload::{capped_dims, pack_rgba16f, resolve_to_uniforms, ResolvedInversion, MAX_GPU_EDGE};
 use crate::metadata::extract;
 use crate::session::{CachedImage, Developed, ImageEntry, InvertParams, Quality, Session};
 use film_core::calibrate::{auto_wb_gains, sample_base};
@@ -76,7 +77,7 @@ const AUTOWB_EDGE: u32 = 256;
 const PREVIEW_JPEG_QUALITY: u8 = 88;
 const CACHE_WORKING_CAP: u32 = 4096;
 
-fn default_invert_params() -> InvertParams {
+pub(crate) fn default_invert_params() -> InvertParams {
     InvertParams {
         mode: "b".into(), stock: "none".into(), base_rect: None,
         exposure: 0.0, black: 0.0, gamma: 0.4545, auto_wb: true,
@@ -703,8 +704,6 @@ pub fn save_app_state(
     catalog.save_app_state(&key, &value).map_err(|e| e.to_string())
 }
 
-use crate::gpu_upload::{pack_rgba16f, resolve_to_uniforms, ResolvedInversion, MAX_GPU_EDGE};
-
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct WorkingInfo {
     /// Capped dimensions of the float texture working_pixels will return.
@@ -719,7 +718,7 @@ pub fn working_info(id: String, session: State<Session>) -> Result<WorkingInfo, 
     let images = session.images.lock().unwrap();
     let img = images.get(&id).ok_or("unknown image id")?;
     let dev = img.developed.as_ref().ok_or("not developed")?;
-    let (w, h, _) = pack_rgba16f(&dev.working, MAX_GPU_EDGE);
+    let (w, h) = capped_dims(&dev.working, MAX_GPU_EDGE);
     Ok(WorkingInfo { w, h })
 }
 
