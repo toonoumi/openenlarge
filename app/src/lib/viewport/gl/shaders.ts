@@ -23,6 +23,20 @@ uniform float u_vibrance, u_saturation, u_texture;
 uniform vec3 u_cg_sh_off, u_cg_mid_off, u_cg_hi_off, u_cg_glob_off;
 uniform float u_cg_sh_lum, u_cg_mid_lum, u_cg_hi_lum, u_cg_glob_lum;
 uniform float u_cg_sh_edge, u_cg_hi_edge, u_cg_soft;
+// Color Mixer (HSL): per-band sliders pre-divided to unit. Band centers are const.
+uniform float u_cm_hue[8];
+uniform float u_cm_sat[8];
+uniform float u_cm_lum[8];
+// Point Color: up to 8 samples.
+uniform int u_pc_count;
+uniform float u_pc_hue[8];
+uniform float u_pc_sat[8];
+uniform float u_pc_lum[8];
+uniform float u_pc_hue_shift[8];
+uniform float u_pc_sat_shift[8];
+uniform float u_pc_lum_shift[8];
+uniform float u_pc_variance[8];
+uniform float u_pc_range[8];
 
 float tone(float v) {
   v = clamp(v, 0.0, 1.0);
@@ -47,6 +61,93 @@ vec3 colorGrade(vec3 rgb) {
   return clamp(outc, 0.0, 1.0);
 }
 
+const float PI_F = 3.14159265358979;
+const float BAND_CENTERS[8] = float[8](0.0, 30.0, 60.0, 120.0, 180.0, 240.0, 280.0, 320.0);
+const float CM_FALLOFF_DEG = 50.0;
+const float CM_HUE_SHIFT_MAX = 30.0;
+const float CM_LUM_GAIN = 0.25;
+const float CM_SAT_GATE_LO = 0.05;
+const float CM_SAT_GATE_HI = 0.20;
+const float PC_RANGE_MIN_DEG = 5.0;
+const float PC_RANGE_MAX_DEG = 60.0;
+const float PC_SAT_TOL = 0.25;
+const float PC_LUM_TOL = 0.25;
+const float PC_VAR_SPAN = 2.0;
+
+vec3 rgb2hsl(vec3 c) {
+  float mx = max(max(c.r, c.g), c.b);
+  float mn = min(min(c.r, c.g), c.b);
+  float l = (mx + mn) * 0.5;
+  if (mx - mn < 1e-7) return vec3(0.0, 0.0, l);
+  float d = mx - mn;
+  float s = l > 0.5 ? d / (2.0 - mx - mn) : d / (mx + mn);
+  float h;
+  if (mx == c.r) h = (c.g - c.b) / d + (c.g < c.b ? 6.0 : 0.0);
+  else if (mx == c.g) h = (c.b - c.r) / d + 2.0;
+  else h = (c.r - c.g) / d + 4.0;
+  return vec3(h * 60.0, s, l);
+}
+float hue2rgb(float p, float q, float t) {
+  t = fract(t);
+  if (t < 1.0/6.0) return p + (q - p) * 6.0 * t;
+  if (t < 0.5) return q;
+  if (t < 2.0/3.0) return p + (q - p) * (2.0/3.0 - t) * 6.0;
+  return p;
+}
+vec3 hsl2rgb(float h, float s, float l) {
+  if (s <= 0.0) return vec3(l);
+  float q = l < 0.5 ? l * (1.0 + s) : l + s - l * s;
+  float p = 2.0 * l - q;
+  float hk = h / 360.0;
+  return vec3(hue2rgb(p, q, hk + 1.0/3.0), hue2rgb(p, q, hk), hue2rgb(p, q, hk - 1.0/3.0));
+}
+float wrap180(float d) {
+  float x = mod(d + 180.0, 360.0) - 180.0;
+  return x <= -180.0 ? x + 360.0 : x;
+}
+float bandWeight(float h, float center) {
+  float d = abs(wrap180(h - center));
+  return d >= CM_FALLOFF_DEG ? 0.0 : 0.5 * (1.0 + cos(PI_F * d / CM_FALLOFF_DEG));
+}
+vec3 colorMixer(vec3 rgb) {
+  vec3 hsl = rgb2hsl(rgb);
+  float h = hsl.x, s = hsl.y, l = hsl.z;
+  float gate = smoothstep(CM_SAT_GATE_LO, CM_SAT_GATE_HI, s);
+  float hueDelta = 0.0, satFactor = 1.0, lumDelta = 0.0;
+  for (int i = 0; i < 8; i++) {
+    float w = bandWeight(h, BAND_CENTERS[i]);
+    hueDelta += w * gate * u_cm_hue[i] * CM_HUE_SHIFT_MAX;
+    satFactor += w * gate * u_cm_sat[i];
+    lumDelta += w * u_cm_lum[i] * CM_LUM_GAIN;
+  }
+  return hsl2rgb(h + hueDelta, clamp(s * satFactor, 0.0, 1.0), clamp(l + lumDelta, 0.0, 1.0));
+}
+float pcTol(float base, float variance) {
+  return max(0.02, base * (1.0 + (variance / 100.0) * PC_VAR_SPAN));
+}
+float pcHueWeight(float h, float target, float range) {
+  float hw = PC_RANGE_MIN_DEG + (range / 100.0) * (PC_RANGE_MAX_DEG - PC_RANGE_MIN_DEG);
+  float d = abs(wrap180(h - target));
+  return d >= hw ? 0.0 : 0.5 * (1.0 + cos(PI_F * d / hw));
+}
+vec3 pointColor(vec3 rgb) {
+  if (u_pc_count <= 0) return rgb;
+  vec3 hsl = rgb2hsl(rgb);
+  float h = hsl.x, s = hsl.y, l = hsl.z;
+  float hueDelta = 0.0, satFactor = 1.0, lumDelta = 0.0;
+  for (int k = 0; k < 8; k++) {
+    if (k >= u_pc_count) break;
+    float wh = pcHueWeight(h, u_pc_hue[k], u_pc_range[k]);
+    if (wh <= 0.0) continue;
+    float ws = clamp(1.0 - abs(s - u_pc_sat[k]) / pcTol(PC_SAT_TOL, u_pc_variance[k]), 0.0, 1.0);
+    float wl = clamp(1.0 - abs(l - u_pc_lum[k]) / pcTol(PC_LUM_TOL, u_pc_variance[k]), 0.0, 1.0);
+    float w = wh * ws * wl;
+    hueDelta += w * u_pc_hue_shift[k] * CM_HUE_SHIFT_MAX;
+    satFactor += w * u_pc_sat_shift[k];
+    lumDelta += w * u_pc_lum_shift[k] * CM_LUM_GAIN;
+  }
+  return hsl2rgb(h + hueDelta, clamp(s * satFactor, 0.0, 1.0), clamp(l + lumDelta, 0.0, 1.0));
+}
 vec3 finishAt(vec2 uv) {
   vec3 c = texture(u_src, uv).rgb;
   vec3 t = vec3(tone(c.r), tone(c.g), tone(c.b));
@@ -61,7 +162,7 @@ vec3 finishAt(vec2 uv) {
     texture(u_lut, vec2(s.r, 0.5)).r,
     texture(u_lut, vec2(s.g, 0.5)).g,
     texture(u_lut, vec2(s.b, 0.5)).b);
-  return colorGrade(cu);
+  return pointColor(colorMixer(colorGrade(cu)));
 }
 
 void main() {
