@@ -376,14 +376,31 @@ export class FinishRenderer {
     }
     this.drawFinishPass(w, h);
 
-    // Read back.
+    // Read back. readPixels returns rows bottom-to-top (GL origin = bottom-left),
+    // but the Rust readback (image_from_rgba8/_f32) treats row 0 as the top, so
+    // flip vertically here to match that top-to-bottom contract (else export is
+    // upside-down vs the on-screen preview, which the canvas presents y-up).
     let data: Uint8Array | Float32Array;
     if (bit16) { data = new Float32Array(w * h * 4); gl.readPixels(0, 0, w, h, gl.RGBA, gl.FLOAT, data); }
     else { data = new Uint8Array(w * h * 4); gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, data); }
+    flipRowsY(data, w, h);
 
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.deleteFramebuffer(outFbo); gl.deleteTexture(outTex);
     return { data, w, h };
+  }
+}
+
+/** Flip tightly-packed RGBA rows in place (top↔bottom) to convert GL readback
+ *  (bottom-to-top) into the top-to-bottom order file encoders expect. */
+function flipRowsY(data: Uint8Array | Float32Array, w: number, h: number) {
+  const stride = w * 4;
+  const tmp = data.slice(0, stride); // typed-array row scratch (same type as data)
+  for (let y = 0; y < (h >> 1); y++) {
+    const top = y * stride, bot = (h - 1 - y) * stride;
+    tmp.set(data.subarray(top, top + stride));
+    data.copyWithin(top, bot, bot + stride);
+    data.set(tmp, bot);
   }
 }
 

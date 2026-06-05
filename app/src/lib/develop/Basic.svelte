@@ -1,10 +1,10 @@
 <script lang="ts">
   import { get } from "svelte/store";
   import { t } from "$lib/i18n";
-  import { params, activeId, images, folderBaseByPath } from "../store";
+  import { params, activeId, images, folderBaseByPath, baseSampling, sampledBase } from "../store";
   import { api, defaultParams } from "../api";
-  import { reseedActive } from "./historyStore";
-  import { withEffectiveBase } from "./base";
+  import { reseedActive, commitActive } from "./historyStore";
+  import { withEffectiveBase, setFolderBase, clearFolderBase } from "./base";
   import { imageDir } from "../library/folderScope";
   import Icon from "../icons/Icon.svelte";
   import Slider from "./Slider.svelte";
@@ -17,6 +17,42 @@
   $: activeImg = $images.find((i) => i.id === $activeId);
   $: dir = activeImg ? imageDir(activeImg) : "";
   $: effBase = $params.base_override ?? (dir ? $folderBaseByPath[dir] : null) ?? null;
+
+  // ---- Film Base (collapsible; folds the old base-picker panel in here) ----
+  let baseOpen = false;
+  // Reset any in-progress sampling when the active image changes.
+  // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+  $: { $activeId; sampledBase.set(null); baseSampling.set(false); }
+  $: baseScope = ($params.base_override ? "override" : (dir && $folderBaseByPath[dir] ? "folder" : "auto")) as "override" | "folder" | "auto";
+  const scopeKey = { override: "base.scopeOverride", folder: "base.scopeFolder", auto: "base.scopeAuto" } as const;
+  // 8-bit swatch preview of a linear base (display gamma ~1/2.2).
+  const baseCss = (b: [number, number, number] | null) =>
+    b ? `rgb(${b.map((v) => Math.round(255 * Math.min(1, Math.max(0, v ** (1 / 2.2))))).join(",")})` : "transparent";
+  $: effCss = baseCss(effBase);
+  // The base shown in the expanded tools: the freshly sampled one if present, else current.
+  $: shownBase = $sampledBase ?? effBase;
+
+  function toggleRecalibrate() { baseSampling.update((v) => !v); }
+  function applyBaseRoll() {
+    const s = get(sampledBase);
+    if (!s || !dir) return;
+    setFolderBase(dir, s);
+    sampledBase.set(null); baseSampling.set(false);
+  }
+  function applyBaseThisImage() {
+    const s = get(sampledBase);
+    if (!s) return;
+    params.update((p) => ({ ...p, base_override: s }));
+    commitActive();
+    sampledBase.set(null); baseSampling.set(false);
+  }
+  function resetBase() {
+    // Clear the per-image override first; if none, clear the folder default.
+    if ($params.base_override) {
+      params.update((p) => ({ ...p, base_override: null }));
+      commitActive();
+    } else if (dir) clearFolderBase(dir);
+  }
 
   // Seed Temp/Tint from the estimated as-shot white point when the image OR the
   // film profile changes (or the effective base changes). The estimate runs
@@ -85,6 +121,33 @@
         <option value="vision3500t">{$t('basic.stock.vision3500t')}</option>
       </select>
 
+      <!-- Film Base (collapsible) -->
+      <div class="basebar">
+        <button class="basebar-toggle" on:click={() => (baseOpen = !baseOpen)}>
+          <Icon name={baseOpen ? "chevron-down" : "chevron-right"} size={12} />
+          <span>{$t('base.title')} :</span>
+          <span class="cube" style="background:{effCss}"></span>
+        </button>
+      </div>
+      {#if baseOpen}
+        <div class="basetools" transition:slide={{ duration: 220, easing: cubicInOut }}>
+          <p class="basehint">{$t('base.hint')}</p>
+          <div class="swatch-row">
+            <div class="cube big" style="background:{baseCss(shownBase)}"></div>
+            <span class="vals">{shownBase ? shownBase.map((v) => v.toFixed(3)).join(", ") : "—"}</span>
+          </div>
+          <button class="recal" class:on={$baseSampling} on:click={toggleRecalibrate}>
+            {$t('base.recalibrate')}
+          </button>
+          <div class="basebtns">
+            <button disabled={!$sampledBase} on:click={applyBaseRoll}>{$t('base.applyRoll')}</button>
+            <button disabled={!$sampledBase} on:click={applyBaseThisImage}>{$t('base.thisImage')}</button>
+          </div>
+          <button class="basereset" disabled={baseScope === "auto"} on:click={resetBase}>{$t('base.reset')}</button>
+          <p class="scope">{$t(scopeKey[baseScope])}</p>
+        </div>
+      {/if}
+
       <!-- White Balance -->
       <div class="sub">{$t('basic.whiteBalance')}</div>
       <div class="wbhead">
@@ -131,4 +194,29 @@
     font-size: 11px; color: var(--text-dim); margin: 4px 0; }
   .auto { background: transparent; border: 1px solid var(--glass-brd); color: var(--text-dim);
     border-radius: 6px; padding: 2px 8px; font-size: 11px; cursor: pointer; }
+
+  /* Film Base */
+  .basebar { margin: 2px 0 8px; }
+  .basebar-toggle { display: flex; align-items: center; gap: 6px; width: 100%;
+    background: transparent; border: 0; color: var(--text-dim); font-size: 11px;
+    padding: 4px 0; cursor: pointer; text-transform: uppercase; letter-spacing: 0.05em; }
+  .basebar-toggle .cube { margin-left: auto; }
+  .cube { width: 16px; height: 16px; border-radius: 4px; border: 1px solid var(--glass-brd);
+    flex: none; }
+  .cube.big { width: 40px; height: 40px; border-radius: 6px; }
+  .basetools { padding: 2px 2px 8px; }
+  .basehint { font-size: 11px; color: var(--text-faint); margin: 0 0 10px; }
+  .swatch-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .vals { font-size: 11px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+  .recal { width: 100%; padding: 7px; border-radius: 8px; font-size: 12px; cursor: pointer;
+    border: 1px solid var(--glass-brd); background: transparent; color: var(--text); margin-bottom: 8px; }
+  .recal.on { color: #fff; background: rgba(244,157,78,0.18); border-color: rgba(244,157,78,0.5); }
+  .basebtns { display: flex; gap: 6px; margin-bottom: 8px; }
+  .basebtns button { flex: 1; padding: 7px; border-radius: 8px; font-size: 12px; cursor: pointer;
+    border: 1px solid var(--glass-brd); background: transparent; color: var(--text); }
+  .basebtns button:disabled { opacity: 0.4; }
+  .basereset { width: 100%; padding: 6px; border-radius: 8px; font-size: 12px; cursor: pointer;
+    border: 1px solid var(--glass-brd); background: transparent; color: var(--text-dim); }
+  .basereset:disabled { opacity: 0.4; }
+  .scope { font-size: 11px; color: var(--text-faint); margin: 8px 0 0; }
 </style>

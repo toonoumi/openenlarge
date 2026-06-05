@@ -71,8 +71,14 @@ export function selectFolder(path: string | null): void {
 /** Data-URL of the latest rendered develop preview; drives the histogram. */
 export const previewSrc = writable<string>("");
 
-export type Tool = "edit" | "crop" | "eraser" | "base_picker";
+export type Tool = "edit" | "crop" | "eraser";
 export const tool = writable<Tool>("edit");
+
+/** Film-base recalibration: armed from the Basic panel's Film Base section. While
+ * true the viewport shows the drag-to-sample overlay (the sidebar stays in edit
+ * mode). `sampledBase` holds the most recently sampled linear base, or null. */
+export const baseSampling = writable<boolean>(false);
+export const sampledBase = writable<[number, number, number] | null>(null);
 
 /** Id of the image awaiting a delete confirmation (null = no dialog). */
 export const deleteTarget = writable<string | null>(null);
