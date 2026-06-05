@@ -40,6 +40,12 @@ pub fn run() {
             commands::thumbnail,
             commands::export_image,
             commands::as_shot_wb,
+            commands::load_catalog,
+            commands::save_edits,
+            commands::save_crop,
+            commands::save_dust,
+            commands::save_pref,
+            commands::save_app_state,
         ])
         .run(tauri::generate_context!())
         .expect("error while running OpenEnlarge");

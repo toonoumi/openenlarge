@@ -457,6 +457,80 @@ pub fn as_shot_wb(id: String, session: State<Session>) -> Result<AsShotWb, Strin
     Ok(AsShotWb { temp, tint: tint * 150.0 }) // back to UI −150..150
 }
 
+/// Load the whole catalog at launch: return the snapshot to the frontend AND
+/// repopulate the in-memory Session with lightweight (undeveloped) records so
+/// `develop_image`/`render_view` can find each image by id.
+#[tauri::command]
+pub fn load_catalog(
+    session: State<Session>,
+    catalog: State<crate::catalog::Catalog>,
+) -> Result<crate::catalog::CatalogSnapshot, String> {
+    let snap = catalog
+        .snapshot(&|p| Path::new(p).exists())
+        .map_err(|e| e.to_string())?;
+    let mut imgs = session.images.lock().unwrap();
+    imgs.clear();
+    for ci in &snap.images {
+        let metadata = serde_json::from_value(ci.metadata.clone()).unwrap_or_default();
+        imgs.insert(
+            ci.id.clone(),
+            CachedImage {
+                path: ci.path.clone(),
+                file_name: ci.file_name.clone(),
+                metadata,
+                thumbnail: ci.thumbnail.clone(),
+                developed: None,
+            },
+        );
+    }
+    Ok(snap)
+}
+
+#[tauri::command]
+pub fn save_edits(
+    id: String,
+    params_json: String,
+    catalog: State<crate::catalog::Catalog>,
+) -> Result<(), String> {
+    catalog.save_params(&id, &params_json).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn save_crop(
+    id: String,
+    crop_json: String,
+    catalog: State<crate::catalog::Catalog>,
+) -> Result<(), String> {
+    catalog.save_crop(&id, &crop_json).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn save_dust(
+    id: String,
+    dust_json: String,
+    catalog: State<crate::catalog::Catalog>,
+) -> Result<(), String> {
+    catalog.save_dust(&id, &dust_json).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn save_pref(
+    key: String,
+    value: String,
+    catalog: State<crate::catalog::Catalog>,
+) -> Result<(), String> {
+    catalog.save_pref(&key, &value).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn save_app_state(
+    key: String,
+    value: String,
+    catalog: State<crate::catalog::Catalog>,
+) -> Result<(), String> {
+    catalog.save_app_state(&key, &value).map_err(|e| e.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
