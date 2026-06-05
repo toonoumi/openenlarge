@@ -122,6 +122,17 @@ fn stock_from(s: &str) -> Option<Stock> {
     match s {
         "portra400" => Some(Stock::Portra400),
         "fujic200" => Some(Stock::FujiC200),
+        "portra160" => Some(Stock::Portra160),
+        "portra800" => Some(Stock::Portra800),
+        "ektar100" => Some(Stock::Ektar100),
+        "gold200" => Some(Stock::Gold200),
+        "ultramax400" => Some(Stock::Ultramax400),
+        "fujipro400h" => Some(Stock::FujiPro400H),
+        "fujixtra400" => Some(Stock::FujiXtra400),
+        "vision350d" => Some(Stock::Vision350D),
+        "vision3200t" => Some(Stock::Vision3200T),
+        "vision3250d" => Some(Stock::Vision3250D),
+        "vision3500t" => Some(Stock::Vision3500T),
         _ => None,
     }
 }
