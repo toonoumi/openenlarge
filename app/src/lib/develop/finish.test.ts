@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { toneLutBytes, colorGrade } from "./finish";
+import { toneLutBytes, colorGrade, colorMix } from "./finish";
 import { defaultParams, type InvertParams } from "../api";
 
 const P = (over: Partial<InvertParams> = {}): InvertParams => ({ ...defaultParams(), ...over });
@@ -39,6 +39,27 @@ describe("toneLutBytes", () => {
     expect(lut[i]).toBeGreaterThan(150);     // R lifted
     expect(Math.abs(lut[i + 1] - 128)).toBeLessThan(8); // G flat
     expect(Math.abs(lut[i + 2] - 128)).toBeLessThan(8); // B flat
+  });
+});
+
+describe("colorMix", () => {
+  it("default params yield identity uniforms", () => {
+    const u = colorMix(defaultParams());
+    expect(Array.from(u.cm_hue)).toEqual(new Array(8).fill(0));
+    expect(Array.from(u.cm_sat)).toEqual(new Array(8).fill(0));
+    expect(Array.from(u.cm_lum)).toEqual(new Array(8).fill(0));
+    expect(u.pc_count).toBe(0);
+  });
+
+  it("packs a single sample and divides shifts by 100", () => {
+    const p = defaultParams();
+    p.pc_samples = [{ hue: 200, sat: 0.5, lum: 0.4, hue_shift: 50, sat_shift: -100,
+      lum_shift: 0, variance: 0, range: 50 }];
+    const u = colorMix(p);
+    expect(u.pc_count).toBe(1);
+    expect(u.pc_hue[0]).toBeCloseTo(200);
+    expect(u.pc_hue_shift[0]).toBeCloseTo(0.5);
+    expect(u.pc_sat_shift[0]).toBeCloseTo(-1);
   });
 });
 

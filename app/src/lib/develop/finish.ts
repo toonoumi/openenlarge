@@ -5,7 +5,7 @@
 // finish.rs so the live preview matches thumbnails/export.
 
 import { curveLut, sampleLut, LUT_SIZE } from "./curve";
-import { IDENTITY_CURVE, type CurvePoint, type InvertParams } from "../api";
+import { IDENTITY_CURVE, CM_BANDS, type CurvePoint, type InvertParams, type PointColorSample } from "../api";
 
 /** Fall back to the identity curve if a stored curve is missing/degenerate. */
 const safeCurve = (c: CurvePoint[] | undefined | null): CurvePoint[] =>
@@ -100,4 +100,42 @@ export function colorGrade(p: InvertParams): ColorGradeUniforms {
     hi_edge: 0.66 + balance * 0.25,
     softness: 0.1 + 0.3 * (num(p.cg_blending) / 100),
   };
+}
+
+/** Packed Color Mixer uniforms for the GPU (mirror finish.rs::ColorMix). Mixer
+ *  slider values are pre-divided by 100; sample shifts too. Arrays are length 8;
+ *  Point Color slots beyond pc_count are zero-filled. */
+export interface ColorMixUniforms {
+  cm_hue: Float32Array; cm_sat: Float32Array; cm_lum: Float32Array;
+  pc_count: number;
+  pc_hue: Float32Array; pc_sat: Float32Array; pc_lum: Float32Array;
+  pc_hue_shift: Float32Array; pc_sat_shift: Float32Array; pc_lum_shift: Float32Array;
+  pc_variance: Float32Array; pc_range: Float32Array;
+}
+
+export function colorMix(p: InvertParams): ColorMixUniforms {
+  const cm_hue = new Float32Array(8);
+  const cm_sat = new Float32Array(8);
+  const cm_lum = new Float32Array(8);
+  const pRec = p as unknown as Record<string, number>;
+  CM_BANDS.forEach((b, i) => {
+    cm_hue[i] = num(pRec[`cm_${b}_hue`]) / 100;
+    cm_sat[i] = num(pRec[`cm_${b}_sat`]) / 100;
+    cm_lum[i] = num(pRec[`cm_${b}_lum`]) / 100;
+  });
+  const mk = () => new Float32Array(8);
+  const pc_hue = mk(), pc_sat = mk(), pc_lum = mk();
+  const pc_hue_shift = mk(), pc_sat_shift = mk(), pc_lum_shift = mk();
+  const pc_variance = mk(), pc_range = mk();
+  const samples: PointColorSample[] = Array.isArray(p.pc_samples) ? p.pc_samples.slice(0, 8) : [];
+  samples.forEach((s, i) => {
+    pc_hue[i] = num(s.hue); pc_sat[i] = num(s.sat); pc_lum[i] = num(s.lum);
+    pc_hue_shift[i] = num(s.hue_shift) / 100;
+    pc_sat_shift[i] = num(s.sat_shift) / 100;
+    pc_lum_shift[i] = num(s.lum_shift) / 100;
+    pc_variance[i] = num(s.variance);
+    pc_range[i] = num(s.range);
+  });
+  return { cm_hue, cm_sat, cm_lum, pc_count: samples.length,
+    pc_hue, pc_sat, pc_lum, pc_hue_shift, pc_sat_shift, pc_lum_shift, pc_variance, pc_range };
 }
