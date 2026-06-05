@@ -6,6 +6,7 @@ use crate::metadata::extract;
 use crate::session::{CachedImage, Developed, ImageEntry, InvertParams, Quality, Session};
 use film_core::calibrate::{auto_wb_gains, sample_base};
 use film_core::decode::{decode_raw, decode_tiff};
+use film_core::dust::{self, Stamp};
 use film_core::engine::{invert_image, params_for_stock, InversionParams, Mode};
 use film_core::finish::{finish_image, FinishParams};
 use film_core::wb::{gains_to_cct, wb_from_kelvin};
@@ -76,6 +77,35 @@ fn crop_px(norm: [f64; 4], w: usize, h: usize) -> (usize, usize, usize, usize) {
     let cw = (norm[2] * w as f64).round().clamp(1.0, (w - x) as f64) as usize;
     let ch = (norm[3] * h as f64).round().clamp(1.0, (h - y) as f64) as usize;
     (x, y, cw, ch)
+}
+
+/// Map normalized strokes → `Stamp`s in OUTPUT pixel space. `base_w/base_h` are the
+/// displayed (oriented+cropped) image dims at working res; `(cx,cy,cw,ch)` is the
+/// view crop taken from it; `out_w/out_h` is the rendered size of that crop.
+#[allow(clippy::too_many_arguments)]
+fn view_stamps(
+    dust: &[DustStroke], base_w: usize, base_h: usize,
+    cx: usize, cy: usize, cw: usize, ch: usize, out_w: u32, out_h: u32,
+) -> Vec<Stamp> {
+    if cw == 0 || ch == 0 {
+        return Vec::new();
+    }
+    let sx = out_w as f64 / cw as f64;
+    let sy = out_h as f64 / ch as f64;
+    let mut out = Vec::new();
+    for stroke in dust {
+        let r = (stroke.r * base_w as f64 * sx).max(0.5);
+        for pt in &stroke.points {
+            let bx = pt[0] * base_w as f64;
+            let by = pt[1] * base_h as f64;
+            out.push(Stamp {
+                cx: ((bx - cx as f64) * sx) as f32,
+                cy: ((by - cy as f64) * sy) as f32,
+                r: r as f32,
+            });
+        }
+    }
+    out
 }
 
 fn finish_from(p: &InvertParams) -> FinishParams {
@@ -152,6 +182,14 @@ pub fn set_quality(quality: Quality, session: State<Session>) -> Result<(), Stri
     Ok(())
 }
 
+/// A brush stroke from the UI: a polyline of points normalized to the DISPLAYED
+/// image ([0,1] each), with radius `r` normalized to the displayed image WIDTH.
+#[derive(Debug, Clone, Deserialize)]
+pub struct DustStroke {
+    pub points: Vec<[f64; 2]>,
+    pub r: f64,
+}
+
 /// The visible region to render, in FULL-RES pixel coordinates, plus the output
 /// (≈ viewport) pixel size. `raw` selects the un-inverted scan.
 #[derive(Debug, Clone, Deserialize)]
@@ -172,6 +210,7 @@ pub struct ViewSpec {
     #[serde(default)] pub flip_h: bool,
     #[serde(default)] pub flip_v: bool,
     #[serde(default)] pub angle: f32,
+    #[serde(default)] pub dust: Vec<DustStroke>,
 }
 
 #[tauri::command]
@@ -202,13 +241,19 @@ pub fn render_view(id: String, params: InvertParams, view: ViewSpec, session: St
     if cropped.pixels.is_empty() {
         return Err("empty crop".into());
     }
+    let (cw_px, ch_px) = (cropped.width, cropped.height);
     let scaled = resize_to(&cropped, view.out_w.max(1), view.out_h.max(1));
 
     if view.raw {
         return to_jpeg_b64(&scaled, true, PREVIEW_JPEG_QUALITY);
     }
     let ip = resolve_params(&params, &dev.thumb, dev.base);
-    let inv = invert_image(&scaled, &ip, mode_from(&params.mode));
+    let mut inv = invert_image(&scaled, &ip, mode_from(&params.mode));
+    let stamps = view_stamps(
+        &view.dust, base_img.width, base_img.height,
+        cx, cy, cw_px, ch_px, view.out_w.max(1), view.out_h.max(1),
+    );
+    dust::apply(&mut inv, &stamps);
     let out = if view.finish { finish_image(&inv, &finish_from(&params)) } else { inv };
     to_jpeg_b64(&out, false, PREVIEW_JPEG_QUALITY)
 }
@@ -312,5 +357,29 @@ mod tests {
         let green = wb_from_params(5500.0, -150.0);
         assert!(green[0] < 1.0, "negative tint suppresses red relative to green");
         assert!(green[2] < 1.0, "negative tint suppresses blue relative to green");
+    }
+
+    #[test]
+    fn viewspec_dust_defaults_empty_and_parses_points() {
+        let d: ViewSpec = serde_json::from_str(
+            r#"{"crop":[0,0,10,10],"out_w":10,"out_h":10,"raw":false}"#).unwrap();
+        assert!(d.dust.is_empty(), "dust defaults to empty when omitted");
+        let p: ViewSpec = serde_json::from_str(
+            r#"{"crop":[0,0,10,10],"out_w":10,"out_h":10,"raw":false,
+                "dust":[{"points":[[0.5,0.5],[0.6,0.5]],"r":0.02}]}"#).unwrap();
+        assert_eq!(p.dust.len(), 1);
+        assert_eq!(p.dust[0].points.len(), 2);
+    }
+
+    #[test]
+    fn view_stamps_maps_normalized_points_to_output_pixels() {
+        // base image 200x100; view crop = whole base; output 400x200 (2x).
+        let dust = vec![DustStroke { points: vec![[0.5, 0.5]], r: 0.01 }];
+        let s = view_stamps(&dust, 200, 100, 0, 0, 200, 100, 400, 200);
+        assert_eq!(s.len(), 1);
+        assert!((s[0].cx - 200.0).abs() < 0.5, "x: 0.5*200*2 = 200");
+        assert!((s[0].cy - 100.0).abs() < 0.5, "y: 0.5*100*2 = 100");
+        // r normalized to base width: 0.01*200 = 2 base px → *2 scale = 4 out px.
+        assert!((s[0].r - 4.0).abs() < 0.5, "r mapped to output px, got {}", s[0].r);
     }
 }
