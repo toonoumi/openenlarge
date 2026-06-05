@@ -276,7 +276,8 @@ fn blur(img: &Image) -> Image {
 fn apply_texture(img: &Image, amount: f32) -> Image {
     let b = blur(img);
     let k = USM_GAIN * amount;
-    let pixels = img.pixels.iter().zip(b.pixels.iter())
+    // par_iter().zip() over two equal-length indexed slices preserves order.
+    let pixels = img.pixels.par_iter().zip(b.pixels.par_iter())
         .map(|(&v, &lo)| std::array::from_fn(|c| (v[c] + k * (v[c] - lo[c])).clamp(0.0, 1.0)))
         .collect();
     Image { width: img.width, height: img.height, pixels, ir: img.ir.clone() }
@@ -463,6 +464,26 @@ mod tests {
             let want = finish_pixel(px, &p);
             for c in 0..3 {
                 assert!((out.pixels[i][c] - want[c]).abs() < 1e-6, "pixel {i} chan {c}");
+            }
+        }
+    }
+
+    #[test]
+    fn finish_image_with_texture_is_stable_and_clamped() {
+        // A non-flat image so blur differs from the source; texture > 0 exercises the
+        // apply_texture zip-map path. Output must stay in [0,1] and be deterministic.
+        let p = FinishParams { texture: 1.0, ..Default::default() };
+        let pixels = vec![
+            [0.0, 0.0, 0.0], [1.0, 1.0, 1.0],
+            [0.2, 0.5, 0.8], [0.9, 0.1, 0.4],
+        ];
+        let img = Image { width: 2, height: 2, pixels, ir: None };
+        let a = finish_image(&img, &p);
+        let b = finish_image(&img, &p);
+        assert_eq!(a.pixels, b.pixels, "must be deterministic across runs");
+        for px in &a.pixels {
+            for c in 0..3 {
+                assert!((0.0..=1.0).contains(&px[c]), "value {} out of range", px[c]);
             }
         }
     }
