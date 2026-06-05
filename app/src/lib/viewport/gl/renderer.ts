@@ -1,7 +1,7 @@
 import { VERT, FRAG, INVERT_FRAG } from "./shaders";
 import { type InversionUniforms } from "./invert";
 import type { FinishUniforms } from "./uniforms";
-import type { ColorGradeUniforms } from "../../develop/finish";
+import type { ColorGradeUniforms, ColorMixUniforms } from "../../develop/finish";
 import { LUT_SIZE } from "../../develop/curve";
 
 /** True if the environment can create a WebGL2 context. */
@@ -80,6 +80,7 @@ export class FinishRenderer {
   private loc: Record<string, WebGLUniformLocation | null> = {};
   private uniforms: FinishUniforms | null = null;
   private cg: ColorGradeUniforms | null = null;
+  private cm: ColorMixUniforms | null = null;
   private srcW = 0;
   private srcH = 0;
   private hasSource = false;
@@ -127,6 +128,10 @@ export class FinishRenderer {
     for (const n of UNIFORM_NAMES) this.loc[`u_${n}`] = gl.getUniformLocation(prog, `u_${n}`);
     for (const [u] of CG_VEC3) this.loc[u] = gl.getUniformLocation(prog, u);
     for (const [u] of CG_FLOAT) this.loc[u] = gl.getUniformLocation(prog, u);
+    for (const u of [
+      "u_cm_hue","u_cm_sat","u_cm_lum","u_pc_count","u_pc_hue","u_pc_sat","u_pc_lum",
+      "u_pc_hue_shift","u_pc_sat_shift","u_pc_lum_shift","u_pc_variance","u_pc_range",
+    ]) this.loc[u] = gl.getUniformLocation(prog, u);
     gl.uniform1i(this.loc.u_src, 0);
     gl.uniform1i(this.loc.u_lut, 1);
 
@@ -176,6 +181,7 @@ export class FinishRenderer {
   }
 
   setColorGrade(cg: ColorGradeUniforms) { this.cg = cg; }
+  setColorMix(cm: ColorMixUniforms) { this.cm = cm; }
 
   private build(gl: WebGL2RenderingContext): WebGLProgram | null {
     const vs = this.compile(gl, gl.VERTEX_SHADER, VERT);
@@ -299,6 +305,21 @@ export class FinishRenderer {
       for (const [uu, k] of CG_VEC3) gl.uniform3fv(this.loc[uu], cg[k] as [number, number, number]);
       for (const [uu, k] of CG_FLOAT) gl.uniform1f(this.loc[uu], cg[k] as number);
     }
+    const cm = this.cm;
+    if (cm) {
+      gl.uniform1fv(this.loc.u_cm_hue, cm.cm_hue);
+      gl.uniform1fv(this.loc.u_cm_sat, cm.cm_sat);
+      gl.uniform1fv(this.loc.u_cm_lum, cm.cm_lum);
+      gl.uniform1i(this.loc.u_pc_count, cm.pc_count);
+      gl.uniform1fv(this.loc.u_pc_hue, cm.pc_hue);
+      gl.uniform1fv(this.loc.u_pc_sat, cm.pc_sat);
+      gl.uniform1fv(this.loc.u_pc_lum, cm.pc_lum);
+      gl.uniform1fv(this.loc.u_pc_hue_shift, cm.pc_hue_shift);
+      gl.uniform1fv(this.loc.u_pc_sat_shift, cm.pc_sat_shift);
+      gl.uniform1fv(this.loc.u_pc_lum_shift, cm.pc_lum_shift);
+      gl.uniform1fv(this.loc.u_pc_variance, cm.pc_variance);
+      gl.uniform1fv(this.loc.u_pc_range, cm.pc_range);
+    }
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
 
@@ -318,7 +339,7 @@ export class FinishRenderer {
   renderExport(
     src: Uint16Array, w: number, h: number,
     inv: InversionUniforms,
-    fu: FinishUniforms, lut: Uint8Array, cg: ColorGradeUniforms,
+    fu: FinishUniforms, lut: Uint8Array, cg: ColorGradeUniforms, cm: ColorMixUniforms,
     bit16: boolean,
   ): { data: Uint8Array | Float32Array; w: number; h: number } | null {
     const gl = this.gl; if (!gl || !this.invProg || !this.prog) return null;
@@ -329,7 +350,7 @@ export class FinishRenderer {
     this.setSourceFloat(src, w, h);
     this.setInversion(inv);
     this.setGeometry({ crop_off: [0, 0], crop_scale: [1, 1], angle: 0, orient: [1, 0, 0, 1], raw: false, outW: w, outH: h });
-    this.setUniforms(fu); this.setLut(lut); this.setColorGrade(cg);
+    this.setUniforms(fu); this.setLut(lut); this.setColorGrade(cg); this.setColorMix(cm);
 
     // Offscreen output texture + FBO (RGBA8 for 8-bit, RGBA16F for 16-bit).
     const outInternal = bit16 ? gl.RGBA16F : gl.RGBA8;
