@@ -181,7 +181,11 @@ fn finish_from(p: &InvertParams) -> FinishParams {
 /// LIGHT import: thumbnail (embedded preview if available) + metadata + stored
 /// path. No full decode — the heavy work happens in `develop_image`.
 #[tauri::command]
-pub fn import_image(path: String, session: State<Session>) -> Result<ImageEntry, String> {
+pub fn import_image(
+    path: String,
+    session: State<Session>,
+    catalog: State<crate::catalog::Catalog>,
+) -> Result<ImageEntry, String> {
     let p = Path::new(&path);
     let thumbnail = match decode_tiff(p) {
         Ok(prev) => to_png_b64(&proxy(&prev, THUMB_EDGE), true)?,
@@ -189,15 +193,27 @@ pub fn import_image(path: String, session: State<Session>) -> Result<ImageEntry,
     };
     let metadata = extract(p, 0, 0);
     let file_name = p.file_name().and_then(|s| s.to_str()).unwrap_or("image").to_string();
+    let metadata_json = serde_json::to_string(&metadata).map_err(|e| e.to_string())?;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    let id = catalog
+        .upsert_image(&path, &file_name, &metadata_json, &thumbnail, now)
+        .map_err(|e| e.to_string())?;
     let cached = CachedImage { path, file_name, metadata, thumbnail, developed: None };
-    Ok(session.insert(cached))
+    Ok(session.insert_with_id(id, cached))
 }
 
 /// HEAVY step: decode the file, build the working image at the quality cap, a
 /// small auto-WB thumb, and sample the base. Drops full_res. Returns the updated
 /// entry (real dimensions + developed=true).
 #[tauri::command]
-pub fn develop_image(id: String, session: State<Session>) -> Result<ImageEntry, String> {
+pub fn develop_image(
+    id: String,
+    session: State<Session>,
+    catalog: State<crate::catalog::Catalog>,
+) -> Result<ImageEntry, String> {
     let cap = session.quality.lock().unwrap().cap();
     let path = {
         let images = session.images.lock().unwrap();
@@ -224,6 +240,8 @@ pub fn develop_image(id: String, session: State<Session>) -> Result<ImageEntry, 
     img.metadata.height = h;
     img.thumbnail = thumbnail.clone();
     img.developed = Some(Developed { working, thumb, base });
+    let metadata_json = serde_json::to_string(&img.metadata).map_err(|e| e.to_string())?;
+    let _ = catalog.update_image_render(&id, &thumbnail, &metadata_json);
     Ok(ImageEntry {
         id: id.clone(),
         path: img.path.clone(),
@@ -232,6 +250,7 @@ pub fn develop_image(id: String, session: State<Session>) -> Result<ImageEntry, 
         metadata: img.metadata.clone(),
         developed: true,
         has_ir,
+        offline: false,
     })
 }
 
@@ -245,8 +264,14 @@ pub fn set_quality(quality: Quality, session: State<Session>) -> Result<(), Stri
 /// file to the OS trash (recoverable). Removing from the session always happens
 /// first so the app forgets the image even if the trash step fails.
 #[tauri::command]
-pub fn delete_image(id: String, delete_file: bool, session: State<Session>) -> Result<(), String> {
+pub fn delete_image(
+    id: String,
+    delete_file: bool,
+    session: State<Session>,
+    catalog: State<crate::catalog::Catalog>,
+) -> Result<(), String> {
     let removed = session.images.lock().unwrap().remove(&id);
+    let _ = catalog.delete_image(&id);
     if delete_file {
         let img = removed.ok_or_else(|| "unknown image".to_string())?;
         trash::delete(&img.path).map_err(|e| format!("{e}"))?;
