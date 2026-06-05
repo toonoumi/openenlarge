@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, createEventDispatcher } from "svelte";
   import { api, type InvertParams } from "../api";
+  import type { IrRemoval } from "../api";
   import { previewSrc } from "../store";
   import { FinishRenderer, webgl2Available } from "./gl/renderer";
   import { finishUniforms } from "./gl/uniforms";
@@ -26,6 +27,7 @@
   export let dust: DustStroke[] = [];
   /** Bumped by the parent on any dust change to force a re-render. */
   export let dustRev = 0;
+  export let irRemoval: IrRemoval = { enabled: false, sensitivity: 50 };
 
   const dispatch = createEventDispatcher<{ stroke: DustStroke; brush: number }>();
 
@@ -118,7 +120,7 @@
     try {
       const data = await api.renderView(id, params, {
         crop: [0, 0, imgW, imgH], out_w, out_h, raw, finish: !(useGL && renderer),
-        image_crop: imageCrop, rot90, flip_h: flipH, flip_v: flipV, angle, dust,
+        image_crop: imageCrop, rot90, flip_h: flipH, flip_v: flipV, angle, dust, ir_removal: irRemoval,
       });
       if (useGL && renderer) {
         const im = await loadImage(data);
@@ -148,7 +150,7 @@
 
   // Re-fetch the SOURCE only when the inversion / zoom / view changes. In Plan 2A
   // exposure/temp/tint are still baked by the backend, so they live in this key.
-  $: srcKey = `${id}|${raw}|${eff}|${vpW}|${vpH}|${params.mode}|${params.stock}|${params.exposure}|${params.temp}|${params.tint}|${imageCrop ? imageCrop.join(',') : 'full'}|${rot90}|${flipH}|${flipV}|${angle}|${dustRev}`;
+  $: srcKey = `${id}|${raw}|${eff}|${vpW}|${vpH}|${params.mode}|${params.stock}|${params.exposure}|${params.temp}|${params.tint}|${imageCrop ? imageCrop.join(',') : 'full'}|${rot90}|${flipH}|${flipV}|${angle}|${dustRev}|${irRemoval.enabled}|${irRemoval.sensitivity}`;
   $: srcKey, imgW, imgH, scheduleIfReady();
 
   // Finishing-only change → GPU redraw, no backend fetch.

@@ -12,7 +12,7 @@
   import CropView from "../crop/CropView.svelte";
   import CropPanel from "../crop/CropPanel.svelte";
   import EraserPanel from "../develop/EraserPanel.svelte";
-  import { addStroke, undoStroke, resetDust, emptyDust, type DustStroke, type DustEdits } from "../develop/dust";
+  import { addStroke, undoStroke, resetDust, emptyDust, setIrEnabled, setIrSensitivity, type DustStroke, type DustEdits } from "../develop/dust";
   import type { Rect, CropRect } from "../crop/types";
   import { default80, conform, constrainToRotated } from "../crop/cropMath";
   import { presetNormAspect } from "../crop/presets";
@@ -136,6 +136,10 @@
   const commitStroke = (s: DustStroke) => updateDust((d) => addStroke(d, s));
   const undoDust = () => updateDust((d) => undoStroke(d));
   const resetDustEdits = () => updateDust((d) => resetDust(d));
+  function setIrOn(on: boolean) { updateDust((d) => setIrEnabled(d, on)); }
+  function setIrSens(v: number) { updateDust((d) => setIrSensitivity(d, v)); }
+
+  $: hasIr = active?.has_ir ?? false;
 
   let menu: { x: number; y: number } | null = null;
   function onContext(e: MouseEvent) { e.preventDefault(); menu = { x: e.clientX, y: e.clientY }; }
@@ -150,7 +154,7 @@
       await api.exportImage($activeId, $params, out, imageCrop, {
         rot90: committed?.rot90 ?? 0, flip_h: committed?.flipH ?? false,
         flip_v: committed?.flipV ?? false, angle: committed?.angle ?? 0,
-      }, dust.strokes);
+      }, dust.strokes, dust.irRemoval);
       msg = "Exported ✓";
     } catch (e) { msg = "Error: " + e; }
     exporting = false;
@@ -169,7 +173,7 @@
       {:else}
         <Viewport id={$activeId} params={$params} imgW={effW} imgH={effH} imageCrop={imageCrop}
                   rot90={cRot} flipH={committed?.flipH ?? false} flipV={committed?.flipV ?? false} angle={committed?.angle ?? 0}
-                  eraser={$tool === "eraser"} {brush} dust={dust.strokes} {dustRev}
+                  eraser={$tool === "eraser"} {brush} dust={dust.strokes} irRemoval={dust.irRemoval} {dustRev}
                   on:stroke={(e) => commitStroke(e.detail)} on:brush={(e) => (brush = e.detail)} />
       {/if}
     {:else}<div class="hint">Not developed yet</div>{/if}
@@ -186,7 +190,11 @@
                    on:preset={(e) => onPreset(e.detail)} on:swap={onSwap} on:reset={onReset}
                    on:rotate={(e) => onRotate(e.detail)} on:flip={(e) => onFlip(e.detail)} />
       {:else if $tool === "eraser"}
-        <EraserPanel bind:brush on:reset={resetDustEdits} />
+        <EraserPanel bind:brush {hasIr}
+                     irEnabled={dust.irRemoval.enabled} irSensitivity={dust.irRemoval.sensitivity}
+                     on:reset={resetDustEdits}
+                     on:irEnabled={(e) => setIrOn(e.detail)}
+                     on:irSensitivity={(e) => setIrSens(e.detail)} />
       {/if}
       <button class="export" on:click={exportTiff} disabled={exporting || !$activeId}>
         {exporting ? "Exporting…" : "Export 16-bit TIFF"}
