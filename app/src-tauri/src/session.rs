@@ -37,8 +37,10 @@ impl Default for Quality {
 pub struct InvertParams {
     pub mode: String,
     pub stock: String,
-    #[allow(dead_code)]
-    pub base_rect: Option<[usize; 4]>,
+    /// Per-image film-base override. When set, used verbatim as the orange-mask
+    /// base; when None, the develop-time auto base (`Developed.base`) is used.
+    #[serde(default)]
+    pub base_override: Option<[f32; 3]>,
     /// Exposure in EV stops (−5..5); converted to a multiplier (2^ev) downstream.
     pub exposure: f32,
     pub black: f32,

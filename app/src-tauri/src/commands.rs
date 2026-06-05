@@ -79,7 +79,7 @@ const CACHE_WORKING_CAP: u32 = 4096;
 
 pub(crate) fn default_invert_params() -> InvertParams {
     InvertParams {
-        mode: "b".into(), stock: "none".into(), base_rect: None,
+        mode: "b".into(), stock: "none".into(), base_override: None,
         exposure: 0.0, black: 0.0, gamma: 0.4545, auto_wb: true,
         temp: 5500.0, tint: 0.0,
         contrast: 0.0, highlights: 0.0, shadows: 0.0, whites: 0.0, blacks: 0.0,
@@ -127,6 +127,12 @@ pub(crate) fn build_params(p: &InvertParams, base: [f32; 3]) -> InversionParams 
         Some(s) if p.mode == "b" => params_for_stock(s, base, exposure, p.black, p.gamma),
         _ => InversionParams { base, exposure, black: p.black, gamma: p.gamma, ..Default::default() },
     }
+}
+
+/// The base to invert with: the per-image override if set, else the develop-time
+/// auto base sampled at `develop_image` time.
+pub(crate) fn effective_base(p: &InvertParams, dev_base: [f32; 3]) -> [f32; 3] {
+    p.base_override.unwrap_or(dev_base)
 }
 
 pub(crate) fn wb_from_params(temp: f32, tint: f32) -> [f32; 3] {
@@ -452,7 +458,7 @@ pub fn render_view(id: String, params: InvertParams, view: ViewSpec, session: St
     if view.raw {
         return to_jpeg_b64(&scaled, true, PREVIEW_JPEG_QUALITY);
     }
-    let ip = resolve_params(&params, &dev.thumb, dev.base);
+    let ip = resolve_params(&params, &dev.thumb, effective_base(&params, dev.base));
     let mut inv = invert_image(&scaled, &ip, mode_from(&params.mode));
     let stamps = view_stamps(
         &view.dust, base_img.width, base_img.height,
@@ -507,7 +513,7 @@ pub fn thumbnail(id: String, params: InvertParams, view: ThumbView, session: Sta
     };
     let small = proxy(&base_img, THUMB_EDGE);
     let (ow, oh) = (small.width as u32, small.height as u32);
-    let ip = resolve_params(&params, &dev.thumb, dev.base);
+    let ip = resolve_params(&params, &dev.thumb, effective_base(&params, dev.base));
     let mut inv = invert_image(&small, &ip, mode_from(&params.mode));
     let stamps = view_stamps(
         &view.dust, base_img.width, base_img.height,
@@ -553,7 +559,7 @@ pub fn export_image(
         }
         None => full,
     };
-    let ip = resolve_params(&params, &thumb, base);
+    let ip = resolve_params(&params, &thumb, effective_base(&params, base));
     let mut inv = invert_image(&full, &ip, mode_from(&params.mode));
     let stamps = export_stamps(&dust, inv.width, inv.height);
     dust::apply(&mut inv, &stamps);
@@ -610,7 +616,7 @@ pub fn export_begin(id: String, params: InvertParams, spec: BakeSpec, session: S
     let full = decode_any(Path::new(&path))?;
     let baked = bake_working(&full, &spec);           // geometry + pre-invert heal, full-res
     let (w, h, bytes) = pack_rgba16f(&baked, u32::MAX); // no cap for export
-    let uniforms = resolve_to_uniforms(&params, base);
+    let uniforms = resolve_to_uniforms(&params, effective_base(&params, base));
     *session.pending_export.lock().unwrap() = Some(PreparedExport { w, h, bytes });
     Ok(ExportPrep { w, h, uniforms })
 }
@@ -701,7 +707,7 @@ pub fn as_shot_wb(id: String, params: InvertParams, session: State<Session>) -> 
     // Estimate WB against the user's ACTUAL stock/mode so the gains neutralise the
     // colour space the image is actually rendered in. `build_params` leaves `wb` at
     // [1,1,1], so the estimate is independent of any temp/tint already on the sliders.
-    let ip = build_params(&params, base);
+    let ip = build_params(&params, effective_base(&params, base));
     let first = invert_image(&thumb, &ip, mode_from(&params.mode));
     let gains = auto_wb_gains(&first);
     let (temp, tint) = gains_to_cct(gains);
@@ -872,12 +878,21 @@ pub fn resolved_inversion(
     let images = session.images.lock().unwrap();
     let img = images.get(&id).ok_or("unknown image id")?;
     let dev = img.developed.as_ref().ok_or("not developed")?;
-    Ok(resolve_to_uniforms(&params, dev.base))
+    Ok(resolve_to_uniforms(&params, effective_base(&params, dev.base)))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn effective_base_prefers_override_then_dev_base() {
+        let mut p = crate::commands_test_support::sample_invert_params();
+        p.base_override = None;
+        assert_eq!(effective_base(&p, [0.8, 0.6, 0.4]), [0.8, 0.6, 0.4], "None -> dev base");
+        p.base_override = Some([0.1, 0.2, 0.3]);
+        assert_eq!(effective_base(&p, [0.8, 0.6, 0.4]), [0.1, 0.2, 0.3], "Some -> override");
+    }
 
     #[test]
     fn viewspec_finish_defaults_true_and_parses_false() {
