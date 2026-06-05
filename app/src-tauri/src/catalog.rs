@@ -26,6 +26,15 @@ pub struct CatalogEdits {
     pub dust: Option<Value>,
 }
 
+/// The full catalog handed to the frontend on launch.
+#[derive(Debug, Clone, Serialize)]
+pub struct CatalogSnapshot {
+    pub images: Vec<CatalogImage>,
+    pub edits: Vec<CatalogEdits>,
+    pub prefs: HashMap<String, String>,
+    pub app_state: HashMap<String, String>,
+}
+
 /// The on-disk catalog. Wraps a single SQLite connection behind a Mutex
 /// (rusqlite Connection is not Sync).
 pub struct Catalog {
@@ -214,6 +223,16 @@ impl Catalog {
         self.load_kv("app_state")
     }
 
+    /// Aggregate everything for launch. `exists` decides each image's offline flag.
+    pub fn snapshot(&self, exists: &dyn Fn(&str) -> bool) -> rusqlite::Result<CatalogSnapshot> {
+        Ok(CatalogSnapshot {
+            images: self.load_images(exists)?,
+            edits: self.load_edits()?,
+            prefs: self.load_prefs()?,
+            app_state: self.load_app_state()?,
+        })
+    }
+
     /// Current schema version (for tests).
     pub fn user_version(&self) -> i64 {
         self.conn
@@ -358,5 +377,20 @@ mod tests {
         let st = cat.load_app_state().unwrap();
         assert_eq!(st.get("grid_zoom").map(String::as_str), Some("55"));
         assert_eq!(st.get("module").map(String::as_str), Some("develop"));
+    }
+
+    #[test]
+    fn snapshot_aggregates_everything() {
+        let cat = Catalog::open_in_memory().unwrap();
+        let id = cat.upsert_image("/x/a.dng", "a.dng", r#"{"width":100}"#, "t", 1).unwrap();
+        cat.save_params(&id, r#"{"exposure":1.0}"#).unwrap();
+        cat.save_pref("develop_mode", "c").unwrap();
+        cat.save_app_state("module", "library").unwrap();
+        let snap = cat.snapshot(&|_| true).unwrap();
+        assert_eq!(snap.images.len(), 1);
+        assert_eq!(snap.edits.len(), 1);
+        assert_eq!(snap.edits[0].image_id, id);
+        assert_eq!(snap.prefs.get("develop_mode").map(String::as_str), Some("c"));
+        assert_eq!(snap.app_state.get("module").map(String::as_str), Some("library"));
     }
 }
