@@ -9,8 +9,8 @@ export interface Mods {
 }
 
 export const allSelected = (ids: string[]): SelState => ({
-  selected: new Set(ids),
-  anchor: ids[ids.length - 1] ?? null,
+  selected: new Set(ids ?? []),
+  anchor: ids && ids.length > 0 ? ids[ids.length - 1] : null,
 });
 
 export const noneSelected = (): SelState => ({ selected: new Set(), anchor: null });

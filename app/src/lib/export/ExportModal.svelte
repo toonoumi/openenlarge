@@ -7,7 +7,7 @@
   import { defaultParams, type ExportFormat } from "../api";
   import { api } from "../api";
   import { emptyDust } from "../develop/dust";
-  import { allSelected, click, isAllSelected, toggleAll, type SelState } from "./selection";
+  import { allSelected, noneSelected, click, isAllSelected, toggleAll, type SelState } from "./selection";
   import { outName } from "./naming";
 
   const dispatch = createEventDispatcher<{ close: void }>();
@@ -15,7 +15,10 @@
   $: imgs = $developedImages;
   $: ids = imgs.map((i) => i.id);
 
-  let sel: SelState = allSelected(ids);
+  // Start empty: `ids` is a `$:`-derived value and is still undefined during this
+  // initializer (reactive statements run after init). The guard below selects-all
+  // once the developed-image list is known.
+  let sel: SelState = noneSelected();
   let initialized = false;
   // Initialize selection once images are known (all selected by default).
   $: if (!initialized && ids.length > 0) { sel = allSelected(ids); initialized = true; }

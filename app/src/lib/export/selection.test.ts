@@ -47,4 +47,16 @@ describe("selection model", () => {
     const refilled = toggleAll(cleared, ids);
     expect(isAllSelected(refilled, ids)).toBe(true);
   });
+
+  // Regression: a Svelte component may call allSelected with a `$:`-derived array
+  // that is still undefined during instance init — it must not throw.
+  it("allSelected tolerates undefined/empty ids without throwing", () => {
+    expect(() => allSelected(undefined as unknown as string[])).not.toThrow();
+    const u = allSelected(undefined as unknown as string[]);
+    expect(u.selected.size).toBe(0);
+    expect(u.anchor).toBeNull();
+    const e = allSelected([]);
+    expect(e.selected.size).toBe(0);
+    expect(e.anchor).toBeNull();
+  });
 });
