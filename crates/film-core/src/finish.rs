@@ -462,8 +462,8 @@ mod tests {
         let out = finish_image(&img, &p);
         for (i, &px) in pixels.iter().enumerate() {
             let want = finish_pixel(px, &p);
-            for c in 0..3 {
-                assert!((out.pixels[i][c] - want[c]).abs() < 1e-6, "pixel {i} chan {c}");
+            for (c, (&got, &exp)) in out.pixels[i].iter().zip(want.iter()).enumerate() {
+                assert!((got - exp).abs() < 1e-6, "pixel {i} chan {c}");
             }
         }
     }
@@ -482,8 +482,8 @@ mod tests {
         let b = finish_image(&img, &p);
         assert_eq!(a.pixels, b.pixels, "must be deterministic across runs");
         for px in &a.pixels {
-            for c in 0..3 {
-                assert!((0.0..=1.0).contains(&px[c]), "value {} out of range", px[c]);
+            for &v in px.iter() {
+                assert!((0.0..=1.0).contains(&v), "value {v} out of range");
             }
         }
     }

@@ -301,8 +301,8 @@ mod tests {
         assert_eq!(out.height, 2);
         for (i, &px) in pixels.iter().enumerate() {
             let want = invert_b(px, &p);
-            for c in 0..3 {
-                assert!((out.pixels[i][c] - want[c]).abs() < 1e-6, "pixel {i} chan {c}");
+            for (c, (&got, &exp)) in out.pixels[i].iter().zip(want.iter()).enumerate() {
+                assert!((got - exp).abs() < 1e-6, "pixel {i} chan {c}");
             }
         }
     }
