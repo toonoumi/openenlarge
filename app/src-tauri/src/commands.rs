@@ -311,6 +311,7 @@ pub fn export_image(
     image_crop: Option<[f64; 4]>,
     rot90: u8, flip_h: bool, flip_v: bool, angle: f32,
     dust: Vec<DustStroke>,
+    ir_removal: IrRemoval,
     session: State<Session>,
 ) -> Result<(), String> {
     let (path, base, thumb) = {
@@ -333,6 +334,11 @@ pub fn export_image(
     let mut inv = invert_image(&full, &ip, mode_from(&params.mode));
     let stamps = export_stamps(&dust, inv.width, inv.height);
     dust::apply(&mut inv, &stamps);
+    if ir_removal.enabled {
+        if let Some(ir) = full.ir.as_ref() {
+            dust::apply_ir(&mut inv, ir, ir_removal.sensitivity);
+        }
+    }
     let fin = finish_image(&inv, &finish_from(&params));
     film_core::export::write_tiff16(&fin, Path::new(&out_path)).map_err(|e| format!("{e}"))
 }
