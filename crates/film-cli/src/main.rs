@@ -61,6 +61,10 @@ struct Cli {
     black: f32,
     #[arg(long, default_value = "0.4545")]
     gamma: f32,
+    /// Decode the input and report whether it carries an infrared plane, then exit.
+    /// (Still requires a dummy `-o`, e.g. `-o /dev/null`.)
+    #[arg(long)]
+    check_ir: bool,
     /// Emit B, C, and naive outputs side by side (writes <output stem>_{b,c,naive}.tiff)
     #[arg(long)]
     compare: bool,
@@ -82,6 +86,20 @@ fn main() -> Result<()> {
         _ => film_core::decode::decode_raw(&cli.input),
     }
     .with_context(|| format!("decoding {:?}", cli.input))?;
+
+    if cli.check_ir {
+        match &img.ir {
+            Some(ir) => println!(
+                "{:?}: {}x{} RGB+IR (4-channel); ir samples = {}",
+                cli.input, img.width, img.height, ir.len()
+            ),
+            None => println!(
+                "{:?}: {}x{} RGB only — no infrared plane",
+                cli.input, img.width, img.height
+            ),
+        }
+        return Ok(());
+    }
 
     let rect = cli.base_rect.as_ref().and_then(|v| {
         if v.len() == 4 {
