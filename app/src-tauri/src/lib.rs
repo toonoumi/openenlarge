@@ -29,6 +29,7 @@ pub fn run() {
             commands::import_image,
             commands::develop_image,
             commands::set_quality,
+            commands::delete_image,
             commands::render_view,
             commands::thumbnail,
             commands::export_image,

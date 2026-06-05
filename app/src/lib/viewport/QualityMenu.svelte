@@ -24,6 +24,8 @@
   <div class="head">Preview quality</div>
   <button class:on={$quality === "performance"} on:click={() => pick("performance")}>Performance · 4K</button>
   <button class:on={$quality === "quality"} on:click={() => pick("quality")}>Quality · full res</button>
+  <div class="divider"></div>
+  <button on:click={() => dispatch("delete")}>Delete image…</button>
 </div>
 
 <style>
@@ -31,6 +33,7 @@
     border-radius: 10px; padding: 6px; min-width: 180px; backdrop-filter: blur(20px);
     box-shadow: 0 12px 40px rgba(0,0,0,0.5); }
   .head { font-size: 11px; color: var(--text-dim); padding: 4px 8px; }
+  .divider { height: 1px; margin: 5px 6px; background: var(--glass-brd); }
   button { display: block; width: 100%; text-align: left; padding: 7px 8px; border: 0;
     background: transparent; border-radius: 7px; color: var(--text-dim); }
   button.on { color: var(--text); background: rgba(244,157,78,0.16); }
