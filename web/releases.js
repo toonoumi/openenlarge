@@ -6,6 +6,7 @@
 
   function detectOS() {
     var ua = (navigator.userAgent || "") + " " + (navigator.platform || "");
+    if (/Android/i.test(ua)) return null; // Android UA contains "Linux"; no desktop build for it
     if (/Mac|iPhone|iPad/i.test(ua)) return "macos";
     if (/Win/i.test(ua)) return "windows";
     if (/Linux|X11/i.test(ua)) return "linux";
@@ -66,9 +67,10 @@
       // Wire the per-OS quick links to their best asset, if present.
       var row = document.getElementById("os-row");
       if (row) {
-        ["macos", "windows", "linux"].forEach(function (o, i) {
+        ["macos", "windows", "linux"].forEach(function (o) {
           var a = pickAsset(assets, o);
-          if (a && row.children[i]) row.children[i].href = a.browser_download_url;
+          var link = row.querySelector('[data-os="' + o + '"]');
+          if (a && link) link.href = a.browser_download_url;
         });
       }
     })
