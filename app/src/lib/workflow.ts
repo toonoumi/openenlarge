@@ -1,11 +1,27 @@
 import { get } from "svelte/store";
 import { images, activeId, module, developProgress, editsById, cropById, dustById, folderImages } from "./store";
-import { api, type ImageEntry } from "./api";
+import { api, type ImageEntry, type InvertParams } from "./api";
 import { dropHistory } from "./develop/historyStore";
 
 /** Ids of images not yet developed, in order. Pure helper (testable). */
 export function undevelopedIds(list: ImageEntry[]): string[] {
   return list.filter((i) => !i.developed).map((i) => i.id);
+}
+
+/** Return a new edits map with `stock` set on each id in `ids` (seeding absent
+ * ids from `makeDefault()`). Pure — does not mutate the input map. */
+export function applyStockToIds(
+  editsMap: Record<string, InvertParams>,
+  ids: string[],
+  stock: string,
+  makeDefault: () => InvertParams,
+): Record<string, InvertParams> {
+  if (ids.length === 0) return editsMap;
+  const out = { ...editsMap };
+  for (const id of ids) {
+    out[id] = { ...(out[id] ?? makeDefault()), stock: stock as InvertParams["stock"] };
+  }
+  return out;
 }
 
 /** Resolve after the browser has had a chance to paint (two rAFs). Falls back to a
