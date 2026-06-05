@@ -1,5 +1,7 @@
 import { VERT, FRAG } from "./shaders";
 import type { FinishUniforms } from "./uniforms";
+import type { ColorGradeUniforms } from "../../develop/finish";
+import { LUT_SIZE } from "../../develop/curve";
 
 /** True if the environment can create a WebGL2 context. */
 export function webgl2Available(): boolean {
@@ -17,15 +19,22 @@ const UNIFORM_NAMES = [
   "vibrance", "saturation", "texture",
 ] as const;
 
+// Color-grading uniforms: vec3 offsets, float lums, mask edges.
+const CG_VEC3 = ["cg_sh_off", "cg_mid_off", "cg_hi_off", "cg_glob_off"] as const;
+const CG_FLOAT = ["cg_sh_lum", "cg_mid_lum", "cg_hi_lum", "cg_glob_lum",
+  "cg_sh_edge", "cg_hi_edge", "cg_soft"] as const;
+
 /** Applies the finishing layer to a source preview texture via a fragment shader. */
 export class FinishRenderer {
   readonly available: boolean;
   private gl: WebGL2RenderingContext | null = null;
   private prog: WebGLProgram | null = null;
   private tex: WebGLTexture | null = null;
+  private lutTex: WebGLTexture | null = null;
   private vao: WebGLVertexArrayObject | null = null;
   private loc: Record<string, WebGLUniformLocation | null> = {};
   private uniforms: FinishUniforms | null = null;
+  private cg: ColorGradeUniforms | null = null;
   private srcW = 0;
   private srcH = 0;
   private hasSource = false;
@@ -44,13 +53,35 @@ export class FinishRenderer {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    // Tone-curve LUT texture (256x1 RGBA8, linear for smooth interpolation).
+    this.lutTex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, this.lutTex);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    this.setLut(identityLut());
     gl.useProgram(prog);
     this.loc.u_src = gl.getUniformLocation(prog, "u_src");
+    this.loc.u_lut = gl.getUniformLocation(prog, "u_lut");
     this.loc.u_texel = gl.getUniformLocation(prog, "u_texel");
     for (const n of UNIFORM_NAMES) this.loc[`u_${n}`] = gl.getUniformLocation(prog, `u_${n}`);
+    for (const n of CG_VEC3) this.loc[`u_${n}`] = gl.getUniformLocation(prog, `u_${n}`);
+    for (const n of CG_FLOAT) this.loc[`u_${n}`] = gl.getUniformLocation(prog, `u_${n}`);
     gl.uniform1i(this.loc.u_src, 0);
+    gl.uniform1i(this.loc.u_lut, 1);
     this.available = true;
   }
+
+  /** Upload a 256×1 RGBA8 tone LUT. */
+  setLut(bytes: Uint8Array) {
+    const gl = this.gl; if (!gl || !this.lutTex) return;
+    gl.bindTexture(gl.TEXTURE_2D, this.lutTex);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, LUT_SIZE, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, bytes);
+  }
+
+  setColorGrade(cg: ColorGradeUniforms) { this.cg = cg; }
 
   private build(gl: WebGL2RenderingContext): WebGLProgram | null {
     const vs = this.compile(gl, gl.VERTEX_SHADER, VERT);
@@ -93,8 +124,25 @@ export class FinishRenderer {
     gl.viewport(0, 0, this.srcW, this.srcH);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.tex);
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, this.lutTex);
     gl.uniform2f(this.loc.u_texel, 1 / this.srcW, 1 / this.srcH);
     for (const n of UNIFORM_NAMES) gl.uniform1f(this.loc[`u_${n}`], (u as unknown as Record<string, number>)[n]);
+    const cg = this.cg;
+    if (cg) {
+      for (const n of CG_VEC3) gl.uniform3fv(this.loc[`u_${n}`], (cg as unknown as Record<string, [number, number, number]>)[n]);
+      for (const n of CG_FLOAT) gl.uniform1f(this.loc[`u_${n}`], (cg as unknown as Record<string, number>)[n]);
+    }
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
+}
+
+/** A neutral 256×1 RGBA8 ramp LUT (identity tone curve). */
+function identityLut(): Uint8Array {
+  const out = new Uint8Array(LUT_SIZE * 4);
+  for (let i = 0; i < LUT_SIZE; i++) {
+    const v = Math.round((i / (LUT_SIZE - 1)) * 255);
+    out[i * 4] = v; out[i * 4 + 1] = v; out[i * 4 + 2] = v; out[i * 4 + 3] = 255;
+  }
+  return out;
 }

@@ -15,9 +15,14 @@ precision highp float;
 in vec2 v_uv;
 out vec4 o;
 uniform sampler2D u_src;
+uniform sampler2D u_lut;         // 256x1 composed tone LUT (R/G/B per channel)
 uniform vec2 u_texel;            // 1/width, 1/height
 uniform float u_contrast, u_highlights, u_shadows, u_whites, u_blacks;
 uniform float u_vibrance, u_saturation, u_texture;
+// Color grading (precomputed offsets + masks; mirror finish.rs::ColorGrade).
+uniform vec3 u_cg_sh_off, u_cg_mid_off, u_cg_hi_off, u_cg_glob_off;
+uniform float u_cg_sh_lum, u_cg_mid_lum, u_cg_hi_lum, u_cg_glob_lum;
+uniform float u_cg_sh_edge, u_cg_hi_edge, u_cg_soft;
 
 float tone(float v) {
   v = clamp(v, 0.0, 1.0);
@@ -29,6 +34,19 @@ float tone(float v) {
   return clamp(v, 0.0, 1.0);
 }
 
+vec3 colorGrade(vec3 rgb) {
+  float L = dot(rgb, vec3(0.2126, 0.7152, 0.0722));
+  float wsh = 1.0 - smoothstep(u_cg_sh_edge - u_cg_soft, u_cg_sh_edge + u_cg_soft, L);
+  float whi = smoothstep(u_cg_hi_edge - u_cg_soft, u_cg_hi_edge + u_cg_soft, L);
+  float wmid = clamp(1.0 - wsh - whi, 0.0, 1.0);
+  vec3 outc = rgb
+    + wsh * (u_cg_sh_off + vec3(u_cg_sh_lum))
+    + wmid * (u_cg_mid_off + vec3(u_cg_mid_lum))
+    + whi * (u_cg_hi_off + vec3(u_cg_hi_lum))
+    + (u_cg_glob_off + vec3(u_cg_glob_lum));
+  return clamp(outc, 0.0, 1.0);
+}
+
 vec3 finishAt(vec2 uv) {
   vec3 c = texture(u_src, uv).rgb;
   vec3 t = vec3(tone(c.r), tone(c.g), tone(c.b));
@@ -37,7 +55,13 @@ vec3 finishAt(vec2 uv) {
   float mn = min(min(t.r, t.g), t.b);
   float cur = mx > 1e-5 ? (mx - mn) / mx : 0.0;
   float f = 1.0 + u_saturation + u_vibrance * (1.0 - cur);
-  return clamp(vec3(y) + (t - vec3(y)) * f, 0.0, 1.0);
+  vec3 s = clamp(vec3(y) + (t - vec3(y)) * f, 0.0, 1.0);
+  // Tone curve LUT (per channel: sample at the channel's own value).
+  vec3 cu = vec3(
+    texture(u_lut, vec2(s.r, 0.5)).r,
+    texture(u_lut, vec2(s.g, 0.5)).g,
+    texture(u_lut, vec2(s.b, 0.5)).b);
+  return colorGrade(cu);
 }
 
 void main() {

@@ -5,6 +5,7 @@
   import { previewSrc } from "../store";
   import { FinishRenderer, webgl2Available } from "./gl/renderer";
   import { finishUniforms } from "./gl/uniforms";
+  import { toneLutBytes, colorGrade } from "../develop/finish";
   import { screenRadius, type DustStroke } from "../develop/dust";
 
   export let id: string | null;
@@ -122,6 +123,8 @@
   function drawGL() {
     if (!renderer) return;
     renderer.setUniforms(finishUniforms(params));
+    renderer.setLut(toneLutBytes(params));
+    renderer.setColorGrade(colorGrade(params));
     renderer.draw();
     // Publish a snapshot for the histogram (debounced; toDataURL is cheap-ish).
     if (canvas) {
@@ -139,8 +142,20 @@
   $: srcKey = `${id}|${raw}|${eff}|${vpW}|${vpH}|${params.mode}|${params.stock}|${params.exposure}|${params.temp}|${params.tint}|${imageCrop ? imageCrop.join(',') : 'full'}|${rot90}|${flipH}|${flipV}|${angle}|${dustRev}|${irRemoval.enabled}|${irRemoval.sensitivity}`;
   $: srcKey, imgW, imgH, scheduleIfReady();
 
-  // Finishing-only change → GPU redraw, no backend fetch.
-  $: finishKey = `${params.contrast}|${params.highlights}|${params.shadows}|${params.whites}|${params.blacks}|${params.texture}|${params.vibrance}|${params.saturation}`;
+  // Finishing-only change → GPU redraw, no backend fetch. Tone curve + color
+  // grading are all finishing-layer controls, so they live here too.
+  $: finishKey = [
+    params.contrast, params.highlights, params.shadows, params.whites, params.blacks,
+    params.texture, params.vibrance, params.saturation,
+    params.tc_highlights, params.tc_lights, params.tc_darks, params.tc_shadows,
+    JSON.stringify(params.tc_curve), JSON.stringify(params.tc_red),
+    JSON.stringify(params.tc_green), JSON.stringify(params.tc_blue),
+    params.cg_sh_hue, params.cg_sh_sat, params.cg_sh_lum,
+    params.cg_mid_hue, params.cg_mid_sat, params.cg_mid_lum,
+    params.cg_hi_hue, params.cg_hi_sat, params.cg_hi_lum,
+    params.cg_glob_hue, params.cg_glob_sat, params.cg_glob_lum,
+    params.cg_blending, params.cg_balance,
+  ].join("|");
   $: if (useGL) { finishKey; if (renderer) drawGL(); }
 
   function imgPoint(e: { clientX: number; clientY: number }): [number, number] {
