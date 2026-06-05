@@ -1,6 +1,6 @@
 <script lang="ts">
   import { save } from "@tauri-apps/plugin-dialog";
-  import { activeId, params, images, tool, cropById, activeCrop } from "../store";
+  import { activeId, params, images, tool, cropById, activeCrop, dustById, activeDust } from "../store";
   import { api } from "../api";
   import Filmstrip from "../panels/Filmstrip.svelte";
   import Viewport from "../viewport/Viewport.svelte";
@@ -11,6 +11,8 @@
   import GlassPanel from "../glass/GlassPanel.svelte";
   import CropView from "../crop/CropView.svelte";
   import CropPanel from "../crop/CropPanel.svelte";
+  import EraserPanel from "../develop/EraserPanel.svelte";
+  import { addStroke, undoStroke, resetDust, emptyDust, type DustStroke } from "../develop/dust";
   import type { Rect, CropRect } from "../crop/types";
   import { default80, conform, constrainToRotated } from "../crop/cropMath";
   import { presetNormAspect } from "../crop/presets";
@@ -84,6 +86,9 @@
   }
   function onKey(e: KeyboardEvent) {
     const meta = e.metaKey || e.ctrlKey;
+    if ($tool === "eraser" && meta && (e.key === "z" || e.key === "Z")) {
+      e.preventDefault(); undoDust(); return;
+    }
     if (meta && (e.key === "]" || e.key === "[")) {
       e.preventDefault();
       const dir = e.key === "]" ? 1 : -1;
@@ -118,6 +123,26 @@
   }
   $: $params, $activeId, refreshThumb();
 
+  let brush = 0.03;            // normalized-to-width brush radius
+  let dustRev = 0;            // bumped on any dust change to force Viewport re-render
+  $: dust = $activeDust;
+
+  function commitStroke(s: DustStroke) {
+    const id = $activeId; if (!id) return;
+    dustById.update((m) => ({ ...m, [id]: addStroke(m[id] ?? emptyDust(), s) }));
+    dustRev++;
+  }
+  function undoDust() {
+    const id = $activeId; if (!id) return;
+    dustById.update((m) => ({ ...m, [id]: undoStroke(m[id] ?? emptyDust()) }));
+    dustRev++;
+  }
+  function resetDustEdits() {
+    const id = $activeId; if (!id) return;
+    dustById.update((m) => ({ ...m, [id]: resetDust() }));
+    dustRev++;
+  }
+
   let menu: { x: number; y: number } | null = null;
   function onContext(e: MouseEvent) { e.preventDefault(); menu = { x: e.clientX, y: e.clientY }; }
 
@@ -131,7 +156,7 @@
       await api.exportImage($activeId, $params, out, imageCrop, {
         rot90: committed?.rot90 ?? 0, flip_h: committed?.flipH ?? false,
         flip_v: committed?.flipV ?? false, angle: committed?.angle ?? 0,
-      });
+      }, dust.strokes);
       msg = "Exported ✓";
     } catch (e) { msg = "Error: " + e; }
     exporting = false;
@@ -149,7 +174,9 @@
                   on:custom={() => (aspect = "custom")} on:straighten={(e) => onStraighten(e.detail)} />
       {:else}
         <Viewport id={$activeId} params={$params} imgW={effW} imgH={effH} imageCrop={imageCrop}
-                  rot90={cRot} flipH={committed?.flipH ?? false} flipV={committed?.flipV ?? false} angle={committed?.angle ?? 0} />
+                  rot90={cRot} flipH={committed?.flipH ?? false} flipV={committed?.flipV ?? false} angle={committed?.angle ?? 0}
+                  eraser={$tool === "eraser"} {brush} dust={dust.strokes} {dustRev}
+                  on:stroke={(e) => commitStroke(e.detail)} on:brush={(e) => (brush = e.detail)} />
       {/if}
     {:else}<div class="hint">Not developed yet</div>{/if}
   </section>
@@ -164,6 +191,8 @@
         <CropPanel bind:aspect bind:orientation bind:angle
                    on:preset={(e) => onPreset(e.detail)} on:swap={onSwap} on:reset={onReset}
                    on:rotate={(e) => onRotate(e.detail)} on:flip={(e) => onFlip(e.detail)} />
+      {:else if $tool === "eraser"}
+        <EraserPanel bind:brush on:reset={resetDustEdits} />
       {/if}
       <button class="export" on:click={exportTiff} disabled={exporting || !$activeId}>
         {exporting ? "Exporting…" : "Export 16-bit TIFF"}

@@ -5,7 +5,7 @@
   const tools: { id: Tool; icon: string; label: string; enabled: boolean }[] = [
     { id: "edit", icon: "sliders", label: "Edit", enabled: true },
     { id: "crop", icon: "crop", label: "Crop", enabled: true },
-    { id: "eraser", icon: "eraser", label: "Eraser (soon)", enabled: false },
+    { id: "eraser", icon: "eraser", label: "Eraser", enabled: true },
     { id: "brush", icon: "brush", label: "Brush (soon)", enabled: false },
   ];
 </script>
