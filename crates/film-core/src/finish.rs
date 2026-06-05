@@ -93,6 +93,76 @@ fn hsl2rgb(h: f32, s: f32, l: f32) -> [f32; 3] {
     ]
 }
 
+// --- Color Mixer / Point Color shared constants (mirror shaders.ts + finish.ts). ---
+const BAND_CENTERS: [f32; 8] = [0.0, 30.0, 60.0, 120.0, 180.0, 240.0, 280.0, 320.0];
+const CM_FALLOFF_DEG: f32 = 50.0;
+const CM_HUE_SHIFT_MAX: f32 = 30.0;
+const CM_LUM_GAIN: f32 = 0.25;
+const CM_SAT_GATE_LO: f32 = 0.05;
+const CM_SAT_GATE_HI: f32 = 0.20;
+const PC_RANGE_MIN_DEG: f32 = 5.0;
+const PC_RANGE_MAX_DEG: f32 = 60.0;
+const PC_SAT_TOL: f32 = 0.25;
+const PC_LUM_TOL: f32 = 0.25;
+const PC_VAR_SPAN: f32 = 2.0;
+const PI: f32 = std::f32::consts::PI;
+
+/// Signed hue difference in (−180, 180].
+#[inline]
+fn wrap180(d: f32) -> f32 {
+    let mut x = (d + 180.0).rem_euclid(360.0) - 180.0;
+    if x <= -180.0 { x += 360.0; }
+    x
+}
+
+#[inline]
+fn band_weight(h: f32, center: f32) -> f32 {
+    let d = wrap180(h - center).abs();
+    if d >= CM_FALLOFF_DEG { 0.0 } else { 0.5 * (1.0 + (PI * d / CM_FALLOFF_DEG).cos()) }
+}
+
+/// Precomputed Mixer state. Slider values pre-divided to unit (−1..1); sats/lums too.
+#[derive(Debug, Clone, Default)]
+pub struct ColorMix {
+    pub cm_hue: [f32; 8],
+    pub cm_sat: [f32; 8],
+    pub cm_lum: [f32; 8],
+    pub samples: Vec<PcSample>,
+}
+
+/// One Point Color sample, pre-scaled for the per-pixel loop.
+#[derive(Debug, Clone, Copy)]
+pub struct PcSample {
+    pub hue: f32,        // 0..360
+    pub sat: f32,        // 0..1
+    pub lum: f32,        // 0..1
+    pub hue_shift: f32,  // −1..1
+    pub sat_shift: f32,
+    pub lum_shift: f32,
+    pub variance: f32,   // −100..100 (raw; used by pc_tol)
+    pub range: f32,      // 0..100 (raw)
+}
+
+/// Apply the 8-band HSL Mixer to one pixel.
+fn color_mix(rgb: [f32; 3], cm: &ColorMix) -> [f32; 3] {
+    let (mut h, mut s, mut l) = rgb2hsl(rgb);
+    let gate = smoothstep(CM_SAT_GATE_LO, CM_SAT_GATE_HI, s);
+    let mut sat_factor = 1.0_f32;
+    let mut hue_delta = 0.0_f32;
+    let mut lum_delta = 0.0_f32;
+    for i in 0..8 {
+        let w = band_weight(h, BAND_CENTERS[i]);
+        if w <= 0.0 { continue; }
+        hue_delta += w * gate * cm.cm_hue[i] * CM_HUE_SHIFT_MAX;
+        sat_factor += w * gate * cm.cm_sat[i];
+        lum_delta += w * cm.cm_lum[i] * CM_LUM_GAIN;
+    }
+    h += hue_delta;
+    s = (s * sat_factor).clamp(0.0, 1.0);
+    l = (l + lum_delta).clamp(0.0, 1.0);
+    hsl2rgb(h, s, l)
+}
+
 /// Parabolic region bump centered at `c` (finite support, peak 1.0).
 #[inline]
 fn region_bump(v: f32, c: f32) -> f32 {
@@ -547,6 +617,42 @@ mod tests {
                 assert!((back[k] - c[k]).abs() < 1e-4, "c={c:?} back={back:?}");
             }
         }
+    }
+
+    fn mix_with(set: impl Fn(&mut ColorMix)) -> ColorMix {
+        let mut cm = ColorMix::default();
+        set(&mut cm);
+        cm
+    }
+
+    #[test]
+    fn color_mix_default_is_identity() {
+        let cm = ColorMix::default();
+        for c in [[0.2_f32, 0.4, 0.6], [0.8, 0.2, 0.5], [0.5, 0.5, 0.5]] {
+            let out = color_mix(c, &cm);
+            for k in 0..3 { assert!((out[k] - c[k]).abs() < 1e-4, "c={c:?} out={out:?}"); }
+        }
+    }
+
+    #[test]
+    fn mixer_band_isolation() {
+        // Push the BLUE band saturation up; a pure-red pixel must be ~unchanged,
+        // a blue pixel must gain chroma.
+        let cm = mix_with(|m| m.cm_sat[5] = 1.0); // blue = index 5, slider +100 → unit 1.0
+        let red = color_mix([0.8, 0.1, 0.1], &cm);
+        assert!((red[0] - 0.8).abs() < 0.02 && (red[1] - 0.1).abs() < 0.02, "red moved: {red:?}");
+        let blue_in = [0.2, 0.3, 0.8];
+        let blue = color_mix(blue_in, &cm);
+        let chroma = |p: [f32; 3]| p.iter().cloned().fold(0.0_f32, f32::max)
+            - p.iter().cloned().fold(1.0_f32, f32::min);
+        assert!(chroma(blue) > chroma(blue_in), "blue chroma: {} -> {}", chroma(blue_in), chroma(blue));
+    }
+
+    #[test]
+    fn mixer_gray_pixel_unaffected_by_hue() {
+        let cm = mix_with(|m| { m.cm_hue[0] = 1.0; m.cm_hue[5] = 1.0; });
+        let out = color_mix([0.5, 0.5, 0.5], &cm);
+        for k in 0..3 { assert!((out[k] - 0.5).abs() < 1e-3, "gray moved: {out:?}"); }
     }
 
     #[test]
