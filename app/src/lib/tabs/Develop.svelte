@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { activeId, params, images, folderImages, tool, cropById, activeCrop, dustById, activeDust, deleteTarget } from "../store";
+  import { activeId, params, images, folderImages, tool, cropById, activeCrop, dustById, activeDust, deleteTarget, dustRev } from "../store";
   import { api } from "../api";
   import Filmstrip from "../panels/Filmstrip.svelte";
   import Viewport from "../viewport/Viewport.svelte";
@@ -157,14 +157,13 @@
   $: $params, $activeId, refreshThumb();
 
   let brush = 0.03;            // normalized-to-width brush radius
-  let dustRev = 0;            // bumped on any dust change to force Viewport re-render
   $: dust = $activeDust;
 
   // Apply a reducer to the active image's dust edits and force a Viewport re-render.
   function updateDust(fn: (d: DustEdits) => DustEdits) {
     const id = $activeId; if (!id) return;
     dustById.update((m) => ({ ...m, [id]: fn(m[id] ?? emptyDust()) }));
-    dustRev++;
+    dustRev.update((n) => n + 1);
   }
   const commitStroke = (s: DustStroke) => updateDust((d) => addStroke(d, s));
   const undoDust = () => updateDust((d) => undoStroke(d));
@@ -190,7 +189,7 @@
       {:else}
         <Viewport id={$activeId} params={$params} imgW={effW} imgH={effH} imageCrop={imageCrop}
                   rot90={cRot} flipH={committed?.flipH ?? false} flipV={committed?.flipV ?? false} angle={committed?.angle ?? 0}
-                  eraser={$tool === "eraser"} {brush} dust={dust.strokes} irRemoval={dust.irRemoval} {dustRev}
+                  eraser={$tool === "eraser"} {brush} dust={dust.strokes} irRemoval={dust.irRemoval} dustRev={$dustRev}
                   on:stroke={(e) => commitStroke(e.detail)} on:brush={(e) => (brush = e.detail)} />
       {/if}
     {:else}<div class="hint">Not developed yet</div>{/if}
