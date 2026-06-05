@@ -27,6 +27,9 @@ film-core = { path = "../../crates/film-core" }
 image = "0.25"
 base64 = "0.22"
 rawler = "0.7"
+trash = "5"
+rusqlite = { version = "0.31", features = ["bundled"] }
+uuid = { version = "1", features = ["v4"] }
 
 
 # Fast `tauri dev`: optimize dependencies (RAW decode, resize, inversion live in
