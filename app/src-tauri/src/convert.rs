@@ -2,7 +2,7 @@
 //! and downscale to a preview proxy.
 
 use film_core::Image;
-use image::{ImageBuffer, Rgb};
+use image::{ImageBuffer, Luma, Rgb};
 
 pub fn to_rgb32f(img: &Image) -> ImageBuffer<Rgb<f32>, Vec<f32>> {
     let mut buf = ImageBuffer::new(img.width as u32, img.height as u32);
@@ -12,6 +12,14 @@ pub fn to_rgb32f(img: &Image) -> ImageBuffer<Rgb<f32>, Vec<f32>> {
         buf.put_pixel(x, y, Rgb([px[0], px[1], px[2]]));
     }
     buf
+}
+
+/// Resize a single-channel IR plane to `nw`×`nh` (same Triangle filter as RGB).
+fn resize_ir(ir: &[f32], w: usize, h: usize, nw: u32, nh: u32) -> Vec<f32> {
+    let buf: ImageBuffer<Luma<f32>, Vec<f32>> =
+        ImageBuffer::from_raw(w as u32, h as u32, ir.to_vec()).expect("ir plane matches w*h");
+    let r = image::imageops::resize(&buf, nw.max(1), nh.max(1), image::imageops::FilterType::Triangle);
+    r.into_raw()
 }
 
 pub fn from_rgb32f(buf: &ImageBuffer<Rgb<f32>, Vec<f32>>) -> Image {
@@ -31,7 +39,9 @@ pub fn proxy(img: &Image, max_edge: u32) -> Image {
     let nh = (img.height as f32 * scale).round().max(1.0) as u32;
     let buf = to_rgb32f(img);
     let resized = image::imageops::resize(&buf, nw, nh, image::imageops::FilterType::Triangle);
-    from_rgb32f(&resized)
+    let mut out = from_rgb32f(&resized);
+    out.ir = img.ir.as_ref().map(|ir| resize_ir(ir, img.width, img.height, nw, nh));
+    out
 }
 
 /// Crop a rectangle (in pixels) from the image, clamped to its bounds. Returns a
@@ -136,7 +146,9 @@ pub fn resize_to(img: &Image, w: u32, h: u32) -> Image {
     }
     let buf = to_rgb32f(img);
     let r = image::imageops::resize(&buf, w.max(1), h.max(1), image::imageops::FilterType::Triangle);
-    from_rgb32f(&r)
+    let mut out = from_rgb32f(&r);
+    out.ir = img.ir.as_ref().map(|ir| resize_ir(ir, img.width, img.height, w.max(1), h.max(1)));
+    out
 }
 
 #[cfg(test)]
@@ -144,6 +156,41 @@ mod tests {
     use super::*;
     fn solid(w: usize, h: usize, c: [f32; 3]) -> Image {
         Image { width: w, height: h, pixels: vec![c; w * h], ir: None }
+    }
+    fn solid_ir(w: usize, h: usize, c: [f32; 3], ir: f32) -> Image {
+        Image { width: w, height: h, pixels: vec![c; w * h], ir: Some(vec![ir; w * h]) }
+    }
+
+    #[test]
+    fn proxy_carries_and_resizes_ir() {
+        let img = solid_ir(4000, 2000, [0.4, 0.4, 0.4], 0.8);
+        let p = proxy(&img, 2048);
+        assert_eq!((p.width, p.height), (2048, 1024));
+        let ir = p.ir.expect("ir preserved through proxy");
+        assert_eq!(ir.len(), 2048 * 1024);
+        assert!((ir[0] - 0.8).abs() < 1e-3, "ir value preserved on solid field");
+    }
+
+    #[test]
+    fn proxy_noop_small_keeps_ir() {
+        let img = solid_ir(10, 8, [0.1, 0.2, 0.3], 0.5);
+        let p = proxy(&img, 2048);
+        assert_eq!(p.ir.as_ref().map(|v| v.len()), Some(80));
+    }
+
+    #[test]
+    fn resize_to_carries_ir() {
+        let img = solid_ir(10, 8, [0.2, 0.4, 0.6], 0.7);
+        let r = resize_to(&img, 5, 4);
+        let ir = r.ir.expect("ir preserved through resize_to");
+        assert_eq!(ir.len(), 20);
+        assert!((ir[0] - 0.7).abs() < 1e-3);
+    }
+
+    #[test]
+    fn resize_to_drops_none_ir() {
+        let img = solid(10, 8, [0.2, 0.4, 0.6]);
+        assert!(resize_to(&img, 5, 4).ir.is_none());
     }
     #[test]
     fn roundtrip_preserves_pixels() {
