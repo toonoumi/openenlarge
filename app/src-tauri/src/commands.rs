@@ -1,6 +1,6 @@
 //! Tauri commands orchestrating film-core for the RedRoom UI.
 
-use crate::convert::{crop, proxy, resize_to};
+use crate::convert::{crop, orient, orient_dims, proxy, resize_to, rotate};
 use crate::encode::{to_jpeg_b64, to_png_b64};
 use crate::metadata::extract;
 use crate::session::{CachedImage, Developed, ImageEntry, InvertParams, Quality, Session};
@@ -168,6 +168,10 @@ pub struct ViewSpec {
     /// the zoom/view crop. None = whole image.
     #[serde(default)]
     pub image_crop: Option<[f64; 4]>,
+    #[serde(default)] pub rot90: u8,
+    #[serde(default)] pub flip_h: bool,
+    #[serde(default)] pub flip_v: bool,
+    #[serde(default)] pub angle: f32,
 }
 
 #[tauri::command]
@@ -176,15 +180,20 @@ pub fn render_view(id: String, params: InvertParams, view: ViewSpec, session: St
     let img = images.get(&id).ok_or("unknown image id")?;
     let dev = img.developed.as_ref().ok_or("not developed")?;
 
-    let s_scale = dev.working.width as f64 / img.metadata.width.max(1) as f64;
-    // Persistent crop first (in working px), so the view crop is relative to it.
+    // Geometry: orient (lossless) → straighten → persistent crop, then the view crop.
+    let oriented = orient(&dev.working, view.rot90, view.flip_h, view.flip_v);
+    let straightened = rotate(&oriented, view.angle);
     let base_img = match view.image_crop {
         Some(nc) => {
-            let (ix, iy, iw, ih) = crop_px(nc, dev.working.width, dev.working.height);
-            crop(&dev.working, ix, iy, iw, ih)
+            let (ix, iy, iw, ih) = crop_px(nc, straightened.width, straightened.height);
+            crop(&straightened, ix, iy, iw, ih)
         }
-        None => dev.working.clone(),
+        None => straightened,
     };
+    // The view crop is in oriented full-res coords → map to working px via the
+    // oriented metadata width (orientation is lossless, so the ratio is preserved).
+    let (ometa_w, _) = orient_dims(img.metadata.width as usize, img.metadata.height as usize, view.rot90);
+    let s_scale = oriented.width as f64 / ometa_w.max(1) as f64;
     let cx = (view.crop[0] * s_scale).max(0.0).round() as usize;
     let cy = (view.crop[1] * s_scale).max(0.0).round() as usize;
     let cw = (view.crop[2] * s_scale).round().max(1.0) as usize;
@@ -219,10 +228,13 @@ pub fn thumbnail(id: String, params: InvertParams, session: State<Session>) -> R
 }
 
 /// Re-decode the file at full resolution and export a 16-bit TIFF.
+#[allow(clippy::too_many_arguments)] // Tauri command: flat args mirror the JS invoke contract
 #[tauri::command]
 pub fn export_image(
     id: String, params: InvertParams, out_path: String,
-    image_crop: Option<[f64; 4]>, session: State<Session>,
+    image_crop: Option<[f64; 4]>,
+    rot90: u8, flip_h: bool, flip_v: bool, angle: f32,
+    session: State<Session>,
 ) -> Result<(), String> {
     let (path, base, thumb) = {
         let images = session.images.lock().unwrap();
@@ -231,6 +243,8 @@ pub fn export_image(
         (img.path.clone(), dev.base, dev.thumb.clone())
     };
     let full = decode_any(Path::new(&path))?;
+    let full = orient(&full, rot90, flip_h, flip_v);
+    let full = rotate(&full, angle);
     let full = match image_crop {
         Some(nc) => {
             let (x, y, w, h) = crop_px(nc, full.width, full.height);
