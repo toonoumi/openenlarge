@@ -32,11 +32,12 @@ export function float16RenderTargetSupported():
   }
   if (!gl) return { ok: false, reason: "no webgl2 context" };
   // Needed to RENDER to a float texture (not just sample one).
-  const ext = gl.getExtension("EXT_color_buffer_float");
-  if (!ext) return { ok: false, reason: "EXT_color_buffer_float missing" };
+  if (!gl.getExtension("EXT_color_buffer_float")) {
+    return { ok: false, reason: "EXT_color_buffer_float missing" };
+  }
   const tex = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, tex);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, 4, 4, 0, gl.RGBA, gl.HALF_FLOAT, null as unknown as ArrayBufferView);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, 4, 4, 0, gl.RGBA, gl.HALF_FLOAT, null);
   const fbo = gl.createFramebuffer();
   gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
   gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
