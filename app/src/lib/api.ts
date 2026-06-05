@@ -7,7 +7,8 @@ export interface Metadata {
   aperture?: string; width: number; height: number; file_size: number; date?: string;
 }
 export interface ImageEntry {
-  id: string; path: string; file_name: string; thumbnail: string; metadata: Metadata; developed: boolean; has_ir: boolean;
+  id: string; path: string; file_name: string; thumbnail: string;
+  metadata: Metadata; developed: boolean; has_ir: boolean; offline: boolean;
 }
 export type Quality = "performance" | "quality";
 /** A tone-curve control point in [0,1]×[0,1] (input → output). */
@@ -60,6 +61,26 @@ export interface ExportFormat {
   maxBytes?: number | null; // jpeg only
 }
 
+/** One image as returned by load_catalog (no developed/has_ir — all undeveloped on load). */
+export interface CatalogImage {
+  id: string; path: string; file_name: string; thumbnail: string;
+  metadata: Metadata; offline: boolean;
+}
+/** One image's stored edits as returned by load_catalog (JSON already parsed). */
+export interface CatalogEdits {
+  image_id: string;
+  params: InvertParams | null;
+  crop: import("./crop/types").CropRect | null;
+  dust: import("./develop/dust").DustEdits | null;
+}
+/** The whole catalog returned at launch. */
+export interface CatalogSnapshot {
+  images: CatalogImage[];
+  edits: CatalogEdits[];
+  prefs: Record<string, string>;
+  app_state: Record<string, string>;
+}
+
 /** Convert app-internal {x,y} points to the [x,y] tuple format the Rust side expects. */
 const wireDust = (dust?: DustStroke[]) =>
   (dust ?? []).map((s) => ({ points: s.points.map((p) => [p.x, p.y]), r: s.r }));
@@ -88,6 +109,17 @@ export const api = {
   deleteImage: (id: string, deleteFile: boolean) => invoke<void>("delete_image", { id, deleteFile }),
   thumbnail: (id: string, params: InvertParams) => invoke<string>("thumbnail", { id, params }),
   asShotWb: (id: string) => invoke<AsShotWb>("as_shot_wb", { id }),
+  loadCatalog: () => invoke<CatalogSnapshot>("load_catalog"),
+  saveEdits: (id: string, paramsJson: string) =>
+    invoke<void>("save_edits", { id, paramsJson }),
+  saveCrop: (id: string, cropJson: string) =>
+    invoke<void>("save_crop", { id, cropJson }),
+  saveDust: (id: string, dustJson: string) =>
+    invoke<void>("save_dust", { id, dustJson }),
+  savePref: (key: string, value: string) =>
+    invoke<void>("save_pref", { key, value }),
+  saveAppState: (key: string, value: string) =>
+    invoke<void>("save_app_state", { key, value }),
 };
 
 export const defaultParams = (): InvertParams => ({
