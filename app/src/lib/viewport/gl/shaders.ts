@@ -139,6 +139,10 @@ vec3 invert(vec3 rgbIn) {
 
 // Map output UV → source UV through crop + straighten + orient.
 vec2 sourceUV(vec2 uv) {
+  // Clip-space v_uv is y-up (v=1 at canvas top); image/texture space is y-down
+  // (row 0 = top). Convert before geometry so crop/orient/straighten operate in
+  // the image-space convention the JS-side matrices (mirroring convert.rs) assume.
+  uv.y = 1.0 - uv.y;
   // centre, apply orient (rot90/flip) and straighten rotation, then map into crop.
   vec2 c = uv - 0.5;
   c = u_orient * c;
