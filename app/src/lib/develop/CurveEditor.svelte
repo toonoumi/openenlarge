@@ -19,6 +19,13 @@
   let svgEl: SVGSVGElement;
   let dragIdx = -1;
   let moved = false;
+  // Gesture state: a press arms a candidate point; it only becomes a drag once the
+  // pointer moves past DRAG_PX. A press that never moves is a tap (adds a point).
+  const DRAG_PX = 4;
+  let downPt: CurvePoint | null = null;
+  let downClientX = 0, downClientY = 0;
+  let armedIdx = -1;
+  let hadHit = false;
 
   // Local working copy; resync from the prop whenever we're not dragging.
   let pts: CurvePoint[] = points;
@@ -77,21 +84,36 @@
 
   function commit() { dispatch("change", pts.map((p) => [...p] as CurvePoint)); }
 
+  /** Index of the existing control point nearest in x (always valid; ≥2 points). */
+  function nearestByX(p: CurvePoint): number {
+    let best = 0, bd = Infinity;
+    for (let i = 0; i < pts.length; i++) {
+      const d = Math.abs(pts[i][0] - p[0]);
+      if (d < bd) { bd = d; best = i; }
+    }
+    return best;
+  }
+
   function onDown(e: PointerEvent) {
     const p = toLocal(e);
-    let idx = hitIndex(p, svgEl.getBoundingClientRect());
-    if (idx < 0) {
-      // Insert a new interior point, keep sorted by x.
-      pts = [...pts, p].sort((a, b) => a[0] - b[0]);
-      idx = pts.findIndex((q) => q[0] === p[0] && q[1] === p[1]);
-    }
-    dragIdx = idx;
+    const hit = hitIndex(p, svgEl.getBoundingClientRect());
+    hadHit = hit >= 0;
+    // If this becomes a drag, move the point under the cursor, else the nearest one.
+    armedIdx = hadHit ? hit : nearestByX(p);
+    downPt = p;
+    downClientX = e.clientX; downClientY = e.clientY;
     moved = false;
+    dragIdx = -1; // not dragging until the pointer moves past the threshold
     svgEl.setPointerCapture(e.pointerId);
   }
   function onMove(e: PointerEvent) {
+    if (!downPt) return;
+    if (!moved) {
+      if (Math.hypot(e.clientX - downClientX, e.clientY - downClientY) < DRAG_PX) return;
+      moved = true;
+      dragIdx = armedIdx; // promote the armed point to an active drag
+    }
     if (dragIdx < 0) return;
-    moved = true;
     const [nx, ny] = toLocal(e);
     const last = pts.length - 1;
     const isEnd = dragIdx === 0 || dragIdx === last;
@@ -106,19 +128,25 @@
     commit();
   }
   function onUp(e: PointerEvent) {
-    if (dragIdx < 0) return;
-    const last = pts.length - 1;
-    const isEnd = dragIdx === 0 || dragIdx === last;
-    const [, ly] = toLocal(e);
-    const r = svgEl.getBoundingClientRect();
-    const outY = (e.clientY < r.top - 16) || (e.clientY > r.bottom + 16);
-    void ly;
-    // Drag an interior point off the top/bottom to delete it.
-    if (!isEnd && moved && outY && pts.length > 2) {
-      pts = pts.filter((_, i) => i !== dragIdx);
-      commit();
+    if (!downPt) return;
+    if (!moved) {
+      // Tap (no drag): add a new control point — unless the tap landed on one.
+      if (!hadHit) {
+        pts = [...pts, downPt].sort((a, b) => a[0] - b[0]);
+        commit();
+      }
+    } else if (dragIdx >= 0) {
+      // Drag an interior point off the top/bottom to delete it.
+      const last = pts.length - 1;
+      const isEnd = dragIdx === 0 || dragIdx === last;
+      const r = svgEl.getBoundingClientRect();
+      const outY = (e.clientY < r.top - 16) || (e.clientY > r.bottom + 16);
+      if (!isEnd && outY && pts.length > 2) {
+        pts = pts.filter((_, i) => i !== dragIdx);
+        commit();
+      }
     }
-    dragIdx = -1;
+    downPt = null; dragIdx = -1; armedIdx = -1; moved = false;
   }
   function onDblPoint(i: number) {
     const last = pts.length - 1;
