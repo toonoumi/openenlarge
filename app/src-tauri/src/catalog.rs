@@ -17,7 +17,8 @@ pub struct CatalogImage {
     pub offline: bool,
 }
 
-/// One image's stored edits. Each field is an opaque JSON string (or null).
+/// One image's stored edits. Stored as opaque JSON blobs; deserialized to `Value`
+/// on load so the frontend receives structured data without a per-field schema.
 #[derive(Debug, Clone, Serialize)]
 pub struct CatalogEdits {
     pub image_id: String,
@@ -108,11 +109,13 @@ impl Catalog {
         Ok(())
     }
 
-    /// Remove an image and its edits.
+    /// Remove an image and its edits (atomically).
     pub fn delete_image(&self, id: &str) -> rusqlite::Result<()> {
         let conn = self.conn.lock().unwrap();
-        conn.execute("DELETE FROM edits WHERE image_id = ?1", [id])?;
-        conn.execute("DELETE FROM images WHERE id = ?1", [id])?;
+        let tx = conn.unchecked_transaction()?;
+        tx.execute("DELETE FROM edits WHERE image_id = ?1", [id])?;
+        tx.execute("DELETE FROM images WHERE id = ?1", [id])?;
+        tx.commit()?;
         Ok(())
     }
 
@@ -208,6 +211,7 @@ impl Catalog {
         Ok(())
     }
 
+    // `table` must be one of the two hardcoded names; never call with user input.
     fn load_kv(&self, table: &str) -> rusqlite::Result<HashMap<String, String>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(&format!("SELECT key, value FROM {table}"))?;
@@ -249,7 +253,8 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     let version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
     if version < 1 {
         conn.execute_batch(
-            "CREATE TABLE images (
+            "BEGIN;
+             CREATE TABLE images (
                 id        TEXT PRIMARY KEY,
                 path      TEXT UNIQUE NOT NULL,
                 file_name TEXT NOT NULL,
@@ -270,7 +275,8 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
              CREATE TABLE app_state (
                 key   TEXT PRIMARY KEY,
                 value TEXT NOT NULL
-             );",
+             );
+             COMMIT;",
         )?;
     }
     conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;
@@ -330,8 +336,10 @@ mod tests {
     fn delete_image_removes_row() {
         let cat = Catalog::open_in_memory().unwrap();
         let id = cat.upsert_image("/x/a.dng", "a.dng", "{}", "t", 1).unwrap();
+        cat.save_params(&id, r#"{"exposure":1.0}"#).unwrap();
         cat.delete_image(&id).unwrap();
         assert!(cat.load_images(&|_| true).unwrap().is_empty());
+        assert!(cat.load_edits().unwrap().is_empty());
     }
 
     #[test]
