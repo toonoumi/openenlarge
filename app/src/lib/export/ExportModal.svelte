@@ -17,6 +17,8 @@
   import { allSelected, noneSelected, click, isAllSelected, toggleAll, type SelState } from "./selection";
   import { outName } from "./naming";
   import { t } from "$lib/i18n";
+  import { withEffectiveBase } from "../develop/base";
+  import { imageDir } from "../library/folderScope";
 
   const dispatch = createEventDispatcher<{ close: void }>();
 
@@ -106,7 +108,7 @@
 
     for (const img of chosen) {
       try {
-        const p = $editsById[img.id] ?? defaultParams();
+        const p = withEffectiveBase($editsById[img.id] ?? defaultParams(), imageDir(img));
         const crop = $cropById[img.id] ?? null;
         const imageCrop = crop
           ? ([crop.rect.x, crop.rect.y, crop.rect.w, crop.rect.h] as [number, number, number, number])
