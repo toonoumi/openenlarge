@@ -1,0 +1,76 @@
+<script lang="ts">
+  import { params } from "../store";
+  import Icon from "../icons/Icon.svelte";
+  import Slider from "./Slider.svelte";
+  import CurveEditor from "./CurveEditor.svelte";
+  import { signed } from "./gradients";
+  import { IDENTITY_CURVE, type CurvePoint } from "../api";
+
+  let open = true;
+
+  type Mode = "master" | "r" | "g" | "b";
+  let mode: Mode = "master";
+
+  const KEY = { master: "tc_curve", r: "tc_red", g: "tc_green", b: "tc_blue" } as const;
+  const COLOR = { master: "#e8e8e8", r: "#ff6b6b", g: "#6bff8b", b: "#6ba8ff" };
+  const HIST = { master: ["r", "g", "b"], r: ["r"], g: ["g"], b: ["b"] } as const;
+
+  $: key = KEY[mode];
+  $: points = $params[key] as CurvePoint[];
+
+  function onCurve(e: CustomEvent<CurvePoint[]>) {
+    params.update((p) => ({ ...p, [key]: e.detail }));
+  }
+  function resetCurve() {
+    params.update((p) => ({ ...p, [key]: IDENTITY_CURVE.map((q) => [...q] as CurvePoint) }));
+  }
+</script>
+
+<div class="section">
+  <button class="head" on:click={() => (open = !open)}>
+    <Icon name={open ? "chevron-down" : "chevron-right"} size={14} />
+    <span>Tone Curve</span>
+  </button>
+
+  {#if open}
+    <div class="body">
+      <div class="adjust">
+        <span class="adjlabel">Adjust</span>
+        <div class="dots">
+          <button class="dot m" class:on={mode === "master"} on:click={() => (mode = "master")} title="Master" aria-label="Master curve"></button>
+          <button class="dot r" class:on={mode === "r"} on:click={() => (mode = "r")} title="Red" aria-label="Red curve"></button>
+          <button class="dot g" class:on={mode === "g"} on:click={() => (mode = "g")} title="Green" aria-label="Green curve"></button>
+          <button class="dot b" class:on={mode === "b"} on:click={() => (mode = "b")} title="Blue" aria-label="Blue curve"></button>
+        </div>
+        <button class="reset" on:click={resetCurve}>Reset</button>
+      </div>
+
+      <CurveEditor {points} color={COLOR[mode]} hist={[...HIST[mode]]} on:change={onCurve} />
+
+      <div class="sub">Region</div>
+      <Slider label="Highlights" min={-100} max={100} bind:value={$params.tc_highlights} def={0} format={signed} />
+      <Slider label="Lights" min={-100} max={100} bind:value={$params.tc_lights} def={0} format={signed} />
+      <Slider label="Darks" min={-100} max={100} bind:value={$params.tc_darks} def={0} format={signed} />
+      <Slider label="Shadows" min={-100} max={100} bind:value={$params.tc_shadows} def={0} format={signed} />
+    </div>
+  {/if}
+</div>
+
+<style>
+  .section { margin-bottom: 12px; }
+  .head { display: flex; align-items: center; gap: 6px; width: 100%;
+    background: transparent; border: 0; color: var(--text); font-weight: 600;
+    padding: 4px 0; cursor: pointer; }
+  .sub { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;
+    color: var(--text-dim); margin: 12px 0 4px; }
+  .adjust { display: flex; align-items: center; gap: 10px; margin: 6px 0 8px; }
+  .adjlabel { font-size: 11px; color: var(--text-dim); }
+  .dots { display: flex; gap: 8px; }
+  .dot { width: 16px; height: 16px; border-radius: 50%; cursor: pointer;
+    border: 1px solid rgba(255, 255, 255, 0.25); padding: 0; opacity: 0.55; }
+  .dot.on { opacity: 1; box-shadow: 0 0 0 2px var(--accent); }
+  .dot.m { background: #cfcfcf; } .dot.r { background: #ff6b6b; }
+  .dot.g { background: #6bff8b; } .dot.b { background: #6ba8ff; }
+  .reset { margin-left: auto; background: transparent; border: 1px solid var(--glass-brd);
+    color: var(--text-dim); border-radius: 6px; padding: 2px 8px; font-size: 11px; cursor: pointer; }
+</style>
