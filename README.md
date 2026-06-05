@@ -15,7 +15,6 @@
 
 </div>
 
-<!-- TODO: replace placeholder once docs/screenshots/hero.png exists -->
 ![OpenEnlarge](docs/screenshots/hero.png)
 
 ## What is OpenEnlarge?
