@@ -4,6 +4,7 @@ import { defaultParams } from "./api";
 import type { CropRect } from "./crop/types";
 import { createPerImageParams } from "./perImage";
 import { emptyDust, type DustEdits } from "./develop/dust";
+import { scopeToFolder } from "./library/folderScope";
 
 export const images = writable<ImageEntry[]>([]);
 export const activeId = writable<string | null>(null);
@@ -57,10 +58,29 @@ export const allDeveloped = derived(images, ($i) => $i.length > 0 && $i.every((x
 
 export const selectedFolder = writable<string | null>(null);
 export const gridZoom = writable<number>(55);
-export const undevelopedCount = derived(images, ($i) => $i.filter((x) => !x.developed).length);
+
+/** The imported images that live in the selected folder (recursive on parents).
+ * The grid, filmstrip, and Develop navigation/range all scope to this. */
+export const folderImages = derived(
+  [images, selectedFolder],
+  ([$i, $sel]) => scopeToFolder($i, $sel),
+);
+export const undevelopedCount = derived(folderImages, ($i) => $i.filter((x) => !x.developed).length);
+
+/** Select a folder. Per design, if the active image is not in the new folder,
+ * make the folder's first image active so the grid/filmstrip/metadata stay in sync. */
+export function selectFolder(path: string | null): void {
+  selectedFolder.set(path);
+  const scoped = scopeToFolder(get(images), path);
+  const cur = get(activeId);
+  if (!scoped.some((i) => i.id === cur)) activeId.set(scoped[0]?.id ?? null);
+}
 
 /** Data-URL of the latest rendered develop preview; drives the histogram. */
 export const previewSrc = writable<string>("");
 
 export type Tool = "edit" | "crop" | "eraser";
 export const tool = writable<Tool>("edit");
+
+/** Id of the image awaiting a delete confirmation (null = no dialog). */
+export const deleteTarget = writable<string | null>(null);

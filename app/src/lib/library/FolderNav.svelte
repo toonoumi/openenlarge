@@ -1,7 +1,7 @@
 <script lang="ts">
   import { open as openDialog } from "@tauri-apps/plugin-dialog";
   import { api } from "../api";
-  import { images, activeId, selectedFolder } from "../store";
+  import { images, activeId, selectedFolder, selectFolder } from "../store";
   import { buildTree } from "./folderTree";
   import TreeNode from "./TreeNode.svelte";
   import Icon from "../icons/Icon.svelte";
@@ -12,7 +12,7 @@
   $: if (!$selectedFolder && $images.length) {
     const last = $images[$images.length - 1];
     const dir = last.path.replace(/\\/g, "/").split("/").slice(0, -1).join("/");
-    selectedFolder.set(dir);
+    selectFolder(dir);
   }
 
   async function pickAndImport() {

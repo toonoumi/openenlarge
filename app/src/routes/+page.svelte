@@ -1,11 +1,12 @@
 <script lang="ts">
   import "../styles/theme.css";
-  import { module, hasImages, allDeveloped, images, undevelopedCount } from "$lib/store";
-  import { developAll, undevelopedIds } from "$lib/workflow";
+  import { module, hasImages, images, undevelopedCount, deleteTarget } from "$lib/store";
+  import { developAll, deleteImage } from "$lib/workflow";
   import Library from "$lib/tabs/Library.svelte";
   import Develop from "$lib/tabs/Develop.svelte";
   import ProgressOverlay from "$lib/overlay/ProgressOverlay.svelte";
   import ConfirmDevelop from "$lib/overlay/ConfirmDevelop.svelte";
+  import ConfirmDelete from "$lib/overlay/ConfirmDelete.svelte";
   import SettingsMenu from "$lib/settings/SettingsMenu.svelte";
   import Icon from "$lib/icons/Icon.svelte";
   import { hasDeveloped } from "$lib/export/eligible";
@@ -18,9 +19,19 @@
 
   function gotoDevelop() {
     if (!$hasImages) return;
-    if ($allDeveloped) { module.set("develop"); return; }
-    confirmCount = undevelopedIds($images).length;
+    // Develop is scoped to the selected folder: only its undeveloped images count.
+    if ($undevelopedCount === 0) { module.set("develop"); return; }
+    confirmCount = $undevelopedCount;
     confirming = true;
+  }
+
+  $: deleteName = $deleteTarget
+    ? ($images.find((i) => i.id === $deleteTarget)?.file_name ?? "")
+    : "";
+  function runDelete(deleteFile: boolean) {
+    const id = $deleteTarget;
+    deleteTarget.set(null);
+    if (id) deleteImage(id, deleteFile);
   }
 </script>
 
@@ -54,6 +65,12 @@
   <ConfirmDevelop count={confirmCount}
     on:confirm={() => { confirming = false; developAll(); }}
     on:cancel={() => (confirming = false)} />
+{/if}
+{#if $deleteTarget}
+  <ConfirmDelete name={deleteName}
+    on:remove={() => runDelete(false)}
+    on:trash={() => runDelete(true)}
+    on:cancel={() => deleteTarget.set(null)} />
 {/if}
 
 <style>

@@ -29,4 +29,8 @@ describe("buildTree", () => {
     expect(countImages(find(tree, "Film Scans")!)).toBe(3);
     expect(countImages(find(tree, "Disk2")!)).toBe(3);
   });
+  it("uses real path prefixes (no synthetic root) so they match an image's directory", () => {
+    expect(find(tree, "ny2026")!.fullPath).toBe("/Volumes/Disk2/Film Scans/ny2026");
+    expect(find(tree, "scans")!.fullPath).toBe("/Users/me/scans");
+  });
 });

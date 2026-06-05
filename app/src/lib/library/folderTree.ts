@@ -23,7 +23,9 @@ export function buildTree(entries: { id: string; path: string }[]): FolderNode[]
     if (parts[0] === "Volumes" && parts.length >= 2) {
       rootName = parts[1]; rootPath = "/Volumes/" + parts[1]; dirParts = parts.slice(2);
     } else {
-      rootName = "Macintosh HD"; rootPath = "/MacintoshHD"; dirParts = parts;
+      // Real filesystem root, displayed as "Macintosh HD". rootPath "" so children
+      // accumulate to real paths ("/Users/…") that match an image's directory.
+      rootName = "Macintosh HD"; rootPath = ""; dirParts = parts;
     }
     let node = ensure(rootPath, rootName, roots);
     let acc = rootPath;

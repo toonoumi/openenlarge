@@ -1,12 +1,9 @@
 <script lang="ts">
   import { tick, onMount } from "svelte";
-  import { images, activeId, selectedFolder, gridZoom } from "../store";
+  import { activeId, selectedFolder, gridZoom, folderImages } from "../store";
   let scrollEl: HTMLDivElement;
   let containerW = 800;
-  $: shown = $images.filter((i) => {
-    const dir = i.path.replace(/\\/g, "/").split("/").slice(0, -1).join("/");
-    return dir === $selectedFolder;
-  });
+  $: shown = $folderImages;
   const MIN = 130;
   const PADX = 16; // total horizontal padding of .scroll (8px each side)
   // 130px at zoom 0 → full container width at zoom 100 (1 image per row).

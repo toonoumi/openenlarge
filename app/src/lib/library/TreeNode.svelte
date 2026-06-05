@@ -1,6 +1,6 @@
 <script lang="ts">
   import Icon from "../icons/Icon.svelte";
-  import { selectedFolder } from "../store";
+  import { selectedFolder, selectFolder } from "../store";
   import { countImages, type FolderNode } from "./folderTree";
   export let node: FolderNode;
   export let depth = 0;
@@ -12,7 +12,7 @@
 
 <div class="row" class:sel={$selectedFolder === node.fullPath}
   style="padding-left:{8 + depth * 16}px"
-  on:click={() => { selectedFolder.set(node.fullPath); if (hasChildren) open = !open; }}>
+  on:click={() => { selectFolder(node.fullPath); if (hasChildren) open = !open; }}>
   <span class="chev">
     {#if hasChildren}<Icon name={open ? "chevron-down" : "chevron-right"} size={12} />{/if}
   </span>

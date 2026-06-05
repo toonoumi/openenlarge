@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { activeId, params, images, tool, cropById, activeCrop, dustById, activeDust } from "../store";
+  import { activeId, params, images, folderImages, tool, cropById, activeCrop, dustById, activeDust, deleteTarget } from "../store";
   import { api } from "../api";
   import Filmstrip from "../panels/Filmstrip.svelte";
   import Viewport from "../viewport/Viewport.svelte";
@@ -96,7 +96,7 @@
     if (e.metaKey || e.ctrlKey || e.altKey) return false;
     const arrows = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"];
     if (!arrows.includes(e.key) || formFocused()) return false;
-    const list = $images;
+    const list = $folderImages;
     if (list.length === 0) return false;
     let idx = list.findIndex((i) => i.id === $activeId);
     if (idx < 0) idx = 0;
@@ -111,6 +111,11 @@
 
   function onKey(e: KeyboardEvent) {
     const meta = e.metaKey || e.ctrlKey;
+    if (meta && e.key === "Backspace") {
+      e.preventDefault();
+      if ($activeId && !formFocused()) deleteTarget.set($activeId);
+      return;
+    }
     if ($tool === "eraser" && meta && (e.key === "z" || e.key === "Z")) {
       e.preventDefault(); undoDust(); return;
     }
@@ -211,7 +216,9 @@
 
   <footer class="bottom"><Filmstrip /></footer>
 </div>
-{#if menu}<QualityMenu x={menu.x} y={menu.y} on:close={() => (menu = null)} />{/if}
+{#if menu}<QualityMenu x={menu.x} y={menu.y}
+  on:delete={() => { if ($activeId) deleteTarget.set($activeId); menu = null; }}
+  on:close={() => (menu = null)} />{/if}
 
 <style>
   .layout { display: grid; height: 100%; gap: 12px;
