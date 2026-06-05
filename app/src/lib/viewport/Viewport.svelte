@@ -349,6 +349,10 @@
     if (!interactive) return;
     if (e.button !== 0) return; // ignore right/middle click — let the context menu open
     if (pointPick) {
+      // Mark as "moved" so the upcoming pointerup is not treated as a tap-to-zoom.
+      // The pick dispatch flips pointPick off synchronously (the parent clears its
+      // picking flag), so onUp can't rely on `pointPick` still being true.
+      moved = true;
       if (canvas) {
         const rect = canvas.getBoundingClientRect();
         const rgb = readCanvasPixel(canvas, e.clientX - rect.left, e.clientY - rect.top);
