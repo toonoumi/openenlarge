@@ -29,10 +29,10 @@ pub fn rasterize(img_w: usize, img_h: usize, stamps: &[Stamp], grow: f32, pad: u
         return empty;
     }
     // Union bounds of all grown dabs (float), then intersect with the image.
-    let mut minx = f32::MAX;
-    let mut miny = f32::MAX;
-    let mut maxx = f32::MIN;
-    let mut maxy = f32::MIN;
+    let mut minx = f32::INFINITY;
+    let mut miny = f32::INFINITY;
+    let mut maxx = f32::NEG_INFINITY;
+    let mut maxy = f32::NEG_INFINITY;
     for s in stamps {
         let re = s.r + grow;
         minx = minx.min(s.cx - re);
@@ -46,8 +46,10 @@ pub fn rasterize(img_w: usize, img_h: usize, stamps: &[Stamp], grow: f32, pad: u
     }
     let x0 = (minx.floor() as isize - pad as isize).max(0) as usize;
     let y0 = (miny.floor() as isize - pad as isize).max(0) as usize;
+    // +1 makes x1/y1 exclusive so the right/bottom edge keeps an unmasked source border.
     let x1 = ((maxx.ceil() as isize + pad as isize + 1).max(0) as usize).min(img_w);
     let y1 = ((maxy.ceil() as isize + pad as isize + 1).max(0) as usize).min(img_h);
+    // defensive: unreachable after the off-screen early-exit above
     if x1 <= x0 || y1 <= y0 {
         return empty;
     }
@@ -84,6 +86,17 @@ mod tests {
         assert!(!m.bits[0], "top-left of window must be unmasked");
         // Disc radius ~ r+grow=4 → corners of the window are outside the disc.
         assert!(m.w >= 9 && m.h >= 9, "window covers disc + pad");
+    }
+
+    #[test]
+    fn rasterize_clamps_to_image_edge() {
+        // Stamp centred 1px outside the left edge; radius=3 → some columns land on-image.
+        let m = rasterize(100, 100, &[Stamp { cx: -1.0, cy: 50.0, r: 3.0 }], 0.0, 0);
+        assert_eq!(m.x0, 0, "window clamped to left edge");
+        assert!(m.w > 0, "partial dab produces a non-empty mask");
+        // pixel (0,50): center (0.5, 50.5), distance ≈1.58 < 3 → masked.
+        let bit = m.bits[(50 - m.y0) * m.w + 0];
+        assert!(bit, "on-image pixel at col 0 should be masked");
     }
 
     #[test]
