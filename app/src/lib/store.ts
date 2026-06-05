@@ -41,5 +41,5 @@ export const undevelopedCount = derived(images, ($i) => $i.filter((x) => !x.deve
 /** Data-URL of the latest rendered develop preview; drives the histogram. */
 export const previewSrc = writable<string>("");
 
-export type Tool = "edit" | "crop" | "eraser" | "brush";
+export type Tool = "edit" | "crop" | "eraser";
 export const tool = writable<Tool>("edit");
