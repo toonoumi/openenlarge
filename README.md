@@ -54,7 +54,7 @@ Most tools treat a negative scan as a generic image and fit per-channel tone cur
 
 Grab the latest installer for your OS from the [**Releases page**](https://github.com/mohaelder/openenlarge/releases/latest):
 
-- **macOS** — `.dmg` (Apple Silicon or Intel)
+- **macOS** — `.dmg` (Apple Silicon)
 - **Windows** — `.msi` or `.exe`
 - **Linux** — `.AppImage` or `.deb`
 
