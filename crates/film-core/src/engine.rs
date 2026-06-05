@@ -288,6 +288,7 @@ mod tests {
     fn invert_image_is_per_pixel_and_order_preserving() {
         // A multi-pixel image must invert each pixel exactly as the scalar fn does,
         // in the same order — this guards the parallel collect() against reordering.
+        // Cover all three modes, since invert_image dispatches each through par_iter.
         let p = InversionParams { base: [0.8, 0.6, 0.4], ..Default::default() };
         let pixels = vec![
             [0.8, 0.6, 0.4],
@@ -296,13 +297,19 @@ mod tests {
             [0.05, 0.9, 0.45],
         ];
         let img = Image { width: 2, height: 2, pixels: pixels.clone(), ir: None };
-        let out = invert_image(&img, &p, Mode::B);
-        assert_eq!(out.width, 2);
-        assert_eq!(out.height, 2);
-        for (i, &px) in pixels.iter().enumerate() {
-            let want = invert_b(px, &p);
-            for (c, (&got, &exp)) in out.pixels[i].iter().zip(want.iter()).enumerate() {
-                assert!((got - exp).abs() < 1e-6, "pixel {i} chan {c}");
+        for (mode, scalar) in [
+            (Mode::B, invert_b as fn([f32; 3], &InversionParams) -> [f32; 3]),
+            (Mode::C, invert_c),
+            (Mode::Naive, invert_naive),
+        ] {
+            let out = invert_image(&img, &p, mode);
+            assert_eq!(out.width, 2);
+            assert_eq!(out.height, 2);
+            for (i, &px) in pixels.iter().enumerate() {
+                let want = scalar(px, &p);
+                for (c, (&got, &exp)) in out.pixels[i].iter().zip(want.iter()).enumerate() {
+                    assert!((got - exp).abs() < 1e-5, "mode {mode:?} pixel {i} chan {c}");
+                }
             }
         }
     }

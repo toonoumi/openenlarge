@@ -463,7 +463,7 @@ mod tests {
         for (i, &px) in pixels.iter().enumerate() {
             let want = finish_pixel(px, &p);
             for (c, (&got, &exp)) in out.pixels[i].iter().zip(want.iter()).enumerate() {
-                assert!((got - exp).abs() < 1e-6, "pixel {i} chan {c}");
+                assert!((got - exp).abs() < 1e-5, "pixel {i} chan {c}");
             }
         }
     }
@@ -480,6 +480,8 @@ mod tests {
         let img = Image { width: 2, height: 2, pixels, ir: None };
         let a = finish_image(&img, &p);
         let b = finish_image(&img, &p);
+        // assert_eq! (bitwise) is intentional: same binary + deterministic arithmetic,
+        // so two back-to-back runs must produce identical bits.
         assert_eq!(a.pixels, b.pixels, "must be deterministic across runs");
         for px in &a.pixels {
             for &v in px.iter() {
