@@ -116,6 +116,18 @@ pub fn inpaint_masked(img: &mut Image, mask: &Mask, radius: u32) {
     }
 }
 
+/// Default soft-dilation (px) added to each dab so the hole fully covers the speck.
+pub const GROW: f32 = 1.5;
+/// Default Telea neighborhood radius (px).
+pub const RADIUS: u32 = 3;
+
+/// Rasterize `stamps` (image pixel coords) and inpaint them in place. No-op when
+/// `stamps` is empty or nothing lands inside the image.
+pub fn apply(img: &mut Image, stamps: &[Stamp]) {
+    let mask = rasterize(img.width, img.height, stamps, GROW, (RADIUS + 2) as usize);
+    inpaint_masked(img, &mask, RADIUS);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -170,5 +182,19 @@ mod tests {
         assert!(p[0] < 0.6, "speck should be filled toward gray, got {:?}", p);
         // A far-away pixel is untouched.
         assert_eq!(img.pixels[0], [0.4, 0.4, 0.4]);
+    }
+
+    #[test]
+    fn apply_is_noop_without_stamps_and_heals_with_them() {
+        let n = 21usize;
+        let mut img = Image { width: n, height: n, pixels: vec![[0.3, 0.5, 0.7]; n * n], ir: None };
+        let before = img.clone();
+        apply(&mut img, &[]);
+        assert_eq!(img, before, "no stamps → unchanged");
+
+        img.pixels[10 * n + 10] = [0.0, 0.0, 0.0];
+        apply(&mut img, &[Stamp { cx: 10.0, cy: 10.0, r: 1.5 }]);
+        let p = img.pixels[10 * n + 10];
+        assert!(p[0] > 0.1 && p[2] > 0.4, "dark speck healed toward field, got {:?}", p);
     }
 }
