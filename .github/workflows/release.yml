@@ -28,6 +28,11 @@ jobs:
             args: ''
 
     runs-on: ${{ matrix.platform }}
+    # Promoted to job level so the value is visible to the Windows step's `if`
+    # guard (a step's own step-level `env:` is NOT available to that step's `if`).
+    env:
+      WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+      WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
 
@@ -60,9 +65,6 @@ jobs:
       - name: Import Windows signing certificate
         if: matrix.platform == 'windows-latest' && env.WINDOWS_CERTIFICATE != ''
         shell: pwsh
-        env:
-          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
-          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         run: |
           $bytes = [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE)
           $pfx = "$env:RUNNER_TEMP\cert.pfx"
