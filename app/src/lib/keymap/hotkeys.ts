@@ -26,6 +26,7 @@ export const hotkeyGroups: HotkeyGroup[] = [
     heading: "keymap.group.editing",
     items: [
       { keys: [["Mod", "Z"]], label: "keymap.edit.undo" },
+      { keys: [["Mod", "Shift", "Z"]], label: "keymap.edit.redo" },
       { keys: [["Mod", "["], ["Mod", "]"]], label: "keymap.edit.rotate" },
     ],
   },
