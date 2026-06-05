@@ -161,6 +161,8 @@
 
   // Key the uploaded working texture. In bake mode it depends on dust strokes + the
   // baked geometry (re-bake on commit/geometry change); else just the image id.
+  // Contract: the parent must bump `dustRev` on any change to `dust` (it's the proxy
+  // for stroke changes here — the dust array itself is not in the key).
   function currentUploadKey(): string {
     if (bakeMode) {
       return `bake|${id}|${dustRev}|${irRemoval.enabled}|${irRemoval.sensitivity}|${imageCrop ? imageCrop.join(',') : 'full'}|${rot90}|${flipH}|${flipV}|${angle}`;
@@ -209,7 +211,7 @@
 
   // Map orient/flip/straighten/persistent-crop into GPU geometry uniforms, then draw.
   function applyGeometryAndDraw() {
-    if (!gpuEligible || !renderer) return;
+    if (!gpuEligible || !renderer || texW === 0) return; // no texture uploaded yet
     // Bake mode: geometry is already baked into the texture → identity + baked dims.
     if (bakeMode) {
       renderer.setGeometry({
