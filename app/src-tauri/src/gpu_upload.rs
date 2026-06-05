@@ -26,9 +26,59 @@ pub fn pack_rgba16f(img: &Image, cap: u32) -> (u32, u32, Vec<u8>) {
     (capped.width as u32, capped.height as u32, bytes)
 }
 
+use crate::commands::{build_params, mode_from, wb_from_params};
+use crate::session::InvertParams;
+use film_core::engine::Mode;
+use serde::Serialize;
+
+/// Flat, JS-friendly inversion uniforms. Matrices are column-major 9-vecs to
+/// match GLSL `mat3` constructor/`uniformMatrix3fv` layout.
+#[derive(Debug, Clone, Serialize)]
+pub struct ResolvedInversion {
+    pub base: [f32; 3],
+    pub wb: [f32; 3],
+    pub m_pre: [f32; 9],
+    pub m_post: [f32; 9],
+    pub exposure: f32,
+    pub black: f32,
+    pub gamma: f32,
+    /// 0 = Mode B (density matrix), 1 = Mode C (per-channel), 2 = Naive.
+    pub mode: u8,
+}
+
+/// Copy a nalgebra Matrix3 into a column-major `[f32; 9]`. nalgebra stores
+/// column-major, so `as_slice()` is already in the layout `uniformMatrix3fv`
+/// (transpose=false) expects.
+fn mat3_col_major(s: &[f32]) -> [f32; 9] {
+    [s[0], s[1], s[2], s[3], s[4], s[5], s[6], s[7], s[8]]
+}
+
+/// Resolve the UI params (+ sampled film base) into GPU uniforms, reusing the
+/// exact same param construction the CPU path uses (build_params + wb).
+pub fn resolve_to_uniforms(p: &InvertParams, base: [f32; 3]) -> ResolvedInversion {
+    let mut ip = build_params(p, base);
+    ip.wb = wb_from_params(p.temp, p.tint);
+    let mode = match mode_from(&p.mode) {
+        Mode::B => 0u8,
+        Mode::C => 1,
+        Mode::Naive => 2,
+    };
+    ResolvedInversion {
+        base: ip.base,
+        wb: ip.wb,
+        m_pre: mat3_col_major(ip.m_pre.as_slice()),
+        m_post: mat3_col_major(ip.m_post.as_slice()),
+        exposure: ip.exposure,
+        black: ip.black,
+        gamma: ip.gamma,
+        mode,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::commands_test_support::sample_invert_params;
     use film_core::Image;
     use half::f16;
 
@@ -53,5 +103,32 @@ mod tests {
         let (w, h, bytes) = pack_rgba16f(&img, 5);
         assert!(w <= 5 && h <= 5, "long edge capped: {w}x{h}");
         assert_eq!(bytes.len(), (w * h * 4 * 2) as usize);
+    }
+
+    #[test]
+    fn uniforms_none_stock_mode_c_is_identity_matrices_mode_1() {
+        let mut p = sample_invert_params();
+        p.stock = "none".into();
+        p.mode = "c".into();
+        p.exposure = 1.0; // 1 EV → 2.0x
+        let u = resolve_to_uniforms(&p, [0.8, 0.6, 0.4]);
+        assert_eq!(u.mode, 1, "c → 1");
+        assert_eq!(u.base, [0.8, 0.6, 0.4]);
+        // identity m_pre/m_post (column-major 9-vec)
+        assert_eq!(u.m_pre, [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]);
+        assert_eq!(u.m_post, [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]);
+        assert!((u.exposure - 2.0).abs() < 1e-5, "2^1");
+    }
+
+    #[test]
+    fn uniforms_portra_mode_b_fits_nonidentity_mpost_mode_0() {
+        let mut p = sample_invert_params();
+        p.stock = "portra400".into();
+        p.mode = "b".into();
+        let u = resolve_to_uniforms(&p, [0.8, 0.6, 0.4]);
+        assert_eq!(u.mode, 0, "b → 0");
+        // m_post from fit_m_post is NOT identity for a real stock
+        let identity = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
+        assert_ne!(u.m_post, identity, "stock fit produces a real matrix");
     }
 }

@@ -116,11 +116,11 @@ fn stock_from(s: &str) -> Option<Stock> {
     }
 }
 
-fn mode_from(s: &str) -> Mode {
+pub(crate) fn mode_from(s: &str) -> Mode {
     match s { "c" => Mode::C, _ => Mode::B }
 }
 
-fn build_params(p: &InvertParams, base: [f32; 3]) -> InversionParams {
+pub(crate) fn build_params(p: &InvertParams, base: [f32; 3]) -> InversionParams {
     let exposure = 2f32.powf(p.exposure); // EV stops → linear multiplier
     match stock_from(&p.stock) {
         Some(s) if p.mode == "b" => params_for_stock(s, base, exposure, p.black, p.gamma),
@@ -128,7 +128,7 @@ fn build_params(p: &InvertParams, base: [f32; 3]) -> InversionParams {
     }
 }
 
-fn wb_from_params(temp: f32, tint: f32) -> [f32; 3] {
+pub(crate) fn wb_from_params(temp: f32, tint: f32) -> [f32; 3] {
     wb_from_kelvin(temp, tint / 150.0)
 }
 
