@@ -21,6 +21,8 @@ export interface ImageHistory {
 export const HISTORY_CAP = 50;
 
 /** Value equality for snapshots. Snapshots are plain JSON-safe data. */
+// Assumes snapshot fields are present-with-value or absent — never explicitly `undefined`
+// (so JSON.stringify equality is faithful for the optional MetaOverride fields).
 export function snapEqual(a: EditSnapshot, b: EditSnapshot): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
@@ -69,6 +71,6 @@ export function matchUndoRedo(
   if (!e.metaKey && !e.ctrlKey) return null;
   const k = e.key.toLowerCase();
   if (k === "z") return e.shiftKey ? "redo" : "undo";
-  if (k === "y") return "redo";
+  if (k === "y" && e.ctrlKey) return "redo";
   return null;
 }

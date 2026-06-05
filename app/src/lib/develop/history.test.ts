@@ -73,7 +73,7 @@ describe("history engine — pure ops", () => {
 
   it("cap trims the oldest past entry", () => {
     let h: ImageHistory = seeded(snap(0));
-    for (let i = 1; i <= HISTORY_CAP + 5; i++) h = pushed(h, snap(i), HISTORY_CAP);
+    for (let i = 1; i <= HISTORY_CAP + 5; i++) h = pushed(h, snap(i));
     expect(h.past.length).toBe(HISTORY_CAP);
     // oldest survivor is exposure (HISTORY_CAP+5) - HISTORY_CAP in past[0]
     expect(h.past[0].params.exposure).toBe(5);
@@ -83,6 +83,28 @@ describe("history engine — pure ops", () => {
   it("snapEqual compares by value", () => {
     expect(snapEqual(snap(1), snap(1))).toBe(true);
     expect(snapEqual(snap(1), snap(2))).toBe(false);
+  });
+
+  it("redo on a fresh history returns null and leaves history untouched", () => {
+    const h = seeded(snap(0));
+    const r = redone(h);
+    expect(r.snapshot).toBeNull();
+    expect(r.history).toBe(h);
+  });
+
+  it("traverses a multi-step chain undo→undo→redo→redo", () => {
+    let h: ImageHistory = seeded(snap(0));
+    h = pushed(h, snap(1));
+    h = pushed(h, snap(2));
+    h = undone(h).history; // present 1
+    expect(h.present.params.exposure).toBe(1);
+    h = undone(h).history; // present 0
+    expect(h.present.params.exposure).toBe(0);
+    h = redone(h).history; // present 1
+    expect(h.present.params.exposure).toBe(1);
+    h = redone(h).history; // present 2
+    expect(h.present.params.exposure).toBe(2);
+    expect(canRedo(h)).toBe(false);
   });
 });
 
@@ -100,6 +122,9 @@ describe("matchUndoRedo", () => {
   });
   it("Ctrl+Y → redo", () => {
     expect(matchUndoRedo(ev({ key: "y", ctrlKey: true }))).toBe("redo");
+  });
+  it("⌘Y (metaKey) does NOT map to redo — Ctrl+Y only", () => {
+    expect(matchUndoRedo(ev({ key: "y", metaKey: true }))).toBeNull();
   });
   it("is case-insensitive on the key", () => {
     expect(matchUndoRedo(ev({ key: "Z", metaKey: true }))).toBe("undo");
