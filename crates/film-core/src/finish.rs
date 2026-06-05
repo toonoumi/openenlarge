@@ -4,6 +4,7 @@
 
 use crate::curve::{curve_lut, sample_lut, LUT_SIZE};
 use crate::Image;
+use rayon::prelude::*;
 
 const EPS: f32 = 1e-5;
 /// Unsharp-mask gain at texture = ±1 (empirical).
@@ -282,7 +283,7 @@ fn apply_texture(img: &Image, amount: f32) -> Image {
 }
 
 pub fn finish_image(img: &Image, p: &FinishParams) -> Image {
-    let pixels = img.pixels.iter().map(|&px| finish_pixel(px, p)).collect();
+    let pixels = img.pixels.par_iter().map(|&px| finish_pixel(px, p)).collect();
     let toned = Image { width: img.width, height: img.height, pixels, ir: img.ir.clone() };
     if p.texture.abs() > EPS { apply_texture(&toned, p.texture) } else { toned }
 }
@@ -443,6 +444,27 @@ mod tests {
         );
         let out = color_grade([0.5, 0.5, 0.5], &cg);
         assert!(out[0] > 0.5 && out[1] > 0.5 && out[2] > 0.5, "{:?}", out);
+    }
+
+    #[test]
+    fn finish_image_matches_scalar_per_pixel_no_texture() {
+        // With texture == 0, finish_image is a pure per-pixel map; assert it matches
+        // finish_pixel elementwise and in order (guards the parallel collect).
+        let p = FinishParams { contrast: 0.4, saturation: 0.3, ..Default::default() };
+        let pixels = vec![
+            [0.6, 0.4, 0.3],
+            [0.1, 0.7, 0.2],
+            [0.9, 0.9, 0.1],
+            [0.2, 0.2, 0.8],
+        ];
+        let img = Image { width: 4, height: 1, pixels: pixels.clone(), ir: None };
+        let out = finish_image(&img, &p);
+        for (i, &px) in pixels.iter().enumerate() {
+            let want = finish_pixel(px, &p);
+            for c in 0..3 {
+                assert!((out.pixels[i][c] - want[c]).abs() < 1e-6, "pixel {i} chan {c}");
+            }
+        }
     }
 
     #[test]
