@@ -31,6 +31,46 @@ pub struct ExportFormat {
     pub max_bytes: Option<u64>, // jpeg
 }
 
+/// User-edited metadata overrides sent from the panel. Each field, when present
+/// and non-blank, replaces the source EXIF value on export. Mirrors the JS
+/// `MetaOverride`.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct MetaOverride {
+    pub camera: Option<String>,
+    pub lens: Option<String>,
+    pub iso: Option<String>,
+    pub shutter: Option<String>,
+    pub aperture: Option<String>,
+    pub date: Option<String>,
+    pub note: Option<String>,
+}
+
+/// Overlay the override onto the source metadata: a non-blank override field wins,
+/// otherwise the original is kept. (Note has no source value; it comes only from
+/// the override.)
+fn effective_metadata(
+    orig: &crate::metadata::Metadata,
+    ov: Option<&MetaOverride>,
+) -> crate::metadata::Metadata {
+    let mut m = orig.clone();
+    let Some(o) = ov else { return m };
+    let pick = |cur: &Option<String>, new: &Option<String>| -> Option<String> {
+        new.as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+            .or_else(|| cur.clone())
+    };
+    m.camera = pick(&m.camera, &o.camera);
+    m.lens = pick(&m.lens, &o.lens);
+    m.iso = pick(&m.iso, &o.iso);
+    m.shutter = pick(&m.shutter, &o.shutter);
+    m.aperture = pick(&m.aperture, &o.aperture);
+    m.date = pick(&m.date, &o.date);
+    m.note = pick(&m.note, &o.note);
+    m
+}
+
 const THUMB_EDGE: u32 = 320;
 const AUTOWB_EDGE: u32 = 256;
 const PREVIEW_JPEG_QUALITY: u8 = 88;
@@ -238,6 +278,15 @@ pub fn develop_image(
     let inv_thumb = finish_image(&inv_thumb, &finish_from(&defaults));
     let thumbnail = to_jpeg_b64(&inv_thumb, false, 82)?;
 
+    // Build a cache-bounded copy of working (≤4096 long edge) for the sidecar.
+    // Clone thumb too before the move into Developed.
+    let cache_working = if working.width.max(working.height) > 4096 {
+        crate::convert::proxy(&working, 4096)
+    } else {
+        working.clone()
+    };
+    let cache_thumb = thumb.clone();
+
     let mut images = session.images.lock().unwrap();
     let img = images.get_mut(&id).ok_or("unknown image id")?;
     img.metadata.width = w;
@@ -248,6 +297,12 @@ pub fn develop_image(
     if let Err(e) = catalog.update_image_render(&id, &thumbnail, &metadata_json) {
         eprintln!("[catalog] update_image_render failed for {id}: {e}");
     }
+
+    // Write cache sidecar (best-effort; never fails the develop command).
+    if let Err(e) = crate::cache::write(&session.cache_path(&id), base, &cache_working, &cache_thumb) {
+        eprintln!("[cache] write failed for {id}: {e}");
+    }
+
     Ok(ImageEntry {
         id: id.clone(),
         path: img.path.clone(),
@@ -280,6 +335,7 @@ pub fn delete_image(
     if let Err(e) = catalog.delete_image(&id) {
         eprintln!("[catalog] delete_image failed for {id}: {e}");
     }
+    let _ = std::fs::remove_file(session.cache_path(&id));
     if delete_file {
         let img = removed.ok_or_else(|| "unknown image".to_string())?;
         trash::delete(&img.path).map_err(|e| format!("{e}"))?;
@@ -326,8 +382,35 @@ pub struct ViewSpec {
     #[serde(default)] pub ir_removal: IrRemoval,
 }
 
+/// Ensure the image's decoded `Developed` is resident in the Session: if absent
+/// but a cache file exists, load it. Drops the lock during file IO.
+fn ensure_resident(session: &Session, id: &str) -> Result<(), String> {
+    {
+        let images = session.images.lock().unwrap();
+        match images.get(id) {
+            Some(c) if c.developed.is_some() => return Ok(()),
+            Some(_) => {}
+            None => return Err("unknown image id".into()),
+        }
+    }
+    let path = session.cache_path(id);
+    if !path.exists() {
+        return Err("not developed".into());
+    }
+    let (base, working, thumb) =
+        crate::cache::read(&path).map_err(|e| format!("cache read: {e}"))?;
+    let mut images = session.images.lock().unwrap();
+    if let Some(c) = images.get_mut(id) {
+        if c.developed.is_none() {
+            c.developed = Some(Developed { working, thumb, base });
+        }
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub fn render_view(id: String, params: InvertParams, view: ViewSpec, session: State<Session>) -> Result<String, String> {
+    ensure_resident(&session, &id)?;
     let images = session.images.lock().unwrap();
     let img = images.get(&id).ok_or("unknown image id")?;
     let dev = img.developed.as_ref().ok_or("not developed")?;
@@ -380,6 +463,7 @@ pub fn render_view(id: String, params: InvertParams, view: ViewSpec, session: St
 /// params — used to live-refresh the Library grid cell while editing.
 #[tauri::command]
 pub fn thumbnail(id: String, params: InvertParams, session: State<Session>) -> Result<String, String> {
+    ensure_resident(&session, &id)?;
     let images = session.images.lock().unwrap();
     let img = images.get(&id).ok_or("unknown image id")?;
     let dev = img.developed.as_ref().ok_or("not developed")?;
@@ -400,13 +484,15 @@ pub fn export_image(
     dust: Vec<DustStroke>,
     ir_removal: IrRemoval,
     format: ExportFormat,
+    meta_override: Option<MetaOverride>,
     session: State<Session>,
 ) -> Result<(), String> {
-    let (path, base, thumb) = {
+    ensure_resident(&session, &id)?;
+    let (path, base, thumb, metadata) = {
         let images = session.images.lock().unwrap();
         let img = images.get(&id).ok_or("unknown image id")?;
         let dev = img.developed.as_ref().ok_or("not developed")?;
-        (img.path.clone(), dev.base, dev.thumb.clone())
+        (img.path.clone(), dev.base, dev.thumb.clone(), img.metadata.clone())
     };
     let full = decode_any(Path::new(&path))?;
     let full = orient(&full, rot90, flip_h, flip_v);
@@ -440,7 +526,15 @@ pub fn export_image(
         "png" => write_png(&fin, out, format.bit_depth),
         "jpeg" => write_jpeg(&fin, out, format.quality, format.max_bytes),
         other => Err(format!("unknown export format: {other}")),
+    }?;
+
+    // Best-effort EXIF embed. The pixel file is already written and valid; a
+    // metadata failure is logged but never fails the export.
+    let eff = effective_metadata(&metadata, meta_override.as_ref());
+    if let Err(e) = crate::exif_write::write_exif(out, &eff) {
+        eprintln!("[exif] embed failed for {out_path}: {e}");
     }
+    Ok(())
 }
 
 /// Estimated as-shot white point for the developed image, as (Kelvin, tint).
@@ -450,6 +544,7 @@ pub struct AsShotWb { pub temp: f32, pub tint: f32 }
 
 #[tauri::command]
 pub fn as_shot_wb(id: String, session: State<Session>) -> Result<AsShotWb, String> {
+    ensure_resident(&session, &id)?;
     let (base, thumb) = {
         let images = session.images.lock().unwrap();
         let img = images.get(&id).ok_or("unknown image id")?;
@@ -473,9 +568,21 @@ pub fn load_catalog(
     session: State<Session>,
     catalog: State<crate::catalog::Catalog>,
 ) -> Result<crate::catalog::CatalogSnapshot, String> {
-    let snap = catalog
+    let mut snap = catalog
         .snapshot(&|p| Path::new(p).exists())
         .map_err(|e| e.to_string())?;
+
+    // Annotate each image with cache presence (cheap stat) before sending to frontend.
+    for ci in &mut snap.images {
+        let cache_path = session.cache_path(&ci.id);
+        ci.developed = cache_path.exists();
+        ci.has_ir = if ci.developed {
+            crate::cache::read_has_ir(&cache_path).unwrap_or(false)
+        } else {
+            false
+        };
+    }
+
     let mut imgs = session.images.lock().unwrap();
     imgs.clear();
     for ci in &snap.images {
@@ -487,7 +594,7 @@ pub fn load_catalog(
                 file_name: ci.file_name.clone(),
                 metadata,
                 thumbnail: ci.thumbnail.clone(),
-                developed: None,
+                developed: None, // lazy: ensure_resident loads on first view
             },
         );
     }
@@ -519,6 +626,15 @@ pub fn save_dust(
     catalog: State<crate::catalog::Catalog>,
 ) -> Result<(), String> {
     catalog.save_dust(&id, &dust_json).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn save_meta(
+    id: String,
+    meta_json: String,
+    catalog: State<crate::catalog::Catalog>,
+) -> Result<(), String> {
+    catalog.save_meta(&id, &meta_json).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

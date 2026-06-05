@@ -7,6 +7,8 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 /// One catalog image as sent to the frontend. `offline` is computed at load time.
+/// `developed` and `has_ir` are set to false here; `load_catalog` in commands.rs
+/// overrides them from cache-file presence.
 #[derive(Debug, Clone, Serialize)]
 pub struct CatalogImage {
     pub id: String,
@@ -15,6 +17,8 @@ pub struct CatalogImage {
     pub metadata: Value,
     pub thumbnail: String,
     pub offline: bool,
+    pub developed: bool,
+    pub has_ir: bool,
 }
 
 /// One image's stored edits. Stored as opaque JSON blobs; deserialized to `Value`
@@ -25,6 +29,7 @@ pub struct CatalogEdits {
     pub params: Option<Value>,
     pub crop: Option<Value>,
     pub dust: Option<Value>,
+    pub meta: Option<Value>,
 }
 
 /// The full catalog handed to the frontend on launch.
@@ -42,7 +47,7 @@ pub struct Catalog {
     conn: Mutex<Connection>,
 }
 
-const SCHEMA_VERSION: i64 = 1;
+const SCHEMA_VERSION: i64 = 2;
 
 impl Catalog {
     /// Open (creating if absent) the catalog at `db_path`. Enables WAL and migrates.
@@ -140,6 +145,8 @@ impl Catalog {
                 file_name: r.get(2)?,
                 metadata: serde_json::from_str(&metadata).unwrap_or(Value::Null),
                 thumbnail: r.get(4)?,
+                developed: false,
+                has_ir: false,
             })
         })?;
         rows.collect()
@@ -175,11 +182,21 @@ impl Catalog {
         Ok(())
     }
 
+    /// Upsert the metadata-override JSON for an image's edits row.
+    pub fn save_meta(&self, image_id: &str, meta_json: &str) -> rusqlite::Result<()> {
+        self.conn.lock().unwrap().execute(
+            "INSERT INTO edits (image_id, meta_json) VALUES (?1, ?2)
+             ON CONFLICT(image_id) DO UPDATE SET meta_json = excluded.meta_json",
+            rusqlite::params![image_id, meta_json],
+        )?;
+        Ok(())
+    }
+
     /// Load every image's edits row.
     pub fn load_edits(&self) -> rusqlite::Result<Vec<CatalogEdits>> {
         let conn = self.conn.lock().unwrap();
-        let mut stmt =
-            conn.prepare("SELECT image_id, params_json, crop_json, dust_json FROM edits")?;
+        let mut stmt = conn
+            .prepare("SELECT image_id, params_json, crop_json, dust_json, meta_json FROM edits")?;
         let parse = |s: Option<String>| s.and_then(|t| serde_json::from_str(&t).ok());
         let rows = stmt.query_map([], |r| {
             Ok(CatalogEdits {
@@ -187,6 +204,7 @@ impl Catalog {
                 params: parse(r.get(1)?),
                 crop: parse(r.get(2)?),
                 dust: parse(r.get(3)?),
+                meta: parse(r.get(4)?),
             })
         })?;
         rows.collect()
@@ -281,6 +299,11 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
              COMMIT;",
         )?;
     }
+    if version < 2 {
+        // Per-image editable metadata overrides (camera/lens/iso/shutter/aperture/
+        // date/note), stored as one opaque JSON blob alongside the other edits.
+        conn.execute_batch("ALTER TABLE edits ADD COLUMN meta_json TEXT;")?;
+    }
     conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;
     Ok(())
 }
@@ -290,9 +313,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn open_creates_schema_at_version_1() {
+    fn open_creates_schema_at_current_version() {
         let cat = Catalog::open_in_memory().unwrap();
-        assert_eq!(cat.user_version(), 1);
+        assert_eq!(cat.user_version(), SCHEMA_VERSION);
     }
 
     #[test]
@@ -303,12 +326,26 @@ mod tests {
         let _ = std::fs::remove_file(&db);
         {
             let cat = Catalog::open(&db).unwrap();
-            assert_eq!(cat.user_version(), 1);
+            assert_eq!(cat.user_version(), SCHEMA_VERSION);
         }
-        // Reopen: should not error and stay at version 1.
+        // Reopen: should not error and stay at the current version.
         let cat = Catalog::open(&db).unwrap();
-        assert_eq!(cat.user_version(), 1);
+        assert_eq!(cat.user_version(), SCHEMA_VERSION);
         let _ = std::fs::remove_file(&db);
+    }
+
+    #[test]
+    fn meta_override_round_trips() {
+        let cat = Catalog::open_in_memory().unwrap();
+        cat.save_params("img-1", r#"{"exposure":1.0}"#).unwrap();
+        cat.save_meta("img-1", r#"{"camera":"Leica M6","note":"roll 12"}"#).unwrap();
+        let edits = cat.load_edits().unwrap();
+        assert_eq!(edits.len(), 1);
+        let m = edits[0].meta.as_ref().unwrap();
+        assert_eq!(m["camera"], "Leica M6");
+        assert_eq!(m["note"], "roll 12");
+        // Co-stored families are untouched by a meta save.
+        assert_eq!(edits[0].params.as_ref().unwrap()["exposure"], 1.0);
     }
 
     #[test]

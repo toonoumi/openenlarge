@@ -1,7 +1,9 @@
+mod cache;
 mod catalog;
 mod commands;
 mod convert;
 mod encode;
+mod exif_write;
 mod metadata;
 mod session;
 
@@ -26,6 +28,9 @@ pub fn run() {
             }
             let dir = app.path().app_data_dir().expect("app data dir");
             std::fs::create_dir_all(&dir).map_err(|e| format!("create app data dir: {e}"))?;
+            let cache_dir = dir.join("cache");
+            std::fs::create_dir_all(&cache_dir).map_err(|e| format!("create cache dir: {e}"))?;
+            *app.state::<session::Session>().cache_dir.lock().unwrap() = cache_dir;
             let db_path = dir.join("catalog.db");
             let catalog = catalog::Catalog::open(&db_path)
                 .unwrap_or_else(|e| panic!("open catalog db at {}: {e}", db_path.display()));
@@ -45,6 +50,7 @@ pub fn run() {
             commands::save_edits,
             commands::save_crop,
             commands::save_dust,
+            commands::save_meta,
             commands::save_pref,
             commands::save_app_state,
         ])

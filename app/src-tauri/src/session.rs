@@ -128,9 +128,15 @@ pub struct CachedImage {
 pub struct Session {
     pub images: Mutex<HashMap<String, CachedImage>>,
     pub quality: Mutex<Quality>,
+    pub cache_dir: Mutex<std::path::PathBuf>,
 }
 
 impl Session {
+    /// Return the path for a given image id's cache sidecar file.
+    pub fn cache_path(&self, id: &str) -> std::path::PathBuf {
+        self.cache_dir.lock().unwrap().join(format!("{id}.oecache"))
+    }
+
     /// Insert a cached image under an explicit (catalog-assigned) id.
     pub fn insert_with_id(&self, id: String, img: CachedImage) -> ImageEntry {
         let entry = ImageEntry {
