@@ -2,11 +2,176 @@
 //! the inversion core. All params are 0.0 = identity. Tone/saturation are
 //! per-pixel; texture (Task 2) is a spatial unsharp pass.
 
+use crate::curve::{curve_lut, sample_lut, LUT_SIZE};
 use crate::Image;
 
 const EPS: f32 = 1e-5;
 /// Unsharp-mask gain at texture = ±1 (empirical).
 const USM_GAIN: f32 = 1.5;
+
+// --- Tone Curve region (parametric) constants. Shared with shaders.ts / curve.ts. ---
+/// Per-slider lift at ±1 in its zone.
+const REGION_GAIN: f32 = 0.25;
+/// Half-width of each region's parabolic bump.
+const REGION_WIDTH: f32 = 0.22;
+/// Tone-zone centers: shadows, darks, lights, highlights.
+const REGION_CENTERS: [f32; 4] = [0.125, 0.375, 0.625, 0.875];
+
+// --- Color Grading constants. Shared with shaders.ts. ---
+/// Saturation → chroma-offset scale.
+const CG_COLOR_GAIN: f32 = 0.5;
+/// Luminance slider → brightness-offset scale.
+const CG_LUM_GAIN: f32 = 0.3;
+
+#[inline]
+fn luma(rgb: [f32; 3]) -> f32 {
+    0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]
+}
+
+#[inline]
+fn smoothstep(e0: f32, e1: f32, x: f32) -> f32 {
+    let t = ((x - e0) / (e1 - e0)).clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
+}
+
+/// Pure-hue RGB at full saturation/value. `h` in degrees.
+fn hsv_hue_rgb(h: f32) -> [f32; 3] {
+    let h = (h.rem_euclid(360.0)) / 60.0;
+    let x = 1.0 - (h % 2.0 - 1.0).abs();
+    match h as i32 {
+        0 => [1.0, x, 0.0],
+        1 => [x, 1.0, 0.0],
+        2 => [0.0, 1.0, x],
+        3 => [0.0, x, 1.0],
+        4 => [x, 0.0, 1.0],
+        _ => [1.0, 0.0, x],
+    }
+}
+
+/// Parabolic region bump centered at `c` (finite support, peak 1.0).
+#[inline]
+fn region_bump(v: f32, c: f32) -> f32 {
+    let t = (v - c) / REGION_WIDTH;
+    (1.0 - t * t).max(0.0)
+}
+
+/// Apply the four parametric region sliders (−1..1) to a value in [0,1].
+fn parametric(v: f32, regions: [f32; 4]) -> f32 {
+    let mut v = v.clamp(0.0, 1.0);
+    for k in 0..4 {
+        v += regions[k] * REGION_GAIN * region_bump(v, REGION_CENTERS[k]);
+    }
+    v.clamp(0.0, 1.0)
+}
+
+/// Build the three composed tone LUTs: per channel, `channel(master(parametric(x)))`.
+/// `regions` are the four sliders (highlights, lights, darks, shadows) pre-scaled to
+/// −1..1, ordered [shadows, darks, lights, highlights] to match REGION_CENTERS.
+pub fn tone_luts(
+    regions: [f32; 4],
+    master: &[[f32; 2]],
+    red: &[[f32; 2]],
+    green: &[[f32; 2]],
+    blue: &[[f32; 2]],
+) -> ([f32; LUT_SIZE], [f32; LUT_SIZE], [f32; LUT_SIZE]) {
+    let m = curve_lut(master);
+    let r = curve_lut(red);
+    let g = curve_lut(green);
+    let b = curve_lut(blue);
+    let mut lr = [0.0f32; LUT_SIZE];
+    let mut lg = [0.0f32; LUT_SIZE];
+    let mut lb = [0.0f32; LUT_SIZE];
+    for i in 0..LUT_SIZE {
+        let x = i as f32 / (LUT_SIZE - 1) as f32;
+        let base = sample_lut(&m, parametric(x, regions));
+        lr[i] = sample_lut(&r, base);
+        lg[i] = sample_lut(&g, base);
+        lb[i] = sample_lut(&b, base);
+    }
+    (lr, lg, lb)
+}
+
+fn identity_lut() -> [f32; LUT_SIZE] {
+    let mut l = [0.0f32; LUT_SIZE];
+    for (i, v) in l.iter_mut().enumerate() {
+        *v = i as f32 / (LUT_SIZE - 1) as f32;
+    }
+    l
+}
+
+/// Precomputed color-grading state: per-region chroma offset + luminance lift, and
+/// the luma mask edges. 0/identity everywhere = no change.
+#[derive(Debug, Clone, Copy)]
+pub struct ColorGrade {
+    pub sh_off: [f32; 3],
+    pub sh_lum: f32,
+    pub mid_off: [f32; 3],
+    pub mid_lum: f32,
+    pub hi_off: [f32; 3],
+    pub hi_lum: f32,
+    pub glob_off: [f32; 3],
+    pub glob_lum: f32,
+    pub sh_edge: f32,
+    pub hi_edge: f32,
+    pub softness: f32,
+}
+
+impl Default for ColorGrade {
+    fn default() -> Self {
+        ColorGrade {
+            sh_off: [0.0; 3], sh_lum: 0.0,
+            mid_off: [0.0; 3], mid_lum: 0.0,
+            hi_off: [0.0; 3], hi_lum: 0.0,
+            glob_off: [0.0; 3], glob_lum: 0.0,
+            sh_edge: 0.33, hi_edge: 0.66, softness: 0.25,
+        }
+    }
+}
+
+/// Chroma-only offset for one wheel: hue (deg) + sat (0..1) → zero-luma RGB push.
+fn wheel_offset(hue: f32, sat: f32) -> [f32; 3] {
+    let col = hsv_hue_rgb(hue);
+    let y = luma(col);
+    std::array::from_fn(|c| (col[c] - y) * sat * CG_COLOR_GAIN)
+}
+
+impl ColorGrade {
+    /// Build from UI values. Hues in degrees, sats 0..1, lums −1..1; `blending`
+    /// 0..1 (mask overlap width), `balance` −1..1 (shadow↔highlight crossover).
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        sh: ([f32; 2], f32), mid: ([f32; 2], f32), hi: ([f32; 2], f32), glob: ([f32; 2], f32),
+        blending: f32, balance: f32,
+    ) -> Self {
+        let mk = |w: ([f32; 2], f32)| (wheel_offset(w.0[0], w.0[1]), w.1 * CG_LUM_GAIN);
+        let (sh_off, sh_lum) = mk(sh);
+        let (mid_off, mid_lum) = mk(mid);
+        let (hi_off, hi_lum) = mk(hi);
+        let (glob_off, glob_lum) = mk(glob);
+        ColorGrade {
+            sh_off, sh_lum, mid_off, mid_lum, hi_off, hi_lum, glob_off, glob_lum,
+            sh_edge: 0.33 + balance * 0.25,
+            hi_edge: 0.66 + balance * 0.25,
+            softness: 0.1 + 0.3 * blending,
+        }
+    }
+}
+
+/// Apply color grading to one pixel: weight each region's offset+lum by a luma mask.
+fn color_grade(rgb: [f32; 3], cg: &ColorGrade) -> [f32; 3] {
+    let l = luma(rgb);
+    let w_sh = 1.0 - smoothstep(cg.sh_edge - cg.softness, cg.sh_edge + cg.softness, l);
+    let w_hi = smoothstep(cg.hi_edge - cg.softness, cg.hi_edge + cg.softness, l);
+    let w_mid = (1.0 - w_sh - w_hi).clamp(0.0, 1.0);
+    std::array::from_fn(|c| {
+        (rgb[c]
+            + w_sh * (cg.sh_off[c] + cg.sh_lum)
+            + w_mid * (cg.mid_off[c] + cg.mid_lum)
+            + w_hi * (cg.hi_off[c] + cg.hi_lum)
+            + (cg.glob_off[c] + cg.glob_lum))
+            .clamp(0.0, 1.0)
+    })
+}
 
 /// Creative controls. UI sends −100..100 (and EV for exposure, handled upstream);
 /// these are pre-scaled to −1..1 by the caller. 0.0 everywhere = identity.
@@ -20,6 +185,11 @@ pub struct FinishParams {
     pub texture: f32,
     pub vibrance: f32,
     pub saturation: f32,
+    /// Composed tone-curve LUTs (per channel): channel(master(parametric(x))).
+    pub lut_r: [f32; LUT_SIZE],
+    pub lut_g: [f32; LUT_SIZE],
+    pub lut_b: [f32; LUT_SIZE],
+    pub cg: ColorGrade,
 }
 
 impl Default for FinishParams {
@@ -27,6 +197,8 @@ impl Default for FinishParams {
         FinishParams {
             contrast: 0.0, highlights: 0.0, shadows: 0.0, whites: 0.0, blacks: 0.0,
             texture: 0.0, vibrance: 0.0, saturation: 0.0,
+            lut_r: identity_lut(), lut_g: identity_lut(), lut_b: identity_lut(),
+            cg: ColorGrade::default(),
         }
     }
 }
@@ -58,10 +230,17 @@ fn apply_saturation(rgb: [f32; 3], p: &FinishParams) -> [f32; 3] {
     std::array::from_fn(|c| (y + (rgb[c] - y) * factor).clamp(0.0, 1.0))
 }
 
-/// Per-pixel finishing (tone curve per channel, then saturation across channels).
+/// Per-pixel finishing. Order: Basic tone curve + saturation → Tone Curve LUT →
+/// Color Grading. (Texture is a separate spatial pass in `finish_image`.)
 pub fn finish_pixel(rgb: [f32; 3], p: &FinishParams) -> [f32; 3] {
     let toned = [tone_curve(rgb[0], p), tone_curve(rgb[1], p), tone_curve(rgb[2], p)];
-    apply_saturation(toned, p)
+    let sat = apply_saturation(toned, p);
+    let curved = [
+        sample_lut(&p.lut_r, sat[0]),
+        sample_lut(&p.lut_g, sat[1]),
+        sample_lut(&p.lut_b, sat[2]),
+    ];
+    color_grade(curved, &p.cg)
 }
 
 /// Separable 3-tap Gaussian (radius 1, weights 1/4,1/2,1/4). Edges clamp. Small
@@ -201,6 +380,69 @@ mod tests {
                 assert!((o[c] - s[c]).abs() < 1e-5, "c={c} out={} src={}", o[c], s[c]);
             }
         }
+    }
+
+    const ID: [[f32; 2]; 2] = [[0.0, 0.0], [1.0, 1.0]];
+
+    #[test]
+    fn region_shadows_lift_shadow_zone_not_mids() {
+        // regions ordered [shadows, darks, lights, highlights]
+        let (lr, _, _) = tone_luts([1.0, 0.0, 0.0, 0.0], &ID, &ID, &ID, &ID);
+        let i_sh = (0.125 * 255.0) as usize;
+        let i_mid = (0.5 * 255.0) as usize;
+        assert!(lr[i_sh] > 0.125, "shadow zone lifted: {}", lr[i_sh]);
+        assert!((lr[i_mid] - 0.5).abs() < 0.02, "mid ~unchanged: {}", lr[i_mid]);
+    }
+
+    #[test]
+    fn master_curve_lifts_all_channels() {
+        let master = [[0.0, 0.0], [0.5, 0.7], [1.0, 1.0]];
+        let (lr, lg, lb) = tone_luts([0.0; 4], &master, &ID, &ID, &ID);
+        let i = (0.5 * 255.0) as usize;
+        assert!(lr[i] > 0.55 && lg[i] > 0.55 && lb[i] > 0.55, "{} {} {}", lr[i], lg[i], lb[i]);
+    }
+
+    #[test]
+    fn red_curve_only_affects_red_lut() {
+        let red = [[0.0, 0.0], [0.5, 0.7], [1.0, 1.0]];
+        let (lr, lg, lb) = tone_luts([0.0; 4], &ID, &red, &ID, &ID);
+        let i = (0.5 * 255.0) as usize;
+        assert!(lr[i] > 0.55, "red lifted: {}", lr[i]);
+        assert!((lg[i] - 0.5).abs() < 0.02 && (lb[i] - 0.5).abs() < 0.02, "g/b flat");
+    }
+
+    #[test]
+    fn color_grade_default_is_identity() {
+        let cg = ColorGrade::default();
+        for v in [0.1, 0.5, 0.9] {
+            let out = color_grade([v, v, v], &cg);
+            for c in 0..3 {
+                assert!((out[c] - v).abs() < 1e-5, "v={v} c={c} out={}", out[c]);
+            }
+        }
+    }
+
+    #[test]
+    fn shadow_wheel_tints_darks_more_than_brights() {
+        // Red into shadows (hue 0, full sat), nothing elsewhere.
+        let cg = ColorGrade::new(
+            ([0.0, 1.0], 0.0), ([0.0, 0.0], 0.0), ([0.0, 0.0], 0.0), ([0.0, 0.0], 0.0),
+            0.5, 0.0,
+        );
+        let dark = color_grade([0.1, 0.1, 0.1], &cg);
+        let bright = color_grade([0.9, 0.9, 0.9], &cg);
+        assert!(dark[0] - 0.1 > (bright[0] - 0.9) + 1e-3, "dark reddened more");
+        assert!(dark[0] > dark[2], "dark is warmer (R>B)");
+    }
+
+    #[test]
+    fn global_lum_raises_everything() {
+        let cg = ColorGrade::new(
+            ([0.0, 0.0], 0.0), ([0.0, 0.0], 0.0), ([0.0, 0.0], 0.0), ([0.0, 0.0], 1.0),
+            0.5, 0.0,
+        );
+        let out = color_grade([0.5, 0.5, 0.5], &cg);
+        assert!(out[0] > 0.5 && out[1] > 0.5 && out[2] > 0.5, "{:?}", out);
     }
 
     #[test]

@@ -8,7 +8,7 @@ use film_core::calibrate::{auto_wb_gains, sample_base};
 use film_core::decode::{decode_raw, decode_tiff};
 use film_core::dust::{self, Stamp};
 use film_core::engine::{invert_image, params_for_stock, InversionParams, Mode};
-use film_core::finish::{finish_image, FinishParams};
+use film_core::finish::{finish_image, tone_luts, ColorGrade, FinishParams};
 use film_core::wb::{gains_to_cct, wb_from_kelvin};
 use film_core::spectral::Stock;
 use serde::Deserialize;
@@ -151,6 +151,20 @@ fn export_stamps(dust: &[DustStroke], w: usize, h: usize) -> Vec<Stamp> {
 }
 
 fn finish_from(p: &InvertParams) -> FinishParams {
+    // Region sliders ordered [shadows, darks, lights, highlights] to match the engine.
+    let regions = [
+        p.tc_shadows / 100.0, p.tc_darks / 100.0, p.tc_lights / 100.0, p.tc_highlights / 100.0,
+    ];
+    let (lut_r, lut_g, lut_b) =
+        tone_luts(regions, &p.tc_curve, &p.tc_red, &p.tc_green, &p.tc_blue);
+    let cg = ColorGrade::new(
+        ([p.cg_sh_hue, p.cg_sh_sat / 100.0], p.cg_sh_lum / 100.0),
+        ([p.cg_mid_hue, p.cg_mid_sat / 100.0], p.cg_mid_lum / 100.0),
+        ([p.cg_hi_hue, p.cg_hi_sat / 100.0], p.cg_hi_lum / 100.0),
+        ([p.cg_glob_hue, p.cg_glob_sat / 100.0], p.cg_glob_lum / 100.0),
+        p.cg_blending / 100.0,
+        p.cg_balance / 100.0,
+    );
     FinishParams {
         contrast: p.contrast / 100.0,
         highlights: p.highlights / 100.0,
@@ -160,6 +174,7 @@ fn finish_from(p: &InvertParams) -> FinishParams {
         texture: p.texture / 100.0,
         vibrance: p.vibrance / 100.0,
         saturation: p.saturation / 100.0,
+        lut_r, lut_g, lut_b, cg,
     }
 }
 
