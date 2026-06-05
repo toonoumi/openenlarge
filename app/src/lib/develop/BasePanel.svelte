@@ -24,7 +24,7 @@
     <button disabled={!sampled} on:click={() => dispatch("applyRoll")}>{$t("base.applyRoll")}</button>
     <button disabled={!sampled} on:click={() => dispatch("thisImage")}>{$t("base.thisImage")}</button>
   </div>
-  <button class="reset" on:click={() => dispatch("reset")}>{$t("base.reset")}</button>
+  <button class="reset" disabled={scope === "auto"} on:click={() => dispatch("reset")}>{$t("base.reset")}</button>
   <p class="scope">{$t(scopeKey[scope])}</p>
 </div>
 
@@ -41,5 +41,6 @@
   .btns button:disabled { opacity: 0.4; }
   .reset { width: 100%; padding: 6px; border-radius: 8px; font-size: 12px;
     border: 1px solid var(--glass-brd); background: transparent; color: var(--text-dim); }
+  .reset:disabled { opacity: 0.4; }
   .scope { font-size: 11px; color: var(--text-faint); margin: 8px 0 0; }
 </style>

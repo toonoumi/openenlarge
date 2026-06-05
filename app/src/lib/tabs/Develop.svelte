@@ -36,6 +36,8 @@
 
   // ---- Base picker state ----
   let sampledBase: [number, number, number] | null = null;
+  // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+  $: { $activeId; sampledBase = null; }
 
   function applyBaseRoll() {
     if (!sampledBase || !dir) return;
@@ -53,7 +55,7 @@
       commitActive();
     } else if (dir) clearFolderBase(dir);
   }
-  $: baseScope = ($params.base_override ? "override" : ($folderBaseByPath[dir] ? "folder" : "auto")) as "override" | "folder" | "auto";
+  $: baseScope = ($params.base_override ? "override" : (dir && $folderBaseByPath[dir] ? "folder" : "auto")) as "override" | "folder" | "auto";
 
   // ---- Crop draft state (only while tool === "crop") ----
   let rect: Rect = { x: 0.1, y: 0.1, w: 0.8, h: 0.8 };
