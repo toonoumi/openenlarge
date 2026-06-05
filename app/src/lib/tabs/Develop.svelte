@@ -13,7 +13,7 @@
   import CropPanel from "../crop/CropPanel.svelte";
   import type { Rect, CropRect } from "../crop/types";
   import { default80, conform } from "../crop/cropMath";
-  import { effectiveRatio } from "../crop/presets";
+  import { presetNormAspect } from "../crop/presets";
 
   $: active = $images.find((i) => i.id === $activeId);
   $: origW = active?.metadata.width ?? 0;
@@ -35,7 +35,7 @@
   function startCrop() {
     const c = $activeCrop;
     if (c) { rect = { ...c.rect }; aspect = c.aspect; orientation = c.orientation; }
-    else { rect = default80(nativeRatio); aspect = "original"; orientation = nativeRatio >= 1 ? "landscape" : "portrait"; }
+    else { rect = default80(); aspect = "original"; orientation = nativeRatio >= 1 ? "landscape" : "portrait"; }
     cropInit = true;
   }
   function commitCrop() {
@@ -46,19 +46,19 @@
   function discardCrop() {
     const c = $activeCrop;
     if (c) { rect = { ...c.rect }; aspect = c.aspect; orientation = c.orientation; }
-    else { rect = default80(nativeRatio); aspect = "original"; }
+    else { rect = default80(); aspect = "original"; }
   }
   function onPreset(id: string) {
     aspect = id;
-    rect = conform(rect, effectiveRatio(id, nativeRatio, orientation));
+    rect = conform(rect, presetNormAspect(id, nativeRatio, orientation));
   }
   function onSwap() {
     orientation = orientation === "landscape" ? "portrait" : "landscape";
-    rect = conform(rect, effectiveRatio(aspect, nativeRatio, orientation));
+    rect = conform(rect, presetNormAspect(aspect, nativeRatio, orientation));
   }
-  function onReset() { rect = default80(nativeRatio); aspect = "original"; orientation = nativeRatio >= 1 ? "landscape" : "portrait"; }
+  function onReset() { rect = default80(); aspect = "original"; orientation = nativeRatio >= 1 ? "landscape" : "portrait"; }
 
-  $: lockRatio = effectiveRatio(aspect, nativeRatio, orientation);
+  $: lockRatio = presetNormAspect(aspect, nativeRatio, orientation);
 
   let prevTool = $tool;
   $: {

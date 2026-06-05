@@ -23,11 +23,17 @@ describe("conform", () => {
 });
 
 describe("default80", () => {
-  it("is centered 80% with the native ratio", () => {
-    const c = default80(2);
-    expect(c.w).toBeCloseTo(0.8, 2);
-    expect(c.w / c.h).toBeCloseTo(2, 1);
-    expect(c.x + c.w / 2).toBeCloseTo(0.5, 2);
+  it("is a centered 80% box (native ratio lives in normalized space)", () => {
+    expect(default80()).toEqual({ x: 0.1, y: 0.1, w: 0.8, h: 0.8 });
+  });
+});
+
+describe("conform screen ratio", () => {
+  it("a normalized aspect of pixelRatio/native yields that pixel ratio on screen", () => {
+    const native = 1.5, pixelRatio = 1;        // want a square on screen
+    const na = pixelRatio / native;
+    const c = conform({ x: 0.1, y: 0.1, w: 0.8, h: 0.8 }, na);
+    expect((c.w / c.h) * native).toBeCloseTo(pixelRatio, 3);
   });
 });
 

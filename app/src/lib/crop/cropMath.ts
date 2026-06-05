@@ -86,9 +86,8 @@ export function conform(r: Rect, aspect: number): Rect {
   return clampRect({ x: cx - w / 2, y: cy - h / 2, w, h });
 }
 
-/** Default centered 80% rect with the native aspect ratio (w/h). */
-export function default80(nativeRatio: number): Rect {
-  let w = 0.8, h = 0.8;
-  if (nativeRatio >= 1) h = w / nativeRatio; else w = h * nativeRatio;
-  return clampRect({ x: 0.5 - w / 2, y: 0.5 - h / 2, w, h });
+/** Default centered 80% box. In normalized space an 80%×80% box already carries
+ *  the image's native pixel ratio ("Original"). */
+export function default80(): Rect {
+  return { x: 0.1, y: 0.1, w: 0.8, h: 0.8 };
 }

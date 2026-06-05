@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { PRESETS, effectiveRatio } from "./presets";
+import { PRESETS, effectiveRatio, presetNormAspect } from "./presets";
 
 describe("presets", () => {
   it("includes Original first and the required ids", () => {
@@ -15,5 +15,15 @@ describe("presets", () => {
   it("Original resolves to the native ratio (oriented)", () => {
     expect(effectiveRatio("original", 1.5, "landscape")).toBeCloseTo(1.5);
     expect(effectiveRatio("original", 1.5, "portrait")).toBeCloseTo(1 / 1.5);
+  });
+});
+
+describe("presetNormAspect", () => {
+  it("converts the pixel ratio to a normalized aspect (÷ nativeRatio)", () => {
+    // 1:1 on a 3:2 (native 1.5) image → normalized aspect 1/1.5 so the SCREEN box is square
+    expect(presetNormAspect("1:1", 1.5, "landscape")).toBeCloseTo(1 / 1.5, 4);
+    expect(presetNormAspect("16:9", 1.5, "landscape")).toBeCloseTo((16 / 9) / 1.5, 4);
+    // Original → normalized aspect 1 (native ratio), independent of nativeRatio
+    expect(presetNormAspect("original", 1.5, "landscape")).toBeCloseTo(1, 4);
   });
 });

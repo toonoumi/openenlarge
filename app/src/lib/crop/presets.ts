@@ -22,6 +22,15 @@ export function effectiveRatio(
   return orientation === "landscape" ? Math.max(base, 1 / base) : Math.min(base, 1 / base);
 }
 
+/** Normalized aspect (w_norm/h_norm) for a preset, so the ON-SCREEN box has the
+ *  intended pixel ratio. screenRatio = (w_norm/h_norm) × nativeRatio, hence we
+ *  divide the pixel ratio by nativeRatio. */
+export function presetNormAspect(
+  id: string, nativeRatio: number, orientation: "landscape" | "portrait",
+): number {
+  return effectiveRatio(id, nativeRatio, orientation) / nativeRatio;
+}
+
 export function labelFor(id: string): string {
   if (id === "custom") return "Custom";
   return PRESETS.find((p) => p.id === id)?.label ?? "Custom";
