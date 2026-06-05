@@ -7,7 +7,7 @@ export interface Credit {
   url: string;
 }
 
-export const GITHUB_URL = "https://github.com/openenlarge/openenlarge";
+export const GITHUB_URL = "https://github.com/mohaelder/openenlarge";
 
 export const credits: { group: string; items: Credit[] }[] = [
   {
