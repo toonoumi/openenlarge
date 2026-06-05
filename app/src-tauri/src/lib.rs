@@ -25,9 +25,10 @@ pub fn run() {
                 let _ = win.show();
             }
             let dir = app.path().app_data_dir().expect("app data dir");
-            std::fs::create_dir_all(&dir).ok();
-            let catalog = catalog::Catalog::open(&dir.join("catalog.db"))
-                .expect("open catalog db");
+            std::fs::create_dir_all(&dir).map_err(|e| format!("create app data dir: {e}"))?;
+            let db_path = dir.join("catalog.db");
+            let catalog = catalog::Catalog::open(&db_path)
+                .unwrap_or_else(|e| panic!("open catalog db at {}: {e}", db_path.display()));
             app.manage(catalog);
             Ok(())
         })

@@ -55,6 +55,10 @@ fn default_invert_params() -> InvertParams {
     }
 }
 
+fn metadata_to_json(m: &crate::metadata::Metadata) -> Result<String, String> {
+    serde_json::to_string(m).map_err(|e| e.to_string())
+}
+
 fn decode_any(path: &Path) -> Result<film_core::Image, String> {
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
     match ext.as_str() {
@@ -193,7 +197,7 @@ pub fn import_image(
     };
     let metadata = extract(p, 0, 0);
     let file_name = p.file_name().and_then(|s| s.to_str()).unwrap_or("image").to_string();
-    let metadata_json = serde_json::to_string(&metadata).map_err(|e| e.to_string())?;
+    let metadata_json = metadata_to_json(&metadata)?;
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
@@ -240,8 +244,10 @@ pub fn develop_image(
     img.metadata.height = h;
     img.thumbnail = thumbnail.clone();
     img.developed = Some(Developed { working, thumb, base });
-    let metadata_json = serde_json::to_string(&img.metadata).map_err(|e| e.to_string())?;
-    let _ = catalog.update_image_render(&id, &thumbnail, &metadata_json);
+    let metadata_json = metadata_to_json(&img.metadata)?;
+    if let Err(e) = catalog.update_image_render(&id, &thumbnail, &metadata_json) {
+        eprintln!("[catalog] update_image_render failed for {id}: {e}");
+    }
     Ok(ImageEntry {
         id: id.clone(),
         path: img.path.clone(),
@@ -271,7 +277,9 @@ pub fn delete_image(
     catalog: State<crate::catalog::Catalog>,
 ) -> Result<(), String> {
     let removed = session.images.lock().unwrap().remove(&id);
-    let _ = catalog.delete_image(&id);
+    if let Err(e) = catalog.delete_image(&id) {
+        eprintln!("[catalog] delete_image failed for {id}: {e}");
+    }
     if delete_file {
         let img = removed.ok_or_else(|| "unknown image".to_string())?;
         trash::delete(&img.path).map_err(|e| format!("{e}"))?;

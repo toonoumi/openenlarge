@@ -52,6 +52,7 @@ impl Catalog {
     }
 
     /// In-memory catalog for tests.
+    #[cfg(test)]
     pub fn open_in_memory() -> rusqlite::Result<Self> {
         Self::init(Connection::open_in_memory()?)
     }
@@ -238,6 +239,7 @@ impl Catalog {
     }
 
     /// Current schema version (for tests).
+    #[cfg(test)]
     pub fn user_version(&self) -> i64 {
         self.conn
             .lock()
