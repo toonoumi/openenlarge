@@ -20,19 +20,25 @@ pub struct BakeSpec {
     pub ir_removal: IrRemoval,
 }
 
-/// Apply geometry (orient → straighten → persistent crop) to the raw negative,
-/// then heal dust strokes + IR defects IN THE RAW (pre-invert) DOMAIN. Returns the
-/// baked raw-negative image; the GPU then inverts+finishes it with identity geometry.
-pub fn bake_working(working: &Image, spec: &BakeSpec) -> Image {
+/// Geometry only (orient → straighten → persistent crop) on the raw negative.
+/// This determines the baked dimensions; cheap relative to the Telea heal.
+pub fn bake_geometry(working: &Image, spec: &BakeSpec) -> Image {
     let oriented = orient(working, spec.rot90, spec.flip_h, spec.flip_v);
     let straightened = rotate(&oriented, spec.angle);
-    let mut img = match spec.image_crop {
+    match spec.image_crop {
         Some(nc) => {
             let (x, y, w, h) = crate::commands::crop_px(nc, straightened.width, straightened.height);
             crop(&straightened, x, y, w, h)
         }
         None => straightened,
-    };
+    }
+}
+
+/// Apply geometry (orient → straighten → persistent crop) to the raw negative,
+/// then heal dust strokes + IR defects IN THE RAW (pre-invert) DOMAIN. Returns the
+/// baked raw-negative image; the GPU then inverts+finishes it with identity geometry.
+pub fn bake_working(working: &Image, spec: &BakeSpec) -> Image {
+    let mut img = bake_geometry(working, spec);
     // Strokes are normalized to this (post-geometry) image — same space export_stamps maps into.
     let stamps = export_stamps(&spec.dust, img.width, img.height);
     film_core::dust::apply(&mut img, &stamps);
@@ -157,6 +163,20 @@ mod tests {
         };
         let out = bake_working(&img, &spec);
         assert_eq!((out.width, out.height), (5, 4));
+    }
+
+    #[test]
+    fn bake_geometry_dims_match_baked_pixels() {
+        let img = Image { width: 10, height: 8, pixels: vec![[0.3, 0.3, 0.3]; 80], ir: None };
+        let spec = BakeSpec {
+            rot90: 1, flip_h: false, flip_v: true, angle: 0.0,
+            image_crop: Some([0.1, 0.1, 0.5, 0.5]),
+            dust: vec![], ir_removal: IrRemoval { enabled: false, sensitivity: 0.0 },
+        };
+        let geom = bake_geometry(&img, &spec);
+        let baked = bake_working(&img, &spec);
+        assert_eq!((geom.width, geom.height), (baked.width, baked.height));
+        assert_eq!(capped_dims(&geom, MAX_GPU_EDGE), capped_dims(&baked, MAX_GPU_EDGE));
     }
 
     #[test]
