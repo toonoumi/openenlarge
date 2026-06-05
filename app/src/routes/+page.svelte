@@ -70,10 +70,17 @@
   }
 </script>
 
+<!-- Delegated commit trigger: snapshot the active image once a gesture ends.
+     pointerup = drags (sliders/curve/eraser); click = button-driven mutations
+     (resets/flips/IR toggle) which mutate AFTER pointerup; change = sliders via
+     keyboard + text-field blur. commitActive() deep-equal-guards, so the broad
+     net produces at most one step per real change. (DOM change only — Svelte
+     component "change" events don't bubble to window.) -->
 <svelte:window
   on:keydown={onKey}
   on:pointerup={() => commitActive()}
   on:pointercancel={() => commitActive()}
+  on:click={() => commitActive()}
   on:change={() => commitActive()}
 />
 

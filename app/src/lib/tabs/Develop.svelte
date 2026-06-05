@@ -13,7 +13,7 @@
   import CropView from "../crop/CropView.svelte";
   import CropPanel from "../crop/CropPanel.svelte";
   import EraserPanel from "../develop/EraserPanel.svelte";
-  import { addStroke, undoStroke, resetDust, emptyDust, setIrEnabled, setIrSensitivity, type DustStroke, type DustEdits } from "../develop/dust";
+  import { addStroke, resetDust, emptyDust, setIrEnabled, setIrSensitivity, type DustStroke, type DustEdits } from "../develop/dust";
   import type { Rect, CropRect } from "../crop/types";
   import { default80, conform, constrainToRotated } from "../crop/cropMath";
   import { presetNormAspect } from "../crop/presets";
@@ -118,9 +118,6 @@
       if ($activeId && !formFocused()) deleteTarget.set($activeId);
       return;
     }
-    if ($tool === "eraser" && meta && (e.key === "z" || e.key === "Z")) {
-      e.preventDefault(); undoDust(); return;
-    }
     if (meta && (e.key === "]" || e.key === "[")) {
       e.preventDefault();
       const dir = e.key === "]" ? 1 : -1;
@@ -166,7 +163,6 @@
     dustRev.update((n) => n + 1);
   }
   const commitStroke = (s: DustStroke) => updateDust((d) => addStroke(d, s));
-  const undoDust = () => updateDust((d) => undoStroke(d));
   const resetDustEdits = () => updateDust((d) => resetDust(d));
   function setIrOn(on: boolean) { updateDust((d) => setIrEnabled(d, on)); }
   function setIrSens(v: number) { updateDust((d) => setIrSensitivity(d, v)); }
