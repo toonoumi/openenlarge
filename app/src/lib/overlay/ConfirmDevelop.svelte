@@ -17,6 +17,17 @@
         <option value="none">{$t('basic.noFilmProfile')}</option>
         <option value="portra400">{$t('basic.stock.portra400')}</option>
         <option value="fujic200">{$t('basic.stock.fujic200')}</option>
+        <option value="portra160">{$t('basic.stock.portra160')}</option>
+        <option value="portra800">{$t('basic.stock.portra800')}</option>
+        <option value="ektar100">{$t('basic.stock.ektar100')}</option>
+        <option value="gold200">{$t('basic.stock.gold200')}</option>
+        <option value="ultramax400">{$t('basic.stock.ultramax400')}</option>
+        <option value="fujipro400h">{$t('basic.stock.fujipro400h')}</option>
+        <option value="fujixtra400">{$t('basic.stock.fujixtra400')}</option>
+        <option value="vision350d">{$t('basic.stock.vision350d')}</option>
+        <option value="vision3200t">{$t('basic.stock.vision3200t')}</option>
+        <option value="vision3250d">{$t('basic.stock.vision3250d')}</option>
+        <option value="vision3500t">{$t('basic.stock.vision3500t')}</option>
       </select>
     </div>
     <div class="row">

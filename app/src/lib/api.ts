@@ -41,7 +41,9 @@ export const CM_BANDS = ["red","orange","yellow","green","aqua","blue","purple",
 export type CmBand = (typeof CM_BANDS)[number];
 export interface InvertParams {
   mode: "b" | "c";
-  stock: "none" | "portra400" | "fujic200";
+  stock: "none" | "portra400" | "fujic200" | "portra160" | "portra800" | "ektar100"
+    | "gold200" | "ultramax400" | "fujipro400h" | "fujixtra400"
+    | "vision350d" | "vision3200t" | "vision3250d" | "vision3500t";
   base_override: [number, number, number] | null;
   exposure: number; // EV stops (−5..5)
   black: number; gamma: number;
