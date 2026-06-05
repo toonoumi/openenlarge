@@ -6,7 +6,7 @@
   import { FinishRenderer, webgl2Available, float16RenderTargetSupported } from "./gl/renderer";
   import { finishUniforms } from "./gl/uniforms";
   import { toInversionUniforms } from "./gl/invert";
-  import { toneLutBytes, colorGrade } from "../develop/finish";
+  import { toneLutBytes, colorGrade, colorMix } from "../develop/finish";
   import { screenRadius, type DustStroke } from "../develop/dust";
   import { t } from "$lib/i18n";
 
@@ -141,6 +141,7 @@
     renderer.setUniforms(finishUniforms(params));
     renderer.setLut(toneLutBytes(params));
     renderer.setColorGrade(colorGrade(params));
+    renderer.setColorMix(colorMix(params));
     renderer.draw();
     // Publish a snapshot for the histogram (debounced; toDataURL is cheap-ish).
     if (canvas) {
@@ -276,6 +277,15 @@
     params.cg_hi_hue, params.cg_hi_sat, params.cg_hi_lum,
     params.cg_glob_hue, params.cg_glob_sat, params.cg_glob_lum,
     params.cg_blending, params.cg_balance,
+    params.cm_red_hue, params.cm_red_sat, params.cm_red_lum,
+    params.cm_orange_hue, params.cm_orange_sat, params.cm_orange_lum,
+    params.cm_yellow_hue, params.cm_yellow_sat, params.cm_yellow_lum,
+    params.cm_green_hue, params.cm_green_sat, params.cm_green_lum,
+    params.cm_aqua_hue, params.cm_aqua_sat, params.cm_aqua_lum,
+    params.cm_blue_hue, params.cm_blue_sat, params.cm_blue_lum,
+    params.cm_purple_hue, params.cm_purple_sat, params.cm_purple_lum,
+    params.cm_magenta_hue, params.cm_magenta_sat, params.cm_magenta_lum,
+    JSON.stringify(params.pc_samples),
   ].join("|");
   $: if (useGL) { finishKey; if (renderer) drawGL(); }
 
