@@ -53,6 +53,21 @@ describe("applyDrag", () => {
     const c = applyDrag("se", r(0.2, 0.2, 0.3, 0.3), 0.2, 0.0, 1);
     expect(c.w / c.h).toBeCloseTo(1, 2);
   });
+  it("aspect-locked resize past the edge preserves the ratio (no axis distortion)", () => {
+    // 2:1 lock, drag SE corner far past the right/bottom edges from a small box.
+    const c = applyDrag("se", r(0.1, 0.1, 0.2, 0.1), 5, 5, 2);
+    expect(c.w / c.h).toBeCloseTo(2, 3);             // ratio preserved (was distorted before)
+    expect(c.x + c.w).toBeLessThanOrEqual(1 + 1e-9); // stays in bounds
+    expect(c.y + c.h).toBeLessThanOrEqual(1 + 1e-9);
+    expect(c.x).toBeCloseTo(0.1, 3);                 // anchored at the top-left corner
+    expect(c.y).toBeCloseTo(0.1, 3);
+  });
+  it("square lock can shrink from an edge handle", () => {
+    // east edge dragged inward (negative dnx) shrinks width; height follows.
+    const c = applyDrag("e", r(0.2, 0.3, 0.6, 0.3), -0.2, 0, 1);
+    expect(c.w / c.h).toBeCloseTo(1, 3);
+    expect(c.w).toBeLessThan(0.6);
+  });
 });
 
 describe("toScreen", () => {

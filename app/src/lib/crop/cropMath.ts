@@ -37,28 +37,60 @@ export function handleAt(px: number, py: number, box: ScreenRect, tol: number): 
   return null;
 }
 
-/** Apply a normalized drag delta for a handle. aspect=w/h locks the ratio. */
+/** Apply a normalized drag delta for a handle. aspect = normalized w/h locks the
+ *  ratio; null = freeform. The aspect-locked path anchors the opposite edge/corner
+ *  and limits growth by the first image boundary so the ratio is never distorted. */
 export function applyDrag(h: Handle, r: Rect, dnx: number, dny: number, aspect: number | null): Rect {
   if (h === "move") return clampRect({ ...r, x: r.x + dnx, y: r.y + dny }, true);
-  let { x, y, w, hh } = { x: r.x, y: r.y, w: r.w, hh: r.h };
+
   const east = h === "e" || h === "ne" || h === "se";
   const west = h === "w" || h === "nw" || h === "sw";
   const south = h === "s" || h === "se" || h === "sw";
   const north = h === "n" || h === "ne" || h === "nw";
-  if (east) w += dnx;
-  if (west) { x += dnx; w -= dnx; }
-  if (south) hh += dny;
-  if (north) { y += dny; hh -= dny; }
-  if (aspect != null) {
-    if (h === "e" || h === "w") { const nh = w / aspect; y += (hh - nh) / 2; hh = nh; }
-    else if (h === "n" || h === "s") { const nw = hh * aspect; x += (w - nw) / 2; w = nw; }
-    else {
-      const nh = w / aspect;
-      if (north) y += hh - nh;
-      hh = nh;
-    }
+
+  // Freeform: edges/corners move independently, then clamp per-axis.
+  if (aspect == null) {
+    let x = r.x, y = r.y, w = r.w, hh = r.h;
+    if (east) w += dnx;
+    if (west) { x += dnx; w -= dnx; }
+    if (south) hh += dny;
+    if (north) { y += dny; hh -= dny; }
+    return clampRect({ x, y, w, h: hh });
   }
-  return clampRect({ x, y, w, h: hh });
+
+  // Aspect-locked: keep w/h = aspect.
+  const right = r.x + r.w, bottom = r.y + r.h;
+  const cx = r.x + r.w / 2, cy = r.y + r.h / 2;
+
+  // Desired width (height = w/aspect). Corners follow the larger-magnitude axis.
+  let wDes: number;
+  if ((east || west) && (north || south)) {
+    const wFromW = r.w + (east ? dnx : -dnx);
+    const wFromH = (r.h + (south ? dny : -dny)) * aspect;
+    wDes = Math.abs(wFromH - r.w) > Math.abs(wFromW - r.w) ? wFromH : wFromW;
+  } else if (east || west) {
+    wDes = r.w + (east ? dnx : -dnx);
+  } else {
+    wDes = (r.h + (south ? dny : -dny)) * aspect;
+  }
+
+  // Max width allowed by the anchored side(s), keeping the box within [0,1].
+  const wMaxH = east ? 1 - r.x : west ? right : 2 * Math.min(cx, 1 - cx);
+  const hMax = south ? 1 - r.y : north ? bottom : 2 * Math.min(cy, 1 - cy);
+  const wMaxV = hMax * aspect;
+  const wMin = Math.max(MIN, MIN * aspect);
+
+  let w = Math.min(Math.max(wDes, wMin), Math.min(wMaxH, wMaxV));
+  if (!(w >= wMin)) w = wMin;
+  const hh = w / aspect;
+
+  const x0 = east ? r.x : west ? right - w : cx - w / 2;
+  const y0 = south ? r.y : north ? bottom - hh : cy - hh / 2;
+  return {
+    x: Math.max(0, Math.min(1 - w, x0)),
+    y: Math.max(0, Math.min(1 - hh, y0)),
+    w, h: hh,
+  };
 }
 
 /** Clamp into [0,1] with a MIN size. When move=true, preserve size (just shift). */
