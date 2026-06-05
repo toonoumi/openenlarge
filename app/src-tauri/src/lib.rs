@@ -4,6 +4,7 @@ mod commands;
 mod convert;
 mod encode;
 mod exif_write;
+mod gpu_upload;
 mod metadata;
 mod session;
 
