@@ -121,7 +121,7 @@ vec3 invert(vec3 rgbIn) {
     rgbIn.g / max(u_base.g, EPS),
     rgbIn.b / max(u_base.b, EPS)), EPS, 1.0);
   if (u_mode == 2) {           // Naive: 1 - clamp(I/base,0,1). Intentionally uses
-    // its own [0,1] clamp (engine.rs invert_naive), not the [EPS,1] `r` above.
+    // its own [0,1] clamp (engine.rs invert_naive), not the [EPS,1] r above.
     vec3 n = clamp(vec3(rgbIn.r/max(u_base.r,EPS), rgbIn.g/max(u_base.g,EPS), rgbIn.b/max(u_base.b,EPS)), 0.0, 1.0);
     return 1.0 - n;
   }
