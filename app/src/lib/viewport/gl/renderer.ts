@@ -14,6 +14,42 @@ export function webgl2Available(): boolean {
   }
 }
 
+/**
+ * Spike (Plan 1): does THIS environment's WebGL2 support an RGBA16F render
+ * target? Plans 2-3 (GPU inversion + offscreen export) depend on it. Creates a
+ * tiny offscreen RGBA16F texture, attaches it to an FBO, and checks both the
+ * float-color-buffer extension and framebuffer completeness. Returns a verdict
+ * object so the result can be logged from the app.
+ */
+export function float16RenderTargetSupported():
+  { ok: boolean; reason: string } {
+  if (typeof document === "undefined") return { ok: false, reason: "no document" };
+  let gl: WebGL2RenderingContext | null = null;
+  try {
+    gl = document.createElement("canvas").getContext("webgl2");
+  } catch {
+    return { ok: false, reason: "no webgl2 context" };
+  }
+  if (!gl) return { ok: false, reason: "no webgl2 context" };
+  // Needed to RENDER to a float texture (not just sample one).
+  const ext = gl.getExtension("EXT_color_buffer_float");
+  if (!ext) return { ok: false, reason: "EXT_color_buffer_float missing" };
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, 4, 4, 0, gl.RGBA, gl.HALF_FLOAT, null as unknown as ArrayBufferView);
+  const fbo = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+  const status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.deleteFramebuffer(fbo);
+  gl.deleteTexture(tex);
+  if (status !== gl.FRAMEBUFFER_COMPLETE) {
+    return { ok: false, reason: `framebuffer incomplete: 0x${status.toString(16)}` };
+  }
+  return { ok: true, reason: "RGBA16F render target OK" };
+}
+
 const UNIFORM_NAMES = [
   "contrast", "highlights", "shadows", "whites", "blacks",
   "vibrance", "saturation", "texture",

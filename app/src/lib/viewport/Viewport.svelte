@@ -3,7 +3,7 @@
   import { api, type InvertParams } from "../api";
   import type { IrRemoval } from "../api";
   import { previewSrc } from "../store";
-  import { FinishRenderer, webgl2Available } from "./gl/renderer";
+  import { FinishRenderer, webgl2Available, float16RenderTargetSupported } from "./gl/renderer";
   import { finishUniforms } from "./gl/uniforms";
   import { toneLutBytes, colorGrade } from "../develop/finish";
   import { screenRadius, type DustStroke } from "../develop/dust";
@@ -74,6 +74,8 @@
     vpW = el.clientWidth; vpH = el.clientHeight;
   }
   onMount(() => {
+    const v = float16RenderTargetSupported();
+    console.log(`[SPIKE float16] ok=${v.ok} reason="${v.reason}"`);
     measure();
     if (useGL && canvas) {
       const r = new FinishRenderer(canvas);
