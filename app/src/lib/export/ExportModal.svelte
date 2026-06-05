@@ -7,9 +7,13 @@
   import { revealItemInDir } from "@tauri-apps/plugin-opener";
   import { developedImages } from "./eligible";
   import { editsById, cropById, dustById, metaById } from "../store";
-  import { defaultParams, type ExportFormat } from "../api";
+  import { defaultParams, type ExportFormat, type BakeSpec } from "../api";
   import { api } from "../api";
   import { emptyDust } from "../develop/dust";
+  import { FinishRenderer } from "../viewport/gl/renderer";
+  import { toInversionUniforms } from "../viewport/gl/invert";
+  import { finishUniforms } from "../viewport/gl/uniforms";
+  import { toneLutBytes, colorGrade } from "../develop/finish";
   import { allSelected, noneSelected, click, isAllSelected, toggleAll, type SelState } from "./selection";
   import { outName } from "./naming";
   import { t } from "$lib/i18n";
@@ -92,6 +96,14 @@
     failedCount = 0; exportedPaths = []; lastFolder = folder;
     const written: string[] = [];
     const failures: string[] = [];
+
+    // Dedicated offscreen renderer for this export run (the live FinishRenderer
+    // lives in Viewport and isn't reachable here). GPU export goes through the
+    // SAME shader as preview; any failure falls back to the CPU export below.
+    const exportCanvas = document.createElement("canvas");
+    const exportRenderer = new FinishRenderer(exportCanvas);
+    const gpuOk = exportRenderer.available;
+
     for (const img of chosen) {
       try {
         const p = $editsById[img.id] ?? defaultParams();
@@ -105,7 +117,43 @@
         const d = $dustById[img.id] ?? emptyDust();
         const metaOverride = $metaById[img.id] ?? null;
         const outPath = await join(folder, outName(img.file_name, kind));
-        await api.exportImage(img.id, p, outPath, imageCrop, geom, d.strokes, d.irRemoval, format, metaOverride);
+
+        const spec: BakeSpec = {
+          rot90: crop?.rot90 ?? 0, flip_h: crop?.flipH ?? false, flip_v: crop?.flipV ?? false,
+          angle: crop?.angle ?? 0, image_crop: imageCrop,
+          dust: d.strokes, ir_removal: d.irRemoval,
+        };
+        const bit16 = (kind === "tiff" || kind === "png") && bitDepth === 16;
+
+        let exported = false;
+        if (gpuOk) {
+          try {
+            const prep = await api.exportBegin(img.id, p, spec);
+            const maxTex = exportRenderer.maxTextureSize();
+            if (prep.w <= maxTex && prep.h <= maxTex) {
+              const buf = await api.exportPixels();
+              const out = exportRenderer.renderExport(
+                new Uint16Array(buf), prep.w, prep.h,
+                toInversionUniforms(prep.uniforms),
+                finishUniforms(p), toneLutBytes(p), colorGrade(p), bit16);
+              if (out) {
+                const bytes = bit16
+                  ? new Uint8Array((out.data as Float32Array).buffer)
+                  : (out.data as Uint8Array);
+                await api.exportFinish(img.id, outPath, { w: out.w, h: out.h, bit16 },
+                  Array.from(bytes), format, metaOverride);
+                exported = true;
+              }
+            }
+          } catch (e) {
+            console.warn("GPU export failed, falling back to CPU:", e);
+          }
+        }
+
+        if (!exported) {
+          // Fallback: unchanged CPU export (oversize / no-GL / GPU failure).
+          await api.exportImage(img.id, p, outPath, imageCrop, geom, d.strokes, d.irRemoval, format, metaOverride);
+        }
         written.push(outPath);
         done++;
       } catch (e) {

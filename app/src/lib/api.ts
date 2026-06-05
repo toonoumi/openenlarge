@@ -168,6 +168,20 @@ export const api = {
 
   resolvedInversion: (id: string, params: InvertParams) =>
     invoke<import("./viewport/gl/invert").ResolvedInversion>("resolved_inversion", { id, params }),
+
+  // ---- GPU export (offscreen invert+finish through the preview shader) ----
+  /** Decode+bake full-res, stash the half-float bytes, return dims + inversion uniforms. */
+  exportBegin: (id: string, params: InvertParams, spec: BakeSpec) =>
+    invoke<{ w: number; h: number; uniforms: import("./viewport/gl/invert").ResolvedInversion }>(
+      "export_begin", { id, params, spec: { ...spec, dust: wireDust(spec.dust) } }),
+  /** Fetch the stashed full-res half-float RGBA bytes for GPU upload. */
+  exportPixels: () => invoke<ArrayBuffer>("export_pixels"),
+  /** Encode the GPU readback into the chosen format (+ EXIF). `data` is a byte array. */
+  exportFinish: (
+    id: string, outPath: string, readback: { w: number; h: number; bit16: boolean },
+    data: number[], format: ExportFormat, metaOverride: MetaOverride | null,
+  ) =>
+    invoke<void>("export_finish", { id, outPath, readback, data, format, metaOverride }),
 };
 
 export const defaultParams = (): InvertParams => ({
