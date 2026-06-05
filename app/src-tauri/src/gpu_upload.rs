@@ -2,9 +2,47 @@
 //! WebGL2 `RGBA16F` texture upload, and resolve inversion params into a flat,
 //! serialisable uniform set the GPU shader consumes.
 
+use crate::commands::{export_stamps, DustStroke, IrRemoval};
 use crate::convert::proxy;
+use crate::convert::{crop, orient, rotate};
 use film_core::Image;
 use half::f16;
+
+/// Geometry + dust/IR for baking a heal-ready working buffer (raw negative).
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct BakeSpec {
+    pub rot90: u8,
+    pub flip_h: bool,
+    pub flip_v: bool,
+    pub angle: f32,
+    pub image_crop: Option<[f64; 4]>,
+    pub dust: Vec<DustStroke>,
+    pub ir_removal: IrRemoval,
+}
+
+/// Apply geometry (orient → straighten → persistent crop) to the raw negative,
+/// then heal dust strokes + IR defects IN THE RAW (pre-invert) DOMAIN. Returns the
+/// baked raw-negative image; the GPU then inverts+finishes it with identity geometry.
+pub fn bake_working(working: &Image, spec: &BakeSpec) -> Image {
+    let oriented = orient(working, spec.rot90, spec.flip_h, spec.flip_v);
+    let straightened = rotate(&oriented, spec.angle);
+    let mut img = match spec.image_crop {
+        Some(nc) => {
+            let (x, y, w, h) = crate::commands::crop_px(nc, straightened.width, straightened.height);
+            crop(&straightened, x, y, w, h)
+        }
+        None => straightened,
+    };
+    // Strokes are normalized to this (post-geometry) image — same space export_stamps maps into.
+    let stamps = export_stamps(&spec.dust, img.width, img.height);
+    film_core::dust::apply(&mut img, &stamps);
+    if spec.ir_removal.enabled {
+        if let Some(ir) = img.ir.clone() {
+            film_core::dust::apply_ir(&mut img, &ir, spec.ir_removal.sensitivity);
+        }
+    }
+    img
+}
 
 /// Max GPU texture long-edge we will upload. WebGL2 guarantees at least 2048,
 /// real GPUs >= 16384; 8192 is a safe, ample bound for the live proxy.
@@ -86,9 +124,40 @@ pub fn resolve_to_uniforms(p: &InvertParams, base: [f32; 3]) -> ResolvedInversio
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::commands::{DustStroke, IrRemoval};
     use crate::commands_test_support::sample_invert_params;
     use film_core::Image;
     use half::f16;
+
+    #[test]
+    fn bake_working_applies_geometry_then_heals() {
+        // 4x4 solid grey with one bright speck; a dust stroke over the speck should
+        // inpaint it toward the surrounding grey (pre-invert raw domain).
+        let mut pixels = vec![[0.5_f32, 0.5, 0.5]; 16];
+        pixels[5] = [0.9, 0.9, 0.9]; // speck at (x=1,y=1)
+        let img = Image { width: 4, height: 4, pixels, ir: None };
+        let spec = BakeSpec {
+            rot90: 0, flip_h: false, flip_v: false, angle: 0.0, image_crop: None,
+            dust: vec![DustStroke { points: vec![[0.25, 0.25]], r: 0.5 }], // centered on the speck
+            ir_removal: IrRemoval { enabled: false, sensitivity: 0.0 },
+        };
+        let out = bake_working(&img, &spec);
+        assert_eq!((out.width, out.height), (4, 4));
+        // The speck should be healed toward grey, not still 0.9.
+        assert!((out.pixels[5][0] - 0.5).abs() < 0.35, "speck healed: {}", out.pixels[5][0]);
+    }
+
+    #[test]
+    fn bake_working_crop_changes_dims() {
+        let img = Image { width: 10, height: 8, pixels: vec![[0.3, 0.3, 0.3]; 80], ir: None };
+        let spec = BakeSpec {
+            rot90: 0, flip_h: false, flip_v: false, angle: 0.0,
+            image_crop: Some([0.0, 0.0, 0.5, 0.5]), // top-left quarter
+            dust: vec![], ir_removal: IrRemoval { enabled: false, sensitivity: 0.0 },
+        };
+        let out = bake_working(&img, &spec);
+        assert_eq!((out.width, out.height), (5, 4));
+    }
 
     #[test]
     fn pack_rgba16f_one_pixel_round_trips_with_alpha_one() {

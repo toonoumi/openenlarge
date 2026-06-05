@@ -143,7 +143,7 @@ fn finish_default() -> bool { true }
 
 /// Map a normalized crop rect [x,y,w,h] (0..1) to integer pixels on a w×h image,
 /// clamped to bounds with a 1px minimum.
-fn crop_px(norm: [f64; 4], w: usize, h: usize) -> (usize, usize, usize, usize) {
+pub(crate) fn crop_px(norm: [f64; 4], w: usize, h: usize) -> (usize, usize, usize, usize) {
     let x = (norm[0] * w as f64).round().clamp(0.0, (w - 1) as f64) as usize;
     let y = (norm[1] * h as f64).round().clamp(0.0, (h - 1) as f64) as usize;
     let cw = (norm[2] * w as f64).round().clamp(1.0, (w - x) as f64) as usize;
@@ -185,7 +185,7 @@ fn view_stamps(
 
 /// Map normalized strokes → `Stamp`s on a full-res `w`×`h` image (no view crop).
 /// Mirrors `view_stamps` but for export: points normalize to image dims, radius to width.
-fn export_stamps(dust: &[DustStroke], w: usize, h: usize) -> Vec<Stamp> {
+pub(crate) fn export_stamps(dust: &[DustStroke], w: usize, h: usize) -> Vec<Stamp> {
     let mut out = Vec::new();
     for stroke in dust {
         let r = (stroke.r * w as f64).max(0.5) as f32;
@@ -592,7 +592,7 @@ pub fn export_image(
 pub struct AsShotWb { pub temp: f32, pub tint: f32 }
 
 #[tauri::command]
-pub fn as_shot_wb(id: String, session: State<Session>) -> Result<AsShotWb, String> {
+pub fn as_shot_wb(id: String, params: InvertParams, session: State<Session>) -> Result<AsShotWb, String> {
     ensure_resident(&session, &id)?;
     let (base, thumb) = {
         let images = session.images.lock().unwrap();
@@ -601,9 +601,11 @@ pub fn as_shot_wb(id: String, session: State<Session>) -> Result<AsShotWb, Strin
         (dev.base, dev.thumb.clone())
     };
     // Lock released — the inversion + gray-world estimate run unlocked.
-    let neutral = default_invert_params();
-    let ip = build_params(&neutral, base);
-    let first = invert_image(&thumb, &ip, mode_from(&neutral.mode));
+    // Estimate WB against the user's ACTUAL stock/mode so the gains neutralise the
+    // colour space the image is actually rendered in. `build_params` leaves `wb` at
+    // [1,1,1], so the estimate is independent of any temp/tint already on the sliders.
+    let ip = build_params(&params, base);
+    let first = invert_image(&thumb, &ip, mode_from(&params.mode));
     let gains = auto_wb_gains(&first);
     let (temp, tint) = gains_to_cct(gains);
     Ok(AsShotWb { temp, tint: tint * 150.0 }) // back to UI −150..150
