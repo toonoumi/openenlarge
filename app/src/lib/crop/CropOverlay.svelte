@@ -6,14 +6,18 @@
   export let rect: Rect;             // bound by the parent (draft)
   export let img: ScreenRect;        // displayed image rect, container px
   export let lockRatio: number;      // effective w/h; used when Shift is held
+  export let angle = 0;              // current straighten angle
 
-  const dispatch = createEventDispatcher<{ custom: void }>();
+  const dispatch = createEventDispatcher<{ custom: void; straighten: number }>();
 
   let host: HTMLDivElement;
   let active: Handle = null;
   let startRect: Rect = rect;
   let startX = 0, startY = 0;
   let hover: Handle = null;
+  let hoverRotate = false;
+  let rotating = false;
+  let rotStartAngle = 0, rotStartPointer = 0;
 
   $: box = toScreen(rect, img);
   $: vx = [box.left + box.width / 3, box.left + (2 * box.width) / 3];
@@ -23,16 +27,43 @@
     move: "move", n: "ns-resize", s: "ns-resize", e: "ew-resize", w: "ew-resize",
     nw: "nwse-resize", se: "nwse-resize", ne: "nesw-resize", sw: "nesw-resize",
   };
-  $: cursor = active ? CURSOR[active] : (hover ? CURSOR[hover] : "default");
+  $: cursor = active ? CURSOR[active] : rotating ? "grabbing" : hoverRotate ? "grab" : (hover ? CURSOR[hover] : "default");
 
   function localXY(e: PointerEvent): [number, number] {
     const r = host.getBoundingClientRect();
     return [e.clientX - r.left, e.clientY - r.top];
   }
+  const center = () => ({ cx: img.left + img.width / 2, cy: img.top + img.height / 2 });
+
+  // True when the point is just OUTSIDE a corner (rotate zone).
+  function inRotateZone(px: number, py: number): boolean {
+    const insideBox = px > box.left && px < box.left + box.width && py > box.top && py < box.top + box.height;
+    if (insideBox) return false;
+    const corners = [
+      [box.left, box.top], [box.left + box.width, box.top],
+      [box.left, box.top + box.height], [box.left + box.width, box.top + box.height],
+    ];
+    for (const [cxp, cyp] of corners) {
+      if (Math.hypot(px - cxp, py - cyp) <= 30) return true;
+    }
+    return false;
+  }
 
   function onMove(e: PointerEvent) {
     const [px, py] = localXY(e);
-    if (!active) { hover = handleAt(px, py, box, 12); return; }
+    if (rotating) {
+      const { cx, cy } = center();
+      const ang = Math.atan2(py - cy, px - cx);
+      const deg = rotStartAngle + ((ang - rotStartPointer) * 180) / Math.PI;
+      dispatch("straighten", Math.max(-45, Math.min(45, deg)));
+      return;
+    }
+    if (!active) {
+      const h = handleAt(px, py, box, 12);
+      hover = h;
+      hoverRotate = !h && inRotateZone(px, py);
+      return;
+    }
     const dnx = (px - startX) / Math.max(1, img.width);
     const dny = (py - startY) / Math.max(1, img.height);
     const lock = e.shiftKey ? lockRatio : null;
@@ -42,11 +73,18 @@
   function onDown(e: PointerEvent) {
     const [px, py] = localXY(e);
     const h = handleAt(px, py, box, 12);
+    if (!h && inRotateZone(px, py)) {
+      rotating = true; rotStartAngle = angle;
+      const { cx, cy } = center();
+      rotStartPointer = Math.atan2(py - cy, px - cx);
+      host.setPointerCapture(e.pointerId);
+      return;
+    }
     if (!h) return;
     active = h; startRect = rect; startX = px; startY = py;
     host.setPointerCapture(e.pointerId);
   }
-  function onUp() { active = null; }
+  function onUp() { active = null; rotating = false; }
 </script>
 
 <div
