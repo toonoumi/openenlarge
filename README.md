@@ -35,6 +35,7 @@ Most tools treat a negative scan as a generic image and fit per-channel tone cur
 
 - **Density-domain inversion** — physically-based Beer-Lambert engine, not a flipped curve
 - **Decodes RAW, TIFF, JPEG & PNG** — Fuji RAF, Panasonic RW2, Nikon NEF, Sony ARW, Canon CR3, Hasselblad 3FR and DNG, plus 16-bit TIFF, JPEG and PNG → linear RGB
+- **Tethered shooting** — watch a folder and auto-import + develop new scans as they land, so finished positives appear as you shoot ("shoot & see")
 - **Per-roll base calibration** — sample the orange film base once per roll and apply it
 - **Full develop controls** — tonal curve, color grading, color wheels, exposure/black/gamma
 - **Crop, rotate, straighten, flip** with a live viewport and histogram
