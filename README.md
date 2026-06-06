@@ -34,11 +34,12 @@ Most tools treat a negative scan as a generic image and fit per-channel tone cur
 ## Features
 
 - **Density-domain inversion** — physically-based Beer-Lambert engine, not a flipped curve
-- **Decodes RAW & TIFF** — Fuji RAF, DNG, and 16-bit TIFF scans → linear RGB
+- **Decodes RAW, TIFF, JPEG & PNG** — Fuji RAF, Panasonic RW2, Nikon NEF, Sony ARW, Canon CR3, Hasselblad 3FR and DNG, plus 16-bit TIFF, JPEG and PNG → linear RGB
 - **Per-roll base calibration** — sample the orange film base once per roll and apply it
 - **Full develop controls** — tonal curve, color grading, color wheels, exposure/black/gamma
 - **Crop, rotate, straighten, flip** with a live viewport and histogram
-- **Batch export** to 16-bit TIFF / PNG / JPEG
+- **Batch export** to 16-bit TIFF / PNG / JPEG — with an optional batch crop applied across the whole selection in one pass
+- **In-app updates** — checks on launch or on demand from Settings and installs the new version in place
 - **Headless CLI** (`film-cli`) for scripting and batch inversion
 - **Cross-platform** — macOS, Windows, Linux, built on Tauri
 
