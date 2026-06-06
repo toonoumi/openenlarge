@@ -14,6 +14,8 @@
   import SettingsMenu from "$lib/settings/SettingsMenu.svelte";
   import KeymapModal from "$lib/keymap/KeymapModal.svelte";
   import AboutModal from "$lib/about/AboutModal.svelte";
+  import UpdatePrompt from "$lib/update/UpdatePrompt.svelte";
+  import { runAutoCheck } from "$lib/update/updater";
   import Icon from "$lib/icons/Icon.svelte";
   import { hasDeveloped } from "$lib/export/eligible";
   import ExportModal from "$lib/export/ExportModal.svelte";
@@ -21,7 +23,7 @@
 
   onMount(() => {
     let flush: (() => void) | undefined;
-    hydrate().finally(() => { flush = initPersistence(); });
+    hydrate().finally(() => { flush = initPersistence(); runAutoCheck(); });
     // Start an undo/redo timeline for each image the moment it becomes active.
     const unseed = activeId.subscribe(() => seedActive());
     return () => { flush?.(); unseed(); };
@@ -115,6 +117,7 @@
 {#if settingsOpen}<SettingsMenu on:close={() => (settingsOpen = false)} on:shortcuts={() => { settingsOpen = false; keymapOpen = true; }} />{/if}
 {#if keymapOpen}<KeymapModal on:close={() => (keymapOpen = false)} />{/if}
 {#if aboutOpen}<AboutModal on:close={() => (aboutOpen = false)} />{/if}
+<UpdatePrompt />
 <ProgressOverlay />
 {#if exporting}
   <ExportModal on:close={() => (exporting = false)} />

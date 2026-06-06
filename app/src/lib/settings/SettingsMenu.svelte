@@ -2,6 +2,7 @@
   import { createEventDispatcher } from "svelte";
   import { fade } from "svelte/transition";
   import { locale, LOCALES, t } from "../i18n";
+  import { runManualCheck } from "../update/updater";
   const dispatch = createEventDispatcher();
 </script>
 
@@ -18,6 +19,10 @@
   <button class="shortcuts" on:click={() => dispatch("shortcuts")}>
     <span class="kbd-icon" aria-hidden="true">⌨</span>
     {$t("settings.shortcuts.button")}
+  </button>
+  <button class="shortcuts" on:click={() => { dispatch("close"); runManualCheck(); }}>
+    <span class="kbd-icon" aria-hidden="true">↑</span>
+    {$t("settings.checkUpdates")}
   </button>
 </div>
 
