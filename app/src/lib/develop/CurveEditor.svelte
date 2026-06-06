@@ -79,12 +79,17 @@
     const r = svgEl.getBoundingClientRect();
     return [clamp01((e.clientX - r.left) / r.width), clamp01(1 - (e.clientY - r.top) / r.height)];
   }
-  /** Nearest control point within HIT_PX screen pixels, or -1 to add a new one. */
+  /** Nearest control point within its grab radius, or -1 to add a new one. */
   function hitIndex(p: CurvePoint, rect: DOMRect): number {
-    let best = -1, bd = HIT_PX;
+    let best = -1, bd = Infinity;
+    const last = pts.length - 1;
     for (let i = 0; i < pts.length; i++) {
+      // Endpoints sit in the corners with half their dot off-canvas, so give them
+      // a wider grab radius — otherwise a press near a corner falls through to a
+      // segment drag and you can never pull the endpoint out.
+      const radius = (i === 0 || i === last) ? HIT_PX * 2 : HIT_PX;
       const d = Math.hypot((pts[i][0] - p[0]) * rect.width, (pts[i][1] - p[1]) * rect.height);
-      if (d < bd) { bd = d; best = i; }
+      if (d <= radius && d < bd) { bd = d; best = i; }
     }
     return best;
   }
@@ -167,17 +172,28 @@
     }
     downPt = null; dragIdx = -1; moved = false; active = false;
   }
-  function onDblPoint(i: number) {
+  /** Double-click an interior point to delete it. Handled on the <svg> rather than
+   *  the dot because pointer capture (set in onDown) redirects dblclick to the
+   *  capture target, so a per-circle handler would never fire. */
+  function onDbl(e: MouseEvent) {
+    const r = svgEl.getBoundingClientRect();
+    const p: CurvePoint = [
+      clamp01((e.clientX - r.left) / r.width),
+      clamp01(1 - (e.clientY - r.top) / r.height),
+    ];
+    const i = hitIndex(p, r);
     const last = pts.length - 1;
-    if (i === 0 || i === last || pts.length <= 2) return; // keep endpoints
-    pts = pts.filter((_, idx) => idx !== i);
-    commit();
+    if (i > 0 && i < last && pts.length > 2) { // keep the two endpoints
+      pts = pts.filter((_, idx) => idx !== i);
+      commit();
+    }
   }
 </script>
 
 <svg
   bind:this={svgEl} class="curve" viewBox="0 0 {S} {S}" preserveAspectRatio="none"
   on:pointerdown={onDown} on:pointermove={onMove} on:pointerup={onUp} on:pointercancel={onUp}
+  on:dblclick={onDbl}
   role="application" aria-label={$t('curve.editorAriaLabel')}
 >
   <!-- grid -->
@@ -194,7 +210,7 @@
   <path d={curveD} class="line" style="stroke:{color}" />
   {#each pts as p, i}
     <circle cx={sx(p[0])} cy={sy(p[1])} r="5" class="pt" style="fill:{color}"
-      on:dblclick={() => onDblPoint(i)} role="button" tabindex="-1" aria-label={$t('curve.pointAriaLabel')} />
+      role="button" tabindex="-1" aria-label={$t('curve.pointAriaLabel')} />
   {/each}
 </svg>
 

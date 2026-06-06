@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { clampRect, conform, applyDrag, default80, toScreen, MIN, constrainToRotated } from "./cropMath";
+import { clampRect, conform, applyDrag, defaultFull, toScreen, MIN, constrainToRotated } from "./cropMath";
 import type { Rect } from "./types";
 
 const r = (x: number, y: number, w: number, h: number): Rect => ({ x, y, w, h });
@@ -22,9 +22,9 @@ describe("conform", () => {
   });
 });
 
-describe("default80", () => {
-  it("is a centered 80% box (native ratio lives in normalized space)", () => {
-    expect(default80()).toEqual({ x: 0.1, y: 0.1, w: 0.8, h: 0.8 });
+describe("defaultFull", () => {
+  it("is a full-frame box (native ratio lives in normalized space)", () => {
+    expect(defaultFull()).toEqual({ x: 0, y: 0, w: 1, h: 1 });
   });
 });
 

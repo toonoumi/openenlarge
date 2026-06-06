@@ -30,7 +30,10 @@ export function buildTree(entries: { id: string; path: string }[]): FolderNode[]
     let node = ensure(rootPath, rootName, roots);
     let acc = rootPath;
     for (const d of dirParts) {
-      acc = acc + "/" + d;
+      // First segment under the synthetic "Macintosh HD" root: keep a Windows
+      // drive letter ("B:") slash-free so fullPath matches an image's real
+      // directory, but restore POSIX's leading "/" for absolute paths ("/Users/…").
+      acc = acc === "" ? (/^[A-Za-z]:$/.test(d) ? d : "/" + d) : acc + "/" + d;
       node = ensure(acc, d, node.children);
     }
     node.imageIds.push(e.id);

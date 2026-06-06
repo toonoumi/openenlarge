@@ -118,10 +118,10 @@ export function conform(r: Rect, aspect: number): Rect {
   return clampRect({ x: cx - w / 2, y: cy - h / 2, w, h });
 }
 
-/** Default centered 80% box. In normalized space an 80%×80% box already carries
- *  the image's native pixel ratio ("Original"). */
-export function default80(): Rect {
-  return { x: 0.1, y: 0.1, w: 0.8, h: 0.8 };
+/** Default full-frame box covering the whole image. In normalized space a
+ *  full 100%×100% box carries the image's native pixel ratio ("Original"). */
+export function defaultFull(): Rect {
+  return { x: 0, y: 0, w: 1, h: 1 };
 }
 
 /** Shrink `rect` about its centre to the largest factor where all four corners,

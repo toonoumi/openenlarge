@@ -20,7 +20,7 @@
   import EraserPanel from "../develop/EraserPanel.svelte";
   import { addStroke, resetDust, emptyDust, setIrEnabled, setIrSensitivity, type DustStroke, type DustEdits } from "../develop/dust";
   import type { Rect, CropRect } from "../crop/types";
-  import { default80, conform, constrainToRotated } from "../crop/cropMath";
+  import { defaultFull, conform, constrainToRotated } from "../crop/cropMath";
   import { presetNormAspect } from "../crop/presets";
   import { rotateRectCW, rotateRectCCW, flipRectH, flipRectV, flipOrient, orientDims } from "../crop/transforms";
   import { commitActive } from "../develop/historyStore";
@@ -40,7 +40,7 @@
   $: if ($tool !== "edit" && $baseSampling) baseSampling.set(false);
 
   // ---- Crop draft state (only while tool === "crop") ----
-  let rect: Rect = { x: 0.1, y: 0.1, w: 0.8, h: 0.8 };
+  let rect: Rect = { x: 0, y: 0, w: 1, h: 1 };
   let aspect = "original";
   let orientation: "landscape" | "portrait" = "landscape";
   let rot90 = 0, flipH = false, flipV = false, angle = 0;
@@ -55,7 +55,7 @@
       rect = { ...c.rect }; aspect = c.aspect; orientation = c.orientation;
       rot90 = c.rot90; flipH = c.flipH; flipV = c.flipV; angle = c.angle;
     } else {
-      rect = default80(); aspect = "original"; orientation = origW >= origH ? "landscape" : "portrait";
+      rect = defaultFull(); aspect = "original"; orientation = origW >= origH ? "landscape" : "portrait";
       rot90 = 0; flipH = false; flipV = false; angle = 0;
     }
     cropInit = true;
@@ -69,11 +69,11 @@
   function discardCrop() {
     const c = $activeCrop;
     if (c) { rect = { ...c.rect }; aspect = c.aspect; orientation = c.orientation; rot90 = c.rot90; flipH = c.flipH; flipV = c.flipV; angle = c.angle; }
-    else { rect = default80(); aspect = "original"; rot90 = 0; flipH = false; flipV = false; angle = 0; }
+    else { rect = defaultFull(); aspect = "original"; rot90 = 0; flipH = false; flipV = false; angle = 0; }
   }
   function onPreset(id: string) { aspect = id; rect = conform(rect, presetNormAspect(id, orientedRatio, orientation)); }
   function onSwap() { orientation = orientation === "landscape" ? "portrait" : "landscape"; rect = conform(rect, presetNormAspect(aspect, orientedRatio, orientation)); }
-  function onReset() { rect = default80(); aspect = "original"; orientation = origW >= origH ? "landscape" : "portrait"; rot90 = 0; flipH = false; flipV = false; angle = 0; }
+  function onReset() { rect = defaultFull(); aspect = "original"; orientation = origW >= origH ? "landscape" : "portrait"; rot90 = 0; flipH = false; flipV = false; angle = 0; }
   function onRotate(dir: number) {
     if (dir > 0) { rot90 = (rot90 + 1) % 4; rect = rotateRectCW(rect); }
     else { rot90 = (rot90 + 3) % 4; rect = rotateRectCCW(rect); }
