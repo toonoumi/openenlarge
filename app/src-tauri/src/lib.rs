@@ -7,6 +7,7 @@ mod exif_write;
 mod gpu_upload;
 mod metadata;
 mod session;
+mod tether;
 
 #[cfg(test)]
 pub mod commands_test_support {
