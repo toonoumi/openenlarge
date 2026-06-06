@@ -31,6 +31,7 @@
   export let dust: DustStroke[] = [];
   /** Bumped by the parent on any dust change to force a re-render. */
   export let dustRev = 0;
+  export let developRev = 0;
   export let irRemoval: IrRemoval = { enabled: false, sensitivity: 50 };
 
   const dispatch = createEventDispatcher<{ stroke: DustStroke; brush: number; pointpick: { r: number; g: number; b: number } }>();
@@ -169,9 +170,9 @@
   // for stroke changes here — the dust array itself is not in the key).
   function currentUploadKey(): string {
     if (bakeMode) {
-      return `bake|${id}|${dustRev}|${irRemoval.enabled}|${irRemoval.sensitivity}|${imageCrop ? imageCrop.join(',') : 'full'}|${rot90}|${flipH}|${flipV}|${angle}`;
+      return `bake|${id}|${developRev}|${dustRev}|${irRemoval.enabled}|${irRemoval.sensitivity}|${imageCrop ? imageCrop.join(',') : 'full'}|${rot90}|${flipH}|${flipV}|${angle}`;
     }
-    return `raw|${id}`;
+    return `raw|${id}|${developRev}`;
   }
 
   // Upload the working float texture to the GPU. In bake mode, fetch the BAKED
@@ -244,7 +245,7 @@
 
   // Upload the working float texture. Re-fires when the image changes or, in bake
   // mode, when strokes/IR/geometry change (currentUploadKey dedupes redundant runs).
-  $: if (gpuEligible) { id; dustRev; irRemoval.enabled; irRemoval.sensitivity; imageCrop; rot90; flipH; flipV; angle; uploadWorking(); }
+  $: if (gpuEligible) { id; developRev; dustRev; irRemoval.enabled; irRemoval.sensitivity; imageCrop; rot90; flipH; flipV; angle; uploadWorking(); }
   $: if (!gpuEligible) uploadKey = "";
 
   // Inversion params now drive GPU uniforms (no backend pixel fetch) when eligible.
@@ -260,7 +261,7 @@
   // CPU fallback path: re-fetch the SOURCE from the backend only when NOT eligible
   // (dust/IR active, raw view, or no WebGL2). Reuses the existing render()/schedule.
   $: cpuKey = gpuEligible ? '' :
-    `${id}|${raw}|${eff}|${vpW}|${vpH}|${params.mode}|${params.stock}|${params.exposure}|${params.temp}|${params.tint}|${imageCrop ? imageCrop.join(',') : 'full'}|${rot90}|${flipH}|${flipV}|${angle}|${dustRev}|${irRemoval.enabled}|${irRemoval.sensitivity}|${JSON.stringify(params.base_override)}`;
+    `${id}|${developRev}|${raw}|${eff}|${vpW}|${vpH}|${params.mode}|${params.stock}|${params.exposure}|${params.temp}|${params.tint}|${imageCrop ? imageCrop.join(',') : 'full'}|${rot90}|${flipH}|${flipV}|${angle}|${dustRev}|${irRemoval.enabled}|${irRemoval.sensitivity}|${JSON.stringify(params.base_override)}`;
   $: cpuKey, imgW, imgH, scheduleIfReady();
 
   // Finishing-only change → GPU redraw, no backend fetch. Tone curve + color
