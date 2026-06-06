@@ -5,6 +5,7 @@
   import { developAll } from "../workflow";
   import GlassPanel from "../glass/GlassPanel.svelte";
   import { t } from "$lib/i18n";
+  import TetherPanel from "../tether/TetherPanel.svelte";
 
   let importing = false;
   let error = "";
@@ -46,6 +47,7 @@
     {#if $images.length > 0 && !$allDeveloped}
       <button class="develop" on:click={() => developAll()}>{$t('source.developAll')}</button>
     {/if}
+    <TetherPanel />
   </div>
 </GlassPanel>
 
