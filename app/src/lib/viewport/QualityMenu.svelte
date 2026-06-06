@@ -1,8 +1,8 @@
 <script lang="ts">
   import { createEventDispatcher } from "svelte";
-  import { quality } from "../store";
+  import { get } from "svelte/store";
+  import { quality, activeId, images, developRev } from "../store";
   import { api, type Quality } from "../api";
-  import { developAll, markAllUndeveloped } from "../workflow";
   import { t } from "$lib/i18n";
   export let x = 0;
   export let y = 0;
@@ -12,9 +12,20 @@
     if (q !== $quality) {
       quality.set(q);
       await api.setQuality(q);
-      markAllUndeveloped();
       dispatch("close");
-      await developAll();
+      // Only the image on screen needs the new quality now; others upgrade lazily
+      // when navigated to (see Develop.svelte). ensure_developed is a no-op when the
+      // resident buffer already satisfies the new quality (e.g. switching to Performance).
+      const id = get(activeId);
+      if (id) {
+        try {
+          const updated = await api.ensureDeveloped(id);
+          images.update((list) => list.map((i) => (i.id === id ? updated : i)));
+          developRev.update((n) => n + 1);
+        } catch (e) {
+          console.error("ensureDeveloped failed", id, e);
+        }
+      }
     } else {
       dispatch("close");
     }
