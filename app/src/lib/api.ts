@@ -214,6 +214,8 @@ export const api = {
     data: number[], format: ExportFormat, metaOverride: MetaOverride | null,
   ) =>
     invoke<void>("export_finish", { id, outPath, readback, data, format, metaOverride }),
+  tetherStart: (dir: string) => invoke<void>("tether_start", { dir }),
+  tetherStop: () => invoke<void>("tether_stop"),
 };
 
 export const defaultParams = (): InvertParams => ({
