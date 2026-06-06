@@ -1,10 +1,8 @@
 import { get } from "svelte/store";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { api } from "../api";
-import { images, activeId, module } from "../store";
-import { selectedFolder } from "../store";
-import { tetherAutoAdvance, tetherLast } from "./store";
-import { tetherWatching, tetherDir } from "./store";
+import { images, activeId, module, selectedFolder } from "../store";
+import { tetherAutoAdvance, tetherLast, tetherWatching, tetherDir } from "./store";
 
 /** Import → develop one freshly-captured file, then (optionally) bring it to the
  * front. Never throws: a bad frame is recorded in `tetherLast` and the session
@@ -35,10 +33,21 @@ let unlisten: UnlistenFn | null = null;
 /** Begin a tether session on `dir`. The watched folder becomes the active roll. */
 export async function startTether(dir: string): Promise<void> {
   await api.tetherStart(dir);
-  if (!unlisten) {
-    unlisten = await listen<{ path: string }>("tether://new-file", (e) => {
-      void processNewFile(e.payload.path);
-    });
+  try {
+    if (!unlisten) {
+      // Registered once per process. The backend replaces its watcher on each
+      // start but always emits the same event, so one listener serves every
+      // session. In-flight events from a prior watcher route to processNewFile by
+      // their own path (not tetherDir), so a folder switch can't misattribute them.
+      unlisten = await listen<{ path: string }>("tether://new-file", (e) => {
+        void processNewFile(e.payload.path);
+      });
+    }
+  } catch (e) {
+    // Listener failed to register — don't leave the backend watching with no
+    // consumer. Stop the backend and surface the error to the caller.
+    await api.tetherStop();
+    throw e;
   }
   selectedFolder.set(dir);
   tetherDir.set(dir);
