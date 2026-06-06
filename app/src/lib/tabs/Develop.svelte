@@ -22,7 +22,7 @@
   import type { Rect, CropRect } from "../crop/types";
   import { default80, conform, constrainToRotated } from "../crop/cropMath";
   import { presetNormAspect } from "../crop/presets";
-  import { rotateRectCW, rotateRectCCW, flipRectH, flipRectV, orientDims } from "../crop/transforms";
+  import { rotateRectCW, rotateRectCCW, flipRectH, flipRectV, flipOrient, orientDims } from "../crop/transforms";
   import { commitActive } from "../develop/historyStore";
   import { rgbToHslSample } from "../develop/colorPick";
 
@@ -79,7 +79,10 @@
     else { rot90 = (rot90 + 3) % 4; rect = rotateRectCCW(rect); }
   }
   function onFlip(axis: "h" | "v") {
-    if (axis === "h") { flipH = !flipH; rect = flipRectH(rect); } else { flipV = !flipV; rect = flipRectV(rect); }
+    // Flip the *displayed* image: the backend flips before rot90, so for odd
+    // quarter-turns flipOrient negates rot90 to keep H/H and V/V (see transforms.ts).
+    ({ rot90, flipH, flipV } = flipOrient({ rot90, flipH, flipV }, axis));
+    rect = axis === "h" ? flipRectH(rect) : flipRectV(rect);
     angle = -angle;
   }
   function onStraighten(v: number) { angle = Math.max(-45, Math.min(45, v)); }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { rotateRectCW, rotateRectCCW, flipRectH, flipRectV, orientDims } from "./transforms";
+import { rotateRectCW, rotateRectCCW, flipRectH, flipRectV, orientDims, flipOrient } from "./transforms";
 import type { Rect } from "./types";
 const r = (x: number, y: number, w: number, h: number): Rect => ({ x, y, w, h });
 const close = (a: Rect, b: Rect) => {
@@ -33,5 +33,61 @@ describe("rect transforms", () => {
     expect(orientDims(2, 3, 1)).toEqual([3, 2]);
     expect(orientDims(2, 3, 2)).toEqual([2, 3]);
     expect(orientDims(2, 3, 3)).toEqual([3, 2]);
+  });
+});
+
+// Pixel-grid model of the backend's orient (convert.rs): flip_h, flip_v, then
+// `rot90` clockwise quarter-turns. Used to prove flipOrient flips the *displayed*
+// image, not the pre-rotation source.
+type Grid = { w: number; h: number; px: string[] };
+const at = (g: Grid, x: number, y: number) => g.px[y * g.w + x];
+function gridFlipH(g: Grid): Grid {
+  const px = g.px.map((_, i) => at(g, g.w - 1 - (i % g.w), Math.floor(i / g.w)));
+  return { w: g.w, h: g.h, px };
+}
+function gridFlipV(g: Grid): Grid {
+  const px = g.px.map((_, i) => at(g, i % g.w, g.h - 1 - Math.floor(i / g.w)));
+  return { w: g.w, h: g.h, px };
+}
+function gridRotCW(g: Grid): Grid {
+  const nw = g.h, nh = g.w;
+  const px = new Array<string>(nw * nh);
+  for (let ny = 0; ny < nh; ny++)
+    for (let nx = 0; nx < nw; nx++) px[ny * nw + nx] = at(g, ny, g.h - 1 - nx);
+  return { w: nw, h: nh, px };
+}
+function orient(g: Grid, rot90: number, flipH: boolean, flipV: boolean): Grid {
+  let o = g;
+  if (flipH) o = gridFlipH(o);
+  if (flipV) o = gridFlipV(o);
+  for (let i = 0; i < rot90 % 4; i++) o = gridRotCW(o);
+  return o;
+}
+
+describe("flipOrient", () => {
+  // Asymmetric so every distinct orientation is detectable.
+  const base: Grid = { w: 2, h: 3, px: ["A", "B", "C", "D", "E", "F"] };
+
+  it("flips the displayed (oriented) image for every starting orientation", () => {
+    for (let rot90 = 0; rot90 < 4; rot90++)
+      for (const flipH of [false, true])
+        for (const flipV of [false, true])
+          for (const axis of ["h", "v"] as const) {
+            const shown = orient(base, rot90, flipH, flipV);
+            const expected = axis === "h" ? gridFlipH(shown) : gridFlipV(shown);
+            const o = flipOrient({ rot90, flipH, flipV }, axis);
+            const actual = orient(base, o.rot90, o.flipH, o.flipV);
+            expect(actual, `rot90=${rot90} flipH=${flipH} flipV=${flipV} axis=${axis}`).toEqual(expected);
+          }
+  });
+
+  it("flipping the same axis twice restores the original flags", () => {
+    for (let rot90 = 0; rot90 < 4; rot90++)
+      for (const axis of ["h", "v"] as const) {
+        const start = { rot90, flipH: false, flipV: false };
+        const once = flipOrient(start, axis);
+        const twice = flipOrient(once, axis);
+        expect(twice).toEqual(start);
+      }
   });
 });
