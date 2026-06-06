@@ -44,6 +44,19 @@
     };
   }
 
+  // The leaving panel collapses out of flow (absolute) so the wrapper's height is
+  // driven solely by the entering panel — without this the two panels (which differ
+  // in height) briefly stack and the modal/grid above bulges and lags mid-swap.
+  function collapseOut(node: HTMLElement, { duration = 200 } = {}) {
+    const h = node.offsetHeight;
+    return {
+      duration,
+      easing: cubicOut,
+      css: (t: number) =>
+        `position:absolute;left:0;right:0;top:0;overflow:hidden;opacity:${t};height:${t * h}px;`,
+    };
+  }
+
   $: imgs = $developedImages;
   $: ids = imgs.map((i) => i.id);
 
@@ -306,31 +319,33 @@
         </div>
       </div>
 
-      {#if kind === "jpeg"}
-        <div class="opts" transition:slideFade>
-          <div class="field">
-            <span class="flabel">{$t('export.quality')} <b>{quality}</b></span>
-            <input class="range" type="range" min="1" max="100" bind:value={quality}
-                   style="--pct:{((quality - 1) / 99) * 100}%" />
-          </div>
-          <div class="field">
-            <span class="flabel">{$t('export.maxSize')} <b>{maxMb === 0 ? $t('export.unlimited') : $t('export.maxSizeMb', { mb: maxMb })}</b></span>
-            <input class="range" type="range" min="0" max="20" step="0.5" bind:value={maxMb}
-                   style="--pct:{(maxMb / 20) * 100}%" />
-          </div>
-        </div>
-      {:else}
-        <div class="opts" transition:slideFade>
-          <div class="field">
-            <span class="flabel">{$t('export.bitDepth')}</span>
-            <div class="seg" style="--n:2; --i:{bitDepth === 8 ? 0 : 1}">
-              <button type="button" class:active={bitDepth === 8} on:click={() => (bitDepth = 8)}>{$t('export.bitDepth8')}</button>
-              <button type="button" class:active={bitDepth === 16} on:click={() => (bitDepth = 16)}>{$t('export.bitDepth16')}</button>
-              <span class="seg-ind"></span>
+      <div class="opts-wrap">
+        {#if kind === "jpeg"}
+          <div class="opts" in:slideFade out:collapseOut>
+            <div class="field">
+              <span class="flabel">{$t('export.quality')} <b>{quality}</b></span>
+              <input class="range" type="range" min="1" max="100" bind:value={quality}
+                     style="--pct:{((quality - 1) / 99) * 100}%" />
+            </div>
+            <div class="field">
+              <span class="flabel">{$t('export.maxSize')} <b>{maxMb === 0 ? $t('export.unlimited') : $t('export.maxSizeMb', { mb: maxMb })}</b></span>
+              <input class="range" type="range" min="0" max="20" step="0.5" bind:value={maxMb}
+                     style="--pct:{(maxMb / 20) * 100}%" />
             </div>
           </div>
-        </div>
-      {/if}
+        {:else}
+          <div class="opts" in:slideFade out:collapseOut>
+            <div class="field">
+              <span class="flabel">{$t('export.bitDepth')}</span>
+              <div class="seg" style="--n:2; --i:{bitDepth === 8 ? 0 : 1}">
+                <button type="button" class:active={bitDepth === 8} on:click={() => (bitDepth = 8)}>{$t('export.bitDepth8')}</button>
+                <button type="button" class:active={bitDepth === 16} on:click={() => (bitDepth = 16)}>{$t('export.bitDepth16')}</button>
+                <span class="seg-ind"></span>
+              </div>
+            </div>
+          </div>
+        {/if}
+      </div>
     </div>
 
     <footer>
@@ -400,9 +415,9 @@
   .cell {
     position: relative; display: flex; flex-direction: column; gap: 5px;
     border: 2px solid transparent; border-radius: 10px; padding: 4px; background: transparent;
-    transition: transform 0.16s ease, border-color 0.16s ease, background 0.16s ease;
+    transition: border-color 0.16s ease, background 0.16s ease;
   }
-  .cell:hover { transform: translateY(-2px); border-color: var(--glass-brd); }
+  .cell:hover { border-color: var(--glass-brd); }
   .cell.on { border-color: var(--accent); background: rgba(224, 52, 52, 0.14); }
   .cell img { width: 100%; aspect-ratio: 1; object-fit: contain; border-radius: 6px; background: #000; }
   .name { font-size: 11px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -423,6 +438,9 @@
     transition: opacity 0.2s;
   }
   .format.busy { opacity: 0.5; pointer-events: none; }
+  /* Positioning context for collapseOut: the leaving .opts is pinned here so the
+     entering one alone sets the height. */
+  .opts-wrap { position: relative; }
   .opts { display: flex; flex-direction: column; gap: 14px; }
   .field { display: flex; flex-direction: column; gap: 7px; }
 

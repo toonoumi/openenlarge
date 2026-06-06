@@ -1,5 +1,7 @@
 <script lang="ts">
   import { t } from "$lib/i18n";
+  import { fade } from "svelte/transition";
+  import { cubicOut } from "svelte/easing";
   import { activeId, params, images, folderImages, tool, cropById, activeCrop, dustById, activeDust, deleteTarget, dustRev, developRev, folderBaseByPath, baseSampling, sampledBase } from "../store";
   import { get } from "svelte/store";
   import { imageDir } from "../library/folderScope";
@@ -261,23 +263,31 @@
     <GlassPanel>
       <Histogram />
       <Toolbar />
-      {#if $tool === "edit"}
-        <Basic />
-        <TonalCurve />
-        <ColorGrading />
-        <ColorMixer onPick={togglePointPick} picking={pointPicking} />
-      {:else if $tool === "crop"}
-        <CropPanel bind:aspect bind:orientation bind:angle
-                   on:preset={(e) => onPreset(e.detail)} on:swap={onSwap} on:reset={onReset}
-                   on:rotate={(e) => onRotate(e.detail)} on:flip={(e) => onFlip(e.detail)} />
-      {:else if $tool === "eraser"}
-        <EraserPanel bind:brush {hasIr}
-                     irEnabled={dust.irRemoval.enabled} irSensitivity={dust.irRemoval.sensitivity}
-                     on:reset={resetDustEdits}
-                     on:irEnabled={(e) => setIrOn(e.detail)}
-                     on:irSensitivity={(e) => setIrSens(e.detail)} />
-      {/if}
+      {#key $tool}
+        <div class="toolpane" in:fade={{ duration: 160, easing: cubicOut }}>
+          {#if $tool === "edit"}
+            <Basic />
+            <TonalCurve />
+            <ColorGrading />
+            <ColorMixer onPick={togglePointPick} picking={pointPicking} />
+          {:else if $tool === "crop"}
+            <CropPanel bind:aspect bind:orientation bind:angle
+                       on:preset={(e) => onPreset(e.detail)} on:swap={onSwap} on:reset={onReset}
+                       on:rotate={(e) => onRotate(e.detail)} on:flip={(e) => onFlip(e.detail)} />
+          {:else if $tool === "eraser"}
+            <EraserPanel bind:brush {hasIr}
+                         irEnabled={dust.irRemoval.enabled} irSensitivity={dust.irRemoval.sensitivity}
+                         on:reset={resetDustEdits}
+                         on:irEnabled={(e) => setIrOn(e.detail)}
+                         on:irSensitivity={(e) => setIrSens(e.detail)} />
+          {/if}
+        </div>
+      {/key}
     </GlassPanel>
+    <!-- Top/bottom shadow gradients pinned to the panel edges so scrolled content
+         fades out at the boundaries (infinity-scroll feel). -->
+    <div class="edge-fade top" aria-hidden="true"></div>
+    <div class="edge-fade bottom" aria-hidden="true"></div>
   </aside>
 
   <footer class="bottom"><Filmstrip /></footer>
@@ -290,9 +300,17 @@
   .layout { display: grid; height: 100%; gap: 12px;
     grid-template-columns: 1fr 300px; grid-template-rows: 1fr 88px;
     grid-template-areas: "center right" "bottom right"; }
-  .right { grid-area: right; min-height: 0; overflow-y: auto;
+  .right { grid-area: right; min-height: 0; position: relative; overflow-y: auto;
     scrollbar-width: none; -ms-overflow-style: none; }
   .right::-webkit-scrollbar { width: 0; height: 0; }
+  /* Shadow gradients at the panel's top/bottom edges. Inset 1px to sit inside the
+     GlassPanel border and rounded to match its corners; non-interactive. */
+  .edge-fade { position: absolute; left: 1px; right: 1px; height: 26px;
+    pointer-events: none; z-index: 3; }
+  .edge-fade.top { top: 1px; border-radius: var(--radius) var(--radius) 0 0;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.55), rgba(0,0,0,0)); }
+  .edge-fade.bottom { bottom: 1px; border-radius: 0 0 var(--radius) var(--radius);
+    background: linear-gradient(to top, rgba(0,0,0,0.55), rgba(0,0,0,0)); }
   .center { grid-area: center; min-height: 0; display: grid; place-items: center; }
   .hint { color: var(--text-dim); }
   .bottom { grid-area: bottom; min-width: 0; overflow: hidden; }

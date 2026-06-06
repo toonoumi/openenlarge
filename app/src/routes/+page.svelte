@@ -1,6 +1,8 @@
 <script lang="ts">
   import "../styles/theme.css";
   import { onMount } from "svelte";
+  import { fly } from "svelte/transition";
+  import { cubicOut } from "svelte/easing";
   import { hydrate, initPersistence } from "$lib/catalog";
   import { module, hasImages, images, undevelopedCount, deleteTarget, activeId } from "$lib/store";
   import { matchUndoRedo } from "$lib/develop/history";
@@ -110,7 +112,11 @@
     </button>
   </header>
   <main>
-    {#if $module === "library"}<Library />{:else}<Develop />{/if}
+    {#key $module}
+      <div class="page" in:fly={{ y: 10, duration: 220, easing: cubicOut }}>
+        {#if $module === "library"}<Library />{:else}<Develop />{/if}
+      </div>
+    {/key}
   </main>
 </div>
 
@@ -155,5 +161,8 @@
     transition: color 0.12s, background 0.12s; }
   .gear:hover { color: var(--text); background: var(--glass-hi); }
   .gear.on { color: var(--text); background: rgba(244,157,78,0.14); box-shadow: inset 0 0 0 1px rgba(244,157,78,0.4); }
-  main { flex: 1; min-height: 0; padding: 12px; }
+  main { flex: 1; min-height: 0; padding: 12px; position: relative; }
+  /* The keyed page wrapper fills main so Library/Develop keep their full height
+     while the fly-in transition plays on module switch. */
+  .page { height: 100%; }
 </style>
