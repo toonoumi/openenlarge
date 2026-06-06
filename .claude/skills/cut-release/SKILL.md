@@ -57,14 +57,25 @@ LAST=$(git describe --tags --abbrev=0)
 git log --oneline "$LAST"..HEAD
 ```
 
+**Derive the scope from this command, never from memory of the current chat.**
+Plenty of commits land on `main` between releases that you didn't make in this
+session — features merged by the maintainer, fixes from another branch. If you
+size the version and write the notes from "what we did today," you will miss them.
+The `$LAST..HEAD` range is the source of truth; read every line of it, group the
+commits into New / Improvements / Fixes yourself, and resolve anything ambiguous by
+reading the code (e.g. `feat(tether): ...` → check `app/src/lib/tether/` and the
+i18n strings to describe it accurately). A `feat(...)` you can't explain is a
+feature you haven't documented.
+
 Apply semver judgment (pre-1.0, so stay conservative):
 - **patch** (`0.2.0 → 0.2.1`): bug fixes, UI polish, docs, perf — no new
   user-facing capability.
-- **minor** (`0.2.x → 0.3.0`): new features (new import formats, new tools,
-  auto-update, etc.).
+- **minor** (`0.2.x → 0.3.0`): **any** new user-facing feature in the range — new
+  import formats, a new tool/panel, tethering, auto-update. If the range contains a
+  `feat(...)` that adds capability, it's a minor, not a patch.
 
 The version number is the user's call — recommend one with a one-line rationale
-and let them confirm or override.
+*grounded in the commit range* and let them confirm or override.
 
 ### 2. Bump the version everywhere
 
