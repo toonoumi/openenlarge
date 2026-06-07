@@ -1,12 +1,26 @@
 <script lang="ts">
+  import { reciprocalPos, reciprocalValue, reciprocalSpan } from "./sliderScale";
+
   export let label: string;
   export let min: number;
   export let max: number;
-  export let step = 1;
+  export let step = 1;                 // for scale="reciprocal", in position units
   export let value: number;
   export let def = 0;                 // double-click reset target
   export let gradient = "";           // CSS background for the track
   export let format: (v: number) => string = (v) => `${Math.round(v)}`;
+  export let scale: "linear" | "reciprocal" = "linear";
+
+  // `value`, `def`, `min`/`max` and `format` stay in natural units; only the
+  // <input> domain is transformed so a non-linear scale is fully contained here.
+  $: recip = scale === "reciprocal";
+  $: inMin = recip ? 0 : min;
+  $: inMax = recip ? reciprocalSpan(min, max) : max;
+  $: pos = recip ? reciprocalPos(value, min) : value;
+  function onInput(e: Event) {
+    const p = +(e.currentTarget as HTMLInputElement).value;
+    value = recip ? reciprocalValue(p, min) : p;
+  }
 </script>
 
 <div class="slider">
@@ -15,9 +29,10 @@
     <span class="val">{format(value)}</span>
   </div>
   <input
-    type="range" {min} {max} {step} bind:value
+    type="range" min={inMin} max={inMax} {step} value={pos}
     class:grad={!!gradient}
     style={gradient ? `--track:${gradient}` : ""}
+    on:input={onInput}
     on:dblclick={() => (value = def)}
     on:input
   />

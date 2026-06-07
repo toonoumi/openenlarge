@@ -4,6 +4,7 @@
   import { params, activeId, images, folderBaseByPath, baseSampling, sampledBase } from "../store";
   import { api, defaultParams } from "../api";
   import { reseedActive, commitActive } from "./historyStore";
+  import { createSeedGuard } from "./seedGuard";
   import { withEffectiveBase, setFolderBase, clearFolderBase } from "./base";
   import { imageDir } from "../library/folderScope";
   import Icon from "../icons/Icon.svelte";
@@ -58,11 +59,13 @@
   // film profile changes (or the effective base changes). The estimate runs
   // against the effective base and stock/mode, so switching a profile or
   // applying a roll calibration re-balances to the correct neutral point.
-  let seededFor: string | null = null;
-  async function seed(id: string | null, stock: string, baseKey: string) {
+  // Guard remembers every (image, profile, base) it has seeded — not just the
+  // last — so revisiting an image never re-runs the auto seed and clobbers the
+  // manual Temp/Tint the user set on it. `force` (Auto button) re-seeds anyway.
+  const shouldSeed = createSeedGuard();
+  async function seed(id: string | null, stock: string, baseKey: string, force = false) {
     const key = id ? `${id}:${stock}:${baseKey}` : null;
-    if (!key || seededFor === key) return;
-    seededFor = key;
+    if (!shouldSeed(key, force)) return;
     try {
       const wb = await api.asShotWb(id!, withEffectiveBase(get(params), dir));
       params.update((p) => ({ ...p, temp: wb.temp, tint: wb.tint }));
@@ -71,7 +74,7 @@
   }
   $: seed($activeId, $params.stock, JSON.stringify(effBase));
 
-  function autoWb() { seededFor = null; seed($activeId, $params.stock, JSON.stringify(effBase)); }
+  function autoWb() { seed($activeId, $params.stock, JSON.stringify(effBase), true); }
 
   // Reset every Basic-section control to its default, leaving all other develop
   // state (mode, base_override, black/gamma, tone curve, color grading) untouched.
@@ -154,7 +157,7 @@
         <span>{$t('basic.tempTint')}</span>
         <button class="auto" on:click={autoWb}>{$t('basic.auto')}</button>
       </div>
-      <Slider label={$t('basic.temp')} min={2000} max={50000} step={50}
+      <Slider label={$t('basic.temp')} min={2000} max={50000} step={0.5} scale="reciprocal"
         bind:value={$params.temp} def={5500} gradient={TEMP_GRADIENT} format={kelvin} />
       <Slider label={$t('basic.tint')} min={-150} max={150} step={1}
         bind:value={$params.tint} def={0} gradient={TINT_GRADIENT} format={signed} />

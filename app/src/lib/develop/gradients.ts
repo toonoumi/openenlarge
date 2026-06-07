@@ -1,6 +1,8 @@
 // CSS linear-gradient track backgrounds for sliders.
+// Temp runs on a reciprocal (mired) scale, so neutral 5500K sits at ~66% of the
+// track (not 50%); the grey midpoint is placed to match. See sliderScale.ts.
 export const TEMP_GRADIENT =
-  "linear-gradient(90deg, #4a90ff 0%, #cfd8e6 50%, #ffd24a 100%)";
+  "linear-gradient(90deg, #4a90ff 0%, #cfd8e6 66%, #ffd24a 100%)";
 export const TINT_GRADIENT =
   "linear-gradient(90deg, #4ad24a 0%, #cfcfcf 50%, #ff4af0 100%)";
 export const SAT_GRADIENT =
