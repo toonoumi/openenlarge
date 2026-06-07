@@ -46,39 +46,88 @@ pub fn sample_base(img: &Image, rect: Option<Rect>) -> [f32; 3] {
     base
 }
 
-/// Gray-world white-balance gains computed from the brightest ~20% of an
-/// (already inverted) image: per-channel multipliers that map the bright region's
-/// mean color to neutral. Returns `[1,1,1]` for an empty image. Apply as
-/// `InversionParams.wb` on a subsequent inversion to neutralize a global cast.
+/// Default damping for [`auto_wb_gains`]: gains are shrunk toward neutral by this
+/// factor. Gray-world is aggressive; applying it at full strength overshoots,
+/// especially on film where highlights run warm. 0.7 corrects most of the cast
+/// while leaving headroom for the user's manual temp/tint.
+pub const AUTO_WB_STRENGTH: f32 = 0.7;
+
+/// Robust gray-world white-balance gains from an (already inverted) image:
+/// per-channel multipliers that map a neutral-pixel estimate to gray. Returns
+/// `[1,1,1]` for an empty image. Apply as `InversionParams.wb` on a subsequent
+/// inversion to neutralize a global cast. Uses [`AUTO_WB_STRENGTH`] damping.
+///
+/// Unlike a naive average of the brightest pixels — which neutralizes warm
+/// highlights (sun/tungsten/skin) and so reads the scene as warm, over-cooling
+/// the result into a blue cast — this rejects strongly chromatic pixels (sky,
+/// foliage, skin, warm highlights), near-clipped highlights, and shadow noise
+/// before averaging, so only genuinely near-neutral pixels drive the estimate.
 pub fn auto_wb_gains(img: &Image) -> [f32; 3] {
+    auto_wb_gains_strength(img, AUTO_WB_STRENGTH)
+}
+
+/// [`auto_wb_gains`] with an explicit damping `strength` in 0..=1 (1 = full
+/// gray-world correction, 0 = no correction / `[1,1,1]`).
+pub fn auto_wb_gains_strength(img: &Image, strength: f32) -> [f32; 3] {
     if img.pixels.is_empty() {
         return [1.0, 1.0, 1.0];
     }
-    let mut lums: Vec<f32> = img
-        .pixels
-        .iter()
-        .map(|p| (p[0] + p[1] + p[2]) / 3.0)
-        .collect();
-    lums.sort_by(|a, b| a.partial_cmp(b).unwrap());
-    let thresh = lums[((lums.len() as f32 * 0.8) as usize).min(lums.len() - 1)];
-    let (mut sum, mut n) = ([0.0f64; 3], 0u64);
-    for p in &img.pixels {
-        if (p[0] + p[1] + p[2]) / 3.0 >= thresh {
+    // Average only near-neutral, well-exposed pixels. `sat_max` rejects chromatic
+    // content that violates the gray assumption; `hi`/`lo` drop clipped highlights
+    // (often warm-biased) and shadow noise.
+    let accumulate = |sat_max: f32, hi: f32, lo: f32| -> ([f64; 3], u64) {
+        let (mut sum, mut n) = ([0.0f64; 3], 0u64);
+        for p in &img.pixels {
+            let mx = p[0].max(p[1]).max(p[2]);
+            let mn = p[0].min(p[1]).min(p[2]);
+            let luma = (p[0] + p[1] + p[2]) / 3.0;
+            if luma < lo || mx > hi {
+                continue;
+            }
+            let sat = if mx > 1e-6 { (mx - mn) / mx } else { 0.0 };
+            if sat > sat_max {
+                continue;
+            }
             for c in 0..3 {
                 sum[c] += p[c] as f64;
             }
             n += 1;
         }
+        (sum, n)
+    };
+
+    // Need a meaningful sample. If a strong global cast desaturates too few pixels,
+    // relax saturation; if still empty (e.g. all clipped), fall back to everything.
+    let min_keep = (img.pixels.len() as u64 / 20).max(1); // ≥5%
+    let (mut sum, mut n) = accumulate(0.25, 0.95, 0.05);
+    if n < min_keep {
+        let r = accumulate(0.6, 0.95, 0.05);
+        sum = r.0;
+        n = r.1;
+    }
+    if n == 0 {
+        let r = accumulate(1.0, 1.1, 0.0);
+        sum = r.0;
+        n = r.1;
     }
     if n == 0 {
         return [1.0, 1.0, 1.0];
     }
+
     let mean = [sum[0] / n as f64, sum[1] / n as f64, sum[2] / n as f64];
     let gray = (mean[0] + mean[1] + mean[2]) / 3.0;
-    [
+    let raw = [
         (gray / mean[0].max(1e-6)) as f32,
         (gray / mean[1].max(1e-6)) as f32,
         (gray / mean[2].max(1e-6)) as f32,
+    ];
+    // Damp toward neutral so the auto seed corrects most of the cast without
+    // overshooting; the user can push further with the manual temp/tint sliders.
+    let k = strength.clamp(0.0, 1.0);
+    [
+        1.0 + k * (raw[0] - 1.0),
+        1.0 + k * (raw[1] - 1.0),
+        1.0 + k * (raw[2] - 1.0),
     ]
 }
 
@@ -159,9 +208,72 @@ pub fn balance_neutral(m: Matrix3<f32>) -> Matrix3<f32> {
     out
 }
 
+/// A generic, film-agnostic density-unmix `M_post` for the "no preset" default:
+/// the mean of every bundled stock's neutral-balanced fit. Using the centroid of
+/// all stocks gives baseline dye-crosstalk correction (so colours aren't washed
+/// out to gray) without committing to any single film's look. Like the per-stock
+/// fits it depends only on bundled spectral data, so it is constant — computed
+/// once and cached.
+pub fn generic_m_post() -> Matrix3<f32> {
+    static CACHE: std::sync::OnceLock<Matrix3<f32>> = std::sync::OnceLock::new();
+    *CACHE.get_or_init(|| {
+        let stocks = crate::spectral::Stock::ALL;
+        let mut acc = Matrix3::zeros();
+        for s in stocks {
+            acc += balance_neutral(fit_m_post(&crate::spectral::load_stock(s)));
+        }
+        acc / stocks.len() as f32
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn generic_m_post_is_balanced_with_moderate_crosstalk() {
+        let m = generic_m_post();
+        // Finite and meaningfully different from identity (it does real unmixing).
+        assert!(m.iter().all(|v| v.is_finite()), "generic M_post not finite");
+        assert!(
+            (m - Matrix3::identity()).norm() > 1e-2,
+            "generic M_post unexpectedly identity"
+        );
+        // Neutral-balanced: an equal-density input maps to equal-RGB output, so a
+        // gray scene stays gray — the default injects no colour cast.
+        for d in [0.2f32, 0.5, 1.0, 1.5] {
+            let out = m * Vector3::new(d, d, d);
+            assert!(
+                out.max() - out.min() < 1e-3,
+                "neutral not preserved at d={d}: {:?}",
+                out.as_slice()
+            );
+        }
+        // Crosstalk correction is present (off-diagonals) — this is what restores
+        // the saturation that identity (mode C) leaves washed-out gray.
+        let off = [
+            m[(0, 1)],
+            m[(0, 2)],
+            m[(1, 0)],
+            m[(1, 2)],
+            m[(2, 0)],
+            m[(2, 1)],
+        ];
+        let max_off = off.iter().fold(0.0f32, |a, &b| a.max(b.abs()));
+        assert!(
+            max_off > 0.1,
+            "expected crosstalk; max off-diagonal = {max_off}"
+        );
+        // Neutral gain stays moderate — no contrast blowup vs the old identity path.
+        let gain = (0..3)
+            .map(|r| (0..3).map(|c| m[(r, c)]).sum::<f32>())
+            .sum::<f32>()
+            / 3.0;
+        assert!(
+            (1.0..=1.5).contains(&gain),
+            "neutral gain {gain} outside moderate range"
+        );
+    }
 
     #[test]
     fn sample_base_returns_high_percentile() {
@@ -216,6 +328,33 @@ mod tests {
     }
 
     #[test]
+    fn warm_highlights_do_not_trigger_blue_cast() {
+        use crate::wb::gains_to_cct;
+        // A neutral mid-gray scene (the real subject) with a bright WARM highlight
+        // region — the common case (sun/tungsten/skin highlights). The estimator
+        // must NOT read this as a warm illuminant and over-cool the image (the
+        // white-patch-on-warm-highlights bug that made photos come out too blue).
+        let mut pixels = vec![[0.45f32, 0.45, 0.45]; 800];
+        pixels.extend(std::iter::repeat([0.90f32, 0.78, 0.62]).take(200));
+        let img = Image {
+            width: 1000,
+            height: 1,
+            pixels,
+            ir: None,
+        };
+
+        let g = auto_wb_gains(&img);
+        // Blue must not be strongly boosted over red (that is the cast).
+        assert!(
+            g[2] - g[0] < 0.12,
+            "warm highlights over-cooled the image: gains {g:?}"
+        );
+        // And the seeded temperature must stay near daylight, not swing warm.
+        let (temp, _tint) = gains_to_cct(g);
+        assert!(temp >= 4900.0, "estimate read scene as warm: {temp}K");
+    }
+
+    #[test]
     fn auto_wb_gains_neutralize_a_global_cast() {
         // A uniformly magenta-cast gray (R,B high vs G) -> gains restore neutral.
         let cast = [0.6f32, 0.5, 0.4];
@@ -225,17 +364,30 @@ mod tests {
             pixels: vec![cast; 16],
             ir: None,
         };
+        let spread = |p: [f32; 3]| {
+            p.iter().cloned().fold(f32::MIN, f32::max) - p.iter().cloned().fold(f32::MAX, f32::min)
+        };
+
+        // Default (damped) gains: green reference, red/blue corrected toward it,
+        // and the residual cast is reduced (but not fully removed — see below).
         let g = auto_wb_gains(&img);
-        // green is the reference (smallest gain), red/blue corrected toward it
         assert!(
             g[2] > g[1] && g[1] > g[0],
             "expected B>G>R gains, got {g:?}"
         );
-        // applying the gains makes the patch neutral
         let corrected = [cast[0] * g[0], cast[1] * g[1], cast[2] * g[2]];
-        let mx = corrected.iter().cloned().fold(f32::MIN, f32::max);
-        let mn = corrected.iter().cloned().fold(f32::MAX, f32::min);
-        assert!(mx - mn < 1e-4, "not neutral after wb: {corrected:?}");
+        assert!(
+            spread(corrected) < spread(cast),
+            "cast not reduced: {corrected:?}"
+        );
+
+        // At full strength the gray-world correction fully neutralizes the patch.
+        let gf = auto_wb_gains_strength(&img, 1.0);
+        let full = [cast[0] * gf[0], cast[1] * gf[1], cast[2] * gf[2]];
+        assert!(
+            spread(full) < 1e-4,
+            "not neutral at full strength: {full:?}"
+        );
     }
 
     #[test]
