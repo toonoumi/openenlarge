@@ -28,6 +28,7 @@ describe("toInversionUniforms", () => {
     expect(u.print_exposure).toBeCloseTo(1.0);
     expect(u.paper_grade).toBeCloseTo(0.5);
     expect(u.soft_clip).toBeCloseTo(0.9);
+    expect(u.paper_black).toBeCloseTo(0.0);
     expect(Array.from(u.base)).toEqual(Array.from(new Float32Array([0.8, 0.6, 0.4])));
     expect(Array.from(u.wb)).toEqual(Array.from(new Float32Array([1.1, 1.0, 0.9])));
     expect(u.m_post).toBeInstanceOf(Float32Array);

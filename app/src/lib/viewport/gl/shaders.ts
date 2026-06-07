@@ -227,6 +227,8 @@ vec3 invert(vec3 rgbIn) {
   if (u_mode == 3) {           // Mode D: negadoctor (Cineon). Mirrors engine.rs invert_d.
     // NOTE: Mode D does not use tone()/u_exposure/u_black/u_gamma; it has its own
     // print_exposure/paper_black/paper_grade. Those uniforms are inert in this branch.
+    // Like Naive, this re-derives from rgbIn and ignores the shared 'r' above
+    // (it needs its own THRESH clamp, not r's [EPS,1] clamp).
     const float THRESH = 2.3283064e-10;
     vec3 clamped = max(rgbIn, vec3(THRESH));
     vec3 dmin = max(u_base, vec3(EPS));
