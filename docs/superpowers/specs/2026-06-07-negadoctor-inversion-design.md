@@ -34,7 +34,7 @@ with linear scan input `I[c]` and `Dmin[c]` = the existing sampled `base`:
 ```
 clamped   = max(I[c], THRESHOLD)                 # THRESHOLD = 2.3283064365386963e-10
 log_dens  = log10(clamped / Dmin[c])             # = -log10(Dmin/clamped); into log/density space
-corrected = log_dens / D_max + log10(wb[c])      # per-channel slope (1/D_max) + log-space WB offset
+corrected = log_dens / D_max - log10(wb[c])      # per-channel slope (1/D_max) + log-space WB offset
 ten_to_x  = 10^corrected                          # back toward linear (the negative, density-restored)
 print_lin = print_exposure*(1.0 + paper_black) - print_exposure*ten_to_x
 print_lin = max(print_lin, 0.0)                   # paper inverts the negative
@@ -66,11 +66,13 @@ contrast and depth.
 ### White balance placement
 
 The existing `wb = wb_from_kelvin(temp, tint)` produces a per-channel **linear gain**
-`[gr, gg, gb]`. It is injected as `offset[c] = log10(wb[c])` — additive in log space, which
-is the canonical printer-lights / enlarger-filtration slot negadoctor uses, and the
-physically correct place (color balance acts on the negative before the paper). After
-`10^`, a log offset is exactly a per-channel multiply on the density-restored negative.
-Same temp/tint numbers as today, principled injection point.
+`[gr, gg, gb]` whose convention (used by Modes B/C) is "gain > 1 brightens that channel
+in the positive". It is injected as `offset[c] = -log10(wb[c])` — additive in log space,
+the canonical printer-lights / enlarger-filtration slot negadoctor uses. The **negative
+sign is required**: the WB offset acts on the negative side (before the paper inversion),
+so reducing the density-restored value brightens the positive. With `offset = -log10(wb)`,
+`ten_to_x` is divided by `wb[c]`, `print_lin` rises, and the channel brightens — matching
+the B/C convention so the same temp/tint values steer color the same direction across modes.
 
 ### Display encode
 
