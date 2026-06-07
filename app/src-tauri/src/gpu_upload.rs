@@ -27,7 +27,8 @@ pub fn bake_geometry(working: &Image, spec: &BakeSpec) -> Image {
     let straightened = rotate(&oriented, spec.angle);
     match spec.image_crop {
         Some(nc) => {
-            let (x, y, w, h) = crate::commands::crop_px(nc, straightened.width, straightened.height);
+            let (x, y, w, h) =
+                crate::commands::crop_px(nc, straightened.width, straightened.height);
             crop(&straightened, x, y, w, h)
         }
         None => straightened,
@@ -89,9 +90,18 @@ pub fn image_from_rgba8(w: u32, h: u32, bytes: &[u8]) -> Image {
     let mut pixels = Vec::with_capacity(n);
     for i in 0..n {
         let o = i * 4;
-        pixels.push([bytes[o] as f32 / 255.0, bytes[o + 1] as f32 / 255.0, bytes[o + 2] as f32 / 255.0]);
+        pixels.push([
+            bytes[o] as f32 / 255.0,
+            bytes[o + 1] as f32 / 255.0,
+            bytes[o + 2] as f32 / 255.0,
+        ]);
     }
-    Image { width: w as usize, height: h as usize, pixels, ir: None }
+    Image {
+        width: w as usize,
+        height: h as usize,
+        pixels,
+        ir: None,
+    }
 }
 
 /// Build a linear-RGB Image from tightly-packed RGBA f32 readback (alpha dropped).
@@ -102,7 +112,12 @@ pub fn image_from_rgba_f32(w: u32, h: u32, data: &[f32]) -> Image {
         let o = i * 4;
         pixels.push([data[o], data[o + 1], data[o + 2]]);
     }
-    Image { width: w as usize, height: h as usize, pixels, ir: None }
+    Image {
+        width: w as usize,
+        height: h as usize,
+        pixels,
+        ir: None,
+    }
 }
 
 use crate::commands::{build_params, mode_from, wb_from_params};
@@ -121,6 +136,11 @@ pub struct ResolvedInversion {
     pub exposure: f32,
     pub black: f32,
     pub gamma: f32,
+    pub d_max: f32,
+    pub print_exposure: f32,
+    pub paper_black: f32,
+    pub paper_grade: f32,
+    pub soft_clip: f32,
     /// 0 = Mode B (density matrix), 1 = Mode C (per-channel). (2 = Naive exists in the shader but the app never emits it.)
     pub mode: u8,
 }
@@ -134,9 +154,14 @@ pub fn resolve_to_uniforms(p: &InvertParams, base: [f32; 3]) -> ResolvedInversio
         Mode::B => 0u8,
         Mode::C => 1,
         Mode::Naive => 2,
+        Mode::D => 3,
     };
     let m_pre: [f32; 9] = ip.m_pre.as_slice().try_into().expect("mat3 has 9 elements");
-    let m_post: [f32; 9] = ip.m_post.as_slice().try_into().expect("mat3 has 9 elements");
+    let m_post: [f32; 9] = ip
+        .m_post
+        .as_slice()
+        .try_into()
+        .expect("mat3 has 9 elements");
     ResolvedInversion {
         base: ip.base,
         wb: ip.wb,
@@ -145,6 +170,11 @@ pub fn resolve_to_uniforms(p: &InvertParams, base: [f32; 3]) -> ResolvedInversio
         exposure: ip.exposure,
         black: ip.black,
         gamma: ip.gamma,
+        d_max: ip.d_max,
+        print_exposure: ip.print_exposure,
+        paper_black: ip.paper_black,
+        paper_grade: ip.paper_grade,
+        soft_clip: ip.soft_clip,
         mode,
     }
 }
@@ -163,25 +193,56 @@ mod tests {
         // inpaint it toward the surrounding grey (pre-invert raw domain).
         let mut pixels = vec![[0.5_f32, 0.5, 0.5]; 16];
         pixels[5] = [0.9, 0.9, 0.9]; // speck at (x=1,y=1)
-        let img = Image { width: 4, height: 4, pixels, ir: None };
+        let img = Image {
+            width: 4,
+            height: 4,
+            pixels,
+            ir: None,
+        };
         let spec = BakeSpec {
-            rot90: 0, flip_h: false, flip_v: false, angle: 0.0, image_crop: None,
-            dust: vec![DustStroke { points: vec![[0.25, 0.25]], r: 0.5 }], // centered on the speck
-            ir_removal: IrRemoval { enabled: false, sensitivity: 0.0 },
+            rot90: 0,
+            flip_h: false,
+            flip_v: false,
+            angle: 0.0,
+            image_crop: None,
+            dust: vec![DustStroke {
+                points: vec![[0.25, 0.25]],
+                r: 0.5,
+            }], // centered on the speck
+            ir_removal: IrRemoval {
+                enabled: false,
+                sensitivity: 0.0,
+            },
         };
         let out = bake_working(&img, &spec);
         assert_eq!((out.width, out.height), (4, 4));
         // The speck should be healed toward grey, not still 0.9.
-        assert!((out.pixels[5][0] - 0.5).abs() < 0.35, "speck healed: {}", out.pixels[5][0]);
+        assert!(
+            (out.pixels[5][0] - 0.5).abs() < 0.35,
+            "speck healed: {}",
+            out.pixels[5][0]
+        );
     }
 
     #[test]
     fn bake_working_crop_changes_dims() {
-        let img = Image { width: 10, height: 8, pixels: vec![[0.3, 0.3, 0.3]; 80], ir: None };
+        let img = Image {
+            width: 10,
+            height: 8,
+            pixels: vec![[0.3, 0.3, 0.3]; 80],
+            ir: None,
+        };
         let spec = BakeSpec {
-            rot90: 0, flip_h: false, flip_v: false, angle: 0.0,
+            rot90: 0,
+            flip_h: false,
+            flip_v: false,
+            angle: 0.0,
             image_crop: Some([0.0, 0.0, 0.5, 0.5]), // top-left quarter
-            dust: vec![], ir_removal: IrRemoval { enabled: false, sensitivity: 0.0 },
+            dust: vec![],
+            ir_removal: IrRemoval {
+                enabled: false,
+                sensitivity: 0.0,
+            },
         };
         let out = bake_working(&img, &spec);
         assert_eq!((out.width, out.height), (5, 4));
@@ -189,21 +250,41 @@ mod tests {
 
     #[test]
     fn bake_geometry_dims_match_baked_pixels() {
-        let img = Image { width: 10, height: 8, pixels: vec![[0.3, 0.3, 0.3]; 80], ir: None };
+        let img = Image {
+            width: 10,
+            height: 8,
+            pixels: vec![[0.3, 0.3, 0.3]; 80],
+            ir: None,
+        };
         let spec = BakeSpec {
-            rot90: 1, flip_h: false, flip_v: true, angle: 0.0,
+            rot90: 1,
+            flip_h: false,
+            flip_v: true,
+            angle: 0.0,
             image_crop: Some([0.1, 0.1, 0.5, 0.5]),
-            dust: vec![], ir_removal: IrRemoval { enabled: false, sensitivity: 0.0 },
+            dust: vec![],
+            ir_removal: IrRemoval {
+                enabled: false,
+                sensitivity: 0.0,
+            },
         };
         let geom = bake_geometry(&img, &spec);
         let baked = bake_working(&img, &spec);
         assert_eq!((geom.width, geom.height), (baked.width, baked.height));
-        assert_eq!(capped_dims(&geom, MAX_GPU_EDGE), capped_dims(&baked, MAX_GPU_EDGE));
+        assert_eq!(
+            capped_dims(&geom, MAX_GPU_EDGE),
+            capped_dims(&baked, MAX_GPU_EDGE)
+        );
     }
 
     #[test]
     fn pack_rgba16f_one_pixel_round_trips_with_alpha_one() {
-        let img = Image { width: 1, height: 1, pixels: vec![[0.25, 0.5, 0.75]], ir: None };
+        let img = Image {
+            width: 1,
+            height: 1,
+            pixels: vec![[0.25, 0.5, 0.75]],
+            ir: None,
+        };
         let (w, h, bytes) = pack_rgba16f(&img, 8192);
         assert_eq!((w, h), (1, 1));
         assert_eq!(bytes.len(), 1 * 1 * 4 * 2, "RGBA, 2 bytes per channel");
@@ -218,7 +299,12 @@ mod tests {
     #[test]
     fn pack_rgba16f_caps_long_edge() {
         // 10x4 image, cap 5 → downscaled so long edge <= 5, bytes match the capped dims.
-        let img = Image { width: 10, height: 4, pixels: vec![[0.1, 0.2, 0.3]; 40], ir: None };
+        let img = Image {
+            width: 10,
+            height: 4,
+            pixels: vec![[0.1, 0.2, 0.3]; 40],
+            ir: None,
+        };
         let (w, h, bytes) = pack_rgba16f(&img, 5);
         assert!(w <= 5 && h <= 5, "long edge capped: {w}x{h}");
         assert_eq!(bytes.len(), (w * h * 4 * 2) as usize);
@@ -241,10 +327,20 @@ mod tests {
 
     #[test]
     fn capped_dims_matches_pack_dims() {
-        let small = Image { width: 3, height: 2, pixels: vec![[0.0; 3]; 6], ir: None };
+        let small = Image {
+            width: 3,
+            height: 2,
+            pixels: vec![[0.0; 3]; 6],
+            ir: None,
+        };
         let (pw, ph, _) = pack_rgba16f(&small, 8192);
         assert_eq!(capped_dims(&small, 8192), (pw, ph));
-        let big = Image { width: 10, height: 4, pixels: vec![[0.0; 3]; 40], ir: None };
+        let big = Image {
+            width: 10,
+            height: 4,
+            pixels: vec![[0.0; 3]; 40],
+            ir: None,
+        };
         let (bw, bh, _) = pack_rgba16f(&big, 5);
         assert_eq!(capped_dims(&big, 5), (bw, bh));
     }
@@ -252,7 +348,7 @@ mod tests {
     #[test]
     fn image_from_rgba8_drops_alpha_and_normalizes() {
         // 1x2 image, RGBA bytes; alpha ignored, channels /255 into f32.
-        let bytes = [255u8, 128, 0, 255,   0, 64, 255, 255];
+        let bytes = [255u8, 128, 0, 255, 0, 64, 255, 255];
         let img = image_from_rgba8(1, 2, &bytes);
         assert_eq!((img.width, img.height), (1, 2));
         assert!((img.pixels[0][0] - 1.0).abs() < 1e-3);
@@ -263,11 +359,26 @@ mod tests {
 
     #[test]
     fn image_from_rgba_f32_drops_alpha() {
-        let data = [0.25f32, 0.5, 0.75, 1.0,   0.1, 0.2, 0.3, 1.0];
+        let data = [0.25f32, 0.5, 0.75, 1.0, 0.1, 0.2, 0.3, 1.0];
         let img = image_from_rgba_f32(2, 1, &data);
         assert_eq!((img.width, img.height), (2, 1));
         assert_eq!(img.pixels[0], [0.25, 0.5, 0.75]);
         assert_eq!(img.pixels[1], [0.1, 0.2, 0.3]);
+    }
+
+    #[test]
+    fn uniforms_mode_d_maps_to_3_with_cineon_defaults() {
+        let mut p = sample_invert_params();
+        p.stock = "none".into();
+        p.mode = "d".into();
+        p.exposure = 0.0; // 2^0 = 1.0 print exposure
+        let u = resolve_to_uniforms(&p, [0.8, 0.6, 0.4]);
+        assert_eq!(u.mode, 3, "d → 3");
+        assert_eq!(u.base, [0.8, 0.6, 0.4]);
+        assert!((u.d_max - 2.0).abs() < 1e-6);
+        assert!((u.print_exposure - 1.0).abs() < 1e-6);
+        assert!((u.paper_grade - 0.5).abs() < 1e-6);
+        assert!((u.soft_clip - 0.9).abs() < 1e-6);
     }
 
     #[test]

@@ -2,22 +2,31 @@
 
 use crate::convert::{crop, orient, orient_dims, proxy, resize_to, rotate};
 use crate::encode::{to_jpeg_b64, to_png_b64, write_jpeg, write_png, write_tiff8};
-use crate::gpu_upload::{bake_geometry, bake_working, capped_dims, image_from_rgba8, image_from_rgba_f32, pack_rgba16f, resolve_to_uniforms, BakeSpec, ResolvedInversion, MAX_GPU_EDGE};
+use crate::gpu_upload::{
+    bake_geometry, bake_working, capped_dims, image_from_rgba8, image_from_rgba_f32, pack_rgba16f,
+    resolve_to_uniforms, BakeSpec, ResolvedInversion, MAX_GPU_EDGE,
+};
 use crate::metadata::extract;
-use crate::session::{CachedImage, Developed, ImageEntry, InvertParams, PreparedExport, Quality, Session};
+use crate::session::{
+    CachedImage, Developed, ImageEntry, InvertParams, PreparedExport, Quality, Session,
+};
 use film_core::calibrate::{auto_wb_gains, sample_base};
 use film_core::decode::{decode_ldr, decode_raw, decode_tiff};
 use film_core::dust::{self, Stamp};
 use film_core::engine::{invert_image, params_for_stock, InversionParams, Mode};
 use film_core::finish::{finish_image, tone_luts, ColorGrade, ColorMix, FinishParams, PcSample};
-use film_core::wb::{gains_to_cct, wb_from_kelvin};
 use film_core::spectral::Stock;
+use film_core::wb::{gains_to_cct, wb_from_kelvin};
 use serde::Deserialize;
 use std::path::Path;
 use tauri::State;
 
-fn default_bits() -> u8 { 16 }
-fn default_quality() -> u8 { 85 }
+fn default_bits() -> u8 {
+    16
+}
+fn default_quality() -> u8 {
+    85
+}
 
 /// Output format chosen in the Export modal. Mirrors the JS `ExportFormat` object.
 #[derive(Debug, serde::Deserialize)]
@@ -87,29 +96,69 @@ fn working_satisfies(working_edge: u32, native_edge: u32, cap: u32) -> bool {
 
 pub(crate) fn default_invert_params() -> InvertParams {
     InvertParams {
-        mode: "b".into(), stock: "none".into(), base_override: None,
-        exposure: 0.0, black: 0.0, gamma: 0.4545, auto_wb: true,
-        temp: 5500.0, tint: 0.0,
-        contrast: 0.0, highlights: 0.0, shadows: 0.0, whites: 0.0, blacks: 0.0,
-        texture: 0.0, vibrance: 0.0, saturation: 0.0,
-        tc_highlights: 0.0, tc_lights: 0.0, tc_darks: 0.0, tc_shadows: 0.0,
+        mode: "b".into(),
+        stock: "none".into(),
+        base_override: None,
+        exposure: 0.0,
+        black: 0.0,
+        gamma: 0.4545,
+        auto_wb: true,
+        temp: 5500.0,
+        tint: 0.0,
+        contrast: 0.0,
+        highlights: 0.0,
+        shadows: 0.0,
+        whites: 0.0,
+        blacks: 0.0,
+        texture: 0.0,
+        vibrance: 0.0,
+        saturation: 0.0,
+        tc_highlights: 0.0,
+        tc_lights: 0.0,
+        tc_darks: 0.0,
+        tc_shadows: 0.0,
         tc_curve: crate::session::identity_curve(),
         tc_red: crate::session::identity_curve(),
         tc_green: crate::session::identity_curve(),
         tc_blue: crate::session::identity_curve(),
-        cg_sh_hue: 0.0, cg_sh_sat: 0.0, cg_sh_lum: 0.0,
-        cg_mid_hue: 0.0, cg_mid_sat: 0.0, cg_mid_lum: 0.0,
-        cg_hi_hue: 0.0, cg_hi_sat: 0.0, cg_hi_lum: 0.0,
-        cg_glob_hue: 0.0, cg_glob_sat: 0.0, cg_glob_lum: 0.0,
-        cg_blending: 50.0, cg_balance: 0.0,
-        cm_red_hue: 0.0, cm_red_sat: 0.0, cm_red_lum: 0.0,
-        cm_orange_hue: 0.0, cm_orange_sat: 0.0, cm_orange_lum: 0.0,
-        cm_yellow_hue: 0.0, cm_yellow_sat: 0.0, cm_yellow_lum: 0.0,
-        cm_green_hue: 0.0, cm_green_sat: 0.0, cm_green_lum: 0.0,
-        cm_aqua_hue: 0.0, cm_aqua_sat: 0.0, cm_aqua_lum: 0.0,
-        cm_blue_hue: 0.0, cm_blue_sat: 0.0, cm_blue_lum: 0.0,
-        cm_purple_hue: 0.0, cm_purple_sat: 0.0, cm_purple_lum: 0.0,
-        cm_magenta_hue: 0.0, cm_magenta_sat: 0.0, cm_magenta_lum: 0.0,
+        cg_sh_hue: 0.0,
+        cg_sh_sat: 0.0,
+        cg_sh_lum: 0.0,
+        cg_mid_hue: 0.0,
+        cg_mid_sat: 0.0,
+        cg_mid_lum: 0.0,
+        cg_hi_hue: 0.0,
+        cg_hi_sat: 0.0,
+        cg_hi_lum: 0.0,
+        cg_glob_hue: 0.0,
+        cg_glob_sat: 0.0,
+        cg_glob_lum: 0.0,
+        cg_blending: 50.0,
+        cg_balance: 0.0,
+        cm_red_hue: 0.0,
+        cm_red_sat: 0.0,
+        cm_red_lum: 0.0,
+        cm_orange_hue: 0.0,
+        cm_orange_sat: 0.0,
+        cm_orange_lum: 0.0,
+        cm_yellow_hue: 0.0,
+        cm_yellow_sat: 0.0,
+        cm_yellow_lum: 0.0,
+        cm_green_hue: 0.0,
+        cm_green_sat: 0.0,
+        cm_green_lum: 0.0,
+        cm_aqua_hue: 0.0,
+        cm_aqua_sat: 0.0,
+        cm_aqua_lum: 0.0,
+        cm_blue_hue: 0.0,
+        cm_blue_sat: 0.0,
+        cm_blue_lum: 0.0,
+        cm_purple_hue: 0.0,
+        cm_purple_sat: 0.0,
+        cm_purple_lum: 0.0,
+        cm_magenta_hue: 0.0,
+        cm_magenta_sat: 0.0,
+        cm_magenta_lum: 0.0,
         pc_samples: Vec::new(),
     }
 }
@@ -119,7 +168,11 @@ fn metadata_to_json(m: &crate::metadata::Metadata) -> Result<String, String> {
 }
 
 fn decode_any(path: &Path) -> Result<film_core::Image, String> {
-    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
     match ext.as_str() {
         "tif" | "tiff" => decode_tiff(path).map_err(|e| format!("{e}")),
         "jpg" | "jpeg" | "png" => decode_ldr(path).map_err(|e| format!("{e}")),
@@ -147,14 +200,33 @@ fn stock_from(s: &str) -> Option<Stock> {
 }
 
 pub(crate) fn mode_from(s: &str) -> Mode {
-    match s { "c" => Mode::C, _ => Mode::B }
+    match s {
+        "c" => Mode::C,
+        "d" => Mode::D,
+        _ => Mode::B,
+    }
 }
 
 pub(crate) fn build_params(p: &InvertParams, base: [f32; 3]) -> InversionParams {
     let exposure = 2f32.powf(p.exposure); // EV stops → linear multiplier
+    if p.mode == "d" {
+        // Cineon: reuse the exposure slider as print exposure; d_max/paper_* come
+        // from InversionParams::Default. WB is set later by the caller.
+        return InversionParams {
+            base,
+            print_exposure: exposure,
+            ..Default::default()
+        };
+    }
     match stock_from(&p.stock) {
         Some(s) if p.mode == "b" => params_for_stock(s, base, exposure, p.black, p.gamma),
-        _ => InversionParams { base, exposure, black: p.black, gamma: p.gamma, ..Default::default() },
+        _ => InversionParams {
+            base,
+            exposure,
+            black: p.black,
+            gamma: p.gamma,
+            ..Default::default()
+        },
     }
 }
 
@@ -168,13 +240,19 @@ pub(crate) fn wb_from_params(temp: f32, tint: f32) -> [f32; 3] {
     wb_from_kelvin(temp, tint / 150.0)
 }
 
-fn resolve_params(p: &InvertParams, _autowb_src: &film_core::Image, base: [f32; 3]) -> InversionParams {
+fn resolve_params(
+    p: &InvertParams,
+    _autowb_src: &film_core::Image,
+    base: [f32; 3],
+) -> InversionParams {
     let mut ip = build_params(p, base);
     ip.wb = wb_from_params(p.temp, p.tint);
     ip
 }
 
-fn finish_default() -> bool { true }
+fn finish_default() -> bool {
+    true
+}
 
 /// Map a normalized crop rect [x,y,w,h] (0..1) to integer pixels on a w×h image,
 /// clamped to bounds with a 1px minimum.
@@ -193,8 +271,15 @@ pub(crate) fn crop_px(norm: [f64; 4], w: usize, h: usize) -> (usize, usize, usiz
 /// is the view-crop window within that base; `out_w/out_h` is the rendered output size.
 #[allow(clippy::too_many_arguments)]
 fn view_stamps(
-    dust: &[DustStroke], base_w: usize, base_h: usize,
-    cx: usize, cy: usize, cw: usize, ch: usize, out_w: u32, out_h: u32,
+    dust: &[DustStroke],
+    base_w: usize,
+    base_h: usize,
+    cx: usize,
+    cy: usize,
+    cw: usize,
+    ch: usize,
+    out_w: u32,
+    out_h: u32,
 ) -> Vec<Stamp> {
     if cw == 0 || ch == 0 {
         return Vec::new();
@@ -225,7 +310,11 @@ pub(crate) fn export_stamps(dust: &[DustStroke], w: usize, h: usize) -> Vec<Stam
     for stroke in dust {
         let r = (stroke.r * w as f64).max(0.5) as f32;
         for pt in &stroke.points {
-            out.push(Stamp { cx: (pt[0] * w as f64) as f32, cy: (pt[1] * h as f64) as f32, r });
+            out.push(Stamp {
+                cx: (pt[0] * w as f64) as f32,
+                cy: (pt[1] * h as f64) as f32,
+                r,
+            });
         }
     }
     out
@@ -233,22 +322,49 @@ pub(crate) fn export_stamps(dust: &[DustStroke], w: usize, h: usize) -> Vec<Stam
 
 fn color_mix_from(p: &crate::session::InvertParams) -> ColorMix {
     let cm_hue = [
-        p.cm_red_hue, p.cm_orange_hue, p.cm_yellow_hue, p.cm_green_hue,
-        p.cm_aqua_hue, p.cm_blue_hue, p.cm_purple_hue, p.cm_magenta_hue,
+        p.cm_red_hue,
+        p.cm_orange_hue,
+        p.cm_yellow_hue,
+        p.cm_green_hue,
+        p.cm_aqua_hue,
+        p.cm_blue_hue,
+        p.cm_purple_hue,
+        p.cm_magenta_hue,
     ];
     let cm_sat = [
-        p.cm_red_sat, p.cm_orange_sat, p.cm_yellow_sat, p.cm_green_sat,
-        p.cm_aqua_sat, p.cm_blue_sat, p.cm_purple_sat, p.cm_magenta_sat,
+        p.cm_red_sat,
+        p.cm_orange_sat,
+        p.cm_yellow_sat,
+        p.cm_green_sat,
+        p.cm_aqua_sat,
+        p.cm_blue_sat,
+        p.cm_purple_sat,
+        p.cm_magenta_sat,
     ];
     let cm_lum = [
-        p.cm_red_lum, p.cm_orange_lum, p.cm_yellow_lum, p.cm_green_lum,
-        p.cm_aqua_lum, p.cm_blue_lum, p.cm_purple_lum, p.cm_magenta_lum,
+        p.cm_red_lum,
+        p.cm_orange_lum,
+        p.cm_yellow_lum,
+        p.cm_green_lum,
+        p.cm_aqua_lum,
+        p.cm_blue_lum,
+        p.cm_purple_lum,
+        p.cm_magenta_lum,
     ];
-    let samples = p.pc_samples.iter().map(|s| PcSample {
-        hue: s.hue, sat: s.sat, lum: s.lum,
-        hue_shift: s.hue_shift / 100.0, sat_shift: s.sat_shift / 100.0, lum_shift: s.lum_shift / 100.0,
-        variance: s.variance, range: s.range,
-    }).collect();
+    let samples = p
+        .pc_samples
+        .iter()
+        .map(|s| PcSample {
+            hue: s.hue,
+            sat: s.sat,
+            lum: s.lum,
+            hue_shift: s.hue_shift / 100.0,
+            sat_shift: s.sat_shift / 100.0,
+            lum_shift: s.lum_shift / 100.0,
+            variance: s.variance,
+            range: s.range,
+        })
+        .collect();
     ColorMix {
         cm_hue: cm_hue.map(|v| v / 100.0),
         cm_sat: cm_sat.map(|v| v / 100.0),
@@ -260,15 +376,20 @@ fn color_mix_from(p: &crate::session::InvertParams) -> ColorMix {
 fn finish_from(p: &InvertParams) -> FinishParams {
     // Region sliders ordered [shadows, darks, lights, highlights] to match the engine.
     let regions = [
-        p.tc_shadows / 100.0, p.tc_darks / 100.0, p.tc_lights / 100.0, p.tc_highlights / 100.0,
+        p.tc_shadows / 100.0,
+        p.tc_darks / 100.0,
+        p.tc_lights / 100.0,
+        p.tc_highlights / 100.0,
     ];
-    let (lut_r, lut_g, lut_b) =
-        tone_luts(regions, &p.tc_curve, &p.tc_red, &p.tc_green, &p.tc_blue);
+    let (lut_r, lut_g, lut_b) = tone_luts(regions, &p.tc_curve, &p.tc_red, &p.tc_green, &p.tc_blue);
     let cg = ColorGrade::new(
         ([p.cg_sh_hue, p.cg_sh_sat / 100.0], p.cg_sh_lum / 100.0),
         ([p.cg_mid_hue, p.cg_mid_sat / 100.0], p.cg_mid_lum / 100.0),
         ([p.cg_hi_hue, p.cg_hi_sat / 100.0], p.cg_hi_lum / 100.0),
-        ([p.cg_glob_hue, p.cg_glob_sat / 100.0], p.cg_glob_lum / 100.0),
+        (
+            [p.cg_glob_hue, p.cg_glob_sat / 100.0],
+            p.cg_glob_lum / 100.0,
+        ),
         p.cg_blending / 100.0,
         p.cg_balance / 100.0,
     );
@@ -281,7 +402,10 @@ fn finish_from(p: &InvertParams) -> FinishParams {
         texture: p.texture / 100.0,
         vibrance: p.vibrance / 100.0,
         saturation: p.saturation / 100.0,
-        lut_r, lut_g, lut_b, cg,
+        lut_r,
+        lut_g,
+        lut_b,
+        cg,
         cm: color_mix_from(p),
     }
 }
@@ -297,7 +421,11 @@ pub fn import_image(
     let p = Path::new(&path);
     // Light thumbnail: TIFF and JPEG/PNG decode cheaply (no demosaic), so render a
     // real preview. RAW files fall back to the 1x1 placeholder until develop.
-    let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+    let ext = p
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
     let preview = match ext.as_str() {
         "jpg" | "jpeg" | "png" => decode_ldr(p).map_err(|e| format!("{e}")),
         _ => decode_tiff(p).map_err(|e| format!("{e}")),
@@ -307,7 +435,11 @@ pub fn import_image(
         Err(_) => "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==".to_string(),
     };
     let metadata = extract(p, 0, 0);
-    let file_name = p.file_name().and_then(|s| s.to_str()).unwrap_or("image").to_string();
+    let file_name = p
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("image")
+        .to_string();
     let metadata_json = metadata_to_json(&metadata)?;
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -316,7 +448,13 @@ pub fn import_image(
     let id = catalog
         .upsert_image(&path, &file_name, &metadata_json, &thumbnail, now)
         .map_err(|e| e.to_string())?;
-    let cached = CachedImage { path, file_name, metadata, thumbnail, developed: None };
+    let cached = CachedImage {
+        path,
+        file_name,
+        metadata,
+        thumbnail,
+        developed: None,
+    };
     Ok(session.insert_with_id(id, cached))
 }
 
@@ -377,7 +515,11 @@ fn develop_heavy(
         img.metadata.width = w;
         img.metadata.height = h;
         img.thumbnail = thumbnail.clone();
-        img.developed = Some(Developed { working, thumb, base });
+        img.developed = Some(Developed {
+            working,
+            thumb,
+            base,
+        });
         let metadata_json = metadata_to_json(&img.metadata)?;
         let entry = ImageEntry {
             id: id.clone(),
@@ -397,7 +539,9 @@ fn develop_heavy(
     }
 
     // Write cache sidecar (best-effort; never fails the develop command).
-    if let Err(e) = crate::cache::write(&session.cache_path(&id), base, &cache_working, &cache_thumb) {
+    if let Err(e) =
+        crate::cache::write(&session.cache_path(&id), base, &cache_working, &cache_thumb)
+    {
         eprintln!("[cache] write failed for {id}: {e}");
     }
 
@@ -509,12 +653,18 @@ pub struct ViewSpec {
     /// the zoom/view crop. None = whole image.
     #[serde(default)]
     pub image_crop: Option<[f64; 4]>,
-    #[serde(default)] pub rot90: u8,
-    #[serde(default)] pub flip_h: bool,
-    #[serde(default)] pub flip_v: bool,
-    #[serde(default)] pub angle: f32,
-    #[serde(default)] pub dust: Vec<DustStroke>,
-    #[serde(default)] pub ir_removal: IrRemoval,
+    #[serde(default)]
+    pub rot90: u8,
+    #[serde(default)]
+    pub flip_h: bool,
+    #[serde(default)]
+    pub flip_v: bool,
+    #[serde(default)]
+    pub angle: f32,
+    #[serde(default)]
+    pub dust: Vec<DustStroke>,
+    #[serde(default)]
+    pub ir_removal: IrRemoval,
 }
 
 /// Ensure the image's decoded `Developed` is resident in the Session: if absent
@@ -537,14 +687,23 @@ fn ensure_resident(session: &Session, id: &str) -> Result<(), String> {
     let mut images = session.images.lock().unwrap();
     if let Some(c) = images.get_mut(id) {
         if c.developed.is_none() {
-            c.developed = Some(Developed { working, thumb, base });
+            c.developed = Some(Developed {
+                working,
+                thumb,
+                base,
+            });
         }
     }
     Ok(())
 }
 
 #[tauri::command]
-pub fn render_view(id: String, params: InvertParams, view: ViewSpec, session: State<Session>) -> Result<String, String> {
+pub fn render_view(
+    id: String,
+    params: InvertParams,
+    view: ViewSpec,
+    session: State<Session>,
+) -> Result<String, String> {
     ensure_resident(&session, &id)?;
     let images = session.images.lock().unwrap();
     let img = images.get(&id).ok_or("unknown image id")?;
@@ -562,7 +721,11 @@ pub fn render_view(id: String, params: InvertParams, view: ViewSpec, session: St
     };
     // The view crop is in oriented full-res coords → map to working px via the
     // oriented metadata width (orientation is lossless, so the ratio is preserved).
-    let (ometa_w, _) = orient_dims(img.metadata.width as usize, img.metadata.height as usize, view.rot90);
+    let (ometa_w, _) = orient_dims(
+        img.metadata.width as usize,
+        img.metadata.height as usize,
+        view.rot90,
+    );
     let s_scale = oriented.width as f64 / ometa_w.max(1) as f64;
     let cx = (view.crop[0] * s_scale).max(0.0).round() as usize;
     let cy = (view.crop[1] * s_scale).max(0.0).round() as usize;
@@ -581,8 +744,15 @@ pub fn render_view(id: String, params: InvertParams, view: ViewSpec, session: St
     let ip = resolve_params(&params, &dev.thumb, effective_base(&params, dev.base));
     let mut inv = invert_image(&scaled, &ip, mode_from(&params.mode));
     let stamps = view_stamps(
-        &view.dust, base_img.width, base_img.height,
-        cx, cy, cw_px, ch_px, view.out_w.max(1), view.out_h.max(1),
+        &view.dust,
+        base_img.width,
+        base_img.height,
+        cx,
+        cy,
+        cw_px,
+        ch_px,
+        view.out_w.max(1),
+        view.out_h.max(1),
     );
     dust::apply(&mut inv, &stamps);
     if view.ir_removal.enabled {
@@ -590,7 +760,11 @@ pub fn render_view(id: String, params: InvertParams, view: ViewSpec, session: St
             dust::apply_ir(&mut inv, ir, view.ir_removal.sensitivity);
         }
     }
-    let out = if view.finish { finish_image(&inv, &finish_from(&params)) } else { inv };
+    let out = if view.finish {
+        finish_image(&inv, &finish_from(&params))
+    } else {
+        inv
+    };
     to_jpeg_b64(&out, false, PREVIEW_JPEG_QUALITY)
 }
 
@@ -600,13 +774,20 @@ pub fn render_view(id: String, params: InvertParams, view: ViewSpec, session: St
 /// grid can request a plain develop-only thumbnail with `{}`.
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct ThumbView {
-    #[serde(default)] pub image_crop: Option<[f64; 4]>,
-    #[serde(default)] pub rot90: u8,
-    #[serde(default)] pub flip_h: bool,
-    #[serde(default)] pub flip_v: bool,
-    #[serde(default)] pub angle: f32,
-    #[serde(default)] pub dust: Vec<DustStroke>,
-    #[serde(default)] pub ir_removal: IrRemoval,
+    #[serde(default)]
+    pub image_crop: Option<[f64; 4]>,
+    #[serde(default)]
+    pub rot90: u8,
+    #[serde(default)]
+    pub flip_h: bool,
+    #[serde(default)]
+    pub flip_v: bool,
+    #[serde(default)]
+    pub angle: f32,
+    #[serde(default)]
+    pub dust: Vec<DustStroke>,
+    #[serde(default)]
+    pub ir_removal: IrRemoval,
 }
 
 /// Render a small (~320px) inverted JPEG of the developed image at the given
@@ -614,7 +795,12 @@ pub struct ThumbView {
 /// filmstrip while editing. Applies orientation/straighten/crop, develop params,
 /// dust strokes, and IR removal so the thumbnail matches the viewport.
 #[tauri::command]
-pub fn thumbnail(id: String, params: InvertParams, view: ThumbView, session: State<Session>) -> Result<String, String> {
+pub fn thumbnail(
+    id: String,
+    params: InvertParams,
+    view: ThumbView,
+    session: State<Session>,
+) -> Result<String, String> {
     ensure_resident(&session, &id)?;
     let images = session.images.lock().unwrap();
     let img = images.get(&id).ok_or("unknown image id")?;
@@ -636,8 +822,15 @@ pub fn thumbnail(id: String, params: InvertParams, view: ThumbView, session: Sta
     let ip = resolve_params(&params, &dev.thumb, effective_base(&params, dev.base));
     let mut inv = invert_image(&small, &ip, mode_from(&params.mode));
     let stamps = view_stamps(
-        &view.dust, base_img.width, base_img.height,
-        0, 0, base_img.width, base_img.height, ow, oh,
+        &view.dust,
+        base_img.width,
+        base_img.height,
+        0,
+        0,
+        base_img.width,
+        base_img.height,
+        ow,
+        oh,
     );
     dust::apply(&mut inv, &stamps);
     if view.ir_removal.enabled {
@@ -653,9 +846,14 @@ pub fn thumbnail(id: String, params: InvertParams, view: ThumbView, session: Sta
 #[allow(clippy::too_many_arguments)] // Tauri command: flat args mirror the JS invoke contract
 #[tauri::command]
 pub fn export_image(
-    id: String, params: InvertParams, out_path: String,
+    id: String,
+    params: InvertParams,
+    out_path: String,
     image_crop: Option<[f64; 4]>,
-    rot90: u8, flip_h: bool, flip_v: bool, angle: f32,
+    rot90: u8,
+    flip_h: bool,
+    flip_v: bool,
+    angle: f32,
     dust: Vec<DustStroke>,
     ir_removal: IrRemoval,
     format: ExportFormat,
@@ -667,7 +865,12 @@ pub fn export_image(
         let images = session.images.lock().unwrap();
         let img = images.get(&id).ok_or("unknown image id")?;
         let dev = img.developed.as_ref().ok_or("not developed")?;
-        (img.path.clone(), dev.base, dev.thumb.clone(), img.metadata.clone())
+        (
+            img.path.clone(),
+            dev.base,
+            dev.thumb.clone(),
+            img.metadata.clone(),
+        )
     };
     let full = decode_any(Path::new(&path))?;
     let full = orient(&full, rot90, flip_h, flip_v);
@@ -725,7 +928,12 @@ pub struct ExportPrep {
 /// and return the dims + resolved inversion uniforms. The frontend then renders
 /// the GPU invert+finish offscreen and calls export_finish with the readback.
 #[tauri::command]
-pub fn export_begin(id: String, params: InvertParams, spec: BakeSpec, session: State<Session>) -> Result<ExportPrep, String> {
+pub fn export_begin(
+    id: String,
+    params: InvertParams,
+    spec: BakeSpec,
+    session: State<Session>,
+) -> Result<ExportPrep, String> {
     ensure_resident(&session, &id)?;
     let (path, base) = {
         let images = session.images.lock().unwrap();
@@ -734,7 +942,7 @@ pub fn export_begin(id: String, params: InvertParams, spec: BakeSpec, session: S
         (img.path.clone(), dev.base)
     };
     let full = decode_any(Path::new(&path))?;
-    let baked = bake_working(&full, &spec);           // geometry + pre-invert heal, full-res
+    let baked = bake_working(&full, &spec); // geometry + pre-invert heal, full-res
     let (w, h, bytes) = pack_rgba16f(&baked, u32::MAX); // no cap for export
     let uniforms = resolve_to_uniforms(&params, effective_base(&params, base));
     *session.pending_export.lock().unwrap() = Some(PreparedExport { w, h, bytes });
@@ -812,10 +1020,17 @@ pub fn export_finish(
 /// Estimated as-shot white point for the developed image, as (Kelvin, tint).
 /// The UI seeds the Temp/Tint sliders with this when an image becomes active.
 #[derive(Debug, Clone, serde::Serialize)]
-pub struct AsShotWb { pub temp: f32, pub tint: f32 }
+pub struct AsShotWb {
+    pub temp: f32,
+    pub tint: f32,
+}
 
 #[tauri::command]
-pub fn as_shot_wb(id: String, params: InvertParams, session: State<Session>) -> Result<AsShotWb, String> {
+pub fn as_shot_wb(
+    id: String,
+    params: InvertParams,
+    session: State<Session>,
+) -> Result<AsShotWb, String> {
     ensure_resident(&session, &id)?;
     let (base, thumb) = {
         let images = session.images.lock().unwrap();
@@ -823,7 +1038,6 @@ pub fn as_shot_wb(id: String, params: InvertParams, session: State<Session>) -> 
         let dev = img.developed.as_ref().ok_or("not developed")?;
         (dev.base, dev.thumb.clone())
     };
-    // Lock released — the inversion + gray-world estimate run unlocked.
     // Estimate WB against the user's ACTUAL stock/mode so the gains neutralise the
     // colour space the image is actually rendered in. `build_params` leaves `wb` at
     // [1,1,1], so the estimate is independent of any temp/tint already on the sliders.
@@ -831,7 +1045,10 @@ pub fn as_shot_wb(id: String, params: InvertParams, session: State<Session>) -> 
     let first = invert_image(&thumb, &ip, mode_from(&params.mode));
     let gains = auto_wb_gains(&first);
     let (temp, tint) = gains_to_cct(gains);
-    Ok(AsShotWb { temp, tint: tint * 150.0 }) // back to UI −150..150
+    Ok(AsShotWb {
+        temp,
+        tint: tint * 150.0,
+    }) // back to UI −150..150
 }
 
 /// Load the whole catalog at launch: return the snapshot to the frontend AND
@@ -881,7 +1098,9 @@ pub fn save_edits(
     params_json: String,
     catalog: State<crate::catalog::Catalog>,
 ) -> Result<(), String> {
-    catalog.save_params(&id, &params_json).map_err(|e| e.to_string())
+    catalog
+        .save_params(&id, &params_json)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -890,7 +1109,9 @@ pub fn save_crop(
     crop_json: String,
     catalog: State<crate::catalog::Catalog>,
 ) -> Result<(), String> {
-    catalog.save_crop(&id, &crop_json).map_err(|e| e.to_string())
+    catalog
+        .save_crop(&id, &crop_json)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -899,7 +1120,9 @@ pub fn save_dust(
     dust_json: String,
     catalog: State<crate::catalog::Catalog>,
 ) -> Result<(), String> {
-    catalog.save_dust(&id, &dust_json).map_err(|e| e.to_string())
+    catalog
+        .save_dust(&id, &dust_json)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -908,7 +1131,9 @@ pub fn save_meta(
     meta_json: String,
     catalog: State<crate::catalog::Catalog>,
 ) -> Result<(), String> {
-    catalog.save_meta(&id, &meta_json).map_err(|e| e.to_string())
+    catalog
+        .save_meta(&id, &meta_json)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -926,7 +1151,9 @@ pub fn save_app_state(
     value: String,
     catalog: State<crate::catalog::Catalog>,
 ) -> Result<(), String> {
-    catalog.save_app_state(&key, &value).map_err(|e| e.to_string())
+    catalog
+        .save_app_state(&key, &value)
+        .map_err(|e| e.to_string())
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -961,12 +1188,20 @@ pub fn working_pixels(id: String, session: State<Session>) -> Result<tauri::ipc:
 
 /// Capped dims of the BAKED (geometry + heal) working texture.
 #[tauri::command]
-pub fn working_baked_info(id: String, spec: BakeSpec, session: State<Session>) -> Result<WorkingInfo, String> {
+pub fn working_baked_info(
+    id: String,
+    spec: BakeSpec,
+    session: State<Session>,
+) -> Result<WorkingInfo, String> {
     ensure_resident(&session, &id)?;
     let working = {
         let images = session.images.lock().unwrap();
         let img = images.get(&id).ok_or("unknown image id")?;
-        img.developed.as_ref().ok_or("not developed")?.working.clone()
+        img.developed
+            .as_ref()
+            .ok_or("not developed")?
+            .working
+            .clone()
     };
     let geom = bake_geometry(&working, &spec); // geometry only — exact dims, no Telea heal
     let (w, h) = capped_dims(&geom, MAX_GPU_EDGE);
@@ -977,12 +1212,20 @@ pub fn working_baked_info(id: String, spec: BakeSpec, session: State<Session>) -
 /// healed pre-invert), for a one-shot RGBA16F upload. GPU then inverts with
 /// IDENTITY geometry.
 #[tauri::command]
-pub fn working_baked_pixels(id: String, spec: BakeSpec, session: State<Session>) -> Result<tauri::ipc::Response, String> {
+pub fn working_baked_pixels(
+    id: String,
+    spec: BakeSpec,
+    session: State<Session>,
+) -> Result<tauri::ipc::Response, String> {
     ensure_resident(&session, &id)?;
     let working = {
         let images = session.images.lock().unwrap();
         let img = images.get(&id).ok_or("unknown image id")?;
-        img.developed.as_ref().ok_or("not developed")?.working.clone()
+        img.developed
+            .as_ref()
+            .ok_or("not developed")?
+            .working
+            .clone()
     };
     let baked = bake_working(&working, &spec);
     let (_, _, bytes) = pack_rgba16f(&baked, MAX_GPU_EDGE);
@@ -992,20 +1235,27 @@ pub fn working_baked_pixels(id: String, spec: BakeSpec, session: State<Session>)
 /// Resolve inversion params (+ this image's sampled base) into GPU uniforms.
 #[tauri::command]
 pub fn resolved_inversion(
-    id: String, params: InvertParams, session: State<Session>,
+    id: String,
+    params: InvertParams,
+    session: State<Session>,
 ) -> Result<ResolvedInversion, String> {
     ensure_resident(&session, &id)?;
     let images = session.images.lock().unwrap();
     let img = images.get(&id).ok_or("unknown image id")?;
     let dev = img.developed.as_ref().ok_or("not developed")?;
-    Ok(resolve_to_uniforms(&params, effective_base(&params, dev.base)))
+    Ok(resolve_to_uniforms(
+        &params,
+        effective_base(&params, dev.base),
+    ))
 }
 
 /// Sample the orange-mask base from a normalized rect [x,y,w,h] (0..1) over the
 /// resident working image. Used by the base-picker tool; cheap, no re-decode.
 #[tauri::command]
 pub fn sample_base_at(
-    id: String, rect: [f64; 4], session: State<Session>,
+    id: String,
+    rect: [f64; 4],
+    session: State<Session>,
 ) -> Result<[f32; 3], String> {
     use film_core::calibrate::Rect;
     ensure_resident(&session, &id)?;
@@ -1024,18 +1274,29 @@ mod tests {
     fn effective_base_prefers_override_then_dev_base() {
         let mut p = crate::commands_test_support::sample_invert_params();
         p.base_override = None;
-        assert_eq!(effective_base(&p, [0.8, 0.6, 0.4]), [0.8, 0.6, 0.4], "None -> dev base");
+        assert_eq!(
+            effective_base(&p, [0.8, 0.6, 0.4]),
+            [0.8, 0.6, 0.4],
+            "None -> dev base"
+        );
         p.base_override = Some([0.1, 0.2, 0.3]);
-        assert_eq!(effective_base(&p, [0.8, 0.6, 0.4]), [0.1, 0.2, 0.3], "Some -> override");
+        assert_eq!(
+            effective_base(&p, [0.8, 0.6, 0.4]),
+            [0.1, 0.2, 0.3],
+            "Some -> override"
+        );
     }
 
     #[test]
     fn viewspec_finish_defaults_true_and_parses_false() {
-        let d: ViewSpec = serde_json::from_str(
-            r#"{"crop":[0,0,10,10],"out_w":10,"out_h":10,"raw":false}"#).unwrap();
+        let d: ViewSpec =
+            serde_json::from_str(r#"{"crop":[0,0,10,10],"out_w":10,"out_h":10,"raw":false}"#)
+                .unwrap();
         assert!(d.finish, "finish should default to true when omitted");
         let f: ViewSpec = serde_json::from_str(
-            r#"{"crop":[0,0,10,10],"out_w":10,"out_h":10,"raw":false,"finish":false}"#).unwrap();
+            r#"{"crop":[0,0,10,10],"out_w":10,"out_h":10,"raw":false,"finish":false}"#,
+        )
+        .unwrap();
         assert!(!f.finish);
     }
 
@@ -1055,18 +1316,27 @@ mod tests {
         // wb_from_kelvin normalises green to 1.0; negative tint (green cast)
         // suppresses R and B relative to G, i.e. R < 1 at neutral temp.
         let green = wb_from_params(5500.0, -150.0);
-        assert!(green[0] < 1.0, "negative tint suppresses red relative to green");
-        assert!(green[2] < 1.0, "negative tint suppresses blue relative to green");
+        assert!(
+            green[0] < 1.0,
+            "negative tint suppresses red relative to green"
+        );
+        assert!(
+            green[2] < 1.0,
+            "negative tint suppresses blue relative to green"
+        );
     }
 
     #[test]
     fn viewspec_dust_defaults_empty_and_parses_points() {
-        let d: ViewSpec = serde_json::from_str(
-            r#"{"crop":[0,0,10,10],"out_w":10,"out_h":10,"raw":false}"#).unwrap();
+        let d: ViewSpec =
+            serde_json::from_str(r#"{"crop":[0,0,10,10],"out_w":10,"out_h":10,"raw":false}"#)
+                .unwrap();
         assert!(d.dust.is_empty(), "dust defaults to empty when omitted");
         let p: ViewSpec = serde_json::from_str(
             r#"{"crop":[0,0,10,10],"out_w":10,"out_h":10,"raw":false,
-                "dust":[{"points":[[0.5,0.5],[0.6,0.5]],"r":0.02}]}"#).unwrap();
+                "dust":[{"points":[[0.5,0.5],[0.6,0.5]],"r":0.02}]}"#,
+        )
+        .unwrap();
         assert_eq!(p.dust.len(), 1);
         assert_eq!(p.dust[0].points.len(), 2);
     }
@@ -1074,18 +1344,28 @@ mod tests {
     #[test]
     fn view_stamps_maps_normalized_points_to_output_pixels() {
         // base image 200x100; view crop = whole base; output 400x200 (2x).
-        let dust = vec![DustStroke { points: vec![[0.5, 0.5]], r: 0.01 }];
+        let dust = vec![DustStroke {
+            points: vec![[0.5, 0.5]],
+            r: 0.01,
+        }];
         let s = view_stamps(&dust, 200, 100, 0, 0, 200, 100, 400, 200);
         assert_eq!(s.len(), 1);
         assert!((s[0].cx - 200.0).abs() < 0.5, "x: 0.5*200*2 = 200");
         assert!((s[0].cy - 100.0).abs() < 0.5, "y: 0.5*100*2 = 100");
         // r normalized to base width: 0.01*200 = 2 base px → *2 scale = 4 out px.
-        assert!((s[0].r - 4.0).abs() < 0.5, "r mapped to output px, got {}", s[0].r);
+        assert!(
+            (s[0].r - 4.0).abs() < 0.5,
+            "r mapped to output px, got {}",
+            s[0].r
+        );
     }
 
     #[test]
     fn export_stamps_maps_normalized_points_to_full_res_pixels() {
-        let dust = vec![DustStroke { points: vec![[0.25, 0.5]], r: 0.01 }];
+        let dust = vec![DustStroke {
+            points: vec![[0.25, 0.5]],
+            r: 0.01,
+        }];
         let s = export_stamps(&dust, 400, 200);
         assert_eq!(s.len(), 1);
         assert!((s[0].cx - 100.0).abs() < 0.5, "0.25*400");
@@ -1098,22 +1378,37 @@ mod tests {
         use film_core::calibrate::{sample_base, Rect};
         // 4x4 image: left half bright [0.9,...], right half dark [0.1,...].
         let mut pixels = vec![[0.1f32; 3]; 16];
-        for y in 0..4 { for x in 0..2 { pixels[y * 4 + x] = [0.9, 0.9, 0.9]; } }
-        let img = film_core::Image { width: 4, height: 4, pixels, ir: None };
+        for y in 0..4 {
+            for x in 0..2 {
+                pixels[y * 4 + x] = [0.9, 0.9, 0.9];
+            }
+        }
+        let img = film_core::Image {
+            width: 4,
+            height: 4,
+            pixels,
+            ir: None,
+        };
         // Normalized rect over the left half -> bright base.
         let (x, y, w, h) = crop_px([0.0, 0.0, 0.5, 1.0], img.width, img.height);
         let base = sample_base(&img, Some(Rect { x, y, w, h }));
-        assert!(base[0] >= 0.85, "left-half base should be bright, got {base:?}");
+        assert!(
+            base[0] >= 0.85,
+            "left-half base should be bright, got {base:?}"
+        );
     }
 
     #[test]
     fn viewspec_ir_removal_defaults_off_and_parses() {
-        let d: ViewSpec = serde_json::from_str(
-            r#"{"crop":[0,0,10,10],"out_w":10,"out_h":10,"raw":false}"#).unwrap();
+        let d: ViewSpec =
+            serde_json::from_str(r#"{"crop":[0,0,10,10],"out_w":10,"out_h":10,"raw":false}"#)
+                .unwrap();
         assert!(!d.ir_removal.enabled, "ir_removal defaults disabled");
         let p: ViewSpec = serde_json::from_str(
             r#"{"crop":[0,0,10,10],"out_w":10,"out_h":10,"raw":false,
-                "ir_removal":{"enabled":true,"sensitivity":60}}"#).unwrap();
+                "ir_removal":{"enabled":true,"sensitivity":60}}"#,
+        )
+        .unwrap();
         assert!(p.ir_removal.enabled);
         assert!((p.ir_removal.sensitivity - 60.0).abs() < 1e-6);
     }
