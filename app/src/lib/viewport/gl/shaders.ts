@@ -198,7 +198,8 @@ uniform vec3 u_wb;
 uniform mat3 u_m_pre;
 uniform mat3 u_m_post;
 uniform float u_exposure, u_black, u_gamma;
-uniform int u_mode;           // 0=B 1=C 2=Naive
+uniform float u_d_max, u_print_exposure, u_paper_black, u_paper_grade, u_soft_clip;
+uniform int u_mode;           // 0=B 1=C 2=Naive 3=D
 uniform bool u_raw;           // true → output the scan (display gamma), no inversion
 // Geometry: output→source UV mapping. The output is the crop sub-rect of the
 // (straightened) oriented image, so we invert the backend's source→output order
@@ -223,6 +224,23 @@ vec3 invert(vec3 rgbIn) {
     rgbIn.r / max(u_base.r, EPS),
     rgbIn.g / max(u_base.g, EPS),
     rgbIn.b / max(u_base.b, EPS)), EPS, 1.0);
+  if (u_mode == 3) {           // Mode D: negadoctor (Cineon). Mirrors engine.rs invert_d.
+    // NOTE: Mode D does not use tone()/u_exposure/u_black/u_gamma; it has its own
+    // print_exposure/paper_black/paper_grade. Those uniforms are inert in this branch.
+    const float THRESH = 2.3283064e-10;
+    vec3 clamped = max(rgbIn, vec3(THRESH));
+    vec3 dmin = max(u_base, vec3(EPS));
+    vec3 log_dens = log2(clamped / dmin) * LOG10;          // log10(clamped/dmin)
+    vec3 offset = log2(max(u_wb, vec3(EPS))) * (-LOG10);   // -log10(wb)
+    vec3 corrected = log_dens / max(u_d_max, EPS) + offset;
+    vec3 ten = exp2(corrected / LOG10);                    // 10^corrected
+    vec3 print_lin = max(
+      vec3(u_print_exposure * (1.0 + u_paper_black)) - u_print_exposure * ten, vec3(0.0));
+    vec3 outc = pow(print_lin, vec3(u_paper_grade));
+    float comp = max(1.0 - u_soft_clip, EPS);
+    vec3 over = u_soft_clip + (1.0 - exp(-(outc - vec3(u_soft_clip)) / comp)) * comp;
+    return mix(outc, over, step(vec3(u_soft_clip), outc));  // soft-clip where outc >= soft_clip
+  }
   if (u_mode == 2) {           // Naive: 1 - clamp(I/base,0,1). Intentionally uses
     // its own [0,1] clamp (engine.rs invert_naive), not the [EPS,1] r above.
     vec3 n = clamp(vec3(rgbIn.r/max(u_base.r,EPS), rgbIn.g/max(u_base.g,EPS), rgbIn.b/max(u_base.b,EPS)), 0.0, 1.0);

@@ -10,6 +10,11 @@ const RES: ResolvedInversion = {
   black: 0.05,
   gamma: 0.4545,
   mode: 0,
+  d_max: 2.0,
+  print_exposure: 1.0,
+  paper_black: 0.0,
+  paper_grade: 0.5,
+  soft_clip: 0.9,
 };
 
 describe("toInversionUniforms", () => {
@@ -19,6 +24,10 @@ describe("toInversionUniforms", () => {
     expect(u.black).toBeCloseTo(0.05);
     expect(u.gamma).toBeCloseTo(0.4545);
     expect(u.mode).toBe(0);
+    expect(u.d_max).toBeCloseTo(2.0);
+    expect(u.print_exposure).toBeCloseTo(1.0);
+    expect(u.paper_grade).toBeCloseTo(0.5);
+    expect(u.soft_clip).toBeCloseTo(0.9);
     expect(Array.from(u.base)).toEqual(Array.from(new Float32Array([0.8, 0.6, 0.4])));
     expect(Array.from(u.wb)).toEqual(Array.from(new Float32Array([1.1, 1.0, 0.9])));
     expect(u.m_post).toBeInstanceOf(Float32Array);

@@ -150,6 +150,7 @@ export class FinishRenderer {
     for (const n of [
       "u_src","u_base","u_wb","u_m_pre","u_m_post","u_exposure","u_black","u_gamma",
       "u_mode","u_raw","u_crop_off","u_crop_scale","u_angle","u_aspect","u_orient",
+      "u_d_max","u_print_exposure","u_paper_black","u_paper_grade","u_soft_clip",
     ]) this.invLoc[n] = gl.getUniformLocation(ip, n);
     gl.useProgram(ip); gl.uniform1i(this.invLoc.u_src, 0);
 
@@ -276,6 +277,9 @@ export class FinishRenderer {
     gl.uniformMatrix3fv(L.u_m_post, false, u.m_post);
     gl.uniform1f(L.u_exposure, u.exposure); gl.uniform1f(L.u_black, u.black);
     gl.uniform1f(L.u_gamma, u.gamma); gl.uniform1i(L.u_mode, u.mode);
+    gl.uniform1f(L.u_d_max, u.d_max); gl.uniform1f(L.u_print_exposure, u.print_exposure);
+    gl.uniform1f(L.u_paper_black, u.paper_black); gl.uniform1f(L.u_paper_grade, u.paper_grade);
+    gl.uniform1f(L.u_soft_clip, u.soft_clip);
     gl.uniform1i(L.u_raw, this.geom.raw ? 1 : 0);
     gl.uniform2fv(L.u_crop_off, this.geom.crop_off);
     gl.uniform2fv(L.u_crop_scale, this.geom.crop_scale);

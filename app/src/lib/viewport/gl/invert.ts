@@ -7,7 +7,12 @@ export interface ResolvedInversion {
   exposure: number;
   black: number;
   gamma: number;
-  mode: number;      // 0=B, 1=C, 2=Naive
+  mode: number;      // 0=B, 1=C, 2=Naive, 3=D
+  d_max: number;
+  print_exposure: number;
+  paper_black: number;
+  paper_grade: number;
+  soft_clip: number;
 }
 
 /** GL-ready uniform buffers for the INVERT pass. */
@@ -20,6 +25,11 @@ export interface InversionUniforms {
   black: number;
   gamma: number;
   mode: number;
+  d_max: number;
+  print_exposure: number;
+  paper_black: number;
+  paper_grade: number;
+  soft_clip: number;
 }
 
 export function toInversionUniforms(r: ResolvedInversion): InversionUniforms {
@@ -32,5 +42,10 @@ export function toInversionUniforms(r: ResolvedInversion): InversionUniforms {
     black: r.black,
     gamma: r.gamma,
     mode: r.mode,
+    d_max: r.d_max,
+    print_exposure: r.print_exposure,
+    paper_black: r.paper_black,
+    paper_grade: r.paper_grade,
+    soft_clip: r.soft_clip,
   };
 }
