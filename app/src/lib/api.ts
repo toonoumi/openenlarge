@@ -40,7 +40,7 @@ export interface PointColorSample {
 export const CM_BANDS = ["red","orange","yellow","green","aqua","blue","purple","magenta"] as const;
 export type CmBand = (typeof CM_BANDS)[number];
 export interface InvertParams {
-  mode: "b" | "c";
+  mode: "b" | "c" | "d";
   stock: "none" | "portra400" | "fujic200" | "portra160" | "portra800" | "ektar100"
     | "gold200" | "ultramax400" | "fujipro400h" | "fujixtra400"
     | "vision350d" | "vision3200t" | "vision3250d" | "vision3500t";

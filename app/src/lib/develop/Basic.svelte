@@ -124,6 +124,12 @@
         <option value="vision3500t">{$t('basic.stock.vision3500t')}</option>
       </select>
 
+      <!-- Inversion engine (A/B): density^gamma vs Cineon/negadoctor -->
+      <select bind:value={$params.mode} style="margin-top:8px">
+        <option value="b">Density (default)</option>
+        <option value="d">Cineon (beta)</option>
+      </select>
+
       <!-- Film Base (collapsible) -->
       <div class="basebar">
         <button class="basebar-toggle" on:click={() => (baseOpen = !baseOpen)}>
