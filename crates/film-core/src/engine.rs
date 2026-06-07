@@ -114,23 +114,28 @@ pub fn invert_b(rgb: [f32; 3], p: &InversionParams) -> [f32; 3] {
 }
 
 /// Mode D: Kodak Cineon densitometry (darktable negadoctor). Per channel:
-/// restore the negative's density in log space, balance via a log-space WB offset,
-/// return to linear, then apply a paper inversion + tone curve with a highlight
-/// soft-clip. See docs/superpowers/specs/2026-06-07-negadoctor-inversion-design.md.
+/// restore the negative's density in log space, return to linear, apply a paper
+/// inversion + tone curve with a highlight soft-clip, and balance with WB as a
+/// gain on the linear print. See docs/superpowers/specs/2026-06-07-negadoctor-inversion-design.md.
+///
+/// WB is applied as a gain on the positive `print_lin` (not as a log-space offset
+/// on the negative): `0 * wb == 0`, so deep shadows stay neutral black instead of
+/// being tinted/clamped per channel. A log-space offset converges shadows to
+/// `print_exposure·(1 − 1/wb[c])`, which drives one channel to black before the
+/// others and reads as a colour cast in the darkest tones (the "yellow shadow"
+/// bug). A positive-domain gain spreads the WB tint evenly across tones instead.
 pub fn invert_d(rgb: [f32; 3], p: &InversionParams) -> [f32; 3] {
     const THRESHOLD: f32 = 2.328_306_4e-10; // negadoctor's -32 EV floor
     std::array::from_fn(|c| {
         let clamped = rgb[c].max(THRESHOLD);
         let dmin = p.base[c].max(EPS);
         let log_dens = (clamped / dmin).log10(); // = -log10(dmin/clamped)
-        // WB as a log-space offset; the NEGATIVE sign keeps wb>1 brightening the
-        // positive (the offset acts on the negative side, before paper inversion).
-        let offset = -p.wb[c].max(EPS).log10();
-        let corrected = log_dens / p.d_max.max(EPS) + offset;
+        let corrected = log_dens / p.d_max.max(EPS);
         let ten_to_x = 10f32.powf(corrected);
         let print_lin =
             (p.print_exposure * (1.0 + p.paper_black) - p.print_exposure * ten_to_x).max(0.0);
-        let out = print_lin.powf(p.paper_grade);
+        // WB as a linear gain on the print; keeps black neutral (0·wb = 0).
+        let out = (print_lin * p.wb[c]).powf(p.paper_grade);
         if out > p.soft_clip {
             let comp = (1.0 - p.soft_clip).max(EPS);
             p.soft_clip + (1.0 - (-(out - p.soft_clip) / comp).exp()) * comp
@@ -502,6 +507,26 @@ mod tests {
         let b = invert_d(probe, &warmed);
         assert!(b[0] > a[0], "R wb 1.5 should brighten R: {} vs {}", b[0], a[0]);
         assert!((b[1] - a[1]).abs() < 1e-6, "G unchanged");
+    }
+
+    #[test]
+    fn mode_d_shadow_stays_neutral_under_wb() {
+        // Regression for the yellow-shadow bug: a pixel AT the film base is the
+        // deepest shadow → must invert to neutral BLACK for ANY white balance,
+        // because WB is a gain on the positive print (0·wb = 0). With the old
+        // log-space WB offset this same input produced print_lin = pe·(1 − 1/wb[c]),
+        // i.e. a bright, strongly per-channel-tinted (yellow) result — not black.
+        let base = [0.7, 0.6, 0.5];
+        let warm = InversionParams {
+            base,
+            wb: [1.3, 1.0, 0.7],
+            ..Default::default()
+        };
+        let out = invert_d(base, &warm);
+        let max = out.iter().cloned().fold(f32::MIN, f32::max);
+        let min = out.iter().cloned().fold(f32::MAX, f32::min);
+        assert!(max < 1e-4, "shadow at base should be ~black: {out:?}");
+        assert!(max - min < 1e-4, "shadow not neutral under WB: {out:?}");
     }
 
     #[test]

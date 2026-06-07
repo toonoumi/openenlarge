@@ -34,11 +34,11 @@ with linear scan input `I[c]` and `Dmin[c]` = the existing sampled `base`:
 ```
 clamped   = max(I[c], THRESHOLD)                 # THRESHOLD = 2.3283064365386963e-10
 log_dens  = log10(clamped / Dmin[c])             # = -log10(Dmin/clamped); into log/density space
-corrected = log_dens / D_max - log10(wb[c])      # per-channel slope (1/D_max) + log-space WB offset
+corrected = log_dens / D_max                      # per-channel slope (1/D_max)
 ten_to_x  = 10^corrected                          # back toward linear (the negative, density-restored)
 print_lin = print_exposure*(1.0 + paper_black) - print_exposure*ten_to_x
 print_lin = max(print_lin, 0.0)                   # paper inverts the negative
-out[c]    = print_lin ^ paper_grade               # paper tone curve (power)
+out[c]    = (print_lin * wb[c]) ^ paper_grade     # WB as a linear gain, then paper tone curve (power)
             then highlight soft-clip (see below)
 ```
 
@@ -67,12 +67,20 @@ contrast and depth.
 
 The existing `wb = wb_from_kelvin(temp, tint)` produces a per-channel **linear gain**
 `[gr, gg, gb]` whose convention (used by Modes B/C) is "gain > 1 brightens that channel
-in the positive". It is injected as `offset[c] = -log10(wb[c])` — additive in log space,
-the canonical printer-lights / enlarger-filtration slot negadoctor uses. The **negative
-sign is required**: the WB offset acts on the negative side (before the paper inversion),
-so reducing the density-restored value brightens the positive. With `offset = -log10(wb)`,
-`ten_to_x` is divided by `wb[c]`, `print_lin` rises, and the channel brightens — matching
-the B/C convention so the same temp/tint values steer color the same direction across modes.
+in the positive". It is applied as a **gain on the linear print** (`print_lin * wb[c]`,
+before the `paper_grade` power), matching the B/C convention so the same temp/tint values
+steer colour the same direction across modes.
+
+**Why not negadoctor's log-space offset (revised after validation):** the original design
+put WB in log space as `offset[c] = -log10(wb[c])` (negadoctor's printer-lights slot), which
+leaves highlights neutral but converges deep shadows to `print_exposure·(1 − 1/wb[c])`. Under
+any non-neutral WB that drives one channel to black before the others — visible as a colour
+cast concentrated in the darkest tones (a "yellow shadow" under a warm WB), and it cannot
+correct a highlight cast at all. Validation on a real frame confirmed this. Applying WB as a
+gain on the positive instead keeps black neutral (`0 · wb = 0`), spreads the (mild) WB tint
+evenly across tones, and lets WB correct highlights too. The fully-faithful alternative —
+negadoctor's two separate terms `wb_high` (highlight/slope) + `wb_low` (shadow) — is deferred
+(it needs a new shadow-balance UI knob); see §"Deferred".
 
 ### Display encode
 
@@ -136,6 +144,9 @@ values. The hard lesson from the reverted session is: do not lock constants to o
 
 ## Deferred (explicitly NOT this cut)
 
+- Two-term printer-lights: negadoctor's separate `wb_high` (highlight/slope) + `wb_low`
+  (shadow) balance, so highlights and shadows can be neutralized independently (needs a new
+  shadow-balance UI knob). The current cut uses a single positive-domain WB gain instead.
 - Gray-edge / unified Minkowski AWB in log space (`INVERSION-RESEARCH-HANDOFF.md` §5b).
 - Per-roll D_max auto-estimation (piggyback on `sample_base`'s pass).
 - Per-channel printer-lights (`wb_high` / `wb_low`).

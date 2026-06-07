@@ -233,12 +233,11 @@ vec3 invert(vec3 rgbIn) {
     vec3 clamped = max(rgbIn, vec3(THRESH));
     vec3 dmin = max(u_base, vec3(EPS));
     vec3 log_dens = log2(clamped / dmin) * LOG10;          // log10(clamped/dmin)
-    vec3 offset = log2(max(u_wb, vec3(EPS))) * (-LOG10);   // -log10(wb)
-    vec3 corrected = log_dens / max(u_d_max, EPS) + offset;
+    vec3 corrected = log_dens / max(u_d_max, EPS);
     vec3 ten = exp2(corrected / LOG10);                    // 10^corrected
     vec3 print_lin = max(
       vec3(u_print_exposure * (1.0 + u_paper_black)) - u_print_exposure * ten, vec3(0.0));
-    vec3 outc = pow(print_lin, vec3(u_paper_grade));
+    vec3 outc = pow(print_lin * u_wb, vec3(u_paper_grade)); // WB as a linear gain; 0*wb=0 keeps black neutral
     float comp = max(1.0 - u_soft_clip, EPS);
     vec3 over = u_soft_clip + (1.0 - exp(-(outc - vec3(u_soft_clip)) / comp)) * comp;
     return mix(outc, over, step(vec3(u_soft_clip), outc));  // soft-clip where outc >= soft_clip
