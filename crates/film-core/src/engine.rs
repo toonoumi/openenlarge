@@ -24,6 +24,16 @@ pub struct InversionParams {
     pub gamma: f32,
     /// Per-channel white-balance gain applied in linear light before gamma.
     pub wb: [f32; 3],
+    /// Cineon (Mode D) — scalar white / dynamic-range anchor (D_max).
+    pub d_max: f32,
+    /// Cineon (Mode D) — print exposure (ASC-CDL slope).
+    pub print_exposure: f32,
+    /// Cineon (Mode D) — paper black (ASC-CDL offset).
+    pub paper_black: f32,
+    /// Cineon (Mode D) — paper grade (ASC-CDL power; also the display encode).
+    pub paper_grade: f32,
+    /// Cineon (Mode D) — highlight soft-clip threshold.
+    pub soft_clip: f32,
 }
 
 impl Default for InversionParams {
@@ -36,6 +46,11 @@ impl Default for InversionParams {
             black: 0.0,
             gamma: 1.0 / 2.2,
             wb: [1.0, 1.0, 1.0],
+            d_max: 2.0,
+            print_exposure: 1.0,
+            paper_black: 0.0,
+            paper_grade: 0.5,
+            soft_clip: 0.9,
         }
     }
 }
@@ -97,6 +112,33 @@ pub fn invert_b(rgb: [f32; 3], p: &InversionParams) -> [f32; 3] {
     ]
 }
 
+/// Mode D: Kodak Cineon densitometry (darktable negadoctor). Per channel:
+/// restore the negative's density in log space, balance via a log-space WB offset,
+/// return to linear, then apply a paper inversion + tone curve with a highlight
+/// soft-clip. See docs/superpowers/specs/2026-06-07-negadoctor-inversion-design.md.
+pub fn invert_d(rgb: [f32; 3], p: &InversionParams) -> [f32; 3] {
+    const THRESHOLD: f32 = 2.328_306_4e-10; // negadoctor's -32 EV floor
+    std::array::from_fn(|c| {
+        let clamped = rgb[c].max(THRESHOLD);
+        let dmin = p.base[c].max(EPS);
+        let log_dens = (clamped / dmin).log10(); // = -log10(dmin/clamped)
+        // WB as a log-space offset; the NEGATIVE sign keeps wb>1 brightening the
+        // positive (the offset acts on the negative side, before paper inversion).
+        let offset = -p.wb[c].max(EPS).log10();
+        let corrected = log_dens / p.d_max.max(EPS) + offset;
+        let ten_to_x = 10f32.powf(corrected);
+        let print_lin =
+            (p.print_exposure * (1.0 + p.paper_black) - p.print_exposure * ten_to_x).max(0.0);
+        let out = print_lin.powf(p.paper_grade);
+        if out > p.soft_clip {
+            let comp = (1.0 - p.soft_clip).max(EPS);
+            p.soft_clip + (1.0 - (-(out - p.soft_clip) / comp).exp()) * comp
+        } else {
+            out
+        }
+    })
+}
+
 /// Which inversion to run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
@@ -106,6 +148,8 @@ pub enum Mode {
     C,
     /// 1 - x strawman.
     Naive,
+    /// Kodak Cineon densitometry (darktable negadoctor).
+    D,
 }
 
 /// Invert a whole image (returns a new Image, same dims).
@@ -114,6 +158,7 @@ pub fn invert_image(img: &crate::Image, p: &InversionParams, mode: Mode) -> crat
         Mode::B => invert_b,
         Mode::C => invert_c,
         Mode::Naive => invert_naive,
+        Mode::D => invert_d,
     };
     // par_iter + collect into Vec preserves index order, so output is identical
     // to the sequential map; the per-pixel fn `f` is pure (no shared state).
@@ -149,6 +194,7 @@ pub fn params_for_stock(
         black,
         gamma,
         wb: [1.0, 1.0, 1.0],
+        ..Default::default()
     }
 }
 
@@ -396,6 +442,64 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn mode_d_base_pixel_is_black() {
+        // I == Dmin → log_dens 0 → ten_to_x 1 → print_lin = pe*(1+pb) - pe = pe*pb = 0.
+        let p = InversionParams {
+            base: [0.7, 0.6, 0.5],
+            ..Default::default()
+        };
+        let out = invert_d([0.7, 0.6, 0.5], &p);
+        for (c, &v) in out.iter().enumerate() {
+            assert!(v.abs() < 1e-4, "ch {c} = {v}");
+        }
+    }
+
+    #[test]
+    fn mode_d_darker_negative_is_brighter_positive() {
+        // A denser negative (lower transmission) = brighter scene = brighter positive.
+        let p = InversionParams {
+            base: [1.0, 1.0, 1.0],
+            ..Default::default()
+        };
+        let dim = invert_d([0.5, 0.5, 0.5], &p);
+        let bright = invert_d([0.1, 0.1, 0.1], &p);
+        assert!(bright[0] > dim[0], "denser neg should be brighter: {bright:?} vs {dim:?}");
+    }
+
+    #[test]
+    fn mode_d_recovers_neutrals_as_neutral() {
+        // base*10^(-k*scene) for a neutral scene must invert back to neutral (wb=1).
+        let base = [0.8, 0.55, 0.35];
+        let k = 0.6;
+        let p = InversionParams { base, ..Default::default() };
+        for g in [0.2f32, 0.5, 0.8] {
+            let neg = [
+                base[0] * 10f32.powf(-k * g),
+                base[1] * 10f32.powf(-k * g),
+                base[2] * 10f32.powf(-k * g),
+            ];
+            let out = invert_d(neg, &p);
+            let max = out.iter().cloned().fold(f32::MIN, f32::max);
+            let min = out.iter().cloned().fold(f32::MAX, f32::min);
+            assert!(max - min < 1e-3, "non-neutral recovery at g={g}: {out:?}");
+        }
+    }
+
+    #[test]
+    fn mode_d_wb_gain_brightens_channel() {
+        // wb[c] > 1 must BRIGHTEN channel c in the positive (matches B/C convention),
+        // even though WB is injected as a log-space offset on the negative side.
+        let base = [0.7, 0.6, 0.5];
+        let probe = [0.3, 0.25, 0.2];
+        let neutral = InversionParams { base, ..Default::default() };
+        let warmed = InversionParams { base, wb: [1.5, 1.0, 1.0], ..Default::default() };
+        let a = invert_d(probe, &neutral);
+        let b = invert_d(probe, &warmed);
+        assert!(b[0] > a[0], "R wb 1.5 should brighten R: {} vs {}", b[0], a[0]);
+        assert!((b[1] - a[1]).abs() < 1e-6, "G unchanged");
     }
 
     #[test]
