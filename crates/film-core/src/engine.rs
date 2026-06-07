@@ -31,6 +31,7 @@ pub struct InversionParams {
     /// Cineon (Mode D) — paper black (ASC-CDL offset).
     pub paper_black: f32,
     /// Cineon (Mode D) — paper grade (ASC-CDL power; also the display encode).
+    /// Valid range: `[0, ∞)`. A negative value yields `Inf` where `print_lin == 0`.
     pub paper_grade: f32,
     /// Cineon (Mode D) — highlight soft-clip threshold.
     pub soft_clip: f32,
@@ -431,6 +432,7 @@ mod tests {
             ),
             (Mode::C, invert_c),
             (Mode::Naive, invert_naive),
+            (Mode::D, invert_d),
         ] {
             let out = invert_image(&img, &p, mode);
             assert_eq!(out.width, 2);
