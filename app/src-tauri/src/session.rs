@@ -65,6 +65,11 @@ pub struct InvertParams {
     /// Kelvin (e.g. 5500) and green↔magenta tint (−150..150).
     pub temp: f32,
     pub tint: f32,
+    /// True once the user has deliberately set WB (gray-point pick): the auto-WB
+    /// reseed (which fires on base/profile changes) must not clobber it. The Auto
+    /// button clears it. Backend never reads it; carried for persistence.
+    #[serde(default)]
+    pub wb_manual: bool,
     // Creative finishing (UI −100..100; 0 = identity).
     pub contrast: f32,
     pub highlights: f32,

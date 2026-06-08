@@ -105,6 +105,7 @@ pub(crate) fn default_invert_params() -> InvertParams {
         auto_wb: true,
         temp: 5500.0,
         tint: 0.0,
+        wb_manual: false,
         contrast: 0.0,
         highlights: 0.0,
         shadows: 0.0,

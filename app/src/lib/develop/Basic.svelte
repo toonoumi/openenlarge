@@ -69,17 +69,26 @@
   // manual Temp/Tint the user set on it. `force` (Auto button) re-seeds anyway.
   const shouldSeed = createSeedGuard();
   async function seed(id: string | null, stock: string, baseKey: string, force = false) {
+    // A deliberate WB (gray-point pick) is sticky: don't let the base/profile-change
+    // auto-reseed clobber it. The Auto button (force) overrides and re-takes control.
+    if (!force && get(params).wb_manual) return;
     const key = id ? `${id}:${stock}:${baseKey}` : null;
     if (!shouldSeed(key, force)) return;
     try {
       const wb = await api.asShotWb(id!, withEffectiveBase(get(params), dir));
-      params.update((p) => ({ ...p, temp: wb.temp, tint: wb.tint }));
+      params.update((p) => ({ ...p, temp: wb.temp, tint: wb.tint, wb_manual: false }));
       reseedActive();
     } catch { /* not developed yet */ }
   }
   $: seed($activeId, $params.stock, JSON.stringify(effBase));
 
   function autoWb() { seed($activeId, $params.stock, JSON.stringify(effBase), true); }
+
+  // A user drag of Temp/Tint makes WB user-controlled (sticky vs the base-change
+  // auto-reseed). Fires only on real input events, not programmatic seed updates.
+  function markWbManual() {
+    params.update((p) => (p.wb_manual ? p : { ...p, wb_manual: true }));
+  }
 
   // Reset every Basic-section control to its default, leaving all other develop
   // state (mode, base_override, black/gamma, tone curve, color grading) untouched.
@@ -174,9 +183,9 @@
         </span>
       </div>
       <Slider label={$t('basic.temp')} min={2000} max={50000} step={0.5} scale="reciprocal"
-        bind:value={$params.temp} def={5500} gradient={TEMP_GRADIENT} format={kelvin} />
+        bind:value={$params.temp} def={5500} gradient={TEMP_GRADIENT} format={kelvin} on:input={markWbManual} />
       <Slider label={$t('basic.tint')} min={-150} max={150} step={1}
-        bind:value={$params.tint} def={0} gradient={TINT_GRADIENT} format={signed} />
+        bind:value={$params.tint} def={0} gradient={TINT_GRADIENT} format={signed} on:input={markWbManual} />
 
       <!-- Tone -->
       <div class="sub">{$t('basic.tone')}</div>

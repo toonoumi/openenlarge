@@ -236,7 +236,8 @@
     if (target === "wb") {
       if (!$activeId) return;
       const wb = await api.grayPointWb(get(params), [r, g, b]);
-      params.update((p) => ({ ...p, temp: wb.temp, tint: wb.tint }));
+      // Mark WB user-controlled so a later base/profile change won't auto-reseed over it.
+      params.update((p) => ({ ...p, temp: wb.temp, tint: wb.tint, wb_manual: true }));
       reseedActive();
     } else if (target === "pc") {
       params.update((p) => {
