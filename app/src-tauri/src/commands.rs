@@ -1051,6 +1051,41 @@ pub fn as_shot_wb(
     }) // back to UI −150..150
 }
 
+/// (Kelvin, gains_to_cct tint) that makes a sampled display pixel `rgb` render neutral.
+/// `rgb` is the displayed positive at the clicked point, encoded by the active mode's
+/// output power. We undo that encode and divide out the current WB to recover the
+/// WB-neutral linear inverted value `P` at the point, then take gray-world gains of `P`
+/// — the same convention as `as_shot_wb`, so a gray-point pick is consistent with Auto.
+/// Unlike Auto it is UNDAMPED: a deliberate gray click should land the point exactly
+/// neutral. The result is absolute — the current Temp/Tint cancels (it is baked into the
+/// sampled pixel and divided back out), so clicking always means "make this point gray".
+fn gray_point_temp_tint(params: &InvertParams, rgb: [f32; 3]) -> (f32, f32) {
+    let ip = build_params(params, [1.0, 1.0, 1.0]);
+    // The power applied last to the positive: paper_grade for Cineon (Mode D), else gamma.
+    let e = (if params.mode == "d" { ip.paper_grade } else { ip.gamma }).max(1e-3);
+    let wb_old = wb_from_params(params.temp, params.tint);
+    // displayed d_c = (P_c · wb_old_c)^e  ⇒  P_c = d_c^(1/e) / wb_old_c
+    let p: [f32; 3] = std::array::from_fn(|c| rgb[c].max(1e-5).powf(1.0 / e) / wb_old[c].max(1e-5));
+    let gray = (p[0] + p[1] + p[2]) / 3.0;
+    let gains = [
+        gray / p[0].max(1e-5),
+        gray / p[1].max(1e-5),
+        gray / p[2].max(1e-5),
+    ];
+    gains_to_cct(gains)
+}
+
+/// Temp/Tint that neutralises a clicked gray point. `rgb` is the displayed positive
+/// sampled at the click. See [`gray_point_temp_tint`].
+#[tauri::command]
+pub fn gray_point_wb(params: InvertParams, rgb: [f32; 3]) -> AsShotWb {
+    let (temp, tint) = gray_point_temp_tint(&params, rgb);
+    AsShotWb {
+        temp,
+        tint: tint * 150.0,
+    } // back to UI −150..150
+}
+
 /// Load the whole catalog at launch: return the snapshot to the frontend AND
 /// repopulate the in-memory Session with lightweight (undeveloped) records so
 /// `develop_image`/`render_view` can find each image by id.
@@ -1269,6 +1304,31 @@ pub fn sample_base_at(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn gray_point_wb_neutral_sample_is_neutral() {
+        // A neutral display pixel with neutral current WB → ~neutral white point.
+        let mut p = crate::commands_test_support::sample_invert_params();
+        p.mode = "d".into();
+        p.temp = 5500.0;
+        p.tint = 0.0;
+        let (temp, tint) = gray_point_temp_tint(&p, [0.5, 0.5, 0.5]);
+        assert!((temp - 5500.0).abs() < 200.0, "neutral temp, got {temp}");
+        assert!(tint.abs() < 0.05, "neutral tint, got {tint}");
+    }
+
+    #[test]
+    fn gray_point_wb_warm_sample_cools_temp() {
+        // A warm (red-heavy, blue-low) display pixel must drive Temp BELOW neutral so
+        // the applied gains cool the point toward gray. Absolute: independent of where
+        // Temp currently sits (start it warm and confirm the pick still cools).
+        let mut p = crate::commands_test_support::sample_invert_params();
+        p.mode = "d".into();
+        p.temp = 7000.0;
+        p.tint = 0.0;
+        let (temp, _tint) = gray_point_temp_tint(&p, [0.6, 0.5, 0.4]);
+        assert!(temp < 5500.0, "warm point should cool temp below neutral, got {temp}");
+    }
 
     #[test]
     fn effective_base_prefers_override_then_dev_base() {

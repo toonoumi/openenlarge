@@ -26,7 +26,7 @@
   import { defaultFull, conform, constrainToRotated } from "../crop/cropMath";
   import { presetNormAspect } from "../crop/presets";
   import { rotateRectCW, rotateRectCCW, flipRectH, flipRectV, flipOrient, orientDims } from "../crop/transforms";
-  import { commitActive } from "../develop/historyStore";
+  import { commitActive, reseedActive } from "../develop/historyStore";
   import { rgbToHslSample } from "../develop/colorPick";
 
   $: active = $images.find((i) => i.id === $activeId);
@@ -168,6 +168,7 @@
       return;
     }
     if (navImages(e)) return;
+    if (e.key === "Escape" && pickTarget) { pickTarget = ""; return; }
     if ($tool !== "crop") return;
     if (e.key === "Enter") { commitCrop(); tool.set("edit"); }
     else if (e.key === "Escape") { discardCrop(); }
@@ -222,17 +223,29 @@
   let menu: { x: number; y: number } | null = null;
   function onContext(e: MouseEvent) { e.preventDefault(); menu = { x: e.clientX, y: e.clientY }; }
 
-  // ---- Point Color eyedropper state ----
-  let pointPicking = false;
-  function togglePointPick() { pointPicking = !pointPicking; }
-  function onPointPick(e: CustomEvent<{ r: number; g: number; b: number }>) {
-    params.update((p) => {
-      const arr = (p.pc_samples ?? []).slice();
-      if (arr.length >= 8) return p; // cap at 8
-      arr.push(rgbToHslSample(e.detail.r, e.detail.g, e.detail.b));
-      return { ...p, pc_samples: arr };
-    });
-    pointPicking = false;
+  // ---- Eyedropper state ----
+  // One crosshair, two consumers: 'pc' = ColorMixer point-colour sample, 'wb' = gray-point
+  // white balance. The target string routes the single pointpick event to the right place.
+  let pickTarget: "" | "pc" | "wb" = "";
+  function togglePcPick() { pickTarget = pickTarget === "pc" ? "" : "pc"; }
+  function toggleWbPick() { pickTarget = pickTarget === "wb" ? "" : "wb"; }
+  async function onPointPick(e: CustomEvent<{ r: number; g: number; b: number }>) {
+    const { r, g, b } = e.detail;
+    const target = pickTarget;
+    pickTarget = "";
+    if (target === "wb") {
+      if (!$activeId) return;
+      const wb = await api.grayPointWb(get(params), [r, g, b]);
+      params.update((p) => ({ ...p, temp: wb.temp, tint: wb.tint }));
+      reseedActive();
+    } else if (target === "pc") {
+      params.update((p) => {
+        const arr = (p.pc_samples ?? []).slice();
+        if (arr.length >= 8) return p; // cap at 8
+        arr.push(rgbToHslSample(r, g, b));
+        return { ...p, pc_samples: arr };
+      });
+    }
   }
 </script>
 
@@ -252,7 +265,7 @@
         <Viewport id={$activeId} params={effParams} imgW={effW} imgH={effH} imageCrop={imageCrop}
                   rot90={cRot} flipH={committed?.flipH ?? false} flipV={committed?.flipV ?? false} angle={committed?.angle ?? 0}
                   eraser={$tool === "eraser"} {brush} dust={dust.strokes} irRemoval={dust.irRemoval} dustRev={$dustRev} developRev={$developRev}
-                  pointPick={pointPicking}
+                  pointPick={pickTarget !== ""}
                   on:stroke={(e) => commitStroke(e.detail)} on:brush={(e) => (brush = e.detail)}
                   on:pointpick={onPointPick} />
       {/if}
@@ -266,10 +279,10 @@
       {#key $tool}
         <div class="toolpane" in:fade={{ duration: 160, easing: cubicOut }}>
           {#if $tool === "edit"}
-            <Basic />
+            <Basic onWbPick={toggleWbPick} wbPicking={pickTarget === "wb"} />
             <TonalCurve />
             <ColorGrading />
-            <ColorMixer onPick={togglePointPick} picking={pointPicking} />
+            <ColorMixer onPick={togglePcPick} picking={pickTarget === "pc"} />
           {:else if $tool === "crop"}
             <CropPanel bind:aspect bind:orientation bind:angle
                        on:preset={(e) => onPreset(e.detail)} on:swap={onSwap} on:reset={onReset}

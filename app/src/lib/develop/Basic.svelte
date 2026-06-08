@@ -13,6 +13,11 @@
   import { slide } from "svelte/transition";
   import { cubicInOut } from "svelte/easing";
 
+  // Gray-point WB picker: parent (Develop) arms the viewport crosshair and routes the
+  // sampled pixel; this component only toggles it and reflects the active state.
+  export let onWbPick: (() => void) | null = null;
+  export let wbPicking = false;
+
   let open = true;
 
   $: activeImg = $images.find((i) => i.id === $activeId);
@@ -161,7 +166,12 @@
       <div class="sub">{$t('basic.whiteBalance')}</div>
       <div class="wbhead">
         <span>{$t('basic.tempTint')}</span>
-        <button class="auto" on:click={autoWb}>{$t('basic.auto')}</button>
+        <span class="wbbtns">
+          <button class="wbdrop" class:on={wbPicking} title={$t('basic.grayPick')} on:click={() => onWbPick?.()}>
+            <Icon name="pipette" size={14} />
+          </button>
+          <button class="auto" on:click={autoWb}>{$t('basic.auto')}</button>
+        </span>
       </div>
       <Slider label={$t('basic.temp')} min={2000} max={50000} step={0.5} scale="reciprocal"
         bind:value={$params.temp} def={5500} gradient={TEMP_GRADIENT} format={kelvin} />
@@ -203,6 +213,11 @@
     font-size: 11px; color: var(--text-dim); margin: 4px 0; }
   .auto { background: transparent; border: 1px solid var(--glass-brd); color: var(--text-dim);
     border-radius: 6px; padding: 2px 8px; font-size: 11px; cursor: pointer; }
+  .wbbtns { display: inline-flex; align-items: center; gap: 6px; }
+  .wbdrop { display: inline-flex; align-items: center; justify-content: center;
+    background: transparent; border: 1px solid var(--glass-brd); color: var(--text-dim);
+    border-radius: 6px; padding: 2px 6px; cursor: pointer; }
+  .wbdrop.on { color: var(--text); border-color: var(--accent); }
 
   /* Film Base */
   .basebar { margin: 2px 0 8px; }

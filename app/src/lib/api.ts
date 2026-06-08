@@ -169,6 +169,8 @@ export const api = {
     invoke<string>("thumbnail", { id, params, view: { ...view, dust: wireDust(view.dust) } }),
   asShotWb: (id: string, params: InvertParams) =>
     invoke<AsShotWb>("as_shot_wb", { id, params }),
+  grayPointWb: (params: InvertParams, rgb: [number, number, number]) =>
+    invoke<AsShotWb>("gray_point_wb", { params, rgb }),
   loadCatalog: () => invoke<CatalogSnapshot>("load_catalog"),
   saveEdits: (id: string, paramsJson: string) =>
     invoke<void>("save_edits", { id, paramsJson }),

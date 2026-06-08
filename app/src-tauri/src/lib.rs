@@ -63,6 +63,7 @@ pub fn run() {
             commands::export_pixels,
             commands::export_finish,
             commands::as_shot_wb,
+            commands::gray_point_wb,
             commands::load_catalog,
             commands::save_edits,
             commands::save_crop,
