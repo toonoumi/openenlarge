@@ -1,8 +1,11 @@
 <script lang="ts">
   import { get } from "svelte/store";
   import { t } from "$lib/i18n";
-  import { previewSrc, openaiApiKey } from "../store";
+  import { previewSrc, openaiApiKey, activeId, params } from "../store";
+  import { commitActive } from "./historyStore";
   import { api } from "../api";
+  import { open } from "@tauri-apps/plugin-dialog";
+  import { convertFileSrc } from "@tauri-apps/api/core";
 
   let busy = false;
   let error = "";
@@ -12,6 +15,45 @@
   let source = "";
   let showBefore = false;
   let enlarged = false;
+
+  // --- Match Reference (local color-toning match) ---
+  let refPath = "";
+  let refSrc = "";       // convertFileSrc(refPath) for the thumbnail
+  let strength = 100;    // 0..100
+  let matchBusy = false;
+  let matchError = "";
+
+  function refName(p: string): string {
+    const i = Math.max(p.lastIndexOf("/"), p.lastIndexOf("\\"));
+    return i >= 0 ? p.slice(i + 1) : p;
+  }
+
+  async function pickReference() {
+    matchError = "";
+    const sel = await open({ multiple: false, filters: [
+      { name: "Images", extensions: ["jpg", "jpeg", "png", "tif", "tiff", "webp"] },
+    ] });
+    if (typeof sel === "string") { refPath = sel; refSrc = convertFileSrc(sel); }
+  }
+
+  async function matchToning() {
+    matchError = "";
+    const id = get(activeId);
+    if (!id) { matchError = $t("aiEnhance.noImage"); return; }
+    if (!refPath) { matchError = $t("colorMatch.noRef"); return; }
+    matchBusy = true;
+    try {
+      const cur = get(params);
+      const matched = await api.colorMatchParams(id, cur, refPath, strength);
+      // Single update + single commit → one Ctrl+Z restores everything.
+      params.update((p) => ({ ...p, ...matched }));
+      commitActive();
+    } catch (e) {
+      matchError = String(e);
+    } finally {
+      matchBusy = false;
+    }
+  }
 
   async function enhance() {
     error = "";
@@ -62,6 +104,32 @@
     </div>
   {/if}
 
+  <div class="match">
+    <div class="head"><span>{$t("colorMatch.title")}</span></div>
+    <button class="ref-pick" on:click={pickReference}>{$t("colorMatch.import")}</button>
+
+    {#if refPath}
+      <div class="ref">
+        <img class="ref-thumb" src={refSrc} alt={refName(refPath)} />
+        <span class="ref-name" title={refPath}>{refName(refPath)}</span>
+      </div>
+
+      <label class="strength">
+        <span>{$t("colorMatch.strength")}</span>
+        <input type="range" min="0" max="100" bind:value={strength} />
+        <span class="val">{strength}%</span>
+      </label>
+
+      <button class="go" class:busy={matchBusy} disabled={matchBusy} on:click={matchToning}>
+        {#if matchBusy}<span class="spinner" aria-hidden="true"></span>{/if}
+        <span>{matchBusy ? $t("colorMatch.matching") : $t("colorMatch.match")}</span>
+      </button>
+    {/if}
+
+    {#if matchError}<div class="err">{matchError}</div>{/if}
+    <div class="hint">{$t("colorMatch.hint")}</div>
+  </div>
+
   <div class="hint">{$t("aiEnhance.hint")}</div>
 </div>
 
@@ -106,4 +174,17 @@
   .lightbox { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center;
     background: rgba(0,0,0,0.8); cursor: zoom-out; }
   .lightbox img { max-width: 92vw; max-height: 92vh; border-radius: 8px; }
+  .match { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--glass-brd); }
+  .ref-pick { width: 100%; padding: 8px 10px; margin: 6px 0; border-radius: 8px;
+    border: 1px solid var(--glass-brd); background: transparent; color: var(--text);
+    cursor: pointer; font-size: 13px; }
+  .ref { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
+  .ref-thumb { width: 44px; height: 44px; object-fit: cover; border-radius: 6px;
+    border: 1px solid var(--glass-brd); }
+  .ref-name { font-size: 11px; color: var(--text-dim); overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; }
+  .strength { display: flex; align-items: center; gap: 8px; margin: 8px 0;
+    font-size: 12px; color: var(--text); }
+  .strength input { flex: 1; }
+  .strength .val { width: 34px; text-align: right; color: var(--text-dim); }
 </style>
