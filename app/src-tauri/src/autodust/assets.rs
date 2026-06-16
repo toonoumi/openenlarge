@@ -20,36 +20,39 @@ pub struct Asset {
 }
 
 // ============================================================================
-// RELEASE CONFIG — placeholders until the models are built, signed, and hosted
-// (Phase 6 of the plan). The DOWNLOAD path cannot succeed until url/sha256/size
-// are real, but status checks, verify logic, command wiring, and UI are all
-// testable. Do NOT ship a release with placeholders. The runtime asset mirrors
-// the upscaler's (Developer-ID re-signed dylib on macOS) and MUST match it.
+// RELEASE CONFIG — MI-GAN + runtime are hosted and real. The RUNTIME asset is
+// the SAME ONNX Runtime dylib as the upscaler (upscaler-assets-v1 tag), reused
+// here so a runtime installed by either feature satisfies both. MI-GAN is the
+// `migan_pipeline_v2.onnx` inpainting pipeline (autodust-assets-v1 tag).
+// The DETECTOR is still a placeholder — its only source is a PyTorch pickle
+// (leonelhs/zeroscratches, derived from Microsoft BOPBTL) that must be converted
+// to ONNX before it can be hosted; until then the download gate stays closed.
 // ============================================================================
 #[cfg(target_os = "macos")]
 const RUNTIME: Asset = Asset {
     file_name: "libonnxruntime.dylib",
-    url: "https://example.invalid/REPLACE_macos_arm64_libonnxruntime.dylib",
-    sha256: "0000000000000000000000000000000000000000000000000000000000000000",
-    size: 25_000_000,
+    url: "https://github.com/MohaElder/openenlarge/releases/download/upscaler-assets-v1/libonnxruntime.dylib",
+    sha256: "ba6ff4015f593fa87682b0e7d36164c1f7fa05148b7dff442efb34e13a60bf1a",
+    size: 37_078_528,
 };
 #[cfg(target_os = "windows")]
 const RUNTIME: Asset = Asset {
     file_name: "onnxruntime.dll",
-    url: "https://example.invalid/REPLACE_windows_x64_onnxruntime.dll",
-    sha256: "0000000000000000000000000000000000000000000000000000000000000000",
-    size: 40_000_000,
+    url: "https://github.com/MohaElder/openenlarge/releases/download/upscaler-assets-v1/onnxruntime.dll",
+    sha256: "b2ba7ca16e0e4fe71ad5148744ab885a2f5809e52a0c3de4d9ba3853a03977f9",
+    size: 14_897_976,
 };
 #[cfg(target_os = "linux")]
 const RUNTIME: Asset = Asset {
     file_name: "libonnxruntime.so",
-    url: "https://example.invalid/REPLACE_linux_x64_libonnxruntime.so",
-    sha256: "0000000000000000000000000000000000000000000000000000000000000000",
-    size: 15_000_000,
+    url: "https://github.com/MohaElder/openenlarge/releases/download/upscaler-assets-v1/libonnxruntime.so",
+    sha256: "5bd5bedf736fc501692435d0ec4f6e8b2bdf48cd30af8e6d00d61b3ddc9a7ab8",
+    size: 23_023_576,
 };
 
-/// Learned defect detector (segmentation U-Net): grayscale in → 1-channel
-/// probability out. See docs/superpowers/spikes/autodust-model-notes.md.
+/// Learned defect detector (BOPBTL scratch/dust U-Net): grayscale in → 1-channel
+/// logits out. PLACEHOLDER — pending ONNX conversion + hosting (see module-level
+/// RELEASE CONFIG note and docs/superpowers/spikes/autodust-model-notes.md).
 const DETECTOR: Asset = Asset {
     file_name: "detector.onnx",
     url: "https://example.invalid/REPLACE_autodust_detector.onnx",
@@ -57,12 +60,13 @@ const DETECTOR: Asset = Asset {
     size: 30_000_000,
 };
 
-/// Learned inpainter (MI-GAN): image + mask in → RGB out.
+/// Learned inpainter — MI-GAN `migan_pipeline_v2.onnx` (uint8 image+mask in →
+/// uint8 RGB out). From huggingface.co/andraniksargsyan/migan (MIT).
 const MIGAN: Asset = Asset {
     file_name: "migan.onnx",
-    url: "https://example.invalid/REPLACE_autodust_migan.onnx",
-    sha256: "0000000000000000000000000000000000000000000000000000000000000000",
-    size: 10_000_000,
+    url: "https://github.com/MohaElder/openenlarge/releases/download/autodust-assets-v1/migan_pipeline_v2.onnx",
+    sha256: "6f1f3530a1a2324b19752018ce756088b07973cda8d7d890034ace5c8a48c40b",
+    size: 28_079_181,
 };
 
 /// The two model assets required by this module (runtime is handled separately

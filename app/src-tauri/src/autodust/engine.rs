@@ -155,11 +155,11 @@ pub fn detect(app_data: &Path, src: &Image) -> Result<Vec<f32>, String> {
 /// the tile's pixels are left untouched (degrading a render beats aborting it —
 /// same policy as `film_core::dust::inpaint_masked`).
 ///
-/// PHASE-0: the input is built as 4-channel NCHW [1,4,h,w] = (R,G,B, mask) with
-/// the masked RGB zeroed and mask=1 inside the hole; output is read as [1,3,h,w]
-/// RGB. Confirm MI-GAN's true input arity (single 4-ch tensor vs separate
-/// image+mask inputs), mask polarity (1=hole vs 1=keep), and fixed input size
-/// (if the model is static e.g. 512, resize the window to it and back here).
+/// MI-GAN `migan_pipeline_v2.onnx` contract (verified against the real model):
+/// two uint8 NCHW inputs — `image` [1,3,h,w] and `mask` [1,1,h,w] where 255 =
+/// KEEP and 0 = HOLE — and one uint8 output `result` [1,3,h,w]. The pipeline
+/// crops around the hole, resizes to 512, inpaints, and blends back internally,
+/// so we feed each masked tile at native size and keep fills sharp.
 pub fn inpaint(app_data: &Path, img: &mut Image, mask: &Mask) -> Result<(), String> {
     if mask.w == 0 || mask.h == 0 {
         return Ok(());
@@ -168,36 +168,33 @@ pub fn inpaint(app_data: &Path, img: &mut Image, mask: &Mask) -> Result<(), Stri
     let tiles = plan_tiles(img.width, img.height, TILE, TILE_PAD);
     let sel = masked_tiles(&tiles, mask);
 
-    let input_name = session.inputs()[0].name().to_string();
-    let output_name = session.outputs()[0].name().to_string();
+    let to_u8 = |v: f32| -> u8 { (v.clamp(0.0, 1.0) * 255.0 + 0.5) as u8 };
 
     for &i in &sel {
         let t = tiles[i];
-        // Build the 4-channel input (masked RGB + mask) for the padded window.
-        let mut input = Array4::<f32>::zeros((1, 4, t.sh, t.sw));
+        // image: uint8 RGB; mask: uint8 grayscale (0 = hole, 255 = keep).
+        let mut image_t = Array4::<u8>::zeros((1, 3, t.sh, t.sw));
+        let mut mask_t = Array4::<u8>::from_elem((1, 1, t.sh, t.sw), 255u8);
         for yy in 0..t.sh {
             for xx in 0..t.sw {
                 let gx = t.sx + xx;
                 let gy = t.sy + yy;
-                let masked = gx < mask.w && gy < mask.h && mask.bits[gy * mask.w + gx];
                 let p = img.pixels[gy * img.width + gx];
-                let m = if masked { 1.0 } else { 0.0 };
-                // Zero the RGB inside the hole; pass mask in channel 3.
-                input[[0, 0, yy, xx]] = if masked { 0.0 } else { p[0] };
-                input[[0, 1, yy, xx]] = if masked { 0.0 } else { p[1] };
-                input[[0, 2, yy, xx]] = if masked { 0.0 } else { p[2] };
-                input[[0, 3, yy, xx]] = m;
+                image_t[[0, 0, yy, xx]] = to_u8(p[0]);
+                image_t[[0, 1, yy, xx]] = to_u8(p[1]);
+                image_t[[0, 2, yy, xx]] = to_u8(p[2]);
+                if gx < mask.w && gy < mask.h && mask.bits[gy * mask.w + gx] {
+                    mask_t[[0, 0, yy, xx]] = 0; // hole
+                }
             }
         }
-        let tensor = match Tensor::from_array(input) {
-            Ok(t) => t,
-            Err(_) => continue,
-        };
-        let outputs = match session.run(ort::inputs![input_name.as_str() => tensor]) {
+        let image_v = match Tensor::from_array(image_t) { Ok(v) => v, Err(_) => continue };
+        let mask_v = match Tensor::from_array(mask_t) { Ok(v) => v, Err(_) => continue };
+        let outputs = match session.run(ort::inputs!["image" => image_v, "mask" => mask_v]) {
             Ok(o) => o,
             Err(_) => continue, // leave this tile untouched on inference error
         };
-        let view = match outputs[output_name.as_str()].try_extract_array::<f32>() {
+        let view = match outputs["result"].try_extract_array::<u8>() {
             Ok(v) => v,
             Err(_) => continue,
         };
@@ -215,9 +212,9 @@ pub fn inpaint(app_data: &Path, img: &mut Image, mask: &Mask) -> Result<(), Stri
                 }
                 let (sy, sx) = (t.iy + yy, t.ix + xx);
                 img.pixels[gy * img.width + gx] = [
-                    view[[0, 0, sy, sx]].clamp(0.0, 1.0),
-                    view[[0, 1, sy, sx]].clamp(0.0, 1.0),
-                    view[[0, 2, sy, sx]].clamp(0.0, 1.0),
+                    view[[0, 0, sy, sx]] as f32 / 255.0,
+                    view[[0, 1, sy, sx]] as f32 / 255.0,
+                    view[[0, 2, sy, sx]] as f32 / 255.0,
                 ];
             }
         }
