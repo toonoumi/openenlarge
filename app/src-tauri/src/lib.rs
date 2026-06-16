@@ -61,6 +61,7 @@ pub fn run() {
             commands::encode_hdr,
             commands::thumbnail,
             commands::export_image,
+            commands::export_image_hdr,
             commands::export_begin,
             commands::export_pixels,
             commands::export_finish,

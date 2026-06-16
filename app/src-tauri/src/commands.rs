@@ -1030,6 +1030,78 @@ pub fn export_image(
     Ok(())
 }
 
+/// Export a single developed image as a gain-map HDR JPEG. Mirrors `export_image`
+/// (decode full-res → orient/rotate/crop → invert+dust+IR+finish) but renders the
+/// SDR base and the HDR rendition and muxes them. JPEG-only by construction; the
+/// frontend only calls this when the chosen format is JPEG and the image's HDR
+/// toggle is on. `format.quality` drives JPEG quality; `format.max_bytes` is not
+/// applied (the gain-map encoder has no size target).
+#[allow(clippy::too_many_arguments)]
+#[tauri::command]
+pub fn export_image_hdr(
+    id: String,
+    params: InvertParams,
+    out_path: String,
+    image_crop: Option<[f64; 4]>,
+    rot90: u8,
+    flip_h: bool,
+    flip_v: bool,
+    angle: f32,
+    dust: Vec<DustStroke>,
+    ir_removal: IrRemoval,
+    format: ExportFormat,
+    meta_override: Option<MetaOverride>,
+    session: State<Session>,
+) -> Result<(), String> {
+    ensure_resident(&session, &id)?;
+    let (path, base, thumb, metadata, dev_dmax) = {
+        let images = session.images.lock().unwrap();
+        let img = images.get(&id).ok_or("unknown image id")?;
+        let dev = img.developed.as_ref().ok_or("not developed")?;
+        (
+            img.path.clone(),
+            dev.base,
+            dev.thumb.clone(),
+            img.metadata.clone(),
+            dev.d_max,
+        )
+    };
+    let full = decode_any(Path::new(&path))?;
+    let full = orient(&full, rot90, flip_h, flip_v);
+    let full = rotate(&full, angle);
+    let full = match image_crop {
+        Some(nc) => {
+            let (x, y, w, h) = crop_px(nc, full.width, full.height);
+            crop(&full, x, y, w, h)
+        }
+        None => full,
+    };
+
+    let mut ip = resolve_params(&params, &thumb, effective_base(&params, base));
+    ip.d_max = effective_dmax(&params, dev_dmax);
+    let stamps = export_stamps(&dust, full.width, full.height);
+    let finish = finish_from(&params);
+
+    let bytes = render_and_encode_hdr(
+        &full,
+        &ip,
+        mode_from(&params.mode),
+        &finish,
+        &stamps,
+        &ir_removal,
+        format.quality,
+    )?;
+
+    std::fs::write(&out_path, &bytes).map_err(|e| format!("write {out_path}: {e}"))?;
+
+    // Best-effort EXIF embed, identical policy to export_image (never fails export).
+    let eff = effective_metadata(&metadata, meta_override.as_ref());
+    if let Err(e) = crate::exif_write::write_exif(Path::new(&out_path), &eff) {
+        eprintln!("[exif] embed failed for {out_path}: {e}");
+    }
+    Ok(())
+}
+
 /// Dims + resolved inversion uniforms handed back to the frontend so it can
 /// upload the baked source and render invert+finish offscreen.
 #[derive(Debug, Clone, serde::Serialize)]
