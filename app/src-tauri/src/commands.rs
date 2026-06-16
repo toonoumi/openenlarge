@@ -782,6 +782,92 @@ pub fn render_view(
     to_jpeg_b64(&out, false, PREVIEW_JPEG_QUALITY)
 }
 
+/// Render the developed image (geometry + crop + develop params) as an SDR base
+/// AND an HDR rendition, encode a gain-map JPEG, and return it as a data URL for
+/// an `<img src>`. The SDR rendition matches `render_view`'s finished output
+/// exactly (same geometry, params, dust/IR retouch, and finish); the HDR
+/// rendition re-runs the same pipeline with `hdr` highlight expansion enabled.
+#[tauri::command]
+pub fn encode_hdr(
+    id: String,
+    params: InvertParams,
+    view: ViewSpec,
+    session: State<Session>,
+) -> Result<String, String> {
+    ensure_resident(&session, &id)?;
+    let images = session.images.lock().unwrap();
+    let img = images.get(&id).ok_or("unknown image id")?;
+    let dev = img.developed.as_ref().ok_or("not developed")?;
+
+    // Geometry: orient (lossless) → straighten → persistent crop, then the view
+    // crop — identical to `render_view`.
+    let oriented = orient(&dev.working, view.rot90, view.flip_h, view.flip_v);
+    let straightened = rotate(&oriented, view.angle);
+    let base_img = match view.image_crop {
+        Some(nc) => {
+            let (ix, iy, iw, ih) = crop_px(nc, straightened.width, straightened.height);
+            crop(&straightened, ix, iy, iw, ih)
+        }
+        None => straightened,
+    };
+    let (ometa_w, _) = orient_dims(
+        img.metadata.width as usize,
+        img.metadata.height as usize,
+        view.rot90,
+    );
+    let s_scale = oriented.width as f64 / ometa_w.max(1) as f64;
+    let cx = (view.crop[0] * s_scale).max(0.0).round() as usize;
+    let cy = (view.crop[1] * s_scale).max(0.0).round() as usize;
+    let cw = (view.crop[2] * s_scale).round().max(1.0) as usize;
+    let ch = (view.crop[3] * s_scale).round().max(1.0) as usize;
+    let cropped = crop(&base_img, cx, cy, cw, ch);
+    if cropped.pixels.is_empty() {
+        return Err("empty crop".into());
+    }
+    let (cw_px, ch_px) = (cropped.width, cropped.height);
+    let scaled = resize_to(&cropped, view.out_w.max(1), view.out_h.max(1));
+
+    // Develop params identical to `render_view`'s construction.
+    let mut ip = resolve_params(&params, &dev.thumb, effective_base(&params, dev.base));
+    ip.d_max = effective_dmax(&params, dev.d_max);
+    let mode = mode_from(&params.mode);
+    let finish = finish_from(&params);
+    let stamps = view_stamps(
+        &view.dust,
+        base_img.width,
+        base_img.height,
+        cx,
+        cy,
+        cw_px,
+        ch_px,
+        view.out_w.max(1),
+        view.out_h.max(1),
+    );
+
+    // Shared retouch + finish applied to one inverted image; returns the finished
+    // display-referred result (matches `render_view` when `view.finish`).
+    let render = |ip: &InversionParams| -> film_core::Image {
+        let mut inv = invert_image(&scaled, ip, mode);
+        dust::apply(&mut inv, &stamps);
+        if view.ir_removal.enabled {
+            if let Some(ir) = scaled.ir.as_ref() {
+                dust::apply_ir(&mut inv, ir, view.ir_removal.sensitivity);
+            }
+        }
+        finish_image(&inv, &finish)
+    };
+
+    let sdr = render(&ip);
+    let mut ip_hdr = ip.clone();
+    ip_hdr.hdr = true;
+    let hdr = render(&ip_hdr);
+
+    let jpeg = crate::hdr::encode_gain_map_jpeg(&sdr, &hdr, PREVIEW_JPEG_QUALITY)?;
+    use base64::Engine;
+    let b64 = base64::engine::general_purpose::STANDARD.encode(&jpeg);
+    Ok(format!("data:image/jpeg;base64,{b64}"))
+}
+
 /// The persistent per-image edits that shape a thumbnail's geometry and retouching.
 /// Mirrors the relevant `ViewSpec` fields but without the zoom/view crop — a
 /// thumbnail always shows the whole (cropped) frame. All fields default so the

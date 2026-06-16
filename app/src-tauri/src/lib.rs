@@ -5,7 +5,6 @@ mod convert;
 mod encode;
 mod exif_write;
 mod gpu_upload;
-#[allow(dead_code)] // public encoder consumed by upcoming HDR export task
 mod hdr;
 mod metadata;
 mod session;
@@ -59,6 +58,7 @@ pub fn run() {
             commands::set_quality,
             commands::delete_image,
             commands::render_view,
+            commands::encode_hdr,
             commands::thumbnail,
             commands::export_image,
             commands::export_begin,
