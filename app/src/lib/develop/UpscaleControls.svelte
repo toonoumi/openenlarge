@@ -29,7 +29,7 @@
 
   onMount(async () => {
     unlistenDl = await listen<{ received: number; total: number }>(
-      "upscale://download-progress", (e) => { dlReceived = e.payload.received; dlTotal = e.payload.total; });
+      "upscale://download-progress", (e) => { if (downloading) { dlReceived = e.payload.received; dlTotal = e.payload.total; } });
     unlistenUp = await listen<{ done: number; total: number }>(
       "upscale://progress", (e) => { if (busy) progress = e.payload.total ? e.payload.done / e.payload.total : 0; });
     try { const s = await api.upscalerStatus(); $upscalerInstalled = s.installed; downloadBytes = s.downloadBytes; }
