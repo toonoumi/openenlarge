@@ -17,6 +17,7 @@
   let dlReceived = 0;
   let dlTotal = 0;
   let busy = false;
+  let saving = false;
   let progress = 0;
   let error = "";
   let result = "";
@@ -62,8 +63,10 @@
       ext === "tiff" || ext === "tif" ? { kind: "tiff", bitDepth: 16 }
       : ext === "jpg" || ext === "jpeg" ? { kind: "jpeg", quality: 92 }
       : { kind: "png", bitDepth: 16 };
+    error = ""; saving = true;
     try { await api.saveUpscaled(path, format); }
     catch (e) { error = String(e); }
+    finally { saving = false; }
   }
 </script>
 
@@ -79,10 +82,10 @@
     {/if}
   {:else}
     <div class="seg">
-      <button class:on={target === 3840} on:click={() => (target = 3840)}>{$t("upscale.res4k")}</button>
-      <button class:on={target === 7680} on:click={() => (target = 7680)}>{$t("upscale.res8k")}</button>
+      <button class:on={target === 3840} disabled={busy || saving} on:click={() => (target = 3840)}>{$t("upscale.res4k")}</button>
+      <button class:on={target === 7680} disabled={busy || saving} on:click={() => (target = 7680)}>{$t("upscale.res8k")}</button>
     </div>
-    <button class="btn go" class:busy disabled={busy || disabled} on:click={doUpscale}>
+    <button class="btn go" class:busy disabled={busy || saving || disabled} on:click={doUpscale}>
       {#if busy}<span class="spinner" aria-hidden="true"></span>{/if}
       <span>{busy ? $t("upscale.working") : $t("upscale.button")}</span>
     </button>
@@ -90,7 +93,10 @@
     {#if result}
       <img class="preview" src={result} alt={$t("upscale.title")} />
       <div class="dims">{outW} × {outH}</div>
-      <button class="btn" on:click={saveResult}>{$t("upscale.save")}</button>
+      <button class="btn" class:busy={saving} disabled={saving} on:click={saveResult}>
+        {#if saving}<span class="spinner" aria-hidden="true"></span>{/if}
+        <span>{saving ? $t("upscale.saving") : $t("upscale.save")}</span>
+      </button>
     {/if}
   {/if}
   {#if error}<div class="err">{error}</div>{/if}
@@ -103,6 +109,7 @@
   .seg button { flex: 1; padding: 6px; border-radius: 8px; font-size: 12px;
     border: 1px solid var(--glass-brd); background: transparent; color: var(--text-dim); cursor: pointer; }
   .seg button.on { color: #fff; background: rgba(244,157,78,0.18); border-color: rgba(244,157,78,0.5); }
+  .seg button:disabled { opacity: 0.55; cursor: default; }
   .btn { width: 100%; padding: 8px 10px; margin: 4px 0; border-radius: 8px;
     display: flex; align-items: center; justify-content: center; gap: 8px;
     border: 1px solid var(--glass-brd); background: transparent; color: var(--text); cursor: pointer; font-size: 13px; }

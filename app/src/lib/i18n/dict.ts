@@ -348,6 +348,7 @@ export const dict: Record<string, Record<string, string>> = {
     "upscale.res4k": "4K",
     "upscale.res8k": "8K",
     "upscale.enhancedLabel": "Upscale this result",
+    "upscale.saving": "Saving…",
   },
   zh: {
     "app.brand": "OpenEnlarge",
@@ -696,5 +697,6 @@ export const dict: Record<string, Record<string, string>> = {
     "upscale.res4k": "4K",
     "upscale.res8k": "8K",
     "upscale.enhancedLabel": "放大此结果",
+    "upscale.saving": "保存中…",
   },
 };

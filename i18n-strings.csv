@@ -345,3 +345,4 @@ upscale.hint,"Runs a local AI model on your device (no upload). Output is capped
 upscale.res4k,"4K","4K","src/lib/develop/UpscaleControls.svelte","button"
 upscale.res8k,"8K","8K","src/lib/develop/UpscaleControls.svelte","button"
 upscale.enhancedLabel,"Upscale this result","放大此结果","src/lib/develop/AiEnhancePanel.svelte","label"
+upscale.saving,"Saving…","保存中…","src/lib/develop/UpscaleControls.svelte","button"
