@@ -9,7 +9,7 @@
   import { toneLutBytes, colorGrade, colorMix } from "../develop/finish";
   import { screenRadius, type DustStroke } from "../develop/dust";
   import { readCanvasPixel } from "../develop/colorPick";
-  import { orientUVMatrix } from "../crop/transforms";
+  import { orientUVMatrix, displayToSourceUV } from "../crop/transforms";
   import { t } from "$lib/i18n";
 
   export let id: string | null;
@@ -38,7 +38,7 @@
   /** Whether the strokes have been MI-GAN-applied (heal baked) vs shown as overlay. */
   export let aiApplied = false;
 
-  const dispatch = createEventDispatcher<{ stroke: DustStroke; brush: number; pointpick: { r: number; g: number; b: number }; aierased: void }>();
+  const dispatch = createEventDispatcher<{ stroke: DustStroke; brush: number; pointpick: { r: number; g: number; b: number; u: number; v: number }; aierased: void }>();
 
   const CAP = 5000;
   const PAD = 60;
@@ -424,8 +424,12 @@
       moved = true;
       if (canvas) {
         const rect = canvas.getBoundingClientRect();
-        const rgb = readCanvasPixel(canvas, e.clientX - rect.left, e.clientY - rect.top);
-        if (rgb) dispatch("pointpick", { r: rgb[0], g: rgb[1], b: rgb[2] });
+        const px = e.clientX - rect.left, py = e.clientY - rect.top;
+        // Working-image UV of the click: the canvas is the crop window of the
+        // oriented image, so map the normalized click back through crop+orient.
+        const [u, v] = displayToSourceUV(px / rect.width, py / rect.height, imageCrop, rot90, flipH, flipV);
+        const rgb = readCanvasPixel(canvas, px, py);
+        if (rgb) dispatch("pointpick", { r: rgb[0], g: rgb[1], b: rgb[2], u, v });
       }
       return;
     }

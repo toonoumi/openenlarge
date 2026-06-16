@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { rotateRectCW, rotateRectCCW, flipRectH, flipRectV, orientDims, flipOrient } from "./transforms";
+import { rotateRectCW, rotateRectCCW, flipRectH, flipRectV, orientDims, flipOrient, displayToSourceUV } from "./transforms";
 import type { Rect } from "./types";
 const r = (x: number, y: number, w: number, h: number): Rect => ({ x, y, w, h });
 const close = (a: Rect, b: Rect) => {
@@ -89,5 +89,29 @@ describe("flipOrient", () => {
         const twice = flipOrient(once, axis);
         expect(twice).toEqual(start);
       }
+  });
+});
+
+describe("displayToSourceUV", () => {
+  const closeUV = (a: [number, number], b: [number, number]) => {
+    expect(a[0]).toBeCloseTo(b[0], 6); expect(a[1]).toBeCloseTo(b[1], 6);
+  };
+  it("identity maps a point to itself", () => {
+    closeUV(displayToSourceUV(0.3, 0.7, null, 0, false, false), [0.3, 0.7]);
+  });
+  it("un-crops into the oriented full image", () => {
+    // crop window [0.25,0.25,0.5,0.5]; display center → source center.
+    closeUV(displayToSourceUV(0.5, 0.5, [0.25, 0.25, 0.5, 0.5], 0, false, false), [0.5, 0.5]);
+    // display top-left → crop top-left in source.
+    closeUV(displayToSourceUV(0, 0, [0.25, 0.25, 0.5, 0.5], 0, false, false), [0.25, 0.25]);
+  });
+  it("inverts a 90° CW rotation (display top-left → source bottom-left)", () => {
+    closeUV(displayToSourceUV(0, 0, null, 1, false, false), [0, 1]);
+  });
+  it("inverts a horizontal flip (display left → source right)", () => {
+    closeUV(displayToSourceUV(0, 0.4, null, 0, true, false), [1, 0.4]);
+  });
+  it("inverts a vertical flip (display top → source bottom)", () => {
+    closeUV(displayToSourceUV(0.4, 0, null, 0, false, true), [0.4, 1]);
   });
 });

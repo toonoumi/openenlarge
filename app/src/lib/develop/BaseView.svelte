@@ -7,9 +7,8 @@
   export let params: InvertParams;
   export let imgW = 0;   // working-image dims (uncropped, oriented identity)
   export let imgH = 0;
-  export let mode: "base" | "whitepoint" = "base";
 
-  const dispatch = createEventDispatcher<{ sampled: [number, number, number]; dmax: number }>();
+  const dispatch = createEventDispatcher<{ sampled: [number, number, number] }>();
   const PAD = 60, CAP = 4000;
   // Sampled patch as a fraction of image WIDTH (~1%); height matched for square px.
   // Click samples a small averaged patch (robust to grain/dust) rather than one pixel.
@@ -36,12 +35,8 @@
     const out_w = Math.max(1, Math.round(imgW * rscale));
     const out_h = Math.max(1, Math.round(imgH * rscale));
     try {
-      // Base mode shows the raw negative (you pick the orange rebate); white-point
-      // mode shows the DEVELOPED positive (like the WB picker) so the user targets
-      // the leader against the image they actually see.
       src = await api.renderView(id, params, {
-        crop: [0, 0, imgW, imgH], out_w, out_h,
-        raw: mode !== "whitepoint", finish: mode === "whitepoint",
+        crop: [0, 0, imgW, imgH], out_w, out_h, raw: true, finish: false,
         image_crop: null, rot90: 0, flip_h: false, flip_v: false, angle: 0,
       });
     } catch { /* keep last */ }
@@ -60,13 +55,8 @@
     const y = clamp01(ny - h / 2);
     const rect: [number, number, number, number] = [x, y, Math.min(w, 1 - x), Math.min(h, 1 - y)];
     try {
-      if (mode === "whitepoint") {
-        const { d_max } = await api.analyzeWhitePoint(id, params, rect);
-        dispatch("dmax", d_max);
-      } else {
-        const b = await api.sampleBaseAt(id, rect);
-        dispatch("sampled", b);
-      }
+      const b = await api.sampleBaseAt(id, rect);
+      dispatch("sampled", b);
     } catch { /* ignore */ }
   }
 

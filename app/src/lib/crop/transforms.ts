@@ -53,3 +53,28 @@ export function orientUVMatrix(
   const fx = flipH ? -1 : 1, fy = flipV ? -1 : 1;
   return [c * fx, -s * fy, s * fx, c * fy];
 }
+
+/**
+ * Map a normalized point in the DISPLAYED (cropped + oriented) viewport back to
+ * SOURCE / working-image normalized coords. The displayed canvas is the `crop`
+ * window of the oriented image, and orient = flip_h → flip_v → rot90 CW (see
+ * convert.rs). So we un-crop into oriented UV, then invert the orientation in
+ * reverse order: rotate CCW `rot90` times, then flip_v, then flip_h — using the
+ * same point math as the verified `rotateRectCCW`/`flipRect*` helpers. The fine
+ * straighten `angle` is ignored (sub-degree; the base picker ignores it too).
+ */
+export function displayToSourceUV(
+  u: number, v: number,
+  crop: [number, number, number, number] | null,
+  rot90: number, flipH: boolean, flipV: boolean,
+): [number, number] {
+  const [cx, cy, cw, ch] = crop ?? [0, 0, 1, 1];
+  // Un-crop: displayed UV → oriented full-image UV.
+  let x = cx + u * cw, y = cy + v * ch;
+  // Invert rot90 CW (rotateRectCCW for a point: (x,y) → (y, 1 - x)).
+  const k = ((rot90 % 4) + 4) % 4;
+  for (let i = 0; i < k; i++) { const nx = y, ny = 1 - x; x = nx; y = ny; }
+  if (flipV) y = 1 - y;
+  if (flipH) x = 1 - x;
+  return [x, y];
+}

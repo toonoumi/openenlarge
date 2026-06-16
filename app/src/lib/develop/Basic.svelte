@@ -1,13 +1,14 @@
 <script lang="ts">
   import { get } from "svelte/store";
   import { t } from "$lib/i18n";
-  import { params, activeId, images, folderBaseByPath, baseSampling, sampledBase, whitePointSampling, sampledDmax, whitePointPinned } from "../store";
+  import { params, activeId, images, folderBaseByPath, baseSampling, sampledBase, sampledDmax, whitePointPinned } from "../store";
   import { api, defaultParams } from "../api";
   import { reseedActive, commitActive } from "./historyStore";
   import { createSeedGuard } from "./seedGuard";
   import { withEffectiveBase } from "./base";
   import { imageDir } from "../library/folderScope";
   import Icon from "../icons/Icon.svelte";
+  import HelpDot from "./HelpDot.svelte";
   import Slider from "./Slider.svelte";
   import { TEMP_GRADIENT, TINT_GRADIENT, SAT_GRADIENT, signed, ev, kelvin } from "./gradients";
   import { slide } from "svelte/transition";
@@ -44,7 +45,7 @@
 
   // Reset any in-progress sampling when the active image changes.
   // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-  $: { $activeId; sampledBase.set(null); baseSampling.set(false); whitePointSampling.set(false); sampledDmax.set(null); }
+  $: { $activeId; sampledBase.set(null); baseSampling.set(false); sampledDmax.set(null); }
   // 8-bit swatch preview of a linear base (display gamma ~1/2.2).
   const baseCss = (b: [number, number, number] | null) =>
     b ? `rgb(${b.map((v) => Math.round(255 * Math.min(1, Math.max(0, v ** (1 / 2.2))))).join(",")})` : "transparent";
@@ -68,7 +69,8 @@
     });
   }
 
-  // Apply a freshly measured white-point D_max: pin it, override, reseed WB, close tool.
+  // Apply a freshly measured white-point D_max (from the Tone-section picker in the
+  // parent viewport): pin it, override, reseed WB. Handed off via the sampledDmax store.
   function applyWhitePointDmax(d: number) {
     const id = get(activeId); if (!id) { sampledDmax.set(null); return; }
     setPinned(id, true);
@@ -76,7 +78,6 @@
     commitActive();
     autoWb();
     sampledDmax.set(null);
-    whitePointSampling.set(false);
   }
   $: if ($sampledDmax != null) applyWhitePointDmax($sampledDmax);
 
@@ -223,7 +224,7 @@
           <button class="wbdrop" class:on={wbPicking} title={$t('basic.grayPick')} on:click={() => onWbPick?.()}>
             <Icon name="pipette" size={14} />
           </button>
-          <span class="help" title={$t('basic.grayPickHelp')} aria-label={$t('basic.grayPickHelp')}>?</span>
+          <HelpDot text={$t('basic.grayPickHelp')} />
           <button class="auto" on:click={autoWb}>{$t('basic.auto')}</button>
         </span>
       </div>
@@ -274,10 +275,6 @@
     background: transparent; border: 1px solid var(--glass-brd); color: var(--text-dim);
     border-radius: 6px; padding: 2px 6px; cursor: pointer; }
   .wbdrop.on { color: var(--text); border-color: var(--accent); }
-  /* Small "?" badge: hover shows native tooltip explaining what to pick. */
-  .help { display: inline-flex; align-items: center; justify-content: center;
-    width: 15px; height: 15px; border-radius: 50%; border: 1px solid var(--glass-brd);
-    color: var(--text-dim); font-size: 10px; line-height: 1; cursor: help; user-select: none; }
 
   /* Film Base */
   .cube { width: 16px; height: 16px; border-radius: 4px; border: 1px solid var(--glass-brd);

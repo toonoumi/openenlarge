@@ -1,7 +1,14 @@
 <script lang="ts">
   import { t } from "$lib/i18n";
-  import { params, whitePointSampling } from "../store";
+  import { params } from "../store";
   import Icon from "../icons/Icon.svelte";
+  import HelpDot from "./HelpDot.svelte";
+
+  // White-point picker is owned by the parent (Develop) viewport crosshair, same
+  // as the WB gray-point picker — so it respects crop + orientation. These props
+  // arm it; the sampled D_max is applied by the reactor in Basic.svelte.
+  export let onWpPick: (() => void) | null = null;
+  export let wpPicking = false;
   import Slider from "./Slider.svelte";
   import CurveEditor from "./CurveEditor.svelte";
   import { signed } from "./gradients";
@@ -44,14 +51,12 @@
     </button>
     <span class="headbtns">
       <!-- White-point picker: anchors highlights/contrast (D_max). Lives in the Tone
-           section because it shapes lighting. Toggles the global sampling store; the
-           sampled D_max is applied by the reactor in Basic.svelte. -->
-      <button class="wpdrop" class:on={$whitePointSampling}
-              on:click={() => whitePointSampling.update((v) => !v)}
+           section because it shapes lighting. -->
+      <button class="wpdrop" class:on={wpPicking} on:click={() => onWpPick?.()}
               title={$t('curve.whitepoint')} aria-label={$t('curve.whitepoint')}>
         <Icon name="pipette" size={14} />
       </button>
-      <span class="help" title={$t('curve.whitepointHelp')} aria-label={$t('curve.whitepointHelp')}>?</span>
+      <HelpDot text={$t('curve.whitepointHelp')} />
       <button class="reset" on:click={resetTone}>{$t('curve.reset')}</button>
     </span>
   </div>
@@ -91,10 +96,6 @@
     background: transparent; border: 1px solid var(--glass-brd); color: var(--text-dim);
     border-radius: 6px; padding: 2px 6px; cursor: pointer; }
   .wpdrop.on { color: var(--text); border-color: var(--accent); }
-  /* Small "?" badge: hover shows native tooltip explaining what to pick. */
-  .help { display: inline-flex; align-items: center; justify-content: center;
-    width: 15px; height: 15px; border-radius: 50%; border: 1px solid var(--glass-brd);
-    color: var(--text-dim); font-size: 10px; line-height: 1; cursor: help; user-select: none; }
   .sub { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;
     color: var(--text-dim); margin: 12px 0 4px; }
   .adjust { display: flex; align-items: center; gap: 10px; margin: 6px 0 8px; }

@@ -2,7 +2,7 @@
   import { t } from "$lib/i18n";
   import { fade } from "svelte/transition";
   import { cubicOut } from "svelte/easing";
-  import { activeId, params, images, folderImages, tool, cropById, activeCrop, dustById, activeDust, deleteTarget, dustRev, developRev, folderBaseByPath, baseSampling, sampledBase, whitePointSampling, sampledDmax, selectAll, deleteSelectionIds, setActive } from "../store";
+  import { activeId, params, images, folderImages, tool, cropById, activeCrop, dustById, activeDust, deleteTarget, dustRev, developRev, folderBaseByPath, baseSampling, sampledBase, sampledDmax, selectAll, deleteSelectionIds, setActive } from "../store";
   import { get } from "svelte/store";
   import { imageDir } from "../library/folderScope";
   import { withEffectiveBase } from "../develop/base";
@@ -70,7 +70,6 @@
   // The Film Base tools live in Basic.svelte; here we only render the sampling
   // overlay while armed and disarm it whenever we leave the edit tool.
   $: if ($tool !== "edit" && $baseSampling) baseSampling.set(false);
-  $: if ($tool !== "edit" && $whitePointSampling) whitePointSampling.set(false);
 
   // ---- Crop draft state (only while tool === "crop") ----
   let rect: Rect = { x: 0, y: 0, w: 1, h: 1 };
@@ -284,11 +283,14 @@
   // ---- Eyedropper state ----
   // One crosshair, two consumers: 'pc' = ColorMixer point-colour sample, 'wb' = gray-point
   // white balance. The target string routes the single pointpick event to the right place.
-  let pickTarget: "" | "pc" | "wb" = "";
+  let pickTarget: "" | "pc" | "wb" | "wp" = "";
   function togglePcPick() { pickTarget = pickTarget === "pc" ? "" : "pc"; }
   function toggleWbPick() { pickTarget = pickTarget === "wb" ? "" : "wb"; }
-  async function onPointPick(e: CustomEvent<{ r: number; g: number; b: number }>) {
-    const { r, g, b } = e.detail;
+  function toggleWpPick() { pickTarget = pickTarget === "wp" ? "" : "wp"; }
+  // Leaving the edit tab cancels an in-progress white-point pick.
+  $: if ($tool !== "edit" && pickTarget === "wp") pickTarget = "";
+  async function onPointPick(e: CustomEvent<{ r: number; g: number; b: number; u: number; v: number }>) {
+    const { r, g, b, u, v } = e.detail;
     const target = pickTarget;
     pickTarget = "";
     if (target === "wb") {
@@ -297,6 +299,18 @@
       // Mark WB user-controlled so a later base/profile change won't auto-reseed over it.
       params.update((p) => ({ ...p, temp: wb.temp, tint: wb.tint, wb_manual: true }));
       reseedActive();
+    } else if (target === "wp") {
+      // White-point: sample a small patch around the click (working-image UV) and
+      // anchor D_max. Hand off via sampledDmax; Basic.svelte applies + pins it.
+      if (!$activeId) return;
+      const P = 0.02;
+      const c01 = (n: number) => (n < 0 ? 0 : n > 1 ? 1 : n);
+      const rect: [number, number, number, number] =
+        [c01(u - P / 2), c01(v - P / 2), P, P];
+      try {
+        const { d_max } = await api.analyzeWhitePoint($activeId, withEffectiveBase(get(params), dir), rect);
+        sampledDmax.set(d_max);
+      } catch { /* not developed yet */ }
     } else if (target === "pc") {
       params.update((p) => {
         const arr = (p.pc_samples ?? []).slice();
@@ -320,10 +334,6 @@
       {:else if $baseSampling}
         <BaseView id={$activeId} params={effParams} imgW={origW} imgH={origH}
                   on:sampled={(e) => sampledBase.set(e.detail)} />
-      {:else if $whitePointSampling}
-        <BaseView id={$activeId} params={effParams} imgW={origW} imgH={origH}
-                  mode="whitepoint"
-                  on:dmax={(e) => sampledDmax.set(e.detail)} />
       {:else}
         <Viewport id={$activeId} params={effParams} imgW={effW} imgH={effH} imageCrop={imageCrop}
                   rot90={cRot} flipH={committed?.flipH ?? false} flipV={committed?.flipV ?? false} angle={committed?.angle ?? 0}
@@ -345,7 +355,7 @@
         <div class="toolpane" in:fade={{ duration: 160, easing: cubicOut }}>
           {#if $tool === "edit"}
             <Basic onWbPick={toggleWbPick} wbPicking={pickTarget === "wb"} imageCrop={imageCrop} />
-            <TonalCurve />
+            <TonalCurve onWpPick={toggleWpPick} wpPicking={pickTarget === "wp"} />
             <ColorGrading />
             <ColorMixer onPick={togglePcPick} picking={pickTarget === "pc"} />
           {:else if $tool === "crop"}
