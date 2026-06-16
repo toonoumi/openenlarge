@@ -7,7 +7,7 @@
 //! docs/superpowers/spikes/autodust-model-notes.md before shipping. Search this
 //! file for `PHASE-0` for every spot that needs confirmation.
 
-use crate::autodust::{TILE, TILE_PAD};
+use crate::autodust::{DETECT_SHORT, TILE, TILE_PAD};
 use crate::upscale::assets as up_assets;
 use crate::autodust::assets;
 use crate::upscale::engine::{plan_tiles, Tile};
@@ -93,58 +93,69 @@ pub fn masked_tiles(tiles: &[Tile], mask: &Mask) -> Vec<usize> {
     out
 }
 
-/// Run the detector over `src` (positive RGB f32 [0,1]), tiled, and return a
-/// whole-frame probability map (`prob[y*w+x]` in [0,1], higher = more likely a
-/// defect).
+/// Round `v` to the nearest positive multiple of 16 (the detector's depth-4
+/// UNet needs both spatial dims divisible by 16).
+fn round16(v: usize) -> usize {
+    (((v + 8) / 16) * 16).max(16)
+}
+
+/// Detection working dims for a `w`×`h` source: short side scaled to
+/// `DETECT_SHORT` (never upscaling beyond native), both rounded to a multiple of
+/// 16. Returns `(dw, dh)`.
+fn detect_dims(w: usize, h: usize) -> (usize, usize) {
+    if w == 0 || h == 0 {
+        return (16, 16);
+    }
+    let short = w.min(h);
+    let target = DETECT_SHORT.min(short); // don't upscale tiny sources
+    let r = target as f64 / short as f64;
+    (round16((w as f64 * r).round() as usize), round16((h as f64 * r).round() as usize))
+}
+
+/// Run the detector over `src` (positive RGB f32 [0,1]) and return a whole-frame
+/// probability map (`prob[y*w+x]` in [0,1], higher = more likely a defect).
 ///
-/// PHASE-0: input is fed as 1-channel grayscale (Rec.709 luma) NCHW [1,1,h,w]
-/// normalized to [0,1]; output is read as [1,1,h,w] and squashed with sigmoid
-/// only when it falls outside [0,1]. Confirm the detector's true input channels
-/// (1 vs 3), normalization (mean/std?), and whether the output is logits.
+/// Real BOPBTL contract: 1-channel grayscale NCHW [1,1,h,w] normalized to
+/// [-1,1] = (luma - 0.5)/0.5; output `logits` [1,1,h,w] → sigmoid. The net is
+/// fully convolutional, so we run it once at `DETECT_SHORT`-short-side and
+/// nearest-upsample the probability map back to the source resolution.
 pub fn detect(app_data: &Path, src: &Image) -> Result<Vec<f32>, String> {
     let mut session = make_session(app_data, &assets::detector_path(app_data))?;
-    let tiles = plan_tiles(src.width, src.height, TILE, TILE_PAD);
-    let mut prob = vec![0f32; src.width * src.height];
-
     let input_name = session.inputs()[0].name().to_string();
     let output_name = session.outputs()[0].name().to_string();
 
-    for t in &tiles {
-        // Build the grayscale input from the padded tile.
-        let mut input = Array4::<f32>::zeros((1, 1, t.sh, t.sw));
-        for yy in 0..t.sh {
-            for xx in 0..t.sw {
-                let p = src.pixels[(t.sy + yy) * src.width + (t.sx + xx)];
-                input[[0, 0, yy, xx]] = luma(p).clamp(0.0, 1.0);
-            }
+    let (dw, dh) = detect_dims(src.width, src.height);
+    let small = crate::convert::resize_to(src, dw as u32, dh as u32);
+
+    // Grayscale, normalized to [-1,1].
+    let mut input = Array4::<f32>::zeros((1, 1, dh, dw));
+    for y in 0..dh {
+        for x in 0..dw {
+            let g = luma(small.pixels[y * dw + x]).clamp(0.0, 1.0);
+            input[[0, 0, y, x]] = g * 2.0 - 1.0;
         }
-        let tensor = Tensor::from_array(input).map_err(|e| e.to_string())?;
-        let outputs = session
-            .run(ort::inputs![input_name.as_str() => tensor])
-            .map_err(|e| format!("detector inference: {e}"))?;
-        let view = outputs[output_name.as_str()]
-            .try_extract_array::<f32>()
-            .map_err(|e| e.to_string())?;
-        let shape = view.shape();
-        // Accept [1,1,h,w] or [1,h,w]; index the last two dims.
-        if shape.len() < 2 {
-            return Err(format!("unexpected detector output shape: {shape:?}"));
-        }
-        let (oh, ow) = (shape[shape.len() - 2], shape[shape.len() - 1]);
-        if oh != t.sh || ow != t.sw {
-            return Err(format!(
-                "detector output {oh}x{ow} != input {}x{}",
-                t.sh, t.sw
-            ));
-        }
-        let flat = view.as_slice().ok_or("detector output not contiguous")?;
-        // Copy the inner (unpadded) rect into the full-frame prob map.
-        for yy in 0..t.ih {
-            for xx in 0..t.iw {
-                let v = flat[(t.iy + yy) * ow + (t.ix + xx)];
-                let p = if (0.0..=1.0).contains(&v) { v } else { sigmoid(v) };
-                prob[(t.oy + yy) * src.width + (t.ox + xx)] = p;
-            }
+    }
+    let tensor = Tensor::from_array(input).map_err(|e| e.to_string())?;
+    let outputs = session
+        .run(ort::inputs![input_name.as_str() => tensor])
+        .map_err(|e| format!("detector inference: {e}"))?;
+    let view = outputs[output_name.as_str()]
+        .try_extract_array::<f32>()
+        .map_err(|e| e.to_string())?;
+    let shape = view.shape();
+    if shape.len() < 2 {
+        return Err(format!("unexpected detector output shape: {shape:?}"));
+    }
+    let (oh, ow) = (shape[shape.len() - 2], shape[shape.len() - 1]);
+    let flat = view.as_slice().ok_or("detector output not contiguous")?;
+
+    // Sigmoid the logits at detection scale, then nearest-upsample to full res.
+    let mut prob = vec![0f32; src.width * src.height];
+    for y in 0..src.height {
+        let sy = (y * oh / src.height.max(1)).min(oh - 1);
+        for x in 0..src.width {
+            let sx = (x * ow / src.width.max(1)).min(ow - 1);
+            prob[y * src.width + x] = sigmoid(flat[sy * ow + sx]);
         }
     }
     Ok(prob)
@@ -246,5 +257,23 @@ mod tests {
         let tiles = plan_tiles(200, 200, 128, 8);
         let mask = Mask { x0: 0, y0: 0, w: 0, h: 0, bits: Vec::new() };
         assert!(masked_tiles(&tiles, &mask).is_empty());
+    }
+
+    #[test]
+    fn detect_dims_scale_short_to_512_and_multiple_of_16() {
+        // 6000x4000 → short 4000 scaled to 512 → ratio 0.128 → 768x512.
+        let (dw, dh) = detect_dims(6000, 4000);
+        assert_eq!((dw, dh), (768, 512));
+        assert_eq!(dw % 16, 0);
+        assert_eq!(dh % 16, 0);
+    }
+
+    #[test]
+    fn detect_dims_never_upscales_small_sources() {
+        // 300x200: short 200 < 512 → keep native, rounded to ÷16.
+        let (dw, dh) = detect_dims(300, 200);
+        assert!(dw <= 304 && dh <= 208, "got {dw}x{dh}");
+        assert_eq!(dw % 16, 0);
+        assert_eq!(dh % 16, 0);
     }
 }

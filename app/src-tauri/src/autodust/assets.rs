@@ -24,9 +24,8 @@ pub struct Asset {
 // the SAME ONNX Runtime dylib as the upscaler (upscaler-assets-v1 tag), reused
 // here so a runtime installed by either feature satisfies both. MI-GAN is the
 // `migan_pipeline_v2.onnx` inpainting pipeline (autodust-assets-v1 tag).
-// The DETECTOR is still a placeholder — its only source is a PyTorch pickle
-// (leonelhs/zeroscratches, derived from Microsoft BOPBTL) that must be converted
-// to ONNX before it can be hosted; until then the download gate stays closed.
+// The DETECTOR is the BOPBTL scratch/dust U-Net (leonelhs/zeroscratches, MIT)
+// converted to ONNX and hosted on autodust-assets-v1. All three assets are real.
 // ============================================================================
 #[cfg(target_os = "macos")]
 const RUNTIME: Asset = Asset {
@@ -50,14 +49,14 @@ const RUNTIME: Asset = Asset {
     size: 23_023_576,
 };
 
-/// Learned defect detector (BOPBTL scratch/dust U-Net): grayscale in → 1-channel
-/// logits out. PLACEHOLDER — pending ONNX conversion + hosting (see module-level
-/// RELEASE CONFIG note and docs/superpowers/spikes/autodust-model-notes.md).
+/// Learned defect detector — BOPBTL scratch/dust U-Net exported to ONNX from
+/// leonelhs/zeroscratches (Microsoft BOPBTL, MIT). Input: grayscale [1,1,h,w]
+/// normalized to [-1,1]; output `logits` [1,1,h,w] (apply sigmoid).
 const DETECTOR: Asset = Asset {
     file_name: "detector.onnx",
-    url: "https://example.invalid/REPLACE_autodust_detector.onnx",
-    sha256: "0000000000000000000000000000000000000000000000000000000000000000",
-    size: 30_000_000,
+    url: "https://github.com/MohaElder/openenlarge/releases/download/autodust-assets-v1/detector.onnx",
+    sha256: "61e4a93d4e94b4fc6212e2e9b785fa12b5cbc9654724b02aaf8b212075bb729f",
+    size: 150_747_327,
 };
 
 /// Learned inpainter — MI-GAN `migan_pipeline_v2.onnx` (uint8 image+mask in →

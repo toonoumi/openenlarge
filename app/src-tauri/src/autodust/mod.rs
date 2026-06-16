@@ -9,9 +9,14 @@
 pub mod assets;
 pub mod engine;
 
-/// Tiling for both nets (256px tiles, 16px overlap), matching the upscaler.
+/// Tiling for the MI-GAN inpaint pass (256px tiles, 16px overlap).
 pub const TILE: usize = 256;
 pub const TILE_PAD: usize = 16;
+
+/// Short-side resolution the detector runs at (rounded to a multiple of 16, never
+/// upscaling beyond native). The BOPBTL net trains at 256-short-side; 512 keeps
+/// fine dust/hair sensitivity while staying fast. Tune via the Phase 0 spike.
+pub const DETECT_SHORT: usize = 512;
 
 /// Result returned to the panel after a detect+remove run (preview + the number
 /// of defect pixels removed), mirroring the upscaler's preview-and-stash flow.
