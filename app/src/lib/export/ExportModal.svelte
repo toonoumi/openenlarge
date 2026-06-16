@@ -22,6 +22,7 @@
   import CropView from "../crop/CropView.svelte";
   import CropPanel from "../crop/CropPanel.svelte";
   import { firstSelected, seedDraft, resolveCrop, type CropDraft } from "./batchCrop";
+  import { wantsHdrExport } from "./hdrExport";
   import { defaultFull, conform, constrainToRotated } from "../crop/cropMath";
   import { presetNormAspect } from "../crop/presets";
   import { rotateRectCW, rotateRectCCW, flipRectH, flipRectV, flipOrient, orientDims } from "../crop/transforms";
@@ -195,6 +196,14 @@
         const d = $dustById[img.id] ?? emptyDust();
         const metaOverride = $metaById[img.id] ?? null;
         const outPath = await join(folder, outName(img.file_name, kind));
+
+        if (wantsHdrExport(kind, p)) {
+          // HDR gain-map JPEG: backend CPU dual-render. Skips the GPU/SDR path.
+          await api.exportImageHdr(img.id, p, outPath, imageCrop, geom, d.strokes, d.irRemoval, format, metaOverride);
+          written.push(outPath);
+          done++;
+          continue;
+        }
 
         const spec: BakeSpec = {
           rot90: crop?.rot90 ?? 0, flip_h: crop?.flipH ?? false, flip_v: crop?.flipV ?? false,
