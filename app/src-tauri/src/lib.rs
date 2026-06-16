@@ -11,6 +11,7 @@ mod hdr;
 mod metadata;
 mod session;
 mod tether;
+mod upscale;
 
 #[cfg(test)]
 pub mod commands_test_support {
