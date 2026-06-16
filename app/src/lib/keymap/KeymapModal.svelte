@@ -66,6 +66,9 @@
     box-shadow: 0 1px 0 rgba(0,0,0,0.3); }
   .foot { display: flex; align-items: center; gap: 10px; }
   .spacer { flex: 1; }
-  .go { padding: 8px 14px; border-radius: 9px; border: 0; background: var(--accent-grad);
-    color: white; font-weight: 600; }
+  /* Matches the update window's .primary close button. */
+  .go { padding: 8px 14px; border-radius: 8px; font-size: 13px; cursor: pointer;
+    border: 1px solid rgba(244,157,78,0.5); background: rgba(244,157,78,0.18); color: #fff;
+    transition: background 0.12s ease, border-color 0.12s ease; }
+  .go:hover { background: rgba(244,157,78,0.30); border-color: rgba(244,157,78,0.75); }
 </style>

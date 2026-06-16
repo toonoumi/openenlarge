@@ -61,7 +61,9 @@
     border: 1px solid var(--glass-brd); }
   .ghost { background: transparent; color: var(--text-dim); }
   .ghost:hover { color: var(--text); background: var(--glass-hi); }
-  .primary { background: rgba(244,157,78,0.18); border-color: rgba(244,157,78,0.5); color: #fff; }
+  .primary { background: rgba(244,157,78,0.18); border-color: rgba(244,157,78,0.5); color: #fff;
+    transition: background 0.12s ease, border-color 0.12s ease; }
+  .primary:hover { background: rgba(244,157,78,0.30); border-color: rgba(244,157,78,0.75); }
   .bar { height: 6px; border-radius: 3px; background: var(--glass-brd); overflow: hidden; margin-top: 10px; }
   .fill { height: 100%; background: var(--accent); transition: width 0.15s; }
 </style>
