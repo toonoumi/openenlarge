@@ -2,7 +2,7 @@
   import { t } from "$lib/i18n";
   import { fade } from "svelte/transition";
   import { cubicOut } from "svelte/easing";
-  import { activeId, params, images, folderImages, tool, cropById, activeCrop, dustById, activeDust, deleteTarget, dustRev, developRev, folderBaseByPath, baseSampling, sampledBase, selectAll, deleteSelectionIds, setActive } from "../store";
+  import { activeId, params, images, folderImages, tool, cropById, activeCrop, dustById, activeDust, deleteTarget, dustRev, developRev, folderBaseByPath, baseSampling, sampledBase, whitePointSampling, sampledDmax, selectAll, deleteSelectionIds, setActive } from "../store";
   import { get } from "svelte/store";
   import { imageDir } from "../library/folderScope";
   import { withEffectiveBase } from "../develop/base";
@@ -70,6 +70,7 @@
   // The Film Base tools live in Basic.svelte; here we only render the sampling
   // overlay while armed and disarm it whenever we leave the edit tool.
   $: if ($tool !== "edit" && $baseSampling) baseSampling.set(false);
+  $: if ($tool !== "edit" && $whitePointSampling) whitePointSampling.set(false);
 
   // ---- Crop draft state (only while tool === "crop") ----
   let rect: Rect = { x: 0, y: 0, w: 1, h: 1 };
@@ -319,6 +320,10 @@
       {:else if $baseSampling}
         <BaseView id={$activeId} params={effParams} imgW={origW} imgH={origH}
                   on:sampled={(e) => sampledBase.set(e.detail)} />
+      {:else if $whitePointSampling}
+        <BaseView id={$activeId} params={effParams} imgW={origW} imgH={origH}
+                  mode="whitepoint"
+                  on:dmax={(e) => sampledDmax.set(e.detail)} />
       {:else}
         <Viewport id={$activeId} params={effParams} imgW={effW} imgH={effH} imageCrop={imageCrop}
                   rot90={cRot} flipH={committed?.flipH ?? false} flipV={committed?.flipV ?? false} angle={committed?.angle ?? 0}

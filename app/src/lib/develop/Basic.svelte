@@ -1,7 +1,7 @@
 <script lang="ts">
   import { get } from "svelte/store";
   import { t } from "$lib/i18n";
-  import { params, activeId, images, folderBaseByPath, baseSampling, sampledBase } from "../store";
+  import { params, activeId, images, folderBaseByPath, baseSampling, sampledBase, whitePointSampling, sampledDmax, whitePointPinned } from "../store";
   import { api, defaultParams } from "../api";
   import { reseedActive, commitActive } from "./historyStore";
   import { createSeedGuard } from "./seedGuard";
@@ -44,7 +44,7 @@
 
   // Reset any in-progress sampling when the active image changes.
   // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-  $: { $activeId; sampledBase.set(null); baseSampling.set(false); }
+  $: { $activeId; sampledBase.set(null); baseSampling.set(false); whitePointSampling.set(false); sampledDmax.set(null); }
   // 8-bit swatch preview of a linear base (display gamma ~1/2.2).
   const baseCss = (b: [number, number, number] | null) =>
     b ? `rgb(${b.map((v) => Math.round(255 * Math.min(1, Math.max(0, v ** (1 / 2.2))))).join(",")})` : "transparent";
@@ -56,6 +56,31 @@
 
   // Tapping the swatch arms the rebate picker (BaseView overlay on the negative).
   function toggleRecalibrate() { baseSampling.update((v) => !v); }
+  function toggleWhitePoint() { whitePointSampling.update((v) => !v); }
+
+  function isPinned(id: string | null): boolean {
+    return !!id && get(whitePointPinned).has(id);
+  }
+  function setPinned(id: string, on: boolean) {
+    whitePointPinned.update((s) => {
+      const n = new Set(s);
+      if (on) n.add(id); else n.delete(id);
+      return n;
+    });
+  }
+
+  // Apply a freshly measured white-point D_max: pin it, override, reseed WB, close tool.
+  function applyWhitePointDmax(d: number) {
+    const id = get(activeId); if (!id) { sampledDmax.set(null); return; }
+    setPinned(id, true);
+    params.update((p) => ({ ...p, d_max_override: d }));
+    commitActive();
+    autoWb();
+    sampledDmax.set(null);
+    whitePointSampling.set(false);
+  }
+  $: if ($sampledDmax != null) applyWhitePointDmax($sampledDmax);
+
   // Picking a point auto-applies that base to the ACTIVE image; commitActive puts it
   // in the Cmd+Z / Cmd+Shift+Z undo scope (replacing the old apply / reset buttons).
   function applyBaseThisImage() {
@@ -103,6 +128,10 @@
       autoWb();
     } catch { /* not developed yet */ }
   }
+  function manualReanalyze() {
+    const id = get(activeId); if (id) setPinned(id, false);
+    reanalyze();
+  }
 
   // Re-derive D_max only when the crop CHANGES on the current image — not on image
   // switch (the stored develop-time d_max already covers that). Switching no longer
@@ -111,7 +140,7 @@
   $: {
     const id = $activeId ?? "";
     const key = JSON.stringify(imageCrop);
-    if (id && id === lastCrop.id && key !== lastCrop.key) {
+    if (id && id === lastCrop.id && key !== lastCrop.key && !isPinned(id)) {
       reanalyze();
     }
     lastCrop = { id, key };
@@ -173,7 +202,7 @@
       <!-- Inversion-specific controls only apply to negatives. -->
       {#if !$params.positive}
         <!-- Crop re-analysis (re-derive D_max + WB from the current crop) -->
-        <button class="recal reanalyze" on:click={reanalyze}>{$t('base.reanalyze')}</button>
+        <button class="recal reanalyze" on:click={manualReanalyze}>{$t('base.reanalyze')}</button>
 
         <!-- Film Base: tap the swatch to pick the rebate; the pick auto-applies to this image -->
         <div class="sub">{$t('base.title')}</div>
@@ -182,6 +211,8 @@
           <span class="cube big" style="background:{baseCss(effBase)}"></span>
           <span class="pick"><Icon name="pipette" size={18} /></span>
         </button>
+        <button class="baseswatch wp" class:on={$whitePointSampling} on:click={toggleWhitePoint}
+                title={$t('base.whitepoint')} aria-label={$t('base.whitepoint')}>WP</button>
         {#if lowConfBase}
           <p class="lowconf">{$t('base.lowConfidence')}</p>
         {/if}

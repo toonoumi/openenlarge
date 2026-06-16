@@ -7,8 +7,9 @@
   export let params: InvertParams;
   export let imgW = 0;   // working-image dims (uncropped, oriented identity)
   export let imgH = 0;
+  export let mode: "base" | "whitepoint" = "base";
 
-  const dispatch = createEventDispatcher<{ sampled: [number, number, number] }>();
+  const dispatch = createEventDispatcher<{ sampled: [number, number, number]; dmax: number }>();
   const PAD = 60, CAP = 4000;
   // Sampled patch as a fraction of image WIDTH (~1%); height matched for square px.
   // Click samples a small averaged patch (robust to grain/dust) rather than one pixel.
@@ -53,9 +54,15 @@
     const h = imgH > 0 ? PATCH * (imgW / imgH) : PATCH; // square in pixels
     const x = clamp01(nx - w / 2);
     const y = clamp01(ny - h / 2);
+    const rect: [number, number, number, number] = [x, y, Math.min(w, 1 - x), Math.min(h, 1 - y)];
     try {
-      const b = await api.sampleBaseAt(id, [x, y, Math.min(w, 1 - x), Math.min(h, 1 - y)]);
-      dispatch("sampled", b);
+      if (mode === "whitepoint") {
+        const { d_max } = await api.analyzeWhitePoint(id, params, rect);
+        dispatch("dmax", d_max);
+      } else {
+        const b = await api.sampleBaseAt(id, rect);
+        dispatch("sampled", b);
+      }
     } catch { /* ignore */ }
   }
 

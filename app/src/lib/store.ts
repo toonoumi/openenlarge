@@ -151,6 +151,14 @@ export const omitPreviewJpgs = writable<boolean>(true);
 export const baseSampling = writable<boolean>(false);
 export const sampledBase = writable<[number, number, number] | null>(null);
 
+// White-point (exposed-leader) D_max anchor tool. `sampledDmax` carries a freshly
+// measured D_max from BaseView (whitepoint mode) to Basic.svelte. `whitePointPinned`
+// marks images whose D_max is user-pinned so the crop-change auto-reanalyze won't
+// clobber it (frontend-only, non-persistent — prototype scope).
+export const whitePointSampling = writable<boolean>(false);
+export const sampledDmax = writable<number | null>(null);
+export const whitePointPinned = writable<Set<string>>(new Set());
+
 /** Ids awaiting a delete confirmation (empty = no dialog). One id deletes a
  * single image; many drive the "Delete N items" multi-delete. */
 export const deleteTarget = writable<string[]>([]);
