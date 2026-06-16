@@ -56,20 +56,16 @@
   .ttl { font-size: 11px; text-transform: uppercase; letter-spacing: 0.7px; color: var(--text-faint); padding: 2px 6px 10px; }
   .tree { flex: 1; overflow: auto; }
   .empty { color: var(--text-faint); padding: 8px; }
-  .import { margin-top: 10px; width: 100%; padding: 11px; border: 0; border-radius: 11px;
-    background: linear-gradient(180deg, #f6a559, #e07d3a);
-    color: #fff; font: inherit; font-weight: 650; letter-spacing: 0.2px; cursor: pointer;
+  .import { margin-top: 10px; width: 100%; padding: 10px; border-radius: 9px;
+    border: 1px solid rgba(0,0,0,0.25);
+    background: var(--accent-dim); color: #fff; font: inherit; font-weight: 600; cursor: pointer;
     display: flex; align-items: center; justify-content: center; gap: 7px;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.28), 0 4px 14px rgba(223,113,54,0.30);
-    transition: transform 0.16s cubic-bezier(0.2,0.7,0.3,1), box-shadow 0.16s ease, filter 0.16s ease; }
-  .import:hover:not(:disabled) { transform: scale(1.03);
-    filter: brightness(1.04);
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.32), 0 8px 22px rgba(223,113,54,0.42); }
-  .import:active:not(:disabled) { transform: scale(0.985);
-    box-shadow: inset 0 1px 2px rgba(0,0,0,0.25), 0 2px 8px rgba(223,113,54,0.30); }
-  .import:disabled { opacity: 0.6; cursor: default; }
+    transition: transform 0.14s ease, background 0.14s ease; }
+  .import:hover:not(:disabled) { transform: scale(1.02); background: #e8854a; }
+  .import:active:not(:disabled) { transform: scale(0.99); background: var(--accent-dim); }
+  .import:disabled { opacity: 0.55; cursor: default; }
   @media (prefers-reduced-motion: reduce) {
-    .import { transition: filter 0.16s ease, box-shadow 0.16s ease; }
+    .import { transition: background 0.14s ease; }
     .import:hover:not(:disabled), .import:active:not(:disabled) { transform: none; }
   }
 </style>
