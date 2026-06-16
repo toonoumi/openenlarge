@@ -315,7 +315,7 @@ tether.autoAdvance,"Jump to newest shot","跳到最新拍摄","src/lib/tether/Te
 tether.lastOk,"Last: {name}","最近：{name}","src/lib/tether/TetherPanel.svelte","status"
 tether.lastErr,"Failed: {name}","失败：{name}","src/lib/tether/TetherPanel.svelte","status"
 toolbar.enhance,"AI Enhance","AI 增强","src/lib/develop/Toolbar.svelte","title"
-settings.ai.heading,"AI Enhance","AI 增强","src/lib/settings/SettingsMenu.svelte","heading"
+settings.ai.heading,"OpenAI API key","OpenAI API 密钥","src/lib/settings/SettingsMenu.svelte","link"
 settings.ai.keyPlaceholder,"OpenAI API key","OpenAI API 密钥","src/lib/settings/SettingsMenu.svelte","placeholder"
 settings.ai.hint,"Stored locally. Used only for the AI Enhance tool.","仅本地保存，仅用于 AI 增强工具。","src/lib/settings/SettingsMenu.svelte","hint"
 aiEnhance.title,"AI Enhance","AI 增强","src/lib/develop/AiEnhancePanel.svelte","heading"

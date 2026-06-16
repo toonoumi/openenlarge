@@ -4,7 +4,9 @@
   import { locale, LOCALES, t } from "../i18n";
   import { openaiApiKey } from "../store";
   import { runManualCheck } from "../update/updater";
+  import { openUrl } from "@tauri-apps/plugin-opener";
   const dispatch = createEventDispatcher();
+  const OPENAI_KEYS_URL = "https://platform.openai.com/api-keys";
 </script>
 
 <div class="backdrop" on:click={() => dispatch("close")} transition:fade={{ duration: 120 }}></div>
@@ -18,7 +20,10 @@
     </div>
   </div>
   <div class="grp">
-    <div class="head">{$t("settings.ai.heading")}</div>
+    <button type="button" class="head head-link"
+            on:click={() => openUrl(OPENAI_KEYS_URL).catch(() => {})}>
+      {$t("settings.ai.heading")} ↗
+    </button>
     <input
       class="key" type="password" autocomplete="off" spellcheck="false"
       placeholder={$t("settings.ai.keyPlaceholder")}
@@ -45,6 +50,12 @@
     box-shadow: 0 12px 40px rgba(0,0,0,0.5); }
   .head { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;
     color: var(--text-dim); margin-bottom: 8px; }
+  /* Clickable heading → opens the OpenAI API-keys page. Dashed underline cues the link. */
+  .head-link { display: inline-flex; align-items: center; gap: 4px; padding: 0;
+    background: none; border: none; cursor: pointer; font: inherit;
+    text-transform: uppercase; letter-spacing: 0.05em; font-size: 11px;
+    text-decoration: underline; text-decoration-style: dashed; text-underline-offset: 3px; }
+  .head-link:hover, .head-link:focus-visible { color: var(--accent); outline: none; }
   .seg { display: flex; gap: 6px; }
   .seg button { flex: 1; padding: 7px; border-radius: 8px; font-size: 12px;
     border: 1px solid var(--glass-brd); background: transparent; color: var(--text-dim); }
