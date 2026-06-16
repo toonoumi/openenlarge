@@ -119,31 +119,6 @@
 
   {#if open}
     <div class="body" transition:slide={{ duration: 280, easing: cubicInOut }}>
-      <!-- Film Profile -->
-      <div class="sub">{$t('basic.filmProfile')}</div>
-      <select bind:value={$params.stock}>
-        <option value="none">{$t('basic.noFilmProfile')}</option>
-        <option value="portra400">{$t('basic.stock.portra400')}</option>
-        <option value="fujic200">{$t('basic.stock.fujic200')}</option>
-        <option value="portra160">{$t('basic.stock.portra160')}</option>
-        <option value="portra800">{$t('basic.stock.portra800')}</option>
-        <option value="ektar100">{$t('basic.stock.ektar100')}</option>
-        <option value="gold200">{$t('basic.stock.gold200')}</option>
-        <option value="ultramax400">{$t('basic.stock.ultramax400')}</option>
-        <option value="fujipro400h">{$t('basic.stock.fujipro400h')}</option>
-        <option value="fujixtra400">{$t('basic.stock.fujixtra400')}</option>
-        <option value="vision350d">{$t('basic.stock.vision350d')}</option>
-        <option value="vision3200t">{$t('basic.stock.vision3200t')}</option>
-        <option value="vision3250d">{$t('basic.stock.vision3250d')}</option>
-        <option value="vision3500t">{$t('basic.stock.vision3500t')}</option>
-      </select>
-
-      <!-- Inversion engine (A/B): density^gamma vs Cineon/negadoctor -->
-      <select bind:value={$params.mode} style="margin-top:8px">
-        <option value="b">Density (default)</option>
-        <option value="d">Cineon (beta)</option>
-      </select>
-
       <!-- Film Base (collapsible) -->
       <div class="basebar">
         <button class="basebar-toggle" on:click={() => (baseOpen = !baseOpen)}>
@@ -216,8 +191,6 @@
     border-radius: 6px; padding: 2px 8px; font-size: 11px; cursor: pointer; }
   .sub { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;
     color: var(--text-dim); margin: 12px 0 4px; }
-  select { width: 100%; padding: 10px 12px; border-radius: 9px; background: var(--bg-1);
-    color: var(--text); border: 1px solid var(--glass-brd); margin-bottom: 8px; font-size: 13px; }
   .wbhead { display: flex; justify-content: space-between; align-items: center;
     font-size: 11px; color: var(--text-dim); margin: 4px 0; }
   .auto { background: transparent; border: 1px solid var(--glass-brd); color: var(--text-dim);

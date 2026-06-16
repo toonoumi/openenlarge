@@ -222,7 +222,7 @@ export const api = {
 };
 
 export const defaultParams = (): InvertParams => ({
-  mode: "b", stock: "none", base_override: null,
+  mode: "d", stock: "none", base_override: null,
   exposure: 0, black: 0, gamma: 0.4545,
   auto_wb: true, temp: 5500, tint: 0, wb_manual: false,
   contrast: 0, highlights: 0, shadows: 0, whites: 0, blacks: 0,
