@@ -246,7 +246,7 @@ pub(crate) fn wb_from_params(temp: f32, tint: f32) -> [f32; 3] {
     wb_from_kelvin(temp, tint / 150.0)
 }
 
-fn resolve_params(
+pub(crate) fn resolve_params(
     p: &InvertParams,
     _autowb_src: &film_core::Image,
     base: [f32; 3],
@@ -379,7 +379,7 @@ fn color_mix_from(p: &crate::session::InvertParams) -> ColorMix {
     }
 }
 
-fn finish_from(p: &InvertParams) -> FinishParams {
+pub(crate) fn finish_from(p: &InvertParams) -> FinishParams {
     // Region sliders ordered [shadows, darks, lights, highlights] to match the engine.
     let regions = [
         p.tc_shadows / 100.0,
