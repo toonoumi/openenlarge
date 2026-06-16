@@ -1898,3 +1898,11 @@ mod adequacy_tests {
         assert!(working_satisfies(6000, 6000, u32::MAX));
     }
 }
+
+/// Enhance the current developed preview via the configured AI provider.
+/// `image_base64` is the preview JPEG payload WITHOUT the `data:` URL prefix.
+/// Returns a PNG data URL on success, or a readable error string.
+#[tauri::command]
+pub async fn ai_enhance_image(image_base64: String, api_key: String) -> Result<String, String> {
+    crate::ai_enhance::enhance(&image_base64, &api_key).await
+}
