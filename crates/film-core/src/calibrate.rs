@@ -221,15 +221,19 @@ pub struct RebateBase {
     pub confidence: f32,
 }
 
-/// Outer fraction of each edge scanned for the rebate.
-const REBATE_BAND_FRAC: f32 = 0.10;
-/// Patch length along the edge (in downscaled px).
-const REBATE_PATCH_LEN: usize = 32;
+/// Outer fraction of each edge searched for the rebate.
+const REBATE_BAND_FRAC: f32 = 0.12;
+/// Small square patch (downscaled px) slid in 2D within each edge band, so it can
+/// sit entirely inside a thin rebate sliver instead of straddling rebate+scene.
+const REBATE_PATCH: usize = 14;
 /// Uniformity penalty: higher = stricter about flatness.
 const REBATE_UNIF_K: f32 = 4.0;
-/// Minimum detector score to trust the rebate base over the fallback. Provisional;
-/// tuned against real scans later.
-pub const REBATE_CONFIDENCE: f32 = 0.15;
+/// "Confident rebate" score: at/above this we trust the detected base outright and
+/// show no UI hint. Tuned on real scans — a clean rebate scores ~0.16–0.18 (its
+/// orange mask caps luma ~0.24); a dim/partial rebate (e.g. the underexposed
+/// "Phoenix" roll ~0.07) falls below and is used only via the anti-blue rule in
+/// `auto_base`, flagged low-confidence for an optional repoint.
+pub const REBATE_CONFIDENCE: f32 = 0.12;
 
 /// Nearest-neighbour downscale so detection stats are cheap/stable.
 fn downscale_for_detect(img: &Image, target_long: usize) -> Image {
@@ -291,37 +295,43 @@ fn rebate_score(mean: [f32; 3], cv: f32) -> f32 {
     bright * uniform * orange
 }
 
-/// Detect the C-41 orange-mask film base from the frame's edge bands. Scans the
-/// outer `REBATE_BAND_FRAC` of each edge, scores tiled patches by `rebate_score`,
-/// and returns the best patch's mean as `base` with its score as `confidence`.
+/// Slide a small `REBATE_PATCH` square in 2D across the rect region `[rx,ry,rw,rh)`,
+/// scoring each placement and keeping the best. A small square (vs a full-band-tall
+/// strip) can land entirely inside a thin rebate, avoiding rebate+scene mixing.
+fn scan_region(img: &Image, rx: usize, ry: usize, rw: usize, rh: usize, best: &mut RebateBase) {
+    let step = (REBATE_PATCH / 2).max(1);
+    let mut y = ry;
+    while y < ry + rh {
+        let mut x = rx;
+        while x < rx + rw {
+            let (mean, cv) = patch_stats(img, x, y, REBATE_PATCH, REBATE_PATCH);
+            let s = rebate_score(mean, cv);
+            if s > best.confidence {
+                *best = RebateBase { base: mean, confidence: s };
+            }
+            x += step;
+        }
+        y += step;
+    }
+}
+
+/// Detect the C-41 orange-mask film base from the frame's edge bands. Slides a
+/// small square across the outer `REBATE_BAND_FRAC` band of each edge, scoring by
+/// `rebate_score`, and returns the best patch's mean as `base` with its score as
+/// `confidence`.
 pub fn detect_rebate_base(img: &Image) -> RebateBase {
     let small = downscale_for_detect(img, 512);
     let (w, h) = (small.width, small.height);
     if w == 0 || h == 0 {
         return RebateBase { base: [0.0; 3], confidence: 0.0 };
     }
-    let bw = ((w as f32 * REBATE_BAND_FRAC) as usize).max(1);
-    let bh = ((h as f32 * REBATE_BAND_FRAC) as usize).max(1);
+    let bw = ((w as f32 * REBATE_BAND_FRAC) as usize).max(REBATE_PATCH);
+    let bh = ((h as f32 * REBATE_BAND_FRAC) as usize).max(REBATE_PATCH);
     let mut best = RebateBase { base: [0.0; 3], confidence: 0.0 };
-    let consider = |x0: usize, y0: usize, pw: usize, ph: usize, best: &mut RebateBase| {
-        let (mean, cv) = patch_stats(&small, x0, y0, pw, ph);
-        let s = rebate_score(mean, cv);
-        if s > best.confidence {
-            *best = RebateBase { base: mean, confidence: s };
-        }
-    };
-    let mut x = 0;
-    while x < w {
-        consider(x, 0, REBATE_PATCH_LEN, bh, &mut best);
-        consider(x, h.saturating_sub(bh), REBATE_PATCH_LEN, bh, &mut best);
-        x += REBATE_PATCH_LEN;
-    }
-    let mut y = 0;
-    while y < h {
-        consider(0, y, bw, REBATE_PATCH_LEN, &mut best);
-        consider(w.saturating_sub(bw), y, bw, REBATE_PATCH_LEN, &mut best);
-        y += REBATE_PATCH_LEN;
-    }
+    scan_region(&small, 0, 0, w, bh, &mut best); // top
+    scan_region(&small, 0, h.saturating_sub(bh), w, bh, &mut best); // bottom
+    scan_region(&small, 0, 0, bw, h, &mut best); // left
+    scan_region(&small, w.saturating_sub(bw), 0, bw, h, &mut best); // right
     best
 }
 

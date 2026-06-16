@@ -205,19 +205,29 @@ pub(crate) fn effective_base(p: &InvertParams, dev_base: [f32; 3]) -> [f32; 3] {
     p.base_override.unwrap_or(dev_base)
 }
 
-/// Pick the film base for a freshly-developed working image: the detected rebate
-/// when confident, else the brightest-cluster fallback. Returns (base, confidence).
+/// Pick the film base for a freshly-developed working image. Returns (base, confidence).
+///
+/// 1. Confident edge-detected rebate → use it.
+/// 2. Otherwise the brightest-cluster fallback — UNLESS that fallback is non-orange
+///    (B ≥ R) while the edge detector did find an orange candidate. A C-41 mask is
+///    always orange, so a blue fallback means a bright blue scene outscored a dim
+///    rebate (the mixed-roll "Phoenix" bug); prefer the orange edge even at low
+///    confidence (the UI flags it for an optional repoint).
+/// 3. Else the brightest-cluster fallback (already orange-ish).
 pub(crate) fn auto_base(working: &film_core::Image) -> ([f32; 3], f32) {
     use film_core::calibrate::{
         detect_rebate_base, sample_base_coherent, BASE_BAND_AUTO, REBATE_CONFIDENCE,
     };
     let det = detect_rebate_base(working);
     if det.confidence >= REBATE_CONFIDENCE {
-        (det.base, det.confidence)
-    } else {
-        let (lo, hi) = BASE_BAND_AUTO;
-        (sample_base_coherent(working, None, lo, hi), det.confidence)
+        return (det.base, det.confidence);
     }
+    let (lo, hi) = BASE_BAND_AUTO;
+    let fb = sample_base_coherent(working, None, lo, hi);
+    if fb[2] >= fb[0] && det.base[0] > det.base[2] {
+        return (det.base, det.confidence); // anti-blue: orange edge beats blue fallback
+    }
+    (fb, det.confidence)
 }
 
 pub(crate) fn wb_from_params(temp: f32, tint: f32) -> [f32; 3] {
@@ -1418,6 +1428,31 @@ mod tests {
         for c in 0..3 {
             assert!((fb[c] - want[c]).abs() < 1e-4, "ch {c}: {} vs {}", fb[c], want[c]);
         }
+    }
+
+    #[test]
+    fn auto_base_anti_blue_prefers_dim_orange_edge_over_blue_fallback() {
+        use film_core::Image;
+        // The mixed-roll "Phoenix" case: a bright blue scene (the brightest-cluster
+        // fallback would pick it, B>R) with only a DIM orange rebate at the edges
+        // (low detector confidence). auto_base must still return an orange base.
+        let (w, h) = (200usize, 150usize);
+        let mut img = Image::new(w, h);
+        let (bw, bh) = (20usize, 15usize);
+        for y in 0..h {
+            for x in 0..w {
+                let edge = x < bw || x >= w - bw || y < bh || y >= h - bh;
+                img.pixels[y * w + x] = if edge { [0.16, 0.11, 0.06] } else { [0.30, 0.22, 0.62] };
+            }
+        }
+        // Precondition: the brightest-cluster fallback alone is blue (B>R).
+        let (lo, hi) = film_core::calibrate::BASE_BAND_AUTO;
+        let fb = film_core::calibrate::sample_base_coherent(&img, None, lo, hi);
+        assert!(fb[2] > fb[0], "precondition: fallback is blue {fb:?}");
+        // And the dim rebate is below the confident threshold (exercises anti-blue).
+        let (base, conf) = auto_base(&img);
+        assert!(conf < film_core::calibrate::REBATE_CONFIDENCE, "should be low-confidence: {conf}");
+        assert!(base[0] > base[2], "anti-blue: must pick the orange edge, got {base:?}");
     }
 
     #[test]
