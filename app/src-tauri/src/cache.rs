@@ -52,7 +52,10 @@ fn decode_image(cur: &mut io::Cursor<&[u8]>) -> io::Result<Image> {
         .checked_mul(per_pixel)
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "cache size overflow"))?;
     if needed > remaining {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, "cache truncated/corrupt"));
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "cache truncated/corrupt",
+        ));
     }
     let mut pixels = Vec::with_capacity(n);
     for _ in 0..n {
@@ -70,7 +73,12 @@ fn decode_image(cur: &mut io::Cursor<&[u8]>) -> io::Result<Image> {
     } else {
         None
     };
-    Ok(Image { width, height, pixels, ir })
+    Ok(Image {
+        width,
+        height,
+        pixels,
+        ir,
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -112,8 +120,7 @@ pub fn write(path: &Path, base: [f32; 3], working: &Image, thumb: &Image) -> io:
     encode_image(working, &mut payload);
     encode_image(thumb, &mut payload);
 
-    let compressed = zstd::encode_all(payload.as_slice(), ZSTD_LEVEL)
-        .map_err(io::Error::other)?;
+    let compressed = zstd::encode_all(payload.as_slice(), ZSTD_LEVEL).map_err(io::Error::other)?;
 
     let mut file = std::fs::File::create(path)?;
     file.write_all(&[has_ir_byte])?;
@@ -125,15 +132,22 @@ pub fn write(path: &Path, base: [f32; 3], working: &Image, thumb: &Image) -> io:
 pub fn read(path: &Path) -> io::Result<([f32; 3], Image, Image)> {
     let raw = std::fs::read(path)?;
     if raw.is_empty() {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, "empty cache file"));
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "empty cache file",
+        ));
     }
     // Skip the leading has_ir byte; the full image encoding already encodes this.
     let compressed = &raw[1..];
-    let payload = zstd::decode_all(compressed)
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+    let payload =
+        zstd::decode_all(compressed).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
     let mut cur = io::Cursor::new(payload.as_slice());
-    let base = [read_f32_le(&mut cur)?, read_f32_le(&mut cur)?, read_f32_le(&mut cur)?];
+    let base = [
+        read_f32_le(&mut cur)?,
+        read_f32_le(&mut cur)?,
+        read_f32_le(&mut cur)?,
+    ];
     let working = decode_image(&mut cur)?;
     let thumb = decode_image(&mut cur)?;
     Ok((base, working, thumb))
@@ -161,7 +175,12 @@ mod tests {
         for i in 0..(w * h) {
             pixels.push([i as f32 * 0.01, i as f32 * 0.02, i as f32 * 0.03]);
         }
-        Image { width: w, height: h, pixels, ir: None }
+        Image {
+            width: w,
+            height: h,
+            pixels,
+            ir: None,
+        }
     }
 
     fn make_image_with_ir(w: usize, h: usize) -> Image {
@@ -239,8 +258,14 @@ mod tests {
         write(&path_with, base, &with_ir, &thumb).expect("write with-ir ok");
         write(&path_without, base, &without_ir, &thumb).expect("write without-ir ok");
 
-        assert!(read_has_ir(&path_with).expect("read_has_ir with-ir"), "should be true when working has IR");
-        assert!(!read_has_ir(&path_without).expect("read_has_ir without-ir"), "should be false when working has no IR");
+        assert!(
+            read_has_ir(&path_with).expect("read_has_ir with-ir"),
+            "should be true when working has IR"
+        );
+        assert!(
+            !read_has_ir(&path_without).expect("read_has_ir without-ir"),
+            "should be false when working has no IR"
+        );
 
         let _ = std::fs::remove_file(&path_with);
         let _ = std::fs::remove_file(&path_without);
@@ -250,10 +275,8 @@ mod tests {
     fn read_rejects_corrupt_dims_without_panicking() {
         // Round-trip a tiny image, then overwrite the file so the stored
         // dimensions claim far more pixels than the payload contains.
-        let path = std::env::temp_dir().join(format!(
-            "oe-cache-corrupt-{}.oecache",
-            std::process::id()
-        ));
+        let path =
+            std::env::temp_dir().join(format!("oe-cache-corrupt-{}.oecache", std::process::id()));
         let img = make_image_no_ir(2, 2);
         let thumb = make_image_no_ir(1, 1);
         write(&path, [0.0; 3], &img, &thumb).unwrap();
@@ -267,8 +290,8 @@ mod tests {
         }
         payload.extend_from_slice(&9999u32.to_le_bytes()); // working width
         payload.extend_from_slice(&9999u32.to_le_bytes()); // working height
-        payload.push(0u8);                                 // working has_ir = false
-        // (no pixel data — truncated)
+        payload.push(0u8); // working has_ir = false
+                           // (no pixel data — truncated)
         let comp = zstd::encode_all(&payload[..], 3).unwrap();
         let mut bytes = vec![0u8]; // leading has_ir byte (uncompressed)
         bytes.extend_from_slice(&comp);
@@ -276,7 +299,10 @@ mod tests {
 
         let res = read(&path);
         let _ = std::fs::remove_file(&path);
-        assert!(res.is_err(), "corrupt cache must return Err, not panic/abort");
+        assert!(
+            res.is_err(),
+            "corrupt cache must return Err, not panic/abort"
+        );
     }
 
     #[test]
@@ -288,8 +314,18 @@ mod tests {
             [1.0f32, 0.0f32, 0.125f32],
             [f32::MIN_POSITIVE, f32::MAX, 0.333_333_34f32],
         ];
-        let working = Image { width: 3, height: 1, pixels: px.to_vec(), ir: None };
-        let thumb = Image { width: 1, height: 1, pixels: vec![[0.1, 0.2, 0.3]], ir: None };
+        let working = Image {
+            width: 3,
+            height: 1,
+            pixels: px.to_vec(),
+            ir: None,
+        };
+        let thumb = Image {
+            width: 1,
+            height: 1,
+            pixels: vec![[0.1, 0.2, 0.3]],
+            ir: None,
+        };
         let base = [0.0f32, 0.5f32, 1.0f32];
 
         write(&path, base, &working, &thumb).expect("write");
@@ -297,7 +333,11 @@ mod tests {
 
         for (a, b) in rw.pixels.iter().zip(px.iter()) {
             for c in 0..3 {
-                assert_eq!(a[c].to_bits(), b[c].to_bits(), "pixel channel {c} must be bit-exact");
+                assert_eq!(
+                    a[c].to_bits(),
+                    b[c].to_bits(),
+                    "pixel channel {c} must be bit-exact"
+                );
             }
         }
         let _ = std::fs::remove_file(&path);

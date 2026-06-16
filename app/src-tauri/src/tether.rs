@@ -35,7 +35,8 @@ pub fn tether_start(
         // Only react to file creation / rename-into-place.
         let relevant = matches!(
             event.kind,
-            notify::EventKind::Create(_) | notify::EventKind::Modify(notify::event::ModifyKind::Name(_))
+            notify::EventKind::Create(_)
+                | notify::EventKind::Modify(notify::event::ModifyKind::Name(_))
         );
         if !relevant {
             return;
@@ -49,7 +50,9 @@ pub fn tether_start(
             let app = app_for_events.clone();
             std::thread::spawn(move || {
                 if wait_until_stable(&path, Duration::from_millis(250), Duration::from_secs(30)) {
-                    let payload = NewFile { path: path.to_string_lossy().to_string() };
+                    let payload = NewFile {
+                        path: path.to_string_lossy().to_string(),
+                    };
                     if let Err(e) = app.emit("tether://new-file", payload) {
                         eprintln!("[tether] emit failed: {e}");
                     }
@@ -154,14 +157,22 @@ mod tests {
         let p = dir.path().join("done.dng");
         std::fs::write(&p, b"already fully written").unwrap();
         // Short cadence so the test is fast; file is already stable.
-        assert!(wait_until_stable(&p, Duration::from_millis(10), Duration::from_secs(2)));
+        assert!(wait_until_stable(
+            &p,
+            Duration::from_millis(10),
+            Duration::from_secs(2)
+        ));
     }
 
     #[test]
     fn stable_returns_false_for_a_missing_file() {
         let dir = tempfile::tempdir().unwrap();
         let p = dir.path().join("nope.dng");
-        assert!(!wait_until_stable(&p, Duration::from_millis(10), Duration::from_millis(80)));
+        assert!(!wait_until_stable(
+            &p,
+            Duration::from_millis(10),
+            Duration::from_millis(80)
+        ));
     }
 
     #[test]
@@ -179,7 +190,11 @@ mod tests {
             g.write_all(b"chunk2").unwrap();
             g.flush().unwrap();
         });
-        assert!(wait_until_stable(&p, Duration::from_millis(40), Duration::from_secs(2)));
+        assert!(wait_until_stable(
+            &p,
+            Duration::from_millis(40),
+            Duration::from_secs(2)
+        ));
         // Final size reflects both chunks (gate didn't fire mid-write).
         assert_eq!(std::fs::metadata(&p).unwrap().len(), 12);
     }

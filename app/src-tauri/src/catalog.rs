@@ -65,7 +65,9 @@ impl Catalog {
     fn init(conn: Connection) -> rusqlite::Result<Self> {
         conn.pragma_update(None, "journal_mode", "WAL")?;
         migrate(&conn)?;
-        Ok(Self { conn: Mutex::new(conn) })
+        Ok(Self {
+            conn: Mutex::new(conn),
+        })
     }
 
     /// Insert a new image or update the existing row with the same `path`.
@@ -81,7 +83,9 @@ impl Catalog {
     ) -> rusqlite::Result<String> {
         let conn = self.conn.lock().unwrap();
         let existing: Option<String> = conn
-            .query_row("SELECT id FROM images WHERE path = ?1", [path], |r| r.get(0))
+            .query_row("SELECT id FROM images WHERE path = ?1", [path], |r| {
+                r.get(0)
+            })
             .ok();
         if let Some(id) = existing {
             conn.execute(
@@ -338,7 +342,8 @@ mod tests {
     fn meta_override_round_trips() {
         let cat = Catalog::open_in_memory().unwrap();
         cat.save_params("img-1", r#"{"exposure":1.0}"#).unwrap();
-        cat.save_meta("img-1", r#"{"camera":"Leica M6","note":"roll 12"}"#).unwrap();
+        cat.save_meta("img-1", r#"{"camera":"Leica M6","note":"roll 12"}"#)
+            .unwrap();
         let edits = cat.load_edits().unwrap();
         assert_eq!(edits.len(), 1);
         let m = edits[0].meta.as_ref().unwrap();
@@ -351,9 +356,13 @@ mod tests {
     #[test]
     fn upsert_dedupes_by_path_and_keeps_id() {
         let cat = Catalog::open_in_memory().unwrap();
-        let id1 = cat.upsert_image("/x/a.dng", "a.dng", "{}", "thumb1", 100).unwrap();
+        let id1 = cat
+            .upsert_image("/x/a.dng", "a.dng", "{}", "thumb1", 100)
+            .unwrap();
         // Re-import the same path with a new thumbnail → same id, updated row.
-        let id2 = cat.upsert_image("/x/a.dng", "a.dng", "{}", "thumb2", 200).unwrap();
+        let id2 = cat
+            .upsert_image("/x/a.dng", "a.dng", "{}", "thumb2", 200)
+            .unwrap();
         assert_eq!(id1, id2);
         let imgs = cat.load_images(&|_| true).unwrap();
         assert_eq!(imgs.len(), 1);
@@ -363,12 +372,14 @@ mod tests {
     #[test]
     fn load_images_sets_offline_when_missing() {
         let cat = Catalog::open_in_memory().unwrap();
-        cat.upsert_image("/x/here.dng", "here.dng", "{}", "t", 1).unwrap();
-        cat.upsert_image("/x/gone.dng", "gone.dng", "{}", "t", 2).unwrap();
+        cat.upsert_image("/x/here.dng", "here.dng", "{}", "t", 1)
+            .unwrap();
+        cat.upsert_image("/x/gone.dng", "gone.dng", "{}", "t", 2)
+            .unwrap();
         let imgs = cat.load_images(&|p| p == "/x/here.dng").unwrap();
         assert_eq!(imgs.len(), 2);
         assert!(!imgs[0].offline); // here.dng exists
-        assert!(imgs[1].offline);  // gone.dng missing
+        assert!(imgs[1].offline); // gone.dng missing
     }
 
     #[test]
@@ -413,7 +424,10 @@ mod tests {
         cat.save_pref("develop_mode", "b").unwrap(); // overwrite
         let prefs = cat.load_prefs().unwrap();
         assert_eq!(prefs.get("develop_mode").map(String::as_str), Some("b"));
-        assert_eq!(prefs.get("quality").map(String::as_str), Some("performance"));
+        assert_eq!(
+            prefs.get("quality").map(String::as_str),
+            Some("performance")
+        );
     }
 
     #[test]
@@ -429,7 +443,9 @@ mod tests {
     #[test]
     fn snapshot_aggregates_everything() {
         let cat = Catalog::open_in_memory().unwrap();
-        let id = cat.upsert_image("/x/a.dng", "a.dng", r#"{"width":100}"#, "t", 1).unwrap();
+        let id = cat
+            .upsert_image("/x/a.dng", "a.dng", r#"{"width":100}"#, "t", 1)
+            .unwrap();
         cat.save_params(&id, r#"{"exposure":1.0}"#).unwrap();
         cat.save_pref("develop_mode", "c").unwrap();
         cat.save_app_state("module", "library").unwrap();
@@ -437,7 +453,13 @@ mod tests {
         assert_eq!(snap.images.len(), 1);
         assert_eq!(snap.edits.len(), 1);
         assert_eq!(snap.edits[0].image_id, id);
-        assert_eq!(snap.prefs.get("develop_mode").map(String::as_str), Some("c"));
-        assert_eq!(snap.app_state.get("module").map(String::as_str), Some("library"));
+        assert_eq!(
+            snap.prefs.get("develop_mode").map(String::as_str),
+            Some("c")
+        );
+        assert_eq!(
+            snap.app_state.get("module").map(String::as_str),
+            Some("library")
+        );
     }
 }

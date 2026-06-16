@@ -27,7 +27,12 @@ pub struct Metadata {
 /// is non-fatal.
 pub fn extract(path: &Path, width: u32, height: u32) -> Metadata {
     let file_size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
-    let mut md = Metadata { width, height, file_size, ..Default::default() };
+    let mut md = Metadata {
+        width,
+        height,
+        file_size,
+        ..Default::default()
+    };
 
     // rawler 0.7.2: EXIF is exposed via `RawMetadata` (obtained from a decoder),
     // NOT from `decode_file`'s `RawImage` (which has clean_make/clean_model but no

@@ -35,14 +35,14 @@ impl Default for Quality {
 /// One Point Color sample: a picked target color + per-sample adjustments.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PointColorSample {
-    pub hue: f32,        // 0..360
-    pub sat: f32,        // 0..1
-    pub lum: f32,        // 0..1
-    pub hue_shift: f32,  // −100..100
+    pub hue: f32,       // 0..360
+    pub sat: f32,       // 0..1
+    pub lum: f32,       // 0..1
+    pub hue_shift: f32, // −100..100
     pub sat_shift: f32,
     pub lum_shift: f32,
-    pub variance: f32,   // −100..100
-    pub range: f32,      // 0..100
+    pub variance: f32, // −100..100
+    pub range: f32,    // 0..100
 }
 
 /// Knobs the UI sends for an inversion (mirrors the engine's exposed controls).
@@ -86,49 +86,114 @@ pub struct InvertParams {
     pub saturation: f32,
 
     // Tone Curve: region sliders (−100..100) + point curves (0..1 control points).
-    #[serde(default)] pub tc_highlights: f32,
-    #[serde(default)] pub tc_lights: f32,
-    #[serde(default)] pub tc_darks: f32,
-    #[serde(default)] pub tc_shadows: f32,
-    #[serde(default = "identity_curve")] pub tc_curve: Vec<[f32; 2]>,
-    #[serde(default = "identity_curve")] pub tc_red: Vec<[f32; 2]>,
-    #[serde(default = "identity_curve")] pub tc_green: Vec<[f32; 2]>,
-    #[serde(default = "identity_curve")] pub tc_blue: Vec<[f32; 2]>,
+    #[serde(default)]
+    pub tc_highlights: f32,
+    #[serde(default)]
+    pub tc_lights: f32,
+    #[serde(default)]
+    pub tc_darks: f32,
+    #[serde(default)]
+    pub tc_shadows: f32,
+    #[serde(default = "identity_curve")]
+    pub tc_curve: Vec<[f32; 2]>,
+    #[serde(default = "identity_curve")]
+    pub tc_red: Vec<[f32; 2]>,
+    #[serde(default = "identity_curve")]
+    pub tc_green: Vec<[f32; 2]>,
+    #[serde(default = "identity_curve")]
+    pub tc_blue: Vec<[f32; 2]>,
 
     // Color Grading: hue 0..360, sat 0..100, lum −100..100 per region.
-    #[serde(default)] pub cg_sh_hue: f32,
-    #[serde(default)] pub cg_sh_sat: f32,
-    #[serde(default)] pub cg_sh_lum: f32,
-    #[serde(default)] pub cg_mid_hue: f32,
-    #[serde(default)] pub cg_mid_sat: f32,
-    #[serde(default)] pub cg_mid_lum: f32,
-    #[serde(default)] pub cg_hi_hue: f32,
-    #[serde(default)] pub cg_hi_sat: f32,
-    #[serde(default)] pub cg_hi_lum: f32,
-    #[serde(default)] pub cg_glob_hue: f32,
-    #[serde(default)] pub cg_glob_sat: f32,
-    #[serde(default)] pub cg_glob_lum: f32,
-    #[serde(default = "default_blending")] pub cg_blending: f32,
-    #[serde(default)] pub cg_balance: f32,
+    #[serde(default)]
+    pub cg_sh_hue: f32,
+    #[serde(default)]
+    pub cg_sh_sat: f32,
+    #[serde(default)]
+    pub cg_sh_lum: f32,
+    #[serde(default)]
+    pub cg_mid_hue: f32,
+    #[serde(default)]
+    pub cg_mid_sat: f32,
+    #[serde(default)]
+    pub cg_mid_lum: f32,
+    #[serde(default)]
+    pub cg_hi_hue: f32,
+    #[serde(default)]
+    pub cg_hi_sat: f32,
+    #[serde(default)]
+    pub cg_hi_lum: f32,
+    #[serde(default)]
+    pub cg_glob_hue: f32,
+    #[serde(default)]
+    pub cg_glob_sat: f32,
+    #[serde(default)]
+    pub cg_glob_lum: f32,
+    #[serde(default = "default_blending")]
+    pub cg_blending: f32,
+    #[serde(default)]
+    pub cg_balance: f32,
 
     // Color Mixer (HSL): 8 bands × hue/sat/lum, each −100..100.
-    #[serde(default)] pub cm_red_hue: f32, #[serde(default)] pub cm_red_sat: f32, #[serde(default)] pub cm_red_lum: f32,
-    #[serde(default)] pub cm_orange_hue: f32, #[serde(default)] pub cm_orange_sat: f32, #[serde(default)] pub cm_orange_lum: f32,
-    #[serde(default)] pub cm_yellow_hue: f32, #[serde(default)] pub cm_yellow_sat: f32, #[serde(default)] pub cm_yellow_lum: f32,
-    #[serde(default)] pub cm_green_hue: f32, #[serde(default)] pub cm_green_sat: f32, #[serde(default)] pub cm_green_lum: f32,
-    #[serde(default)] pub cm_aqua_hue: f32, #[serde(default)] pub cm_aqua_sat: f32, #[serde(default)] pub cm_aqua_lum: f32,
-    #[serde(default)] pub cm_blue_hue: f32, #[serde(default)] pub cm_blue_sat: f32, #[serde(default)] pub cm_blue_lum: f32,
-    #[serde(default)] pub cm_purple_hue: f32, #[serde(default)] pub cm_purple_sat: f32, #[serde(default)] pub cm_purple_lum: f32,
-    #[serde(default)] pub cm_magenta_hue: f32, #[serde(default)] pub cm_magenta_sat: f32, #[serde(default)] pub cm_magenta_lum: f32,
+    #[serde(default)]
+    pub cm_red_hue: f32,
+    #[serde(default)]
+    pub cm_red_sat: f32,
+    #[serde(default)]
+    pub cm_red_lum: f32,
+    #[serde(default)]
+    pub cm_orange_hue: f32,
+    #[serde(default)]
+    pub cm_orange_sat: f32,
+    #[serde(default)]
+    pub cm_orange_lum: f32,
+    #[serde(default)]
+    pub cm_yellow_hue: f32,
+    #[serde(default)]
+    pub cm_yellow_sat: f32,
+    #[serde(default)]
+    pub cm_yellow_lum: f32,
+    #[serde(default)]
+    pub cm_green_hue: f32,
+    #[serde(default)]
+    pub cm_green_sat: f32,
+    #[serde(default)]
+    pub cm_green_lum: f32,
+    #[serde(default)]
+    pub cm_aqua_hue: f32,
+    #[serde(default)]
+    pub cm_aqua_sat: f32,
+    #[serde(default)]
+    pub cm_aqua_lum: f32,
+    #[serde(default)]
+    pub cm_blue_hue: f32,
+    #[serde(default)]
+    pub cm_blue_sat: f32,
+    #[serde(default)]
+    pub cm_blue_lum: f32,
+    #[serde(default)]
+    pub cm_purple_hue: f32,
+    #[serde(default)]
+    pub cm_purple_sat: f32,
+    #[serde(default)]
+    pub cm_purple_lum: f32,
+    #[serde(default)]
+    pub cm_magenta_hue: f32,
+    #[serde(default)]
+    pub cm_magenta_sat: f32,
+    #[serde(default)]
+    pub cm_magenta_lum: f32,
     // Point Color: up to 8 samples.
-    #[serde(default)] pub pc_samples: Vec<PointColorSample>,
+    #[serde(default)]
+    pub pc_samples: Vec<PointColorSample>,
 }
 
 /// Default identity tone curve: a straight 0→0, 1→1 line.
 pub fn identity_curve() -> Vec<[f32; 2]> {
     vec![[0.0, 0.0], [1.0, 1.0]]
 }
-fn default_blending() -> f32 { 50.0 }
+fn default_blending() -> f32 {
+    50.0
+}
 
 /// What the frontend gets per image.
 #[derive(Debug, Clone, Serialize)]
@@ -198,7 +263,11 @@ impl Session {
             thumbnail: img.thumbnail.clone(),
             metadata: img.metadata.clone(),
             developed: img.developed.is_some(),
-            has_ir: img.developed.as_ref().map(|d| d.working.ir.is_some()).unwrap_or(false),
+            has_ir: img
+                .developed
+                .as_ref()
+                .map(|d| d.working.ir.is_some())
+                .unwrap_or(false),
             offline: false,
         };
         self.images.lock().unwrap().insert(id, img);
@@ -245,8 +314,11 @@ mod tests {
     fn insert_reports_has_ir_false_when_undeveloped() {
         let s = Session::default();
         let img = CachedImage {
-            path: "/x/a.tif".into(), file_name: "a.tif".into(),
-            metadata: Metadata::default(), thumbnail: "data:,".into(), developed: None,
+            path: "/x/a.tif".into(),
+            file_name: "a.tif".into(),
+            metadata: Metadata::default(),
+            thumbnail: "data:,".into(),
+            developed: None,
         };
         let e = s.insert_with_id("xyz".into(), img);
         assert!(!e.has_ir);

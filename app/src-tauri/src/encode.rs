@@ -39,15 +39,21 @@ fn to_rgb16(img: &Image) -> ImageBuffer<Rgb<u16>, Vec<u16>> {
 /// (Callers only pass 8 or 16; the format is inferred from the .png path.)
 pub fn write_png(img: &Image, path: &Path, bits: u8) -> Result<(), String> {
     if bits == 16 {
-        to_rgb16(img).save(path).map_err(|e| format!("png16 write: {e}"))
+        to_rgb16(img)
+            .save(path)
+            .map_err(|e| format!("png16 write: {e}"))
     } else {
-        to_rgb8(img, false).save(path).map_err(|e| format!("png8 write: {e}"))
+        to_rgb8(img, false)
+            .save(path)
+            .map_err(|e| format!("png8 write: {e}"))
     }
 }
 
 /// Write an 8-bit RGB TIFF (16-bit goes through film_core::export::write_tiff16).
 pub fn write_tiff8(img: &Image, path: &Path) -> Result<(), String> {
-    to_rgb8(img, false).save(path).map_err(|e| format!("tiff8 write: {e}"))
+    to_rgb8(img, false)
+        .save(path)
+        .map_err(|e| format!("tiff8 write: {e}"))
 }
 
 /// Encode the toned image to in-memory JPEG bytes at the given quality (1–100).
@@ -55,7 +61,12 @@ pub fn encode_jpeg_bytes(img: &Image, quality: u8) -> Result<Vec<u8>, String> {
     let buf = to_rgb8(img, false);
     let mut bytes: Vec<u8> = Vec::new();
     image::codecs::jpeg::JpegEncoder::new_with_quality(&mut bytes, quality.clamp(1, 100))
-        .encode(buf.as_raw(), buf.width(), buf.height(), image::ExtendedColorType::Rgb8)
+        .encode(
+            buf.as_raw(),
+            buf.width(),
+            buf.height(),
+            image::ExtendedColorType::Rgb8,
+        )
         .map_err(|e| format!("jpeg encode: {e}"))?;
     Ok(bytes)
 }
@@ -63,7 +74,12 @@ pub fn encode_jpeg_bytes(img: &Image, quality: u8) -> Result<Vec<u8>, String> {
 /// Write a JPEG file. Encodes at `quality`; if `max_bytes` is set and the result
 /// exceeds it, binary-searches quality downward to the largest value that fits
 /// (floor at quality 1).
-pub fn write_jpeg(img: &Image, path: &Path, quality: u8, max_bytes: Option<u64>) -> Result<(), String> {
+pub fn write_jpeg(
+    img: &Image,
+    path: &Path,
+    quality: u8,
+    max_bytes: Option<u64>,
+) -> Result<(), String> {
     let ceil = quality.clamp(1, 100);
     let bytes = match max_bytes {
         None => encode_jpeg_bytes(img, ceil)?,
@@ -76,10 +92,14 @@ pub fn write_jpeg(img: &Image, path: &Path, quality: u8, max_bytes: Option<u64>)
                 let candidate = encode_jpeg_bytes(img, mid)?;
                 if (candidate.len() as u64) <= cap {
                     best = candidate;
-                    if mid == 100 { break; }
+                    if mid == 100 {
+                        break;
+                    }
                     lo = mid + 1;
                 } else {
-                    if mid == 1 { break; }
+                    if mid == 1 {
+                        break;
+                    }
                     hi = mid - 1;
                 }
             }
@@ -95,7 +115,12 @@ pub fn to_jpeg_b64(img: &Image, apply_gamma: bool, quality: u8) -> Result<String
     let buf = to_rgb8(img, apply_gamma);
     let mut bytes: Vec<u8> = Vec::new();
     image::codecs::jpeg::JpegEncoder::new_with_quality(&mut bytes, quality)
-        .encode(buf.as_raw(), buf.width(), buf.height(), image::ExtendedColorType::Rgb8)
+        .encode(
+            buf.as_raw(),
+            buf.width(),
+            buf.height(),
+            image::ExtendedColorType::Rgb8,
+        )
         .map_err(|e| format!("jpeg encode: {e}"))?;
     Ok(format!(
         "data:image/jpeg;base64,{}",
@@ -110,7 +135,12 @@ pub fn to_png_b64(img: &Image, apply_gamma: bool) -> Result<String, String> {
     let buf = to_rgb8(img, apply_gamma);
     let mut bytes: Vec<u8> = Vec::new();
     image::codecs::png::PngEncoder::new(&mut bytes)
-        .write_image(&buf, img.width as u32, img.height as u32, image::ExtendedColorType::Rgb8)
+        .write_image(
+            &buf,
+            img.width as u32,
+            img.height as u32,
+            image::ExtendedColorType::Rgb8,
+        )
         .map_err(|e| format!("png encode: {e}"))?;
     Ok(format!(
         "data:image/png;base64,{}",
@@ -123,18 +153,33 @@ mod tests {
     use super::*;
     #[test]
     fn produces_decodable_png_data_uri() {
-        let img = Image { width: 2, height: 1, pixels: vec![[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]], ir: None };
+        let img = Image {
+            width: 2,
+            height: 1,
+            pixels: vec![[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+            ir: None,
+        };
         let uri = to_png_b64(&img, false).unwrap();
         assert!(uri.starts_with("data:image/png;base64,"));
         let b64 = uri.strip_prefix("data:image/png;base64,").unwrap();
-        let bytes = base64::engine::general_purpose::STANDARD.decode(b64).unwrap();
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(b64)
+            .unwrap();
         let decoded = image::load_from_memory(&bytes).unwrap();
         assert_eq!((decoded.width(), decoded.height()), (2, 1));
     }
     #[test]
     fn gamma_changes_encoding() {
-        let img = Image { width: 1, height: 1, pixels: vec![[0.25, 0.25, 0.25]], ir: None };
-        assert_ne!(to_png_b64(&img, false).unwrap(), to_png_b64(&img, true).unwrap());
+        let img = Image {
+            width: 1,
+            height: 1,
+            pixels: vec![[0.25, 0.25, 0.25]],
+            ir: None,
+        };
+        assert_ne!(
+            to_png_b64(&img, false).unwrap(),
+            to_png_b64(&img, true).unwrap()
+        );
     }
 
     fn gradient(w: usize, h: usize) -> Image {
@@ -143,7 +188,12 @@ mod tests {
             let t = (i as f32) / ((w * h) as f32);
             px.push([t, 1.0 - t, (t * 2.0).fract()]);
         }
-        Image { width: w, height: h, pixels: px, ir: None }
+        Image {
+            width: w,
+            height: h,
+            pixels: px,
+            ir: None,
+        }
     }
 
     #[test]
@@ -188,6 +238,9 @@ mod tests {
         let p = std::env::temp_dir().join("openenlarge_t1_cap.jpg");
         write_jpeg(&g, &p, 95, Some(cap)).unwrap();
         let got = std::fs::metadata(&p).unwrap().len();
-        assert!(got <= cap || got == floor, "got {got} cap {cap} floor {floor}");
+        assert!(
+            got <= cap || got == floor,
+            "got {got} cap {cap} floor {floor}"
+        );
     }
 }

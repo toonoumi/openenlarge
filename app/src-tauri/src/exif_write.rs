@@ -42,7 +42,8 @@ pub fn write_exif(path: &Path, meta: &Metadata) -> Result<(), String> {
         exif.set_tag(ExifTag::ImageDescription(note.to_string()));
     }
 
-    exif.write_to_file(path).map_err(|e| format!("exif write: {e}"))
+    exif.write_to_file(path)
+        .map_err(|e| format!("exif write: {e}"))
 }
 
 /// Trim and drop empty strings → `None`.
@@ -52,7 +53,10 @@ fn nonempty(s: &Option<String>) -> Option<&str> {
 
 /// ISO digits → u16 (EXIF `ISO` is INT16U). Out-of-range/garbage → None.
 fn parse_iso(s: &str) -> Option<u16> {
-    s.trim().parse::<u32>().ok().and_then(|v| u16::try_from(v).ok())
+    s.trim()
+        .parse::<u32>()
+        .ok()
+        .and_then(|v| u16::try_from(v).ok())
 }
 
 /// Shutter "1/250" → 1/250; a decimal like "0.004" → 4/1000. None on garbage.
@@ -61,8 +65,13 @@ fn parse_shutter(s: &str) -> Option<uR64> {
     if let Some((n, d)) = s.split_once('/') {
         let n: u32 = n.trim().parse().ok()?;
         let d: u32 = d.trim().parse().ok()?;
-        if d == 0 { return None; }
-        return Some(uR64 { nominator: n, denominator: d });
+        if d == 0 {
+            return None;
+        }
+        return Some(uR64 {
+            nominator: n,
+            denominator: d,
+        });
     }
     let v: f32 = s.parse().ok()?;
     decimal_to_rational(v)
@@ -70,14 +79,24 @@ fn parse_shutter(s: &str) -> Option<uR64> {
 
 /// Aperture "f/2.8" / "2.8" → 28/10. None on garbage.
 fn parse_aperture(s: &str) -> Option<uR64> {
-    let v: f32 = s.trim().trim_start_matches(['f', 'F', '/']).trim().parse().ok()?;
+    let v: f32 = s
+        .trim()
+        .trim_start_matches(['f', 'F', '/'])
+        .trim()
+        .parse()
+        .ok()?;
     decimal_to_rational(v)
 }
 
 /// A non-negative decimal → a /100 (or finer) rational. None for negatives/NaN.
 fn decimal_to_rational(v: f32) -> Option<uR64> {
-    if !v.is_finite() || v < 0.0 { return None; }
-    Some(uR64 { nominator: (v * 100.0).round() as u32, denominator: 100 })
+    if !v.is_finite() || v < 0.0 {
+        return None;
+    }
+    Some(uR64 {
+        nominator: (v * 100.0).round() as u32,
+        denominator: 100,
+    })
 }
 
 /// Normalize a date to EXIF form `YYYY:MM:DD HH:MM:SS`. Accepts both the EXIF
@@ -142,7 +161,10 @@ mod tests {
 
     #[test]
     fn exif_datetime_passthrough() {
-        assert_eq!(to_exif_datetime("2024:05:01 13:45:30"), "2024:05:01 13:45:30");
+        assert_eq!(
+            to_exif_datetime("2024:05:01 13:45:30"),
+            "2024:05:01 13:45:30"
+        );
     }
 
     #[test]
@@ -173,8 +195,8 @@ mod tests {
     // Write a tiny RGB file, embed EXIF, read the tags back. Asserts the export
     // actually carries metadata for the given container format.
     fn round_trip(ext: &str) {
-        let path = std::env::temp_dir()
-            .join(format!("oe-exif-{}-{}.{ext}", std::process::id(), ext));
+        let path =
+            std::env::temp_dir().join(format!("oe-exif-{}-{}.{ext}", std::process::id(), ext));
         let _ = std::fs::remove_file(&path);
         let img: image::ImageBuffer<image::Rgb<u8>, Vec<u8>> =
             image::ImageBuffer::from_pixel(4, 4, image::Rgb([128, 64, 32]));
@@ -196,13 +218,21 @@ mod tests {
             ExifTag::ImageDescription(s) => Some(clean(s)),
             _ => None,
         });
-        assert_eq!(note.as_deref(), Some("roll 12, sunny 16"), "{ext}: ImageDescription");
+        assert_eq!(
+            note.as_deref(),
+            Some("roll 12, sunny 16"),
+            "{ext}: ImageDescription"
+        );
 
         let date = tags.iter().find_map(|t| match t {
             ExifTag::DateTimeOriginal(s) => Some(clean(s)),
             _ => None,
         });
-        assert_eq!(date.as_deref(), Some("2024:05:01 13:45:00"), "{ext}: DateTimeOriginal");
+        assert_eq!(
+            date.as_deref(),
+            Some("2024:05:01 13:45:00"),
+            "{ext}: DateTimeOriginal"
+        );
 
         let shutter = tags.iter().find_map(|t| match t {
             ExifTag::ExposureTime(v) => v.first().map(|r| (r.nominator, r.denominator)),
@@ -214,11 +244,17 @@ mod tests {
     }
 
     #[test]
-    fn jpeg_round_trips_exif() { round_trip("jpg"); }
+    fn jpeg_round_trips_exif() {
+        round_trip("jpg");
+    }
 
     #[test]
-    fn png_round_trips_exif() { round_trip("png"); }
+    fn png_round_trips_exif() {
+        round_trip("png");
+    }
 
     #[test]
-    fn tiff_round_trips_exif() { round_trip("tiff"); }
+    fn tiff_round_trips_exif() {
+        round_trip("tiff");
+    }
 }
