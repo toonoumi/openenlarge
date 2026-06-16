@@ -15,6 +15,8 @@
 
   async function enhance() {
     error = "";
+    result = "";
+    source = "";
     const key = get(openaiApiKey).trim();
     if (!key) { error = $t("aiEnhance.noKey"); return; }
 
