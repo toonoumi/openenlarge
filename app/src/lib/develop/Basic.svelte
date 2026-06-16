@@ -5,7 +5,7 @@
   import { api, defaultParams } from "../api";
   import { reseedActive, commitActive } from "./historyStore";
   import { createSeedGuard } from "./seedGuard";
-  import { withEffectiveBase, setFolderBase, clearFolderBase } from "./base";
+  import { withEffectiveBase } from "./base";
   import { imageDir } from "../library/folderScope";
   import Icon from "../icons/Icon.svelte";
   import Slider from "./Slider.svelte";
@@ -42,30 +42,22 @@
 
   $: effBase = $params.base_override ?? (dir ? $folderBaseByPath[dir] : null) ?? autoBase?.base ?? null;
 
-  // ---- Film Base (collapsible; folds the old base-picker panel in here) ----
-  let baseOpen = false;
   // Reset any in-progress sampling when the active image changes.
   // eslint-disable-next-line @typescript-eslint/no-unused-expressions
   $: { $activeId; sampledBase.set(null); baseSampling.set(false); }
-  $: baseScope = ($params.base_override ? "override" : (dir && $folderBaseByPath[dir] ? "folder" : "auto")) as "override" | "folder" | "auto";
-  // Hint to repoint only when the base actually in use is the auto one and its
-  // detection confidence is low (no override / folder base to mask it).
-  $: lowConfBase = baseScope === "auto" && autoBase != null && autoBase.confidence < REBATE_CONF_UI;
-  const scopeKey = { override: "base.scopeOverride", folder: "base.scopeFolder", auto: "base.scopeAuto" } as const;
   // 8-bit swatch preview of a linear base (display gamma ~1/2.2).
   const baseCss = (b: [number, number, number] | null) =>
     b ? `rgb(${b.map((v) => Math.round(255 * Math.min(1, Math.max(0, v ** (1 / 2.2))))).join(",")})` : "transparent";
-  $: effCss = baseCss(effBase);
-  // The base shown in the expanded tools: the freshly sampled one if present, else current.
-  $: shownBase = $sampledBase ?? effBase;
+  // Hint to repoint only when the base actually in use is the auto one and its
+  // detection confidence is low (no override / folder base to mask it).
+  $: lowConfBase =
+    !$params.base_override && !(dir && $folderBaseByPath[dir]) &&
+    autoBase != null && autoBase.confidence < REBATE_CONF_UI;
 
+  // Tapping the swatch arms the rebate picker (BaseView overlay on the negative).
   function toggleRecalibrate() { baseSampling.update((v) => !v); }
-  function applyBaseRoll() {
-    const s = get(sampledBase);
-    if (!s || !dir) return;
-    setFolderBase(dir, s);
-    sampledBase.set(null); baseSampling.set(false);
-  }
+  // Picking a point auto-applies that base to the ACTIVE image; commitActive puts it
+  // in the Cmd+Z / Cmd+Shift+Z undo scope (replacing the old apply / reset buttons).
   function applyBaseThisImage() {
     const s = get(sampledBase);
     if (!s) return;
@@ -73,19 +65,7 @@
     commitActive();
     sampledBase.set(null); baseSampling.set(false);
   }
-  function resetBase() {
-    // Clear the per-image override first; if none, clear the folder default.
-    if ($params.base_override) {
-      params.update((p) => ({ ...p, base_override: null }));
-      commitActive();
-    } else if (dir) clearFolderBase(dir);
-    // D_max is per-image and scene-dependent (no roll/folder default): clear the
-    // per-image override so the auto-analyze-on-crop reactive takes over again.
-    if ($params.d_max_override != null) {
-      params.update((p) => ({ ...p, d_max_override: null }));
-      commitActive();
-    }
-  }
+  $: if ($sampledBase) applyBaseThisImage();
 
   // Seed Temp/Tint from the estimated as-shot white point when the image OR the
   // film profile changes (or the effective base changes). The estimate runs
@@ -172,36 +152,17 @@
 
   {#if open}
     <div class="body" transition:slide={{ duration: 280, easing: cubicInOut }}>
-      <!-- Film Base (collapsible) -->
-      <div class="basebar">
-        <button class="basebar-toggle" on:click={() => (baseOpen = !baseOpen)}>
-          <Icon name={baseOpen ? "chevron-down" : "chevron-right"} size={12} />
-          <span>{$t('base.title')} :</span>
-          <span class="cube" style="background:{effCss}"></span>
-        </button>
-      </div>
-      {#if baseOpen}
-        <div class="basetools" transition:slide={{ duration: 220, easing: cubicInOut }}>
-          <p class="basehint">{$t('base.hint')}</p>
-          <div class="swatch-row">
-            <div class="cube big" style="background:{baseCss(shownBase)}"></div>
-            <span class="vals">{shownBase ? shownBase.map((v) => v.toFixed(3)).join(", ") : "—"}</span>
-          </div>
-          <button class="recal" class:on={$baseSampling} on:click={toggleRecalibrate}>
-            {$t('base.recalibrate')}
-          </button>
-          <div class="basebtns">
-            <button disabled={!$sampledBase} on:click={applyBaseRoll}>{$t('base.applyRoll')}</button>
-            <button disabled={!$sampledBase} on:click={applyBaseThisImage}>{$t('base.thisImage')}</button>
-          </div>
-          <button class="recal" on:click={reanalyze}>{$t('base.reanalyze')}</button>
-          <button class="basereset" disabled={baseScope === "auto"} on:click={resetBase}>{$t('base.reset')}</button>
-          <p class="scope">{$t(scopeKey[baseScope])}</p>
-          {#if lowConfBase}
-            <p class="lowconf">{$t('base.lowConfidence')}</p>
-          {/if}
-        </div>
+      <!-- Film Base: tap the swatch to pick the rebate; the pick auto-applies to this image -->
+      <div class="sub">{$t('base.title')}</div>
+      <button class="baseswatch" class:on={$baseSampling} on:click={toggleRecalibrate}
+              title={$t('base.recalibrate')} aria-label={$t('base.recalibrate')}>
+        <span class="cube big" style="background:{baseCss(effBase)}"></span>
+        <span class="pick"><Icon name="pipette" size={18} /></span>
+      </button>
+      {#if lowConfBase}
+        <p class="lowconf">{$t('base.lowConfidence')}</p>
       {/if}
+      <button class="recal" on:click={reanalyze}>{$t('base.reanalyze')}</button>
 
       <!-- White Balance -->
       <div class="sub">{$t('basic.whiteBalance')}</div>
@@ -259,28 +220,18 @@
   .wbdrop.on { color: var(--text); border-color: var(--accent); }
 
   /* Film Base */
-  .basebar { margin: 2px 0 8px; }
-  .basebar-toggle { display: flex; align-items: center; gap: 6px; width: 100%;
-    background: transparent; border: 0; color: var(--text-dim); font-size: 11px;
-    padding: 4px 0; cursor: pointer; text-transform: uppercase; letter-spacing: 0.05em; }
-  .basebar-toggle .cube { margin-left: auto; }
   .cube { width: 16px; height: 16px; border-radius: 4px; border: 1px solid var(--glass-brd);
     flex: none; }
-  .cube.big { width: 40px; height: 40px; border-radius: 6px; }
-  .basetools { padding: 2px 2px 8px; }
-  .basehint { font-size: 11px; color: var(--text-faint); margin: 0 0 10px; }
-  .swatch-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
-  .vals { font-size: 11px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+  .cube.big { width: 44px; height: 44px; border-radius: 6px; }
+  /* The swatch IS the picker: hover (or armed) reveals the pipette overlay. */
+  .baseswatch { position: relative; display: inline-flex; padding: 0; border: 0;
+    background: transparent; cursor: pointer; margin: 0 0 8px; }
+  .baseswatch .pick { position: absolute; inset: 0; display: flex; align-items: center;
+    justify-content: center; color: #fff; background: rgba(0,0,0,0.4); border-radius: 6px;
+    opacity: 0; transition: opacity 120ms; }
+  .baseswatch:hover .pick, .baseswatch.on .pick { opacity: 1; }
+  .baseswatch.on .cube.big { box-shadow: 0 0 0 2px rgba(244,157,78,0.7); }
   .recal { width: 100%; padding: 7px; border-radius: 8px; font-size: 12px; cursor: pointer;
     border: 1px solid var(--glass-brd); background: transparent; color: var(--text); margin-bottom: 8px; }
-  .recal.on { color: #fff; background: rgba(244,157,78,0.18); border-color: rgba(244,157,78,0.5); }
-  .basebtns { display: flex; gap: 6px; margin-bottom: 8px; }
-  .basebtns button { flex: 1; padding: 7px; border-radius: 8px; font-size: 12px; cursor: pointer;
-    border: 1px solid var(--glass-brd); background: transparent; color: var(--text); }
-  .basebtns button:disabled { opacity: 0.4; }
-  .basereset { width: 100%; padding: 6px; border-radius: 8px; font-size: 12px; cursor: pointer;
-    border: 1px solid var(--glass-brd); background: transparent; color: var(--text-dim); }
-  .basereset:disabled { opacity: 0.4; }
-  .scope { font-size: 11px; color: var(--text-faint); margin: 8px 0 0; }
-  .lowconf { font-size: 11px; color: rgba(244,157,78,0.9); margin: 6px 0 0; }
+  .lowconf { font-size: 11px; color: rgba(244,157,78,0.9); margin: 6px 0 8px; }
 </style>
