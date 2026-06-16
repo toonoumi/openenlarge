@@ -108,7 +108,10 @@
     border-radius: 6px; padding: 2px 8px; font-size: 11px; cursor: pointer; }
   .modes { display: flex; gap: 4px; margin: 6px 0 10px; }
   .modes button { flex: 1; background: var(--bg-1); border: 1px solid var(--glass-brd);
-    color: var(--text-dim); border-radius: 6px; padding: 4px 2px; font-size: 10px; cursor: pointer; }
+    color: var(--text-dim); border-radius: 6px; padding: 4px 2px; font-size: 10px; cursor: pointer;
+    transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease; }
+  .modes button:not(.on):hover { color: var(--text);
+    background: rgba(255, 255, 255, 0.07); border-color: rgba(255, 255, 255, 0.22); }
   .modes button.on { color: var(--text); border-color: var(--accent); }
   .mid-row { display: flex; justify-content: center; margin-bottom: 12px; }
   .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }

@@ -59,7 +59,9 @@
     background: transparent; color: var(--text); cursor: pointer; }
   .btns { display: flex; gap: 6px; }
   .btns button { flex: 1; display: grid; place-items: center; padding: 8px 0; border-radius: 8px;
-    border: 1px solid var(--glass-brd); background: transparent; color: var(--text); cursor: pointer; }
+    border: 1px solid var(--glass-brd); background: transparent; color: var(--text); cursor: pointer;
+    transition: background 0.12s ease, border-color 0.12s ease; }
+  .btns button:hover { background: var(--glass-hi); border-color: rgba(255, 255, 255, 0.18); }
   .slrow { display: flex; align-items: center; gap: 8px; }
   .slrow input[type="range"] { flex: 1; accent-color: var(--accent); }
   .val { font-size: 12px; color: var(--text); width: 44px; text-align: right; font-variant-numeric: tabular-nums; }

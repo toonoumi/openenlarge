@@ -177,18 +177,27 @@
     border-radius: 6px; padding: 2px 8px; font-size: 11px; cursor: pointer; }
   .tabs { display: flex; gap: 4px; margin: 6px 0 8px; }
   .tabs button { flex: 1; background: var(--bg-1); border: 1px solid var(--glass-brd);
-    color: var(--text-dim); border-radius: 6px; padding: 5px 2px; font-size: 11px; cursor: pointer; }
+    color: var(--text-dim); border-radius: 6px; padding: 5px 2px; font-size: 11px; cursor: pointer;
+    transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease; }
+  .tabs button:not(.on):hover { color: var(--text);
+    background: rgba(255, 255, 255, 0.07); border-color: rgba(255, 255, 255, 0.22); }
   .tabs button.on { color: var(--text); border-color: var(--accent); }
   .modes { display: flex; gap: 4px; margin: 4px 0 10px; }
   .modes button { flex: 1; background: var(--bg-1); border: 1px solid var(--glass-brd);
-    color: var(--text-dim); border-radius: 6px; padding: 4px 2px; font-size: 10px; cursor: pointer; }
+    color: var(--text-dim); border-radius: 6px; padding: 4px 2px; font-size: 10px; cursor: pointer;
+    transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease; }
+  .modes button:not(.on):hover { color: var(--text);
+    background: rgba(255, 255, 255, 0.07); border-color: rgba(255, 255, 255, 0.22); }
   .modes button.on { color: var(--text); border-color: var(--accent); }
   .bandgroup { margin-bottom: 10px; }
   .bandname { font-size: 11px; color: var(--text); margin: 6px 0 2px; }
   .point { margin-top: 6px; }
   .dropper { display: inline-flex; align-items: center; gap: 6px; background: var(--bg-1);
     border: 1px solid var(--glass-brd); color: var(--text-dim); border-radius: 6px;
-    padding: 5px 10px; font-size: 11px; cursor: pointer; }
+    padding: 5px 10px; font-size: 11px; cursor: pointer;
+    transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease; }
+  .dropper:not(.on):hover { color: var(--text);
+    background: rgba(255, 255, 255, 0.07); border-color: rgba(255, 255, 255, 0.22); }
   .dropper.on { color: var(--text); border-color: var(--accent); }
   .hint { color: var(--text-dim); font-size: 11px; margin: 10px 2px; }
   .swatches { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
