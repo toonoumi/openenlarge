@@ -24,7 +24,7 @@
   import EraserPanel from "../develop/EraserPanel.svelte";
   import AutoDustPanel from "../develop/AutoDustPanel.svelte";
   import AiEnhancePanel from "../develop/AiEnhancePanel.svelte";
-  import { addStroke, resetDust, emptyDust, setIrEnabled, setIrSensitivity, setAutoDustSensitivity, setBrushMigan, type DustStroke, type DustEdits } from "../develop/dust";
+  import { addStroke, resetDust, emptyDust, setIrEnabled, setIrSensitivity, setAutoDustSensitivity, setBrushMigan, setAiApplied, type DustStroke, type DustEdits } from "../develop/dust";
   import type { Rect, CropRect } from "../crop/types";
   import { defaultFull, conform, constrainToRotated } from "../crop/cropMath";
   import { presetNormAspect } from "../crop/presets";
@@ -261,6 +261,7 @@
   function setIrSens(v: number) { updateDust((d) => setIrSensitivity(d, v)); }
   function setAutoSens(v: number) { updateDust((d) => setAutoDustSensitivity(d, v)); }
   function setBrushAi(on: boolean) { updateDust((d) => setBrushMigan(d, on)); }
+  function aiErase() { updateDust((d) => setAiApplied(d, true)); }
 
   $: hasIr = active?.has_ir ?? false;
 
@@ -319,6 +320,7 @@
         <Viewport id={$activeId} params={effParams} imgW={effW} imgH={effH} imageCrop={imageCrop}
                   rot90={cRot} flipH={committed?.flipH ?? false} flipV={committed?.flipV ?? false} angle={committed?.angle ?? 0}
                   eraser={$tool === "eraser"} {brush} dust={dust.strokes} irRemoval={dust.irRemoval} dustRev={$dustRev} developRev={$developRev}
+                  brushMigan={dust.brushMigan} aiApplied={dust.aiApplied}
                   pointPick={pickTarget !== ""}
                   on:stroke={(e) => commitStroke(e.detail)} on:brush={(e) => (brush = e.detail)}
                   on:pointpick={onPointPick} />
@@ -344,11 +346,13 @@
           {:else if $tool === "eraser"}
             <EraserPanel bind:brush {hasIr}
                          irEnabled={dust.irRemoval.enabled} irSensitivity={dust.irRemoval.sensitivity}
-                         brushMigan={dust.brushMigan}
+                         brushMigan={dust.brushMigan} aiApplied={dust.aiApplied}
+                         strokeCount={dust.strokes.length}
                          on:reset={resetDustEdits}
                          on:irEnabled={(e) => setIrOn(e.detail)}
                          on:irSensitivity={(e) => setIrSens(e.detail)}
-                         on:brushMigan={(e) => setBrushAi(e.detail)} />
+                         on:brushMigan={(e) => setBrushAi(e.detail)}
+                         on:aiErase={aiErase} />
             <AutoDustPanel id={$activeId} params={effParams} imageCrop={imageCrop}
                            geom={{ rot90: cRot, flip_h: committed?.flipH ?? false, flip_v: committed?.flipV ?? false, angle: committed?.angle ?? 0 }}
                            dust={dust.strokes} irRemoval={dust.irRemoval}

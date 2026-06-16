@@ -18,6 +18,12 @@ pub struct BakeSpec {
     pub image_crop: Option<[f64; 4]>,
     pub dust: Vec<DustStroke>,
     pub ir_removal: IrRemoval,
+    /// AI-fill mode: don't heal dust strokes (they're shown as a mask overlay).
+    #[serde(default)]
+    pub skip_dust_heal: bool,
+    /// Heal dust strokes with MI-GAN instead of the classic fill.
+    #[serde(default)]
+    pub migan: bool,
 }
 
 /// Geometry only (orient → straighten → persistent crop) on the raw negative.
@@ -207,6 +213,8 @@ mod tests {
                 enabled: false,
                 sensitivity: 0.0,
             },
+            skip_dust_heal: false,
+            migan: false,
         };
         let out = bake_working(&img, &spec);
         assert_eq!((out.width, out.height), (4, 4));
@@ -237,6 +245,8 @@ mod tests {
                 enabled: false,
                 sensitivity: 0.0,
             },
+            skip_dust_heal: false,
+            migan: false,
         };
         let out = bake_working(&img, &spec);
         assert_eq!((out.width, out.height), (5, 4));
@@ -261,6 +271,8 @@ mod tests {
                 enabled: false,
                 sensitivity: 0.0,
             },
+            skip_dust_heal: false,
+            migan: false,
         };
         let geom = bake_geometry(&img, &spec);
         let baked = bake_working(&img, &spec);

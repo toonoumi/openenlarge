@@ -1474,15 +1474,60 @@ pub fn working_baked_info(
     Ok(WorkingInfo { w, h })
 }
 
+/// Full-frame defect `Mask` (x0=y0=0) covering the brush `stamps` — used to feed
+/// the MI-GAN inpainter, which expects a whole-frame mask.
+fn full_mask_from_stamps(w: usize, h: usize, stamps: &[Stamp]) -> film_core::dust::Mask {
+    let m = film_core::dust::rasterize(w, h, stamps, film_core::dust::GROW, 0);
+    if m.w == 0 || m.h == 0 {
+        return film_core::dust::Mask { x0: 0, y0: 0, w: 0, h: 0, bits: Vec::new() };
+    }
+    let mut bits = vec![false; w * h];
+    for yy in 0..m.h {
+        for xx in 0..m.w {
+            if m.bits[yy * m.w + xx] {
+                bits[(m.y0 + yy) * w + (m.x0 + xx)] = true;
+            }
+        }
+    }
+    film_core::dust::Mask { x0: 0, y0: 0, w, h, bits }
+}
+
+/// Bake the GPU working buffer: geometry, then heal dust strokes per the spec's
+/// mode (classic Telea, MI-GAN, or skipped for the AI-mask overlay), then IR. The
+/// MI-GAN branch needs `app_data` for the model; falls back to Telea if missing.
+fn bake_for_view(app_data: &Path, working: &film_core::Image, spec: &BakeSpec) -> film_core::Image {
+    let mut img = bake_geometry(working, spec);
+    if !spec.skip_dust_heal {
+        let stamps = export_stamps(&spec.dust, img.width, img.height);
+        if spec.migan && crate::autodust::assets::installed(app_data) {
+            let mask = full_mask_from_stamps(img.width, img.height, &stamps);
+            if mask.bits.iter().any(|&b| b) {
+                let _ = crate::autodust::engine::inpaint(app_data, &mut img, &mask);
+            }
+        } else {
+            film_core::dust::apply(&mut img, &stamps);
+        }
+    }
+    if spec.ir_removal.enabled {
+        if let Some(ir) = img.ir.clone() {
+            film_core::dust::apply_ir(&mut img, &ir, spec.ir_removal.sensitivity);
+        }
+    }
+    img
+}
+
 /// Half-float RGBA bytes of the BAKED working buffer (geometry applied, dust/IR
 /// healed pre-invert), for a one-shot RGBA16F upload. GPU then inverts with
 /// IDENTITY geometry.
 #[tauri::command]
 pub fn working_baked_pixels(
+    app: tauri::AppHandle,
     id: String,
     spec: BakeSpec,
     session: State<Session>,
 ) -> Result<tauri::ipc::Response, String> {
+    use tauri::Manager;
+    let app_data = app.path().app_data_dir().map_err(|e| e.to_string())?;
     ensure_resident(&session, &id)?;
     let working = {
         let images = session.images.lock().unwrap();
@@ -1493,7 +1538,7 @@ pub fn working_baked_pixels(
             .working
             .clone()
     };
-    let baked = bake_working(&working, &spec);
+    let baked = bake_for_view(&app_data, &working, &spec);
     let (_, _, bytes) = pack_rgba16f(&baked, MAX_GPU_EDGE);
     Ok(tauri::ipc::Response::new(bytes))
 }

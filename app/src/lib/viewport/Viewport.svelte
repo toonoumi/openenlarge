@@ -33,6 +33,10 @@
   export let dustRev = 0;
   export let developRev = 0;
   export let irRemoval: IrRemoval = { enabled: false, sensitivity: 50 };
+  /** AI-fill mode: show strokes as a red mask overlay (unhealed) until applied. */
+  export let brushMigan = false;
+  /** Whether the strokes have been MI-GAN-applied (heal baked) vs shown as overlay. */
+  export let aiApplied = false;
 
   const dispatch = createEventDispatcher<{ stroke: DustStroke; brush: number; pointpick: { r: number; g: number; b: number } }>();
 
@@ -223,7 +227,7 @@
   // for stroke changes here — the dust array itself is not in the key).
   function currentUploadKey(): string {
     if (bakeMode) {
-      return `bake|${id}|${developRev}|${dustRev}|${irRemoval.enabled}|${irRemoval.sensitivity}|${imageCrop ? imageCrop.join(',') : 'full'}|${rot90}|${flipH}|${flipV}|${angle}`;
+      return `bake|${id}|${developRev}|${dustRev}|${irRemoval.enabled}|${irRemoval.sensitivity}|${brushMigan}|${aiApplied}|${imageCrop ? imageCrop.join(',') : 'full'}|${rot90}|${flipH}|${flipV}|${angle}`;
     }
     return `raw|${id}|${developRev}`;
   }
@@ -240,6 +244,8 @@
       const spec = {
         rot90, flip_h: flipH, flip_v: flipV, angle,
         image_crop: imageCrop, dust, ir_removal: irRemoval,
+        migan: brushMigan && aiApplied,
+        skip_dust_heal: brushMigan && !aiApplied,
       };
       const info = await api.workingBakedInfo(id, spec);
       const buf = await api.workingBakedPixels(id, spec);
@@ -298,7 +304,7 @@
 
   // Upload the working float texture. Re-fires when the image changes or, in bake
   // mode, when strokes/IR/geometry change (currentUploadKey dedupes redundant runs).
-  $: if (gpuEligible) { id; developRev; dustRev; irRemoval.enabled; irRemoval.sensitivity; imageCrop; rot90; flipH; flipV; angle; uploadWorking(); }
+  $: if (gpuEligible) { id; developRev; dustRev; irRemoval.enabled; irRemoval.sensitivity; brushMigan; aiApplied; imageCrop; rot90; flipH; flipV; angle; uploadWorking(); }
   $: if (!gpuEligible) uploadKey = "";
 
   // Inversion params now drive GPU uniforms (no backend pixel fetch) when eligible.
@@ -382,6 +388,17 @@
   let painting = false;
   let pending: { x: number; y: number }[] = [];
   $: cursorR = screenRadius(brush, imgW, eff);
+
+  // SVG path for a stroke's polyline in display px (normalized → dispW/dispH).
+  // A single dab becomes "M p L p" so a round cap renders it as a dot.
+  function strokeD(pts: { x: number; y: number }[], w: number, h: number): string {
+    if (!pts.length) return "";
+    const p = (q: { x: number; y: number }) => `${(q.x * w).toFixed(1)} ${(q.y * h).toFixed(1)}`;
+    if (pts.length === 1) return `M ${p(pts[0])} L ${p(pts[0])}`;
+    return "M " + pts.map(p).join(" L ");
+  }
+  // Show committed + in-progress strokes as a mask while AI-fill is pending.
+  $: showMask = eraser && brushMigan && !aiApplied;
 
   function normPoint(e: { clientX: number; clientY: number }): { x: number; y: number } {
     const [ix, iy] = imgPoint(e);
@@ -478,6 +495,20 @@
       style="position:absolute; width:{dispW}px; height:{dispH}px; left:{left}px; top:{top}px; opacity:{hdrShown ? 1 : 0};"
     />
   {/if}
+  {#if showMask}
+    <svg class="maskov" aria-hidden="true"
+         style="left:{left}px; top:{top}px; width:{dispW}px; height:{dispH}px;"
+         viewBox="0 0 {Math.max(dispW, 1)} {Math.max(dispH, 1)}">
+      {#each dust as s}
+        <path d={strokeD(s.points, dispW, dispH)} stroke-width={s.r * 2 * dispW}
+              fill="none" stroke-linecap="round" stroke-linejoin="round" />
+      {/each}
+      {#if painting && pending.length}
+        <path d={strokeD(pending, dispW, dispH)} stroke-width={brush * 2 * dispW}
+              fill="none" stroke-linecap="round" stroke-linejoin="round" />
+      {/if}
+    </svg>
+  {/if}
   {#if eraser && hovering}
     <div class="brush" style="left:{curX}px; top:{curY}px; width:{cursorR * 2}px; height:{cursorR * 2}px;"></div>
   {/if}
@@ -503,6 +534,8 @@
     background: rgba(0,0,0,0.45); padding: 2px 8px; border-radius: 6px; z-index: 2; }
   .vp.erasing { cursor: none; }
   .vp.picking { cursor: crosshair; }
+  .maskov { position: absolute; pointer-events: none; z-index: 2; overflow: visible; }
+  .maskov path { stroke: rgba(244,70,70,0.55); }
   .brush { position: absolute; border-radius: 50%; pointer-events: none; z-index: 3;
     transform: translate(-50%, -50%); border: 1.5px solid rgba(255,255,255,0.9);
     box-shadow: 0 0 0 1px rgba(0,0,0,0.5), inset 0 0 0 1px rgba(0,0,0,0.4); }

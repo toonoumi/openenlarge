@@ -8,11 +8,17 @@
   export let hasIr = false;
   export let irEnabled = false;
   export let irSensitivity = 50;
-  /** Heal manual strokes with MI-GAN (applied on export; live uses classic fill). */
+  /** AI-fill mode: strokes show as a red mask overlay until "AI erase" applies MI-GAN. */
   export let brushMigan = false;
+  /** Whether the current strokes have been MI-GAN-applied (drives the button state). */
+  export let aiApplied = false;
+  /** Number of committed strokes (enables/disables the AI erase button). */
+  export let strokeCount = 0;
+  /** True while the MI-GAN erase bake is running. */
+  export let aiBusy = false;
 
   const dispatch = createEventDispatcher<{
-    reset: void; irEnabled: boolean; irSensitivity: number; brushMigan: boolean;
+    reset: void; irEnabled: boolean; irSensitivity: number; brushMigan: boolean; aiErase: void;
   }>();
 </script>
 
@@ -52,8 +58,16 @@
     {$t('eraser.brushAi')} <span class="state">{brushMigan ? $t('eraser.on') : $t('eraser.off')}</span>
   </button>
 
+  {#if brushMigan}
+    <button class="go" class:busy={aiBusy} disabled={aiBusy || strokeCount === 0 || aiApplied}
+            on:click={() => dispatch("aiErase")}>
+      {#if aiBusy}<span class="spinner" aria-hidden="true"></span>{/if}
+      <span>{aiBusy ? $t('eraser.aiErasing') : $t('eraser.aiErase')}</span>
+    </button>
+  {/if}
+
   <button class="row" on:click={() => dispatch("reset")}>{$t('eraser.reset')}</button>
-  <div class="hint">{$t('eraser.hint')}</div>
+  <div class="hint">{brushMigan ? $t('eraser.aiMaskHint') : $t('eraser.hint')}</div>
 </div>
 
 <style>
@@ -67,6 +81,15 @@
     background: transparent; color: var(--text); cursor: default; opacity: 0.5; }
   .ir.on { cursor: pointer; opacity: 1; }
   .ir.on.active { background: rgba(244,157,78,0.18); border-color: rgba(244,157,78,0.5); }
+  .go { width: 100%; margin: 6px 0; padding: 9px 10px; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    border: 1px solid rgba(244,157,78,0.5); background: rgba(244,157,78,0.18); color: #fff;
+    cursor: pointer; font-size: 13px; }
+  .go:not(:disabled):hover { background: rgba(244,157,78,0.30); border-color: rgba(244,157,78,0.75); }
+  .go:disabled { opacity: 0.55; cursor: default; }
+  .spinner { width: 13px; height: 13px; flex: none; border-radius: 50%;
+    border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff; animation: spin 0.7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
   .soon, .state { font-size: 10px; border: 1px solid var(--glass-brd); border-radius: 4px;
     padding: 0 5px; color: var(--text-dim); }
   .slrow { display: flex; align-items: center; gap: 8px; }
