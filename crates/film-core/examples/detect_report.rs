@@ -3,8 +3,28 @@
 
 use film_core::calibrate::{detect_rebate_base, sample_base_coherent, BASE_BAND_AUTO, REBATE_CONFIDENCE};
 use film_core::decode::{decode_ldr, decode_raw, decode_tiff};
+use film_core::engine::{invert_image, InversionParams, Mode};
 use film_core::Image;
 use std::path::Path;
+
+fn downscale(img: &Image, target_long: usize) -> Image {
+    let long = img.width.max(img.height);
+    if long <= target_long {
+        return img.clone();
+    }
+    let scale = target_long as f32 / long as f32;
+    let w = ((img.width as f32 * scale) as usize).max(1);
+    let h = ((img.height as f32 * scale) as usize).max(1);
+    let mut pixels = vec![[0.0f32; 3]; w * h];
+    for y in 0..h {
+        let sy = ((y as f32 / scale) as usize).min(img.height - 1);
+        for x in 0..w {
+            let sx = ((x as f32 / scale) as usize).min(img.width - 1);
+            pixels[y * w + x] = img.pixels[sy * img.width + sx];
+        }
+    }
+    Image { width: w, height: h, pixels, ir: None }
+}
 
 fn decode_any(path: &Path) -> Image {
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
@@ -37,5 +57,20 @@ fn main() {
             base[0], base[1], base[2], det.confidence,
             det.base[0], det.base[1], det.base[2], fb[0], fb[1], fb[2]
         );
+        // Smoke: invert with the chosen base + tuned Cineon defaults, NEUTRAL WB
+        // (WB is Plan 3) — confirms the base hue, not the white balance.
+        let small = downscale(&img, 700);
+        let p = InversionParams { base, ..Default::default() };
+        let inv = invert_image(&small, &p, Mode::D);
+        let mut buf = vec![0u8; inv.width * inv.height * 3];
+        for (i, px) in inv.pixels.iter().enumerate() {
+            for c in 0..3 {
+                buf[i * 3 + c] = (px[c].clamp(0.0, 1.0) * 255.0 + 0.5) as u8;
+            }
+        }
+        let out = format!("/tmp/tune/{stem}_fbinvert.png");
+        image::save_buffer(&out, &buf, inv.width as u32, inv.height as u32, image::ColorType::Rgb8)
+            .expect("write png");
+        eprintln!("  wrote {out}");
     }
 }
