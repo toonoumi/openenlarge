@@ -999,6 +999,7 @@ pub struct AsShotWb {
 pub fn as_shot_wb(
     id: String,
     params: InvertParams,
+    crop: Option<[f64; 4]>,
     session: State<Session>,
 ) -> Result<AsShotWb, String> {
     ensure_resident(&session, &id)?;
@@ -1007,6 +1008,14 @@ pub fn as_shot_wb(
         let img = images.get(&id).ok_or("unknown image id")?;
         let dev = img.developed.as_ref().ok_or("not developed")?;
         (dev.base, dev.thumb.clone())
+    };
+    // Restrict the estimate to the image area so borders/rebate don't bias WB.
+    let thumb = match crop {
+        Some(nc) => {
+            let (x, y, w, h) = crop_px(nc, thumb.width, thumb.height);
+            crate::convert::crop(&thumb, x, y, w, h)
+        }
+        None => thumb,
     };
     // Estimate WB against the user's ACTUAL stock/mode so the gains neutralise the
     // colour space the image is actually rendered in. `build_params` leaves `wb` at
