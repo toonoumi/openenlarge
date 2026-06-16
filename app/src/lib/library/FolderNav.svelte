@@ -58,11 +58,11 @@
   .empty { color: var(--text-faint); padding: 8px; }
   .import { margin-top: 10px; width: 100%; padding: 10px; border-radius: 9px;
     border: 1px solid rgba(0,0,0,0.25);
-    background: var(--accent-dim); color: #fff; font: inherit; font-weight: 600; cursor: pointer;
+    background: #b06a42; color: #f3ece6; font: inherit; font-weight: 600; cursor: pointer;
     display: flex; align-items: center; justify-content: center; gap: 7px;
     transition: transform 0.14s ease, background 0.14s ease; }
-  .import:hover:not(:disabled) { transform: scale(1.02); background: #e8854a; }
-  .import:active:not(:disabled) { transform: scale(0.99); background: var(--accent-dim); }
+  .import:hover:not(:disabled) { transform: scale(1.02); background: #bd7649; }
+  .import:active:not(:disabled) { transform: scale(0.99); background: #b06a42; }
   .import:disabled { opacity: 0.55; cursor: default; }
   @media (prefers-reduced-motion: reduce) {
     .import { transition: background 0.14s ease; }

@@ -62,9 +62,9 @@
     background: rgba(255,255,255,0.10); border-color: rgba(255,255,255,0.16); }
   .toggle:active:not(:disabled) { transform: scale(0.99); }
   .toggle:disabled { opacity: 0.55; cursor: default; }
-  .toggle.on { color: #fff; border-color: rgba(244,157,78,0.40);
-    background: rgba(244,157,78,0.16); }
-  .toggle.on:hover:not(:disabled) { background: rgba(244,157,78,0.22); border-color: rgba(244,157,78,0.5); }
+  .toggle.on { color: #f3ece6; border-color: rgba(176,106,66,0.55);
+    background: rgba(176,106,66,0.20); }
+  .toggle.on:hover:not(:disabled) { background: rgba(176,106,66,0.28); border-color: rgba(176,106,66,0.65); }
   @media (prefers-reduced-motion: reduce) {
     .toggle { transition: background 0.14s ease, border-color 0.14s ease; }
     .toggle:hover:not(:disabled), .toggle:active:not(:disabled) { transform: none; }
