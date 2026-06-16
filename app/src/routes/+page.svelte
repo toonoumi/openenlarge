@@ -152,8 +152,11 @@
     color: var(--text); font-size: inherit; cursor: pointer; transition: background 0.12s; }
   .brand:hover { background: var(--glass-hi); }
   .logo { width: 33px; height: 33px; border-radius: 8px; display: block; flex: none; }
-  .tabs button { background: transparent; border: 0; padding: 6px 14px; border-radius: 8px; color: var(--text-dim); position: relative; }
+  .tabs button { background: transparent; border: 0; padding: 6px 14px; border-radius: 8px; color: var(--text-dim); position: relative;
+    transition: color 0.12s, background 0.12s; }
+  .tabs button:not(.active):not(:disabled):hover { color: var(--text); background: var(--glass-hi); }
   .tabs button.active { color: var(--text); background: rgba(244,157,78,0.14); box-shadow: inset 0 0 0 1px rgba(244,157,78,0.4); }
+  .tabs button.active:hover { background: rgba(244,157,78,0.20); }
   .tabs button:disabled { opacity: 0.35; cursor: not-allowed; }
   .badge { position: absolute; top: -7px; right: -8px; min-width: 18px; height: 18px; padding: 0 5px;
     border-radius: 9px; background: var(--accent); color: #fff; font-size: 11px; font-weight: 700;
