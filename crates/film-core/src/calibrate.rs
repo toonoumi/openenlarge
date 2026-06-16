@@ -178,9 +178,67 @@ pub fn auto_wb_gains_strength(img: &Image, strength: f32) -> [f32; 3] {
     ]
 }
 
+/// Auto-derive the Cineon `D_max` (negative density range) over a region: per
+/// channel take a low transmission percentile (the densest neg / brightest scene),
+/// convert to density `log10(base_c / I_low_c)`, and take the max across channels
+/// so no channel clips past print white. Clamped to a sane `[1.0, 4.0]`. Sampling
+/// within `rect` lets the caller exclude borders (the image-area crop).
+pub fn sample_dmax(img: &Image, base: [f32; 3], rect: Option<Rect>) -> f32 {
+    const LOW_PCT: f32 = 0.01; // 1st percentile transmission
+    let r = rect.unwrap_or(Rect {
+        x: 0,
+        y: 0,
+        w: img.width,
+        h: img.height,
+    });
+    let mut chans: [Vec<f32>; 3] = [Vec::new(), Vec::new(), Vec::new()];
+    for yy in r.y..(r.y + r.h).min(img.height) {
+        for xx in r.x..(r.x + r.w).min(img.width) {
+            let px = img.pixels[yy * img.width + xx];
+            for c in 0..3 {
+                chans[c].push(px[c]);
+            }
+        }
+    }
+    let mut d_max = 1.0f32;
+    for c in 0..3 {
+        if chans[c].is_empty() || base[c] <= 1e-6 {
+            continue;
+        }
+        chans[c].sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let idx = ((chans[c].len() as f32) * LOW_PCT) as usize;
+        let i_low = chans[c][idx.min(chans[c].len() - 1)].max(1e-5);
+        let density = (base[c] / i_low).log10();
+        d_max = d_max.max(density);
+    }
+    d_max.clamp(1.0, 4.0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sample_dmax_recovers_density_range_and_clamps() {
+        // base = 1.0; log-spaced transmission from 1.0 (i=0) down to 0.01 (i=99),
+        // so the density range spans log10(1/0.01) = 2.0. The 1st-percentile pick
+        // lands at the second-densest pixel (~0.0105 transmission → density ~1.98).
+        let mut img = Image::new(100, 1);
+        for i in 0..100 {
+            let t = 10f32.powf(-2.0 * i as f32 / 99.0);
+            img.pixels[i] = [t, t, t];
+        }
+        let d = sample_dmax(&img, [1.0, 1.0, 1.0], None);
+        assert!((d - 2.0).abs() < 0.2, "expected ~2.0 density range, got {d}");
+
+        // A near-clear region (all bright) → tiny range, clamped up to the floor 1.0.
+        let flat = Image { width: 4, height: 1, pixels: vec![[0.9, 0.9, 0.9]; 4], ir: None };
+        assert!((sample_dmax(&flat, [1.0, 1.0, 1.0], None) - 1.0).abs() < 1e-4, "floor 1.0");
+
+        // A pitch-black region (transmission ~0) must not blow up — clamped to 4.0.
+        let dark = Image { width: 4, height: 1, pixels: vec![[0.0001, 0.0001, 0.0001]; 4], ir: None };
+        assert!((sample_dmax(&dark, [1.0, 1.0, 1.0], None) - 4.0).abs() < 1e-4, "ceil 4.0");
+    }
 
     #[test]
     fn sample_base_returns_high_percentile() {
