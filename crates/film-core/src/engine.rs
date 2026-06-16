@@ -72,6 +72,20 @@ const HDR_KNEE: f32 = 0.8;
 /// Tuned on real scans later; keep modest to avoid clipping.
 const HDR_HEADROOM: f32 = 2.5;
 
+/// Positive passthrough: the working buffer is linear, so display-encode it with
+/// `1/2.2` (matching the raw-scan view), after applying exposure + WB gain.
+/// `0 * wb == 0` keeps black neutral, mirroring the inversion's WB convention.
+pub fn develop_positive_px(rgb: [f32; 3], p: &InversionParams) -> [f32; 3] {
+    // `1/2.2` is hardcoded deliberately: `InversionParams.gamma` is vestigial —
+    // the negative path uses `paper_grade` for its display encode and never reads
+    // `p.gamma`, so there is no `p.gamma` to honour here either.
+    const DISPLAY_GAMMA: f32 = 1.0 / 2.2;
+    std::array::from_fn(|c| {
+        let lit = (rgb[c] * p.print_exposure * p.wb[c]).max(0.0);
+        lit.powf(DISPLAY_GAMMA)
+    })
+}
+
 /// Kodak Cineon densitometry (darktable negadoctor). Per channel:
 /// restore the negative's density in log space, return to linear, apply a paper
 /// inversion + tone curve with a highlight soft-clip, and balance with WB as a
@@ -83,17 +97,6 @@ const HDR_HEADROOM: f32 = 2.5;
 /// `print_exposure·(1 − 1/wb[c])`, which drives one channel to black before the
 /// others and reads as a colour cast in the darkest tones (the "yellow shadow"
 /// bug). A positive-domain gain spreads the WB tint evenly across tones instead.
-/// Positive passthrough: the working buffer is linear, so display-encode it with
-/// `1/2.2` (matching the raw-scan view), after applying exposure + WB gain.
-/// `0 * wb == 0` keeps black neutral, mirroring the inversion's WB convention.
-pub fn develop_positive_px(rgb: [f32; 3], p: &InversionParams) -> [f32; 3] {
-    const DISPLAY_GAMMA: f32 = 1.0 / 2.2;
-    std::array::from_fn(|c| {
-        let lit = (rgb[c] * p.print_exposure * p.wb[c]).max(0.0);
-        lit.powf(DISPLAY_GAMMA)
-    })
-}
-
 pub fn invert_d(rgb: [f32; 3], p: &InversionParams) -> [f32; 3] {
     if p.positive {
         return develop_positive_px(rgb, p);
