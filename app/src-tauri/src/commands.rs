@@ -1520,11 +1520,11 @@ fn bake_for_view(app_data: &Path, working: &film_core::Image, spec: &BakeSpec) -
 /// healed pre-invert), for a one-shot RGBA16F upload. GPU then inverts with
 /// IDENTITY geometry.
 #[tauri::command]
-pub fn working_baked_pixels(
+pub async fn working_baked_pixels(
     app: tauri::AppHandle,
     id: String,
     spec: BakeSpec,
-    session: State<Session>,
+    session: State<'_, Session>,
 ) -> Result<tauri::ipc::Response, String> {
     use tauri::Manager;
     let app_data = app.path().app_data_dir().map_err(|e| e.to_string())?;
@@ -1538,8 +1538,15 @@ pub fn working_baked_pixels(
             .working
             .clone()
     };
-    let baked = bake_for_view(&app_data, &working, &spec);
-    let (_, _, bytes) = pack_rgba16f(&baked, MAX_GPU_EDGE);
+    // The heal can run MI-GAN (seconds) — do it off the main thread so the UI
+    // (and the WKWebView, which shares the main thread on macOS) stays responsive.
+    let bytes = tauri::async_runtime::spawn_blocking(move || {
+        let baked = bake_for_view(&app_data, &working, &spec);
+        let (_, _, bytes) = pack_rgba16f(&baked, MAX_GPU_EDGE);
+        bytes
+    })
+    .await
+    .map_err(|e| e.to_string())?;
     Ok(tauri::ipc::Response::new(bytes))
 }
 
@@ -2036,7 +2043,7 @@ pub async fn download_autodust(app: tauri::AppHandle) -> Result<(), String> {
 /// `save_upscaled`, and returns a preview + the number of pixels removed.
 #[allow(clippy::too_many_arguments)]
 #[tauri::command]
-pub fn autodust_detect(
+pub async fn autodust_detect(
     app: tauri::AppHandle,
     id: String,
     params: InvertParams,
@@ -2048,7 +2055,7 @@ pub fn autodust_detect(
     dust: Vec<DustStroke>,
     ir_removal: IrRemoval,
     sensitivity: f32,
-    session: State<Session>,
+    session: State<'_, Session>,
 ) -> Result<crate::autodust::AutoDustResult, String> {
     use tauri::Manager;
     let app_data = app.path().app_data_dir().map_err(|e| e.to_string())?;
