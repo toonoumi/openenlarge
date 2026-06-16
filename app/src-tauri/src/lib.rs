@@ -77,6 +77,7 @@ pub fn run() {
             commands::working_baked_pixels,
             commands::resolved_inversion,
             commands::sample_base_at,
+            commands::auto_base_info,
             commands::analyze,
             tether::tether_start,
             tether::tether_stop,

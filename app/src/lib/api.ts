@@ -207,6 +207,9 @@ export const api = {
   sampleBaseAt: (id: string, rect: [number, number, number, number]) =>
     invoke<[number, number, number]>("sample_base_at", { id, rect }),
 
+  autoBaseInfo: (id: string) =>
+    invoke<{ base: [number, number, number]; confidence: number }>("auto_base_info", { id }),
+
   // ---- GPU export (offscreen invert+finish through the preview shader) ----
   /** Decode+bake full-res, stash the half-float bytes, return dims + inversion uniforms. */
   exportBegin: (id: string, params: InvertParams, spec: BakeSpec) =>

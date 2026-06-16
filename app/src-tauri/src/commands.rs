@@ -1319,6 +1319,23 @@ pub fn sample_base_at(
     ))
 }
 
+/// The active per-image AUTO base (the develop-time detected/fallback film base) and
+/// its detector confidence — so the UI can show what's in use and flag low confidence.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct AutoBaseInfo {
+    pub base: [f32; 3],
+    pub confidence: f32,
+}
+
+#[tauri::command]
+pub fn auto_base_info(id: String, session: State<Session>) -> Result<AutoBaseInfo, String> {
+    ensure_resident(&session, &id)?;
+    let images = session.images.lock().unwrap();
+    let img = images.get(&id).ok_or("unknown image id")?;
+    let dev = img.developed.as_ref().ok_or("not developed")?;
+    Ok(AutoBaseInfo { base: dev.base, confidence: dev.base_confidence })
+}
+
 /// Result of `analyze`: the auto-derived Cineon black point for the image area.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct Analysis {
