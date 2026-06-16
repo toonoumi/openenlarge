@@ -368,9 +368,9 @@ mod tests {
         let u = resolve_to_uniforms(&p, [0.8, 0.6, 0.4]);
         assert_eq!(u.mode, 3, "d → 3");
         assert_eq!(u.base, [0.8, 0.6, 0.4]);
-        assert!((u.d_max - 2.0).abs() < 1e-6);
+        assert!((u.d_max - 1.5).abs() < 1e-6);
         assert!((u.print_exposure - 1.0).abs() < 1e-6);
-        assert!((u.paper_grade - 0.5).abs() < 1e-6);
+        assert!((u.paper_grade - 0.95).abs() < 1e-6);
         assert!((u.soft_clip - 0.9).abs() < 1e-6);
     }
 

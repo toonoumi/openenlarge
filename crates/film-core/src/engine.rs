@@ -47,10 +47,10 @@ impl Default for InversionParams {
             black: 0.0,
             gamma: 1.0 / 2.2,
             wb: [1.0, 1.0, 1.0],
-            d_max: 2.0,
+            d_max: 1.5,
             print_exposure: 1.0,
             paper_black: 0.0,
-            paper_grade: 0.5,
+            paper_grade: 0.95,
             soft_clip: 0.9,
         }
     }

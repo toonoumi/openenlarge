@@ -194,7 +194,7 @@ pub(crate) fn build_params(p: &InvertParams, base: [f32; 3]) -> InversionParams 
     InversionParams {
         base,
         print_exposure: 2f32.powf(p.exposure), // EV stops → linear print exposure
-        d_max: p.d_max_override.unwrap_or(2.0),
+        d_max: p.d_max_override.unwrap_or(1.5),
         ..Default::default()
     }
 }
@@ -1390,8 +1390,8 @@ mod tests {
         let ip = build_params(&p, [0.8, 0.6, 0.4]);
         assert_eq!(ip.base, [0.8, 0.6, 0.4]);
         assert!((ip.print_exposure - 2.0).abs() < 1e-5, "exposure → print_exposure");
-        assert!((ip.d_max - 2.0).abs() < 1e-6, "d_max default");
-        assert!((ip.paper_grade - 0.5).abs() < 1e-6, "paper_grade default");
+        assert!((ip.d_max - 1.5).abs() < 1e-6, "d_max default");
+        assert!((ip.paper_grade - 0.95).abs() < 1e-6, "paper_grade default");
         // Identity m_post == no per-stock cross-channel matrix (nalgebra isn't a
         // direct dep of this crate, so compare against the engine default's identity).
         assert_eq!(ip.m_post, InversionParams::default().m_post, "no stock matrix");
@@ -1402,7 +1402,7 @@ mod tests {
         use crate::commands_test_support::sample_invert_params;
         let mut p = sample_invert_params();
         p.d_max_override = None;
-        assert!((build_params(&p, [0.8, 0.6, 0.4]).d_max - 2.0).abs() < 1e-6, "default 2.0");
+        assert!((build_params(&p, [0.8, 0.6, 0.4]).d_max - 1.5).abs() < 1e-6, "default 1.5");
         p.d_max_override = Some(2.7);
         assert!((build_params(&p, [0.8, 0.6, 0.4]).d_max - 2.7).abs() < 1e-6, "override used");
     }
