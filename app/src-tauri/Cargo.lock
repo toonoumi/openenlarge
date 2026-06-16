@@ -108,7 +108,7 @@ dependencies = [
  "half",
  "image",
  "little_exif",
- "ndarray 0.16.1",
+ "ndarray 0.17.2",
  "notify",
  "ort",
  "rawler",

@@ -38,11 +38,20 @@ half = "2"
 notify = "6"
 ultrahdr = "0.1"
 ort = { version = "=2.0.0-rc.12", default-features = false, features = ["load-dynamic", "ndarray", "api-24"] }
-ndarray = "0.16"
+ndarray = "0.17"
 sha2 = "0.10"
 reqwest = { version = "0.12", default-features = false, features = ["json", "multipart", "rustls-tls", "stream"] }
 futures-util = "0.3"
 
+
+# Per-platform GPU execution providers for ort. Each MUST keep `api-24` (rc.12
+# fails to compile without it). macOS = CoreML, Windows = DirectML; Linux keeps
+# the base CPU-only ort above. Do NOT enable multiple GPU EPs on one target.
+[target.'cfg(target_os = "macos")'.dependencies]
+ort = { version = "=2.0.0-rc.12", default-features = false, features = ["load-dynamic", "ndarray", "api-24", "coreml"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+ort = { version = "=2.0.0-rc.12", default-features = false, features = ["load-dynamic", "ndarray", "api-24", "directml"] }
 
 [dev-dependencies]
 tempfile = "3"
