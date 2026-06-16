@@ -5,7 +5,7 @@
   import { open } from "@tauri-apps/plugin-dialog";
   import { join } from "@tauri-apps/api/path";
   import { revealItemInDir } from "@tauri-apps/plugin-opener";
-  import { developedImages } from "./eligible";
+  import { developedFolderImages } from "./eligible";
   import { editsById, cropById, dustById, metaById } from "../store";
   import { defaultParams, type ExportFormat, type BakeSpec } from "../api";
   import { api } from "../api";
@@ -57,7 +57,7 @@
     };
   }
 
-  $: imgs = $developedImages;
+  $: imgs = $developedFolderImages;
   $: ids = imgs.map((i) => i.id);
 
   // Start empty: `ids` is a `$:`-derived value and is still undefined during this
