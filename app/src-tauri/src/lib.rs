@@ -1,3 +1,4 @@
+mod ai_enhance;
 mod cache;
 mod catalog;
 mod commands;
