@@ -75,6 +75,10 @@ pub struct InvertParams {
     /// button clears it. Backend never reads it; carried for persistence.
     #[serde(default)]
     pub wb_manual: bool,
+    /// HDR preview toggle (per image). Frontend trigger for the gain-map overlay +
+    /// encode_hdr; the live render stays SDR regardless.
+    #[serde(default)]
+    pub hdr: bool,
     // Creative finishing (UI −100..100; 0 = identity).
     pub contrast: f32,
     pub highlights: f32,
