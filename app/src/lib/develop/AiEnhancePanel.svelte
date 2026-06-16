@@ -3,9 +3,8 @@
   import { t } from "$lib/i18n";
   import { previewSrc, openaiApiKey, activeId, params } from "../store";
   import { commitActive } from "./historyStore";
-  import { api } from "../api";
+  import { api, type MatchedParams } from "../api";
   import { open } from "@tauri-apps/plugin-dialog";
-  import { convertFileSrc } from "@tauri-apps/api/core";
 
   let busy = false;
   let error = "";
@@ -18,10 +17,15 @@
 
   // --- Match Reference (local color-toning match) ---
   let refPath = "";
-  let refSrc = "";       // convertFileSrc(refPath) for the thumbnail
-  let strength = 100;    // 0..100
+  let refSrc = "";       // base64 thumbnail data URL from Rust
+  let strength = 60;     // 0..100
   let matchBusy = false;
   let matchError = "";
+  /** The full-strength match (100%) and the pre-match scoped values, captured at
+   *  "Match toning" time so the Strength slider can blend live without a backend
+   *  round-trip per frame. Null until a match has been computed. */
+  let matchedFull: MatchedParams | null = null;
+  let origScoped: MatchedParams | null = null;
 
   function refName(p: string): string {
     const i = Math.max(p.lastIndexOf("/"), p.lastIndexOf("\\"));
@@ -33,7 +37,24 @@
     const sel = await open({ multiple: false, filters: [
       { name: "Images", extensions: ["jpg", "jpeg", "png", "tif", "tiff", "webp"] },
     ] });
-    if (typeof sel === "string") { refPath = sel; refSrc = convertFileSrc(sel); }
+    if (typeof sel === "string") {
+      refPath = sel;
+      matchedFull = null; origScoped = null; // new reference → require a fresh match
+      try { refSrc = await api.referenceThumb(sel); }
+      catch { refSrc = ""; }
+    }
+  }
+
+  /** Blend the stored full-strength match toward the pre-match values by the
+   *  current strength and apply to params. Does NOT commit (live preview). */
+  function applyStrength() {
+    if (!matchedFull || !origScoped) return;
+    const s = strength / 100;
+    const blended: Partial<MatchedParams> = {};
+    for (const k of Object.keys(matchedFull) as (keyof MatchedParams)[]) {
+      blended[k] = origScoped[k] + (matchedFull[k] - origScoped[k]) * s;
+    }
+    params.update((p) => ({ ...p, ...blended }));
   }
 
   async function matchToning() {
@@ -44,10 +65,15 @@
     matchBusy = true;
     try {
       const cur = get(params);
-      const matched = await api.colorMatchParams(id, cur, refPath, strength);
-      // Single update + single commit → one Ctrl+Z restores everything.
-      params.update((p) => ({ ...p, ...matched }));
-      commitActive();
+      // Compute the full-strength match once; the slider blends it live after.
+      const full = await api.colorMatchParams(id, cur, refPath, 100);
+      const orig = {} as MatchedParams;
+      for (const k of Object.keys(full) as (keyof MatchedParams)[]) {
+        orig[k] = cur[k] as number;
+      }
+      matchedFull = full; origScoped = orig;
+      applyStrength();   // apply at the current strength…
+      commitActive();    // …as a single undoable step.
     } catch (e) {
       matchError = String(e);
     } finally {
@@ -114,16 +140,17 @@
         <span class="ref-name" title={refPath}>{refName(refPath)}</span>
       </div>
 
-      <label class="strength">
-        <span>{$t("colorMatch.strength")}</span>
-        <input type="range" min="0" max="100" bind:value={strength} />
-        <span class="val">{strength}%</span>
-      </label>
-
       <button class="go" class:busy={matchBusy} disabled={matchBusy} on:click={matchToning}>
         {#if matchBusy}<span class="spinner" aria-hidden="true"></span>{/if}
         <span>{matchBusy ? $t("colorMatch.matching") : $t("colorMatch.match")}</span>
       </button>
+
+      <label class="strength">
+        <span>{$t("colorMatch.strength")}</span>
+        <input type="range" min="0" max="100" bind:value={strength}
+               on:input={applyStrength} on:change={() => matchedFull && commitActive()} />
+        <span class="val">{strength}%</span>
+      </label>
     {/if}
 
     {#if matchError}<div class="err">{matchError}</div>{/if}

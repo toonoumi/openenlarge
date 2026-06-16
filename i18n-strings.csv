@@ -318,4 +318,4 @@ colorMatch.match,"Match toning","匹配色调","src/lib/develop/AiEnhancePanel.s
 colorMatch.matching,"Matching…","匹配中…","src/lib/develop/AiEnhancePanel.svelte","button"
 colorMatch.strength,"Strength","强度","src/lib/develop/AiEnhancePanel.svelte","label"
 colorMatch.noRef,"Import a reference image first.","请先导入参考图像。","src/lib/develop/AiEnhancePanel.svelte","text"
-colorMatch.hint,"Adjusts white balance, exposure, contrast and color grading to match the reference's color toning. Fully local — fine-tune any slider afterward, or undo (Ctrl+Z) to revert.","调整白平衡、曝光、对比度和颜色分级以匹配参考图像的色调。完全本地处理——之后可微调任意滑块，或撤销（Ctrl+Z）还原。","src/lib/develop/AiEnhancePanel.svelte","hint"
+colorMatch.hint,"Matches white balance, contrast and saturation to the reference's color toning. Drag Strength to taste. Fully local — fine-tune any slider afterward, or undo (Ctrl+Z) to revert.","将白平衡、对比度和饱和度匹配到参考图像的色调。拖动“强度”调整程度。完全本地处理——之后可微调任意滑块，或撤销（Ctrl+Z）还原。","src/lib/develop/AiEnhancePanel.svelte","hint"

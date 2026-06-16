@@ -321,7 +321,7 @@ export const dict: Record<string, Record<string, string>> = {
     "colorMatch.matching": "Matching…",
     "colorMatch.strength": "Strength",
     "colorMatch.noRef": "Import a reference image first.",
-    "colorMatch.hint": "Adjusts white balance, exposure, contrast and color grading to match the reference's color toning. Fully local — fine-tune any slider afterward, or undo (Ctrl+Z) to revert.",
+    "colorMatch.hint": "Matches white balance, contrast and saturation to the reference's color toning. Drag Strength to taste. Fully local — fine-tune any slider afterward, or undo (Ctrl+Z) to revert.",
   },
   zh: {
     "app.brand": "OpenEnlarge",
@@ -643,6 +643,6 @@ export const dict: Record<string, Record<string, string>> = {
     "colorMatch.matching": "匹配中…",
     "colorMatch.strength": "强度",
     "colorMatch.noRef": "请先导入参考图像。",
-    "colorMatch.hint": "调整白平衡、曝光、对比度和颜色分级以匹配参考图像的色调。完全本地处理——之后可微调任意滑块，或撤销（Ctrl+Z）还原。",
+    "colorMatch.hint": "将白平衡、对比度和饱和度匹配到参考图像的色调。拖动“强度”调整程度。完全本地处理——之后可微调任意滑块，或撤销（Ctrl+Z）还原。",
   },
 };

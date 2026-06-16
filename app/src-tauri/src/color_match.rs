@@ -93,12 +93,32 @@ pub fn reference_stats(path: &str) -> Result<ImageStats, String> {
     Ok(compute_stats(&img))
 }
 
+/// Decode a reference image and return a small base64 JPEG data URL for UI
+/// preview. The app shows all images as data URLs (the `asset://` protocol is not
+/// enabled), so the frontend can't load an arbitrary picked file directly.
+pub fn reference_thumb_data_url(path: &str) -> Result<String, String> {
+    use base64::Engine;
+    let dyn_img = image::open(path).map_err(|e| format!("reference decode: {e}"))?;
+    let small = dyn_img.thumbnail(160, 160).to_rgb8();
+    let mut bytes: Vec<u8> = Vec::new();
+    image::codecs::jpeg::JpegEncoder::new_with_quality(&mut bytes, 80)
+        .encode(small.as_raw(), small.width(), small.height(), image::ExtendedColorType::Rgb8)
+        .map_err(|e| format!("jpeg encode: {e}"))?;
+    Ok(format!(
+        "data:image/jpeg;base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(&bytes)
+    ))
+}
+
 /// Weighted squared distance between two fingerprints. Region a*/b* (color cast)
 /// dominate; L and global contrast/chroma are weighted lower so exposure/contrast
 /// don't fight the cast match.
 pub fn loss(cur: &ImageStats, target: &ImageStats) -> f32 {
+    // L* (absolute lightness) is weighted low: we transfer the reference's colour
+    // cast, contrast and saturation, NOT its scene brightness — forcing absolute
+    // lightness/hue onto a different scene produces a muddy "everything-brown" wash.
     let region = |c: &RegionStats, t: &RegionStats| -> f32 {
-        0.5 * (c.l - t.l).powi(2) + (c.a - t.a).powi(2) + (c.b - t.b).powi(2)
+        0.2 * (c.l - t.l).powi(2) + (c.a - t.a).powi(2) + (c.b - t.b).powi(2)
     };
     region(&cur.sh, &target.sh)
         + region(&cur.mid, &target.mid)
@@ -182,19 +202,19 @@ struct Axis {
     step: f32,
 }
 
+/// Axes the optimizer is allowed to move. Deliberately limited to white balance
+/// (temp/tint), contrast and saturation — the clean "colour cast + tone" set.
+/// Exposure is excluded so the user's own brightness is preserved, and the
+/// colour-grading shadow/highlight wheels are excluded because forcing a scene's
+/// absolute regional colour onto a different image produces a muddy brown wash
+/// (the cg_* fields stay = original and the frontend strength slider controls
+/// overall intensity instead).
 fn axes() -> Vec<Axis> {
     vec![
         Axis { get: |m| m.temp, set: |m, v| m.temp = v, lo: 2000.0, hi: 12000.0, step: 800.0 },
         Axis { get: |m| m.tint, set: |m, v| m.tint = v, lo: -150.0, hi: 150.0, step: 20.0 },
-        Axis { get: |m| m.exposure, set: |m, v| m.exposure = v, lo: -5.0, hi: 5.0, step: 0.5 },
         Axis { get: |m| m.contrast, set: |m, v| m.contrast = v, lo: -100.0, hi: 100.0, step: 15.0 },
         Axis { get: |m| m.saturation, set: |m, v| m.saturation = v, lo: -100.0, hi: 100.0, step: 15.0 },
-        Axis { get: |m| m.cg_sh_hue, set: |m, v| m.cg_sh_hue = v, lo: 0.0, hi: 360.0, step: 40.0 },
-        Axis { get: |m| m.cg_sh_sat, set: |m, v| m.cg_sh_sat = v, lo: 0.0, hi: 100.0, step: 12.0 },
-        Axis { get: |m| m.cg_sh_lum, set: |m, v| m.cg_sh_lum = v, lo: -100.0, hi: 100.0, step: 12.0 },
-        Axis { get: |m| m.cg_hi_hue, set: |m, v| m.cg_hi_hue = v, lo: 0.0, hi: 360.0, step: 40.0 },
-        Axis { get: |m| m.cg_hi_sat, set: |m, v| m.cg_hi_sat = v, lo: 0.0, hi: 100.0, step: 12.0 },
-        Axis { get: |m| m.cg_hi_lum, set: |m, v| m.cg_hi_lum = v, lo: -100.0, hi: 100.0, step: 12.0 },
     ]
 }
 

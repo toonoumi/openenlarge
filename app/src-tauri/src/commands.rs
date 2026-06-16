@@ -1950,6 +1950,13 @@ pub fn color_match_params(
     )
 }
 
+/// Decode a user-picked reference image and return a small base64 JPEG data URL
+/// for the panel thumbnail (the app doesn't enable the `asset://` protocol).
+#[tauri::command]
+pub fn reference_thumb(path: String) -> Result<String, String> {
+    crate::color_match::reference_thumb_data_url(&path)
+}
+
 /// Whether the upscaler runtime+model are installed, and the download size.
 #[tauri::command]
 pub fn upscaler_status(app: tauri::AppHandle) -> Result<crate::upscale::assets::Status, String> {

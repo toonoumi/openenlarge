@@ -232,6 +232,8 @@ export const api = {
     invoke<void>("save_upscaled", { outPath, format, metaOverride }),
   colorMatchParams: (id: string, params: InvertParams, refPath: string, strength: number) =>
     invoke<MatchedParams>("color_match_params", { id, params, refPath, strength }),
+  referenceThumb: (path: string) =>
+    invoke<string>("reference_thumb", { path }),
   saveAppState: (key: string, value: string) =>
     invoke<void>("save_app_state", { key, value }),
   workingInfo: (id: string) =>

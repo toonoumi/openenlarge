@@ -91,6 +91,7 @@ pub fn run() {
             commands::upscale_image,
             commands::save_upscaled,
             commands::color_match_params,
+            commands::reference_thumb,
             tether::tether_start,
             tether::tether_stop,
         ])
