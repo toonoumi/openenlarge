@@ -1651,9 +1651,41 @@ pub fn analyze(
     })
 }
 
+/// Anchor D_max to a measured white-point: sample the exposed leader from a
+/// normalized rect [x,y,w,h] (0..1) over the resident working image and return the
+/// scalar D_max. The frontend stores this in `d_max_override` (same as `analyze`),
+/// so it overrides the per-frame scene estimate for this image.
+#[tauri::command]
+pub fn analyze_white_point(
+    id: String,
+    params: InvertParams,
+    rect: [f64; 4],
+    session: State<Session>,
+) -> Result<Analysis, String> {
+    use film_core::calibrate::{dmax_from_white_point, Rect};
+    ensure_resident(&session, &id)?;
+    let images = session.images.lock().unwrap();
+    let img = images.get(&id).ok_or("unknown image id")?;
+    let dev = img.developed.as_ref().ok_or("not developed")?;
+    let base = effective_base(&params, dev.base);
+    let (x, y, w, h) = crop_px(rect, dev.working.width, dev.working.height);
+    Ok(Analysis {
+        d_max: dmax_from_white_point(&dev.working, base, Some(Rect { x, y, w, h })),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn white_point_dmax_matches_engine() {
+        use film_core::calibrate::dmax_from_white_point;
+        let white = [0.08f32, 0.008, 0.08];
+        let img = film_core::Image { width: 4, height: 4, pixels: vec![white; 16], ir: None };
+        let d = dmax_from_white_point(&img, [0.8, 0.8, 0.8], None);
+        assert!((d - 2.0).abs() < 1e-3);
+    }
 
     #[test]
     fn default_params_use_cineon_mode() {

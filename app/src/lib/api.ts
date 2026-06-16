@@ -201,6 +201,8 @@ export const api = {
     invoke<AsShotWb>("as_shot_wb", { id, params, crop }),
   analyze: (id: string, params: InvertParams, crop: [number, number, number, number] | null = null) =>
     invoke<{ d_max: number }>("analyze", { id, params, crop }),
+  analyzeWhitePoint: (id: string, params: InvertParams, rect: [number, number, number, number]) =>
+    invoke<{ d_max: number }>("analyze_white_point", { id, params, rect }),
   grayPointWb: (params: InvertParams, rgb: [number, number, number]) =>
     invoke<AsShotWb>("gray_point_wb", { params, rgb }),
   loadCatalog: () => invoke<CatalogSnapshot>("load_catalog"),

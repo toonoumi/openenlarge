@@ -113,6 +113,7 @@ pub fn run() {
             commands::sample_base_at,
             commands::auto_base_info,
             commands::analyze,
+            commands::analyze_white_point,
             commands::ai_enhance_image,
             commands::upscaler_status,
             commands::download_upscaler,
