@@ -10,7 +10,7 @@ use crate::metadata::extract;
 use crate::session::{
     CachedImage, Developed, ImageEntry, InvertParams, PreparedExport, Quality, Session,
 };
-use film_core::calibrate::{auto_wb_gains, sample_base};
+use film_core::calibrate::auto_wb_gains;
 use film_core::decode::{decode_ldr, decode_raw, decode_tiff};
 use film_core::dust::{self, Stamp};
 use film_core::engine::{invert_image, InversionParams, Mode};
@@ -456,7 +456,8 @@ fn develop_heavy(
     let working = proxy(&full, cap);
     let has_ir = working.ir.is_some();
     let thumb = proxy(&full, AUTOWB_EDGE);
-    let base = sample_base(&working, None);
+    let (blo, bhi) = film_core::calibrate::BASE_BAND_AUTO;
+    let base = film_core::calibrate::sample_base_coherent(&working, None, blo, bhi);
     let (w, h) = (full.width as u32, full.height as u32);
     drop(full);
 
@@ -1267,7 +1268,14 @@ pub fn sample_base_at(
     let img = images.get(&id).ok_or("unknown image id")?;
     let dev = img.developed.as_ref().ok_or("not developed")?;
     let (x, y, w, h) = crop_px(rect, dev.working.width, dev.working.height);
-    Ok(sample_base(&dev.working, Some(Rect { x, y, w, h })))
+    use film_core::calibrate::{sample_base_coherent, BASE_BAND_REBATE};
+    let (lo, hi) = BASE_BAND_REBATE;
+    Ok(sample_base_coherent(
+        &dev.working,
+        Some(Rect { x, y, w, h }),
+        lo,
+        hi,
+    ))
 }
 
 /// Result of `analyze`: the auto-derived Cineon black point for the image area.
