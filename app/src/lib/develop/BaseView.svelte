@@ -36,8 +36,12 @@
     const out_w = Math.max(1, Math.round(imgW * rscale));
     const out_h = Math.max(1, Math.round(imgH * rscale));
     try {
+      // Base mode shows the raw negative (you pick the orange rebate); white-point
+      // mode shows the DEVELOPED positive (like the WB picker) so the user targets
+      // the leader against the image they actually see.
       src = await api.renderView(id, params, {
-        crop: [0, 0, imgW, imgH], out_w, out_h, raw: true, finish: false,
+        crop: [0, 0, imgW, imgH], out_w, out_h,
+        raw: mode !== "whitepoint", finish: mode === "whitepoint",
         image_crop: null, rot90: 0, flip_h: false, flip_v: false, angle: 0,
       });
     } catch { /* keep last */ }

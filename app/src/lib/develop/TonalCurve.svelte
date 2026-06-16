@@ -1,6 +1,6 @@
 <script lang="ts">
   import { t } from "$lib/i18n";
-  import { params } from "../store";
+  import { params, whitePointSampling } from "../store";
   import Icon from "../icons/Icon.svelte";
   import Slider from "./Slider.svelte";
   import CurveEditor from "./CurveEditor.svelte";
@@ -42,7 +42,18 @@
       <Icon name={open ? "chevron-down" : "chevron-right"} size={14} />
       <span>{$t('curve.title')}</span>
     </button>
-    <button class="reset" on:click={resetTone}>{$t('curve.reset')}</button>
+    <span class="headbtns">
+      <!-- White-point picker: anchors highlights/contrast (D_max). Lives in the Tone
+           section because it shapes lighting. Toggles the global sampling store; the
+           sampled D_max is applied by the reactor in Basic.svelte. -->
+      <button class="wpdrop" class:on={$whitePointSampling}
+              on:click={() => whitePointSampling.update((v) => !v)}
+              title={$t('curve.whitepoint')} aria-label={$t('curve.whitepoint')}>
+        <Icon name="pipette" size={14} />
+      </button>
+      <span class="help" title={$t('curve.whitepointHelp')} aria-label={$t('curve.whitepointHelp')}>?</span>
+      <button class="reset" on:click={resetTone}>{$t('curve.reset')}</button>
+    </span>
   </div>
 
   {#if open}
@@ -75,6 +86,15 @@
   .toggle { display: flex; align-items: center; gap: 6px;
     background: transparent; border: 0; color: var(--text); font-weight: 600;
     padding: 0; cursor: pointer; }
+  .headbtns { display: inline-flex; align-items: center; gap: 6px; }
+  .wpdrop { display: inline-flex; align-items: center; justify-content: center;
+    background: transparent; border: 1px solid var(--glass-brd); color: var(--text-dim);
+    border-radius: 6px; padding: 2px 6px; cursor: pointer; }
+  .wpdrop.on { color: var(--text); border-color: var(--accent); }
+  /* Small "?" badge: hover shows native tooltip explaining what to pick. */
+  .help { display: inline-flex; align-items: center; justify-content: center;
+    width: 15px; height: 15px; border-radius: 50%; border: 1px solid var(--glass-brd);
+    color: var(--text-dim); font-size: 10px; line-height: 1; cursor: help; user-select: none; }
   .sub { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;
     color: var(--text-dim); margin: 12px 0 4px; }
   .adjust { display: flex; align-items: center; gap: 10px; margin: 6px 0 8px; }

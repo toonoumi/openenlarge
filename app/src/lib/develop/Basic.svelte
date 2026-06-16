@@ -56,7 +56,6 @@
 
   // Tapping the swatch arms the rebate picker (BaseView overlay on the negative).
   function toggleRecalibrate() { baseSampling.update((v) => !v); }
-  function toggleWhitePoint() { whitePointSampling.update((v) => !v); }
 
   function isPinned(id: string | null): boolean {
     return !!id && get(whitePointPinned).has(id);
@@ -211,8 +210,6 @@
           <span class="cube big" style="background:{baseCss(effBase)}"></span>
           <span class="pick"><Icon name="pipette" size={18} /></span>
         </button>
-        <button class="baseswatch wp" class:on={$whitePointSampling} on:click={toggleWhitePoint}
-                title={$t('base.whitepoint')} aria-label={$t('base.whitepoint')}>WP</button>
         {#if lowConfBase}
           <p class="lowconf">{$t('base.lowConfidence')}</p>
         {/if}
@@ -226,6 +223,7 @@
           <button class="wbdrop" class:on={wbPicking} title={$t('basic.grayPick')} on:click={() => onWbPick?.()}>
             <Icon name="pipette" size={14} />
           </button>
+          <span class="help" title={$t('basic.grayPickHelp')} aria-label={$t('basic.grayPickHelp')}>?</span>
           <button class="auto" on:click={autoWb}>{$t('basic.auto')}</button>
         </span>
       </div>
@@ -276,6 +274,10 @@
     background: transparent; border: 1px solid var(--glass-brd); color: var(--text-dim);
     border-radius: 6px; padding: 2px 6px; cursor: pointer; }
   .wbdrop.on { color: var(--text); border-color: var(--accent); }
+  /* Small "?" badge: hover shows native tooltip explaining what to pick. */
+  .help { display: inline-flex; align-items: center; justify-content: center;
+    width: 15px; height: 15px; border-radius: 50%; border: 1px solid var(--glass-brd);
+    color: var(--text-dim); font-size: 10px; line-height: 1; cursor: help; user-select: none; }
 
   /* Film Base */
   .cube { width: 16px; height: 16px; border-radius: 4px; border: 1px solid var(--glass-brd);
