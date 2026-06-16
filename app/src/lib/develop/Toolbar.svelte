@@ -36,7 +36,8 @@
     transition: transform 0.28s cubic-bezier(0.34, 1.3, 0.5, 1); }
   button { position: relative; z-index: 1; flex: 1; display: grid; place-items: center; padding: 7px 0;
     border-radius: 8px; border: 1px solid transparent; background: transparent;
-    color: var(--text-dim); cursor: pointer; transition: color 0.2s ease; }
+    color: var(--text-dim); cursor: pointer; transition: color 0.2s ease, background 0.14s ease; }
+  button:not(.on):not(:disabled):hover { color: var(--text); background: var(--glass-hi); }
   button.on { color: #fff; }
   button:disabled { opacity: 0.35; cursor: default; }
 </style>
