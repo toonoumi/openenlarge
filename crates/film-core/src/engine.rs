@@ -38,6 +38,10 @@ pub struct InversionParams {
     /// HDR mode: expand highlights above the knee into [knee, HDR_HEADROOM] instead
     /// of the SDR soft-clip toward 1.0. Used only for the HDR rendition (encode_hdr).
     pub hdr: bool,
+    /// Positive passthrough: skip the Cineon inversion and render the decoded
+    /// scan directly (display-encoded), applying only exposure (`print_exposure`)
+    /// and white balance (`wb`). For already-positive sources (slides/prints).
+    pub positive: bool,
 }
 
 impl Default for InversionParams {
@@ -56,6 +60,7 @@ impl Default for InversionParams {
             paper_grade: 0.95,
             soft_clip: 0.9,
             hdr: false,
+            positive: false,
         }
     }
 }
@@ -78,7 +83,21 @@ const HDR_HEADROOM: f32 = 2.5;
 /// `print_exposure·(1 − 1/wb[c])`, which drives one channel to black before the
 /// others and reads as a colour cast in the darkest tones (the "yellow shadow"
 /// bug). A positive-domain gain spreads the WB tint evenly across tones instead.
+/// Positive passthrough: the working buffer is linear, so display-encode it with
+/// `1/2.2` (matching the raw-scan view), after applying exposure + WB gain.
+/// `0 * wb == 0` keeps black neutral, mirroring the inversion's WB convention.
+pub fn develop_positive_px(rgb: [f32; 3], p: &InversionParams) -> [f32; 3] {
+    const DISPLAY_GAMMA: f32 = 1.0 / 2.2;
+    std::array::from_fn(|c| {
+        let lit = (rgb[c] * p.print_exposure * p.wb[c]).max(0.0);
+        lit.powf(DISPLAY_GAMMA)
+    })
+}
+
 pub fn invert_d(rgb: [f32; 3], p: &InversionParams) -> [f32; 3] {
+    if p.positive {
+        return develop_positive_px(rgb, p);
+    }
     const THRESHOLD: f32 = 2.328_306_4e-10; // negadoctor's -32 EV floor
     std::array::from_fn(|c| {
         let clamped = rgb[c].max(THRESHOLD);
@@ -282,5 +301,49 @@ mod tests {
         assert_eq!(out.ir, Some(vec![0.5, 0.25]));
         assert_eq!(out.width, 2);
         assert_eq!(out.height, 1);
+    }
+
+    #[test]
+    fn positive_passthrough_neutral_is_display_encode() {
+        // positive + neutral params (exposure 1, wb 1) must match the raw-scan
+        // display encode pow(rgb, 1/2.2) — no inversion, no tint.
+        let p = InversionParams { positive: true, ..Default::default() };
+        for probe in [[0.04f32, 0.04, 0.04], [0.2, 0.3, 0.5], [0.9, 0.9, 0.9]] {
+            let out = invert_d(probe, &p);
+            for c in 0..3 {
+                let want = probe[c].powf(1.0 / 2.2);
+                assert!((out[c] - want).abs() < 1e-5, "ch {c}: {} vs {}", out[c], want);
+            }
+        }
+    }
+
+    #[test]
+    fn positive_exposure_brightens() {
+        let base = InversionParams { positive: true, ..Default::default() };
+        let up = InversionParams { positive: true, print_exposure: 2.0, ..Default::default() };
+        let a = invert_d([0.25, 0.25, 0.25], &base);
+        let b = invert_d([0.25, 0.25, 0.25], &up);
+        assert!(b[0] > a[0], "2x exposure should brighten: {} vs {}", b[0], a[0]);
+    }
+
+    #[test]
+    fn positive_wb_gains_one_channel() {
+        let neutral = InversionParams { positive: true, ..Default::default() };
+        let warm = InversionParams { positive: true, wb: [1.5, 1.0, 1.0], ..Default::default() };
+        let a = invert_d([0.3, 0.3, 0.3], &neutral);
+        let b = invert_d([0.3, 0.3, 0.3], &warm);
+        assert!(b[0] > a[0], "R gain should brighten R: {} vs {}", b[0], a[0]);
+        assert!((b[1] - a[1]).abs() < 1e-6, "G unchanged");
+    }
+
+    #[test]
+    fn positive_false_matches_today() {
+        // Regression: the default (negative) path is byte-for-byte unchanged.
+        let p = InversionParams { base: [0.7, 0.6, 0.5], ..Default::default() };
+        assert!(!p.positive, "default must be negative");
+        let probe = [0.3, 0.25, 0.2];
+        let neg = invert_d(probe, &p);
+        let p2 = InversionParams { positive: false, ..p.clone() };
+        assert_eq!(neg, invert_d(probe, &p2));
     }
 }
