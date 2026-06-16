@@ -317,6 +317,8 @@ colorMatch.import,"Import reference image","导入参考图像","src/lib/develop
 colorMatch.match,"Match toning","匹配色调","src/lib/develop/AiEnhancePanel.svelte","button"
 colorMatch.matching,"Matching…","匹配中…","src/lib/develop/AiEnhancePanel.svelte","button"
 colorMatch.strength,"Strength","强度","src/lib/develop/AiEnhancePanel.svelte","label"
+colorMatch.reset,"Reset match","重置匹配","src/lib/develop/AiEnhancePanel.svelte","button"
+colorMatch.changeRef,"Change reference","更换参考","src/lib/develop/AiEnhancePanel.svelte","title"
 colorMatch.noRef,"Import a reference image first.","请先导入参考图像。","src/lib/develop/AiEnhancePanel.svelte","text"
 colorMatch.hint,"Matches white balance, contrast and saturation to the reference's color toning. Drag Strength to taste. Fully local — fine-tune any slider afterward, or undo (Ctrl+Z) to revert.","将白平衡、对比度和饱和度匹配到参考图像的色调。拖动“强度”调整程度。完全本地处理——之后可微调任意滑块，或撤销（Ctrl+Z）还原。","src/lib/develop/AiEnhancePanel.svelte","hint"
 toolbar.upscale,"Upscale","放大","src/lib/develop/Toolbar.svelte","title"

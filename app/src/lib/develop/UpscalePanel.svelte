@@ -125,6 +125,7 @@
   .go { width: 100%; padding: 9px 10px; margin: 6px 0; border-radius: 8px;
     display: flex; align-items: center; justify-content: center; gap: 8px;
     border: 1px solid rgba(244,157,78,0.5); background: rgba(244,157,78,0.18); color: #fff; cursor: pointer; font-size: 13px; }
+  .go:not(:disabled):hover { background: rgba(244,157,78,0.30); border-color: rgba(244,157,78,0.75); }
   .go:disabled { opacity: 0.55; cursor: default; }
   .spinner { width: 13px; height: 13px; flex: none; border-radius: 50%;
     border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff; animation: spin 0.7s linear infinite; }

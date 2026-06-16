@@ -37,8 +37,9 @@ export function smoothBins(bins: number[], radius = 3): number[] {
 }
 
 /** Build an SVG polyline points string for one channel, normalized to height h.
- *  Bins are smoothed first (set `smooth` to 0 for the raw comb). */
-export function channelPath(bins: number[], w: number, h: number, smooth = 3): string {
+ *  Bins are smoothed first (set `smooth` to 0 for the raw comb). A wider radius
+ *  tames the quantization spikes ("comb teeth") into a smooth wave. */
+export function channelPath(bins: number[], w: number, h: number, smooth = 7): string {
   const sb = smoothBins(bins, smooth);
   const max = Math.max(1, ...sb);
   return sb.map((v, i) => {
