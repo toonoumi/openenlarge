@@ -18,39 +18,43 @@ pub struct Asset {
 }
 
 // ============================================================================
-// RELEASE CONFIG — filled in by Task 9 (UP9) once assets are built, signed, hosted.
-// The macOS runtime asset MUST be the Developer-ID re-signed dylib (see spec).
-// Until hosted, the url/sha256/size below are placeholders; the DOWNLOAD path
-// cannot succeed until they are real, but everything else (status checks, verify
-// logic, command wiring, UI) is testable. Do not ship a release with placeholders.
+// RELEASE CONFIG — hosted as GitHub release assets on the `upscaler-assets-v1`
+// tag of MohaElder/openenlarge (public repo, so the unauthenticated download
+// path works). The macOS dylib is the ONNX Runtime 1.26.0 osx-arm64 build
+// RE-SIGNED with "Developer ID Application: Aako, Inc (N7BMGT3KJY)" + hardened
+// runtime, so it passes library validation when dlopen'd by the same-team app.
+// Windows/Linux are the stock 1.26.0 CPU builds (CoreML accelerates macOS; the
+// DirectML EP requested on Windows falls back to CPU on a CPU-only runtime —
+// see docs/upscaler-assets.md). Bump the tag + these values only when the
+// runtime/model changes, NOT on every app release.
 // ============================================================================
 #[cfg(target_os = "macos")]
 const RUNTIME: Asset = Asset {
     file_name: "libonnxruntime.dylib",
-    url: "https://example.invalid/REPLACE_macos_arm64_libonnxruntime.dylib",
-    sha256: "0000000000000000000000000000000000000000000000000000000000000000",
-    size: 25_000_000,
+    url: "https://github.com/MohaElder/openenlarge/releases/download/upscaler-assets-v1/libonnxruntime.dylib",
+    sha256: "ba6ff4015f593fa87682b0e7d36164c1f7fa05148b7dff442efb34e13a60bf1a",
+    size: 37_078_528,
 };
 #[cfg(target_os = "windows")]
 const RUNTIME: Asset = Asset {
     file_name: "onnxruntime.dll",
-    url: "https://example.invalid/REPLACE_windows_x64_onnxruntime.dll",
-    sha256: "0000000000000000000000000000000000000000000000000000000000000000",
-    size: 40_000_000,
+    url: "https://github.com/MohaElder/openenlarge/releases/download/upscaler-assets-v1/onnxruntime.dll",
+    sha256: "b2ba7ca16e0e4fe71ad5148744ab885a2f5809e52a0c3de4d9ba3853a03977f9",
+    size: 14_897_976,
 };
 #[cfg(target_os = "linux")]
 const RUNTIME: Asset = Asset {
     file_name: "libonnxruntime.so",
-    url: "https://example.invalid/REPLACE_linux_x64_libonnxruntime.so",
-    sha256: "0000000000000000000000000000000000000000000000000000000000000000",
-    size: 15_000_000,
+    url: "https://github.com/MohaElder/openenlarge/releases/download/upscaler-assets-v1/libonnxruntime.so",
+    sha256: "5bd5bedf736fc501692435d0ec4f6e8b2bdf48cd30af8e6d00d61b3ddc9a7ab8",
+    size: 23_023_576,
 };
 
 const MODEL: Asset = Asset {
     file_name: "realesr-general-x4v3.onnx",
-    url: "https://example.invalid/REPLACE_realesr-general-x4v3.onnx",
-    sha256: "0000000000000000000000000000000000000000000000000000000000000000",
-    size: 5_000_000,
+    url: "https://github.com/MohaElder/openenlarge/releases/download/upscaler-assets-v1/realesr-general-x4v3.onnx",
+    sha256: "09b757accd747d7e423c1d352b3e8f23e77cc5742d04bae958d4eb8082b76fa4",
+    size: 4_871_181,
 };
 
 /// All assets required on the current platform (runtime first, then model).
