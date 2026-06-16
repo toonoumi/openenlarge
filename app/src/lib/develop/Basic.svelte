@@ -1,11 +1,11 @@
 <script lang="ts">
   import { get } from "svelte/store";
   import { t } from "$lib/i18n";
-  import { params, activeId, images, folderBaseByPath, folderDmaxByPath, baseSampling, sampledBase } from "../store";
+  import { params, activeId, images, folderBaseByPath, baseSampling, sampledBase } from "../store";
   import { api, defaultParams } from "../api";
   import { reseedActive, commitActive } from "./historyStore";
   import { createSeedGuard } from "./seedGuard";
-  import { withEffectiveBase, setFolderBase, clearFolderBase, setFolderDmax, clearFolderDmax } from "./base";
+  import { withEffectiveBase, setFolderBase, clearFolderBase } from "./base";
   import { imageDir } from "../library/folderScope";
   import Icon from "../icons/Icon.svelte";
   import Slider from "./Slider.svelte";
@@ -31,12 +31,14 @@
   // Mirror crates/film-core/src/calibrate.rs REBATE_CONFIDENCE (keep in sync).
   const REBATE_CONF_UI = 0.12;
   let autoBase: { base: [number, number, number]; confidence: number } | null = null;
-  async function loadAutoBase(id: string | null) {
+  async function loadAutoBase(id: string | null, _developed?: boolean) {
     if (!id) { autoBase = null; return; }
     try { autoBase = await api.autoBaseInfo(id); }
     catch { autoBase = null; } // not developed yet
   }
-  $: loadAutoBase($activeId);
+  // `activeImg?.developed` is a pure reactive trigger: on the first develop of a
+  // not-yet-developed image it flips false->true and re-fetches so the swatch fills.
+  $: loadAutoBase($activeId, activeImg?.developed);
 
   $: effBase = $params.base_override ?? (dir ? $folderBaseByPath[dir] : null) ?? autoBase?.base ?? null;
 
@@ -77,11 +79,12 @@
       params.update((p) => ({ ...p, base_override: null }));
       commitActive();
     } else if (dir) clearFolderBase(dir);
-    // Symmetric D_max reset: clear the per-image override, else the folder default.
+    // D_max is per-image and scene-dependent (no roll/folder default): clear the
+    // per-image override so the auto-analyze-on-crop reactive takes over again.
     if ($params.d_max_override != null) {
       params.update((p) => ({ ...p, d_max_override: null }));
       commitActive();
-    } else if (dir) clearFolderDmax(dir);
+    }
   }
 
   // Seed Temp/Tint from the estimated as-shot white point when the image OR the
@@ -121,22 +124,14 @@
     } catch { /* not developed yet */ }
   }
 
-  // Analyze within the crop and promote the result to the roll/folder default.
-  async function applyDmaxRoll() {
-    const id = get(activeId); if (!id || !dir) return;
-    try {
-      const { d_max } = await api.analyze(id, withEffectiveBase(get(params), dir), imageCrop);
-      setFolderDmax(dir, d_max);
-    } catch { /* not developed yet */ }
-  }
-
   // Auto-analyze when the crop (or image) changes, but only when there is NO
-  // per-image override AND no folder D_max — so a deliberate value is never
-  // clobbered. Mirrors the WB seed-guard idea.
+  // per-image override — so a deliberate value is never clobbered. D_max is
+  // scene-dependent (per-image), so there is no roll/folder default to honor.
+  // Mirrors the WB seed-guard idea.
   let lastCropKey = "";
   $: {
     const key = `${$activeId}:${JSON.stringify(imageCrop)}`;
-    if ($activeId && key !== lastCropKey && get(params).d_max_override == null && !(dir && $folderDmaxByPath[dir])) {
+    if ($activeId && key !== lastCropKey && get(params).d_max_override == null) {
       lastCropKey = key;
       reanalyze();
     }
@@ -200,7 +195,6 @@
             <button disabled={!$sampledBase} on:click={applyBaseThisImage}>{$t('base.thisImage')}</button>
           </div>
           <button class="recal" on:click={reanalyze}>{$t('base.reanalyze')}</button>
-          <button class="basereset" disabled={!dir} on:click={applyDmaxRoll}>{$t('base.dmaxRoll')}</button>
           <button class="basereset" disabled={baseScope === "auto"} on:click={resetBase}>{$t('base.reset')}</button>
           <p class="scope">{$t(scopeKey[baseScope])}</p>
           {#if lowConfBase}

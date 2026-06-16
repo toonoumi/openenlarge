@@ -5,7 +5,7 @@ import type { DustEdits } from "./develop/dust";
 import {
   images, editsById, cropById, dustById, metaById, quality,
   selectedFolder, gridZoom, module as moduleStore, activeId, folderBaseByPath,
-  folderDmaxByPath, updateLastCheck, updateSkipVersion,
+  updateLastCheck, updateSkipVersion,
 } from "./store";
 import { locale } from "./i18n";
 
@@ -85,20 +85,15 @@ export function applySnapshot(snap: CatalogSnapshot): void {
   }
 
   const fb: Record<string, [number, number, number]> = {};
-  const fd: Record<string, number> = {};
   for (const [k, v] of Object.entries(st)) {
     if (k.startsWith("folder_base:")) {
       try {
         const arr = JSON.parse(v);
         if (Array.isArray(arr) && arr.length === 3) fb[k.slice("folder_base:".length)] = arr as [number, number, number];
       } catch { /* skip malformed */ }
-    } else if (k.startsWith("folder_dmax:")) {
-      const n = Number(v);
-      if (v !== "" && Number.isFinite(n)) fd[k.slice("folder_dmax:".length)] = n;
     }
   }
   folderBaseByPath.set(fb);
-  folderDmaxByPath.set(fd);
 }
 
 /** Load the catalog from the backend and populate the stores. Call once on mount. */
