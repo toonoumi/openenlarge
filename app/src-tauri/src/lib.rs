@@ -11,6 +11,7 @@ mod gpu_upload;
 mod hdr;
 mod metadata;
 mod session;
+mod telemetry;
 mod tether;
 mod upscale;
 
@@ -24,13 +25,31 @@ pub mod commands_test_support {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // The Aptabase plugin's flush loop spawns onto a Tokio runtime from Tauri's
+    // (synchronous) setup hook, which runs on the main thread with no runtime
+    // context — so without this it panics ("no reactor running"). Own a runtime
+    // and enter its context for the whole app lifetime; the guard + runtime are
+    // held in locals that live until run() returns.
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("failed to build Tokio runtime");
+    let _runtime_guard = runtime.enter();
+
+    // Public Aptabase client key. It ships in the binary regardless (so it is not
+    // a secret), but `option_env!` lets CI inject a per-environment key — set the
+    // APTABASE_KEY build env to override (e.g. a separate dev project).
+    let aptabase_key = option_env!("APTABASE_KEY").unwrap_or("A-US-7946890855");
+
     tauri::Builder::default()
         .manage(session::Session::default())
         .manage(tether::TetherState::default())
+        .manage(telemetry::TelemetryState::default())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_aptabase::Builder::new(aptabase_key).build())
         .setup(|app| {
             use tauri::Manager;
             if let Some(win) = app.get_webview_window("main") {
@@ -52,6 +71,14 @@ pub fn run() {
             let db_path = dir.join("catalog.db");
             let catalog = catalog::Catalog::open(&db_path)
                 .unwrap_or_else(|e| panic!("open catalog db at {}: {e}", db_path.display()));
+            // Seed analytics consent from the persisted choice so the gate is
+            // already correct before the frontend hydrates — no window in which
+            // an event could fire before we know whether the user opted in.
+            if let Ok(prefs) = catalog.load_prefs() {
+                if prefs.get("telemetry").map(|v| v == "on").unwrap_or(false) {
+                    app.state::<telemetry::TelemetryState>().set(true);
+                }
+            }
             app.manage(catalog);
             Ok(())
         })
@@ -97,9 +124,23 @@ pub fn run() {
             commands::autodust_status,
             commands::download_autodust,
             commands::autodust_detect,
+            telemetry::set_telemetry,
+            telemetry::telemetry_event,
             tether::tether_start,
             tether::tether_stop,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running OpenEnlarge");
+        .build(tauri::generate_context!())
+        .expect("error while running OpenEnlarge")
+        .run(|app_handle, event| {
+            // Flush queued analytics on quit so the session's last events aren't
+            // lost. flush is harmless when nothing is queued / consent is off.
+            if let tauri::RunEvent::Exit = event {
+                use tauri::Manager;
+                use tauri_plugin_aptabase::EventTracker;
+                if app_handle.state::<telemetry::TelemetryState>().enabled() {
+                    let _ = app_handle.track_event("app_exited", None);
+                }
+                app_handle.flush_events_blocking();
+            }
+        });
 }

@@ -2,11 +2,13 @@
   import { createEventDispatcher } from "svelte";
   import { fade } from "svelte/transition";
   import { locale, LOCALES, t } from "../i18n";
-  import { openaiApiKey } from "../store";
+  import { openaiApiKey, telemetryEnabled } from "../store";
+  import { setTelemetryChoice } from "../telemetry";
   import { runManualCheck } from "../update/updater";
   import { openUrl } from "@tauri-apps/plugin-opener";
   const dispatch = createEventDispatcher();
   const OPENAI_KEYS_URL = "https://platform.openai.com/api-keys";
+  const PRIVACY_URL = "https://github.com/mohaelder/openenlarge#telemetry";
 </script>
 
 <div class="backdrop" on:click={() => dispatch("close")} transition:fade={{ duration: 120 }}></div>
@@ -30,6 +32,17 @@
       value={$openaiApiKey}
       on:input={(e) => openaiApiKey.set((e.target as HTMLInputElement).value)} />
     <div class="hint">{$t("settings.ai.hint")}</div>
+  </div>
+  <div class="grp">
+    <button type="button" class="head head-link"
+            on:click={() => openUrl(PRIVACY_URL).catch(() => {})}>
+      {$t("settings.telemetry.heading")} ↗
+    </button>
+    <div class="seg">
+      <button class:on={!$telemetryEnabled} on:click={() => setTelemetryChoice(false)}>{$t("settings.telemetry.off")}</button>
+      <button class:on={$telemetryEnabled} on:click={() => setTelemetryChoice(true)}>{$t("settings.telemetry.on")}</button>
+    </div>
+    <div class="hint">{$t("settings.telemetry.hint")}</div>
   </div>
   <button class="shortcuts" on:click={() => dispatch("shortcuts")}>
     <span class="kbd-icon" aria-hidden="true">⌨</span>

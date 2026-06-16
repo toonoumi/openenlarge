@@ -6,6 +6,7 @@ import {
   images, editsById, cropById, dustById, metaById, quality,
   selectedFolder, gridZoom, module as moduleStore, activeId, folderBaseByPath,
   updateLastCheck, updateSkipVersion, openaiApiKey, omitPreviewJpgs,
+  telemetryEnabled, telemetryDecided,
 } from "./store";
 import { locale } from "./i18n";
 
@@ -73,6 +74,10 @@ export function applySnapshot(snap: CatalogSnapshot): void {
   // Absent → keep the default (on); only an explicit "false" turns it off.
   if (snap.prefs.omit_preview_jpgs !== undefined)
     omitPreviewJpgs.set(snap.prefs.omit_preview_jpgs !== "false");
+  // Analytics: "on"/"off" = a recorded choice; absent = undecided (the first-run
+  // prompt shows and telemetryEnabled stays false until they answer).
+  if (snap.prefs.telemetry === "on") { telemetryEnabled.set(true); telemetryDecided.set(true); }
+  else if (snap.prefs.telemetry === "off") telemetryDecided.set(true);
 
   const st = snap.app_state;
   if (st.selected_folder !== undefined)

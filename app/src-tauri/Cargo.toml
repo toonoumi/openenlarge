@@ -23,6 +23,7 @@ tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
+tauri-plugin-aptabase = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 film-core = { path = "../../crates/film-core" }
@@ -42,6 +43,10 @@ ndarray = "0.17"
 sha2 = "0.10"
 reqwest = { version = "0.12", default-features = false, features = ["json", "multipart", "rustls-tls", "stream"] }
 futures-util = "0.3"
+# Owned multi-thread runtime entered for the whole app lifetime. The Aptabase
+# plugin's flush loop uses raw `tokio::spawn` from Tauri's (non-async) setup, so a
+# runtime context must be active or it panics with "no reactor running".
+tokio = { version = "1", features = ["rt-multi-thread", "time", "net"] }
 
 
 # Per-platform GPU execution providers for ort. Each MUST keep `api-24` (rc.12

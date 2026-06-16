@@ -117,6 +117,17 @@ with a highlight soft-clip on the result. Two ideas make the color come out righ
 
 Base and `D_max` are measured *inside the active crop*, so a camera scan's black surround and rebate never wash the image out. The deep version lives in [`docs/superpowers/specs/2026-06-07-negadoctor-inversion-design.md`](docs/superpowers/specs/2026-06-07-negadoctor-inversion-design.md) and the [golden-path spec](docs/superpowers/specs/2026-06-15-golden-path-inversion-spec.md).
 
+## Telemetry
+
+OpenEnlarge can send **anonymous, opt-in** usage analytics via [Aptabase](https://aptabase.com) (an open-source, privacy-first analytics tool). It is **off by default** — on first launch you're asked once, and you can change the choice anytime under **Settings → Anonymous analytics**.
+
+When enabled, we record only:
+
+- **Which features get used** — events like `app_launched`, `images_developed` (with a count), `images_exported` (count + format).
+- **App version and OS**, attached automatically by Aptabase.
+
+We never send your **images, file names, file paths, or any personal information**, and there is no cross-session identifier that can be traced back to you. Nothing is transmitted unless you opt in — the consent gate is enforced in the Rust backend, not just the UI. The collection code is right here in the open: [`app/src-tauri/src/telemetry.rs`](app/src-tauri/src/telemetry.rs) and [`app/src/lib/telemetry.ts`](app/src/lib/telemetry.ts).
+
 ## Contributing
 
 Issues and pull requests are welcome. Before opening a PR, run the same checks CI does:

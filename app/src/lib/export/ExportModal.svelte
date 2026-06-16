@@ -19,6 +19,7 @@
   import { t } from "$lib/i18n";
   import { withEffectiveBase } from "../develop/base";
   import { imageDir } from "../library/folderScope";
+  import { track } from "../telemetry";
   import CropView from "../crop/CropView.svelte";
   import CropPanel from "../crop/CropPanel.svelte";
   import { firstSelected, seedDraft, resolveCrop, type CropDraft } from "./batchCrop";
@@ -251,6 +252,7 @@
     exportedPaths = written;
     failedCount = failures.length;
     finished = true;
+    if (written.length) track("images_exported", { count: written.length, format: kind });
   }
 
   async function openFolder() {

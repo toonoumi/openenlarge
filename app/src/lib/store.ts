@@ -133,6 +133,13 @@ export const upscalerInstalled = writable<boolean>(false);
 /** Whether the local AI dust/hair models (+ shared runtime) are installed. */
 export const autodustInstalled = writable<boolean>(false);
 
+/** Anonymous usage-analytics consent. `telemetryEnabled` gates every event;
+ *  `telemetryDecided` is false until the user answers the first-run prompt (an
+ *  undecided launch shows it). Persisted via prefs as `telemetry` ("on"/"off");
+ *  absent = undecided. See lib/telemetry.ts. */
+export const telemetryEnabled = writable<boolean>(false);
+export const telemetryDecided = writable<boolean>(false);
+
 /** When true, importing skips camera-preview jpg/png files that share a folder and
  * base name with a raw/master file. Persisted via prefs as `omit_preview_jpgs`;
  * defaults on. */

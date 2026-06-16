@@ -262,6 +262,11 @@ export const api = {
     invoke<string>("reference_thumb", { path }),
   saveAppState: (key: string, value: string) =>
     invoke<void>("save_app_state", { key, value }),
+  /** Flip the backend analytics consent gate (persisted separately via savePref). */
+  setTelemetry: (enabled: boolean) => invoke<void>("set_telemetry", { enabled }),
+  /** Emit one anonymous event; the backend drops it unless the user opted in. */
+  telemetryEvent: (name: string, props?: Record<string, unknown>) =>
+    invoke<void>("telemetry_event", { name, props: props ?? null }),
   workingInfo: (id: string) =>
     invoke<{ w: number; h: number }>("working_info", { id }),
 

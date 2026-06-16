@@ -4,7 +4,7 @@
   import { fly } from "svelte/transition";
   import { cubicOut } from "svelte/easing";
   import { hydrate, initPersistence } from "$lib/catalog";
-  import { module, hasImages, images, undevelopedCount, deleteTarget, activeId, selection, applySettingsTarget } from "$lib/store";
+  import { module, hasImages, images, undevelopedCount, deleteTarget, activeId, selection, applySettingsTarget, telemetryDecided } from "$lib/store";
   import { applyClipboardTo } from "$lib/develop/copySettings";
   import { noneSelected } from "$lib/selection";
   import { matchUndoRedo } from "$lib/develop/history";
@@ -25,11 +25,22 @@
   import Icon from "$lib/icons/Icon.svelte";
   import { hasDeveloped } from "$lib/export/eligible";
   import ExportModal from "$lib/export/ExportModal.svelte";
+  import TelemetryPrompt from "$lib/settings/TelemetryPrompt.svelte";
+  import { track } from "$lib/telemetry";
   import { t } from "$lib/i18n";
+
+  // Gate the first-run analytics prompt on hydration: only after the persisted
+  // choice (if any) has loaded do we know whether it's actually undecided.
+  let hydrated = false;
 
   onMount(() => {
     let flush: (() => void) | undefined;
-    hydrate().finally(() => { flush = initPersistence(); runAutoCheck(); });
+    hydrate().finally(() => {
+      flush = initPersistence();
+      runAutoCheck();
+      hydrated = true;
+      track("app_launched"); // no-op unless the user has opted in
+    });
     // Start an undo/redo timeline for each image the moment it becomes active.
     const unseed = activeId.subscribe(() => seedActive());
     return () => { flush?.(); unseed(); };
@@ -129,6 +140,7 @@
 {#if settingsOpen}<SettingsMenu on:close={() => (settingsOpen = false)} on:shortcuts={() => { settingsOpen = false; keymapOpen = true; }} />{/if}
 {#if keymapOpen}<KeymapModal on:close={() => (keymapOpen = false)} />{/if}
 {#if aboutOpen}<AboutModal on:close={() => (aboutOpen = false)} />{/if}
+{#if hydrated && !$telemetryDecided}<TelemetryPrompt />{/if}
 <UpdatePrompt />
 <ProgressOverlay />
 {#if exporting}
