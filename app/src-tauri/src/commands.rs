@@ -205,6 +205,21 @@ pub(crate) fn effective_base(p: &InvertParams, dev_base: [f32; 3]) -> [f32; 3] {
     p.base_override.unwrap_or(dev_base)
 }
 
+/// Pick the film base for a freshly-developed working image: the detected rebate
+/// when confident, else the brightest-cluster fallback. Returns (base, confidence).
+pub(crate) fn auto_base(working: &film_core::Image) -> ([f32; 3], f32) {
+    use film_core::calibrate::{
+        detect_rebate_base, sample_base_coherent, BASE_BAND_AUTO, REBATE_CONFIDENCE,
+    };
+    let det = detect_rebate_base(working);
+    if det.confidence >= REBATE_CONFIDENCE {
+        (det.base, det.confidence)
+    } else {
+        let (lo, hi) = BASE_BAND_AUTO;
+        (sample_base_coherent(working, None, lo, hi), det.confidence)
+    }
+}
+
 pub(crate) fn wb_from_params(temp: f32, tint: f32) -> [f32; 3] {
     wb_from_kelvin(temp, tint / 150.0)
 }
@@ -456,8 +471,7 @@ fn develop_heavy(
     let working = proxy(&full, cap);
     let has_ir = working.ir.is_some();
     let thumb = proxy(&full, AUTOWB_EDGE);
-    let (blo, bhi) = film_core::calibrate::BASE_BAND_AUTO;
-    let base = film_core::calibrate::sample_base_coherent(&working, None, blo, bhi);
+    let (base, base_confidence) = auto_base(&working);
     let (w, h) = (full.width as u32, full.height as u32);
     drop(full);
 
@@ -489,6 +503,7 @@ fn develop_heavy(
             working,
             thumb,
             base,
+            base_confidence,
         });
         let metadata_json = metadata_to_json(&img.metadata)?;
         let entry = ImageEntry {
@@ -654,6 +669,7 @@ fn ensure_resident(session: &Session, id: &str) -> Result<(), String> {
     }
     let (base, working, thumb) =
         crate::cache::read(&path).map_err(|e| format!("cache read: {e}"))?;
+    let base_confidence = film_core::calibrate::detect_rebate_base(&working).confidence;
     let mut images = session.images.lock().unwrap();
     if let Some(c) = images.get_mut(id) {
         if c.developed.is_none() {
@@ -661,6 +677,7 @@ fn ensure_resident(session: &Session, id: &str) -> Result<(), String> {
                 working,
                 thumb,
                 base,
+                base_confidence,
             });
         }
     }
@@ -1376,6 +1393,31 @@ mod tests {
             [0.1, 0.2, 0.3],
             "Some -> override"
         );
+    }
+
+    #[test]
+    fn auto_base_prefers_detected_rebate_else_fallback() {
+        use film_core::Image;
+        let mut img = Image::new(200, 150);
+        let (bw, bh) = (20usize, 15usize);
+        for y in 0..150 {
+            for x in 0..200 {
+                let edge = x < bw || x >= 200 - bw || y < bh || y >= 150 - bh;
+                img.pixels[y * 200 + x] = if edge { [0.42, 0.19, 0.10] } else { [0.5, 0.5, 0.5] };
+            }
+        }
+        let (base, conf) = auto_base(&img);
+        assert!(conf >= film_core::calibrate::REBATE_CONFIDENCE, "should be confident: {conf}");
+        assert!((base[0] - 0.42).abs() < 0.04 && base[0] > base[2], "detected orange: {base:?}");
+
+        let grey = Image { width: 64, height: 64, pixels: vec![[0.5, 0.5, 0.5]; 64 * 64], ir: None };
+        let (fb, fconf) = auto_base(&grey);
+        assert!(fconf < film_core::calibrate::REBATE_CONFIDENCE, "fallback path: {fconf}");
+        let (lo, hi) = film_core::calibrate::BASE_BAND_AUTO;
+        let want = film_core::calibrate::sample_base_coherent(&grey, None, lo, hi);
+        for c in 0..3 {
+            assert!((fb[c] - want[c]).abs() < 1e-4, "ch {c}: {} vs {}", fb[c], want[c]);
+        }
     }
 
     #[test]

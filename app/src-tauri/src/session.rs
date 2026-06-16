@@ -150,6 +150,8 @@ pub struct Developed {
     pub working: Image,
     pub thumb: Image,
     pub base: [f32; 3],
+    /// Detector confidence (0..1) for the auto base; low → UI suggests a repoint.
+    pub base_confidence: f32,
 }
 
 /// A session image: always has path/metadata/thumbnail; `developed` is lazy.
