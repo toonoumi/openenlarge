@@ -244,12 +244,20 @@ pub struct PreparedExport {
     pub bytes: Vec<u8>, // half-float RGBA, full-res
 }
 
+/// A finished, upscaled full-res image awaiting save (held between `upscale_image`
+/// and `save_upscaled`), plus the metadata to embed as EXIF on save.
+pub struct PendingUpscale {
+    pub image: Image,
+    pub metadata: Metadata,
+}
+
 #[derive(Default)]
 pub struct Session {
     pub images: Mutex<HashMap<String, CachedImage>>,
     pub quality: Mutex<Quality>,
     pub cache_dir: Mutex<std::path::PathBuf>,
     pub pending_export: Mutex<Option<PreparedExport>>,
+    pub pending_upscale: Mutex<Option<PendingUpscale>>,
 }
 
 impl Session {

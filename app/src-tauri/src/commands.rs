@@ -955,28 +955,26 @@ pub fn thumbnail(
     to_jpeg_b64(&fin, false, 82)
 }
 
-/// Re-decode the file at full resolution and export it in the chosen format.
-#[allow(clippy::too_many_arguments)] // Tauri command: flat args mirror the JS invoke contract
-#[tauri::command]
-pub fn export_image(
-    id: String,
-    params: InvertParams,
-    out_path: String,
+/// Decode the full-res file, apply geometry + inversion + dust/IR + finishing, and
+/// return the finished image and its source metadata. Shared by `export_image` and
+/// the upscaler so both produce identical pixels.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn finish_full_res(
+    id: &str,
+    params: &InvertParams,
     image_crop: Option<[f64; 4]>,
     rot90: u8,
     flip_h: bool,
     flip_v: bool,
     angle: f32,
-    dust: Vec<DustStroke>,
-    ir_removal: IrRemoval,
-    format: ExportFormat,
-    meta_override: Option<MetaOverride>,
-    session: State<Session>,
-) -> Result<(), String> {
-    ensure_resident(&session, &id)?;
+    dust: &[DustStroke],
+    ir_removal: &IrRemoval,
+    session: &Session,
+) -> Result<(film_core::Image, crate::metadata::Metadata), String> {
+    ensure_resident(session, id)?;
     let (path, base, thumb, metadata, dev_dmax) = {
         let images = session.images.lock().unwrap();
-        let img = images.get(&id).ok_or("unknown image id")?;
+        let img = images.get(id).ok_or("unknown image id")?;
         let dev = img.developed.as_ref().ok_or("not developed")?;
         (
             img.path.clone(),
@@ -996,17 +994,41 @@ pub fn export_image(
         }
         None => full,
     };
-    let mut ip = resolve_params(&params, &thumb, effective_base(&params, base));
-    ip.d_max = effective_dmax(&params, dev_dmax);
+    let mut ip = resolve_params(params, &thumb, effective_base(params, base));
+    ip.d_max = effective_dmax(params, dev_dmax);
     let mut inv = invert_image(&full, &ip, mode_from(&params.mode));
-    let stamps = export_stamps(&dust, inv.width, inv.height);
+    let stamps = export_stamps(dust, inv.width, inv.height);
     dust::apply(&mut inv, &stamps);
     if ir_removal.enabled {
         if let Some(ir) = full.ir.as_ref() {
             dust::apply_ir(&mut inv, ir, ir_removal.sensitivity);
         }
     }
-    let fin = finish_image(&inv, &finish_from(&params));
+    let fin = finish_image(&inv, &finish_from(params));
+    Ok((fin, metadata))
+}
+
+/// Re-decode the file at full resolution and export it in the chosen format.
+#[allow(clippy::too_many_arguments)] // Tauri command: flat args mirror the JS invoke contract
+#[tauri::command]
+pub fn export_image(
+    id: String,
+    params: InvertParams,
+    out_path: String,
+    image_crop: Option<[f64; 4]>,
+    rot90: u8,
+    flip_h: bool,
+    flip_v: bool,
+    angle: f32,
+    dust: Vec<DustStroke>,
+    ir_removal: IrRemoval,
+    format: ExportFormat,
+    meta_override: Option<MetaOverride>,
+    session: State<Session>,
+) -> Result<(), String> {
+    let (fin, metadata) = finish_full_res(
+        &id, &params, image_crop, rot90, flip_h, flip_v, angle, &dust, &ir_removal, &session,
+    )?;
     let out = Path::new(&out_path);
     match format.kind.as_str() {
         "tiff" => {
