@@ -136,7 +136,7 @@
           <path d="M3,92 C26,87 40,52 54,30 S84,8 97,3" fill="none" stroke="#5fb0e8" stroke-width="1.4" opacity=".55" vector-effect="non-scaling-stroke"/>
         </svg>
       </div>
-      <div class="eq"><span>Ĉ = M_post · log₁₀(M_pre · I₀ / I)</span><span>Beer-Lambert</span></div>
+      <div class="eq"><span>print = E · (1 + b − (I / D_min)^(1/D_max))</span><span>Kodak Cineon</span></div>
     </div>
   </section>
 
@@ -144,10 +144,10 @@
     <div class="kicker" data-i18n="features.kicker">Features</div>
     <h2 data-i18n="features.h2">A real darkroom, on your desktop.</h2>
     <div class="features">
-      <div class="feature glass"><div class="ic">🎞️</div><h3 data-i18n="feat.density.h3">Density-domain inversion</h3><p data-i18n="feat.density.p">Physically-based Beer-Lambert engine recovers dye concentrations with a cross-channel matrix — not a flipped curve.</p></div>
+      <div class="feature glass"><div class="ic">🎞️</div><h3 data-i18n="feat.density.h3">Cineon density inversion</h3><p data-i18n="feat.density.p">A physically-based Beer-Lambert engine (Kodak Cineon / negadoctor) inverts in the density domain, anchored on the measured film base — not a flipped curve.</p></div>
       <div class="feature glass"><div class="ic">📥</div><h3 data-i18n="feat.decode.h3">RAW, TIFF, JPEG &amp; PNG</h3><p data-i18n="feat.decode.p">Fuji RAF, Panasonic RW2, Nikon NEF, Sony ARW, Canon CR3, Hasselblad 3FR and DNG, plus 16-bit TIFF, JPEG and PNG — decoded to linear RGB.</p></div>
       <div class="feature glass"><div class="ic">📡</div><h3 data-i18n="feat.tether.h3">Tethered shooting</h3><p data-i18n="feat.tether.p">Watch a folder and auto-import + develop new scans as they land — finished positives appear as you shoot.</p></div>
-      <div class="feature glass"><div class="ic">🧪</div><h3 data-i18n="feat.base.h3">Per-roll base calibration</h3><p data-i18n="feat.base.p">Sample the orange film base once per roll and apply it across every frame.</p></div>
+      <div class="feature glass"><div class="ic">🧪</div><h3 data-i18n="feat.base.h3">Automatic film-base detection</h3><p data-i18n="feat.base.p">Finds the orange-mask rebate and samples it as one coherent clear-film color, locked per roll. Measured inside your crop, so camera scans don't wash out — recalibrate or pick a neutral anytime.</p></div>
       <div class="feature glass"><div class="ic">🎚️</div><h3 data-i18n="feat.develop.h3">Full develop controls</h3><p data-i18n="feat.develop.p">Tonal curves, color grading, color wheels, exposure, black point and gamma — live.</p></div>
       <div class="feature glass"><div class="ic">✂️</div><h3 data-i18n="feat.crop.h3">Crop &amp; batch export</h3><p data-i18n="feat.crop.p">Straighten, crop and rotate with a live histogram, then batch export to 16-bit TIFF, PNG or JPEG — with one shared crop applied across the whole roll.</p></div>
       <div class="feature glass"><div class="ic">⟳</div><h3 data-i18n="feat.update.h3">In-app updates</h3><p data-i18n="feat.update.p">Checks for new versions on launch or from Settings and installs them in place — signed and verified.</p></div>
@@ -160,7 +160,7 @@
     <h2 data-i18n="how.h2">Density first, aesthetics second.</h2>
     <div class="steps">
       <div class="step glass"><div class="n">01</div><h3 data-i18n="step1.h3">Decode</h3><p data-i18n="step1.p">Your RAF/DNG/TIFF scan is decoded to linear RGB — the light the scanner actually measured through the film.</p></div>
-      <div class="step glass"><div class="n">02</div><h3 data-i18n="step2.h3">Invert in density</h3><p data-i18n="step2.p">Take the log to enter the density domain, then unmix dye layers with a matrix. Density is linear in dye; transmittance isn't — so this is where naive flips go wrong.</p></div>
+      <div class="step glass"><div class="n">02</div><h3 data-i18n="step2.h3">Invert in density</h3><p data-i18n="step2.p">Restore each channel's density relative to the measured film base, anchored to the roll's density range, then print back to a positive (Kodak Cineon). Density is linear in dye; transmittance isn't — so this is where naive flips go wrong.</p></div>
       <div class="step glass"><div class="n">03</div><h3 data-i18n="step3.h3">Develop</h3><p data-i18n="step3.p">Apply creative finishing — curves, color, exposure — on a faithful base. Export, or batch the whole roll.</p></div>
     </div>
   </section>

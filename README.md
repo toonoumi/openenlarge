@@ -21,9 +21,9 @@
 
 OpenEnlarge is an open-source desktop darkroom for color film negatives. It inverts and develops scans of negatives into finished positives — the job a darkroom enlarger does for optical prints.
 
-Most tools treat a negative scan as a generic image and fit per-channel tone curves to flip it. OpenEnlarge instead works in the **density domain**, using a Beer-Lambert model of how dye layers absorb light. Density is *linear* in dye concentration; transmittance is not — which is exactly why a naive invert-and-flip looks wrong. Working in density first, then applying creative finishing on top, yields cleaner, more faithful color.
+Most tools treat a negative scan as a generic image and fit tone curves to flip it. OpenEnlarge instead works in the **density domain**, using a Beer-Lambert model of how dye layers absorb light. Density is *linear* in dye concentration; transmittance is not — which is exactly why a naive invert-and-flip looks wrong. OpenEnlarge restores each channel's density relative to the measured film base, anchors it to the roll's density range, and prints back to a positive — then lets you finish on top.
 
-> Every image is developed with a density-domain matrix inversion grounded in the Beer-Lambert model — a physically-based engine, not a per-channel tone curve.
+> Every image is developed with the Kodak Cineon density inversion (darktable's `negadoctor` model), anchored on a per-roll film-base sample — a physically-based engine, not a flipped tone curve.
 
 ## Negative → Positive
 
@@ -33,10 +33,12 @@ Most tools treat a negative scan as a generic image and fit per-channel tone cur
 
 ## Features
 
-- **Density-domain inversion** — physically-based Beer-Lambert engine, not a flipped curve
+- **Cineon density inversion** — physically-based Beer-Lambert engine (Kodak Cineon / `negadoctor`), one consistent path for every frame — not a flipped curve
+- **Automatic film-base detection** — finds the orange-mask rebate and samples it as a single coherent clear-film color; auto-derives the roll's density range (`D_max`)
+- **Crop-aware analysis** — base and density range are measured *inside* your crop, so the black surround and rebate of a camera scan never wash the image out
 - **Decodes RAW, TIFF, JPEG & PNG** — Fuji RAF, Panasonic RW2, Nikon NEF, Sony ARW, Canon CR3, Hasselblad 3FR and DNG, plus 16-bit TIFF, JPEG and PNG → linear RGB
 - **Tethered shooting** — watch a folder and auto-import + develop new scans as they land, so finished positives appear as you shoot ("shoot & see")
-- **Per-roll base calibration** — sample the orange film base once per roll and apply it
+- **Per-roll base calibration** — the film base is locked once per roll; recalibrate by dragging over a clear-film area, or pick a neutral with the gray-point tool
 - **Full develop controls** — tonal curve, color grading, color wheels, exposure/black/gamma
 - **Crop, rotate, straighten, flip** with a live viewport and histogram
 - **Batch export** to 16-bit TIFF / PNG / JPEG — with an optional batch crop applied across the whole selection in one pass
@@ -48,7 +50,7 @@ Most tools treat a negative scan as a generic image and fit per-channel tone cur
 
 | Component | Path | Responsibility |
 |---|---|---|
-| `film-core` | `crates/film-core` | Pure Rust engine — decode, density-domain inversion, calibration, export. No UI deps. |
+| `film-core` | `crates/film-core` | Pure Rust engine — decode, Cineon density inversion, base/density calibration, export. No UI deps. |
 | `film-cli` | `crates/film-cli` | Headless CLI over `film-core` for batch/scripted inversion. |
 | App shell | `app/` | Tauri 2 + SvelteKit UI wrapping `film-core`. |
 
@@ -79,11 +81,11 @@ npm run tauri build
 The engine also runs headless. From the repo root:
 
 ```bash
-# Invert a scan with the density-domain engine → 16-bit TIFF
+# Invert a scan with the Cineon density engine → 16-bit TIFF
 cargo run -p film-cli -- input.tiff -o output.tiff
 
-# Sample the film base from a rect (x,y,w,h) and pick a stock profile
-cargo run -p film-cli -- input.tiff -o out.tiff --stock portra400 --base-rect 0,0,128,128
+# Sample the film base from a clear-rebate rect (x,y,w,h) and adjust print exposure (EV)
+cargo run -p film-cli -- input.tiff -o out.tiff --base-rect 0,0,128,128 --exposure 1.0
 ```
 
 Run `cargo run -p film-cli -- --help` for all options.
@@ -97,13 +99,20 @@ I_i = ∫ L(λ) · S_i(λ) · 10^(−D(λ)) dλ          (spectral integration)
 D(λ) = D_min(λ) + Σ_j C_j · D_j(λ)              (Beer-Lambert: density linear in dye conc.)
 ```
 
-OpenEnlarge's default engine inverts this in the density domain:
+OpenEnlarge inverts this with the **Kodak Cineon densitometry model** (the same math as darktable's `negadoctor`). Per channel, working from the measured film base `D_min` and the roll's density range `D_max`:
 
 ```
-Ĉ = M_post · log₁₀(M_pre · I₀ / I)
+t   = I / D_min                                  transmittance relative to the clear base (mask removed)
+p   = print_exposure · (1 + paper_black − t^(1/D_max))    density → positive linear "print"
+out = (p · wb)^paper_grade                       white balance as a print-side gain, then the paper tone
 ```
 
-It recovers dye concentrations with a cross-channel matrix instead of flipping each channel independently — the difference that makes color come out right. The deep version lives in [`docs/superpowers/specs/2026-06-03-film-inversion-poc-design.md`](docs/superpowers/specs/2026-06-03-film-inversion-poc-design.md).
+with a highlight soft-clip on the result. Two ideas make the color come out right:
+
+- **The film base does double duty.** `D_min` is sampled once per roll as a single *coherent* clear-film color (a real RGB value, not three independent per-channel percentiles). Dividing by it removes the orange mask **and** neutralizes the scanner/light-table illuminant in one step — so "base" and roll-level white balance stop fighting each other. It's detected automatically from the rebate, and re-derivable by dragging over any clear-film area.
+- **White balance is a gain on the positive print, not a log-space offset on the negative.** Because `0 · wb = 0`, deep shadows stay neutral black instead of picking up a per-channel tint (the classic "yellow shadow" bug). Per-frame scene Temp/Tint and the gray-point picker ride on top of the roll-locked base.
+
+Base and `D_max` are measured *inside the active crop*, so a camera scan's black surround and rebate never wash the image out. The deep version lives in [`docs/superpowers/specs/2026-06-07-negadoctor-inversion-design.md`](docs/superpowers/specs/2026-06-07-negadoctor-inversion-design.md) and the [golden-path spec](docs/superpowers/specs/2026-06-15-golden-path-inversion-spec.md).
 
 ## Contributing
 
