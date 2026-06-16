@@ -10,7 +10,17 @@ use ultrahdr::{
 };
 
 /// Encode an HDR gain-map JPEG from an SDR base + an HDR rendition (same dims).
-/// `sdr`/`hdr` are linear-RGB Images (f32; sdr ~0..1, hdr 0..~headroom).
+///
+/// `sdr`/`hdr` are **display-referred, sRGB-encoded** Images (f32), matching the
+/// inversion/finish output of `film-core` (already display-encoded; not linear):
+/// - `sdr` is in 0..1 (sRGB-encoded display values),
+/// - `hdr` is the *same* sRGB encoding but with expanded highlights that may
+///   exceed 1.0 (up to ~headroom).
+///
+/// The SDR base is written straight to 8-bit (no OETF re-applied); the HDR
+/// rendition is linearized (sRGB EOTF with a linear continuation above 1.0)
+/// before being stored as half-float, so its `UHDR_CT_LINEAR` label is honest.
+///
 /// Returns JPEG bytes containing an ISO 21496-1 / Apple gain map.
 pub fn encode_gain_map_jpeg(
     sdr: &film_core::Image,
@@ -35,6 +45,7 @@ pub fn encode_gain_map_jpeg(
     let h = sdr.height as u32;
 
     // SDR base: 8-bit sRGB-encoded RGBA, full-range, BT.709 (sRGB) primaries.
+    // Input is already sRGB-encoded display values, so write straight to 8-bit.
     let mut sdr_img = OwnedPackedImage::new(
         ImgFormat::UHDR_IMG_FMT_32bppRGBA8888,
         w,
@@ -48,14 +59,16 @@ pub fn encode_gain_map_jpeg(
         let buf = sdr_img.buffer();
         for (i, px) in sdr.pixels.iter().take(expected).enumerate() {
             let o = i * 4;
-            buf[o] = linear_to_srgb_u8(px[0]);
-            buf[o + 1] = linear_to_srgb_u8(px[1]);
-            buf[o + 2] = linear_to_srgb_u8(px[2]);
+            buf[o] = (px[0].clamp(0.0, 1.0) * 255.0 + 0.5) as u8;
+            buf[o + 1] = (px[1].clamp(0.0, 1.0) * 255.0 + 0.5) as u8;
+            buf[o + 2] = (px[2].clamp(0.0, 1.0) * 255.0 + 0.5) as u8;
             buf[o + 3] = 255;
         }
     }
 
     // HDR rendition: 64bpp half-float linear RGBA, full-range, BT.709 primaries.
+    // Input is display-referred sRGB (highlights >1.0); linearize before storing
+    // so the UHDR_CT_LINEAR label is honest. Half-float preserves the >1.0 values.
     let mut hdr_img = OwnedPackedImage::new(
         ImgFormat::UHDR_IMG_FMT_64bppRGBAHalfFloat,
         w,
@@ -69,9 +82,9 @@ pub fn encode_gain_map_jpeg(
         let buf = hdr_img.buffer();
         for (i, px) in hdr.pixels.iter().take(expected).enumerate() {
             let o = i * 8; // 4 channels * 2 bytes
-            write_f16(&mut buf[o..o + 2], px[0]);
-            write_f16(&mut buf[o + 2..o + 4], px[1]);
-            write_f16(&mut buf[o + 4..o + 6], px[2]);
+            write_f16(&mut buf[o..o + 2], srgb_to_linear_ext(px[0]));
+            write_f16(&mut buf[o + 2..o + 4], srgb_to_linear_ext(px[1]));
+            write_f16(&mut buf[o + 4..o + 6], srgb_to_linear_ext(px[2]));
             write_f16(&mut buf[o + 6..o + 8], 1.0);
         }
     }
@@ -93,15 +106,19 @@ pub fn encode_gain_map_jpeg(
     Ok(bytes.to_vec())
 }
 
-/// Encode a linear [0,1] component to an 8-bit sRGB value.
-fn linear_to_srgb_u8(linear: f32) -> u8 {
-    let c = linear.clamp(0.0, 1.0);
-    let s = if c <= 0.003_130_8 {
-        c * 12.92
+/// sRGB EOTF with a linear continuation above 1.0 (display-referred sRGB, where
+/// expanded highlights exceed 1.0, → linear light). Continuous + C1 at v=1.0.
+fn srgb_to_linear_ext(v: f32) -> f32 {
+    if v <= 0.0 {
+        0.0
+    } else if v <= 0.04045 {
+        v / 12.92
+    } else if v <= 1.0 {
+        ((v + 0.055) / 1.055).powf(2.4)
     } else {
-        1.055 * c.powf(1.0 / 2.4) - 0.055
-    };
-    (s * 255.0 + 0.5).clamp(0.0, 255.0) as u8
+        // slope of the sRGB EOTF at v=1.0 is 2.4/1.055; extend linearly.
+        1.0 + (v - 1.0) * (2.4 / 1.055)
+    }
 }
 
 /// Write a single f32 as little-endian IEEE half-float into a 2-byte slice.
