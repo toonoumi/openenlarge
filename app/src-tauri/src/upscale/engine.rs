@@ -121,6 +121,9 @@ fn run_tile(
         .try_extract_array::<f32>()
         .map_err(|e| e.to_string())?;
     let shape = view.shape();
+    if shape.len() != 4 || shape[0] != 1 || shape[1] < 3 {
+        return Err(format!("unexpected model output shape: {shape:?}"));
+    }
     let (oh, ow) = (shape[2], shape[3]);
     let mut pixels = vec![[0f32; 3]; ow * oh];
     for y in 0..oh {
@@ -158,7 +161,13 @@ pub fn upscale_4x(
                 buf[yy * t.sw + xx] = src.pixels[(t.sy + yy) * src.width + (t.sx + xx)];
             }
         }
-        let (up, uw, _uh) = run_tile(&mut session, &buf, t.sw, t.sh)?;
+        let (up, uw, uh) = run_tile(&mut session, &buf, t.sw, t.sh)?;
+        if uw != t.sw * SCALE || uh != t.sh * SCALE {
+            return Err(format!(
+                "model did not produce {SCALE}x output: tile {}x{} -> {uw}x{uh}",
+                t.sw, t.sh
+            ));
+        }
         for yy in 0..t.ih * SCALE {
             for xx in 0..t.iw * SCALE {
                 let srcx = t.ix * SCALE + xx;
