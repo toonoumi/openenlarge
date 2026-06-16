@@ -224,18 +224,19 @@
   /* Film Base */
   .cube { width: 16px; height: 16px; border-radius: 4px; border: 1px solid var(--glass-brd);
     flex: none; }
-  .cube.big { width: 44px; height: 44px; border-radius: 6px; }
+  /* Full-width rectangle swatch. */
+  .cube.big { width: 100%; height: 44px; border-radius: 8px; }
   /* The swatch IS the picker: hover (or armed) reveals the pipette overlay. */
-  .baseswatch { position: relative; display: inline-flex; padding: 0; border: 0;
+  .baseswatch { position: relative; display: flex; width: 100%; padding: 0; border: 0;
     background: transparent; cursor: pointer; margin: 0 0 8px; }
   .baseswatch .pick { position: absolute; inset: 0; display: flex; align-items: center;
-    justify-content: center; color: #fff; background: rgba(0,0,0,0.4); border-radius: 6px;
+    justify-content: center; color: #fff; background: rgba(0,0,0,0.4); border-radius: 8px;
     opacity: 0; transition: opacity 120ms; }
   .baseswatch:hover .pick, .baseswatch.on .pick { opacity: 1; }
   .baseswatch.on .cube.big { box-shadow: 0 0 0 2px rgba(244,157,78,0.7); }
   .recal { width: 100%; padding: 7px; border-radius: 8px; font-size: 12px; cursor: pointer;
     border: 1px solid var(--glass-brd); background: transparent; color: var(--text); margin-bottom: 8px; }
-  /* Crop re-analysis sits at the top of the panel — clear gap below before Film Base. */
-  .reanalyze { margin: 2px 0 16px; }
+  /* Crop re-analysis sits at the top of the panel — breathing room above + below. */
+  .reanalyze { margin: 14px 0 16px; }
   .lowconf { font-size: 11px; color: rgba(244,157,78,0.9); margin: 6px 0 0; }
 </style>
