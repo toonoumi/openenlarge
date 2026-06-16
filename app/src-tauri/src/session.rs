@@ -79,6 +79,10 @@ pub struct InvertParams {
     /// encode_hdr; the live render stays SDR regardless.
     #[serde(default)]
     pub hdr: bool,
+    /// Positive passthrough (slide/print): skip inversion, render the scan with
+    /// exposure + WB only. Seeded by the develop-time classifier; user-overridable.
+    #[serde(default)]
+    pub positive: bool,
     // Creative finishing (UI −100..100; 0 = identity).
     pub contrast: f32,
     pub highlights: f32,
@@ -212,6 +216,9 @@ pub struct ImageEntry {
     /// True when the referenced file is missing on disk (restored from catalog).
     #[serde(default)]
     pub offline: bool,
+    /// Develop-time negative/positive classification (true = positive).
+    #[serde(default)]
+    pub positive: bool,
 }
 
 /// Decoded working data, present once an image is developed.
@@ -224,6 +231,10 @@ pub struct Developed {
     /// Develop-time auto Cineon D_max (density range); per-image, stored so the
     /// inversion never recomputes it on every view. Override: InvertParams.d_max_override.
     pub d_max: f32,
+    /// Develop-time classification: true = positive scan (no inversion).
+    pub positive: bool,
+    /// Classifier confidence 0..1 (diagnostic; not currently surfaced in UI).
+    pub positive_confidence: f32,
 }
 
 /// A session image: always has path/metadata/thumbnail; `developed` is lazy.
@@ -284,6 +295,7 @@ impl Session {
                 .map(|d| d.working.ir.is_some())
                 .unwrap_or(false),
             offline: false,
+            positive: false,
         };
         self.images.lock().unwrap().insert(id, img);
         entry

@@ -19,6 +19,10 @@ pub struct CatalogImage {
     pub offline: bool,
     pub developed: bool,
     pub has_ir: bool,
+    /// Develop-time negative/positive classification (true = positive). Not stored in
+    /// the catalog DB; defaults to false on reload and is reseeded when the image develops.
+    #[serde(default)]
+    pub positive: bool,
 }
 
 /// One image's stored edits. Stored as opaque JSON blobs; deserialized to `Value`
@@ -151,6 +155,7 @@ impl Catalog {
                 thumbnail: r.get(4)?,
                 developed: false,
                 has_ir: false,
+                positive: false,
             })
         })?;
         rows.collect()

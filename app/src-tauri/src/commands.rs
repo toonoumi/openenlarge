@@ -107,6 +107,7 @@ pub(crate) fn default_invert_params() -> InvertParams {
         tint: 0.0,
         wb_manual: false,
         hdr: false,
+        positive: false,
         contrast: 0.0,
         highlights: 0.0,
         shadows: 0.0,
@@ -196,6 +197,7 @@ pub(crate) fn build_params(p: &InvertParams, base: [f32; 3]) -> InversionParams 
         base,
         print_exposure: 2f32.powf(p.exposure), // EV stops → linear print exposure
         d_max: p.d_max_override.unwrap_or(1.5),
+        positive: p.positive,
         ..Default::default()
     }
 }
@@ -494,6 +496,7 @@ fn develop_heavy(
     let has_ir = working.ir.is_some();
     let thumb = proxy(&full, AUTOWB_EDGE);
     let (base, base_confidence) = auto_base(&working);
+    let (positive, positive_confidence) = film_core::classify::classify_positive(&working);
     let d_max = film_core::calibrate::sample_dmax(&working, base, None);
     let (w, h) = (full.width as u32, full.height as u32);
     drop(full);
@@ -529,6 +532,8 @@ fn develop_heavy(
             base,
             base_confidence,
             d_max,
+            positive,
+            positive_confidence,
         });
         let metadata_json = metadata_to_json(&img.metadata)?;
         let entry = ImageEntry {
@@ -540,6 +545,7 @@ fn develop_heavy(
             developed: true,
             has_ir,
             offline: false,
+            positive,
         };
         (entry, metadata_json)
     }; // lock released here
@@ -595,6 +601,7 @@ pub fn ensure_developed(
                         developed: true,
                         has_ir: dev.working.ir.is_some(),
                         offline: false,
+                        positive: dev.positive,
                     })
                 } else {
                     None
@@ -706,6 +713,7 @@ fn ensure_resident(session: &Session, id: &str) -> Result<(), String> {
     let (base, working, thumb) =
         crate::cache::read(&path).map_err(|e| format!("cache read: {e}"))?;
     let base_confidence = film_core::calibrate::detect_rebate_base(&working).confidence;
+    let (positive, positive_confidence) = film_core::classify::classify_positive(&working);
     let d_max = film_core::calibrate::sample_dmax(&working, base, None);
     let mut images = session.images.lock().unwrap();
     if let Some(c) = images.get_mut(id) {
@@ -716,6 +724,8 @@ fn ensure_resident(session: &Session, id: &str) -> Result<(), String> {
                 base,
                 base_confidence,
                 d_max,
+                positive,
+                positive_confidence,
             });
         }
     }

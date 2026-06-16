@@ -148,6 +148,9 @@ pub struct ResolvedInversion {
     pub soft_clip: f32,
     /// Always 3 (Cineon). One engine; the shader still has dead branches 0-2.
     pub mode: u8,
+    /// Positive passthrough (slide/print): skip inversion, render scan + exposure/WB.
+    #[serde(default)]
+    pub positive: bool,
 }
 
 /// Resolve the UI params (+ sampled film base) into GPU uniforms, reusing the
@@ -176,6 +179,7 @@ pub fn resolve_to_uniforms(p: &InvertParams, base: [f32; 3]) -> ResolvedInversio
         paper_grade: ip.paper_grade,
         soft_clip: ip.soft_clip,
         mode,
+        positive: p.positive,
     }
 }
 
