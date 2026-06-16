@@ -225,7 +225,7 @@
   .cube { width: 16px; height: 16px; border-radius: 4px; border: 1px solid var(--glass-brd);
     flex: none; }
   /* Full-width rectangle swatch. */
-  .cube.big { width: 100%; height: 44px; border-radius: 8px; }
+  .cube.big { width: 100%; height: 28px; border-radius: 8px; }
   /* The swatch IS the picker: hover (or armed) reveals the pipette overlay. */
   .baseswatch { position: relative; display: flex; width: 100%; padding: 0; border: 0;
     background: transparent; cursor: pointer; margin: 0 0 8px; }
