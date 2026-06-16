@@ -34,6 +34,44 @@ fn parse_edit_response(body: &str) -> Result<String, String> {
     Ok(format!("data:image/png;base64,{b64}"))
 }
 
+/// Send a base64-encoded JPEG (no data-URL prefix) to OpenAI's image-edit
+/// endpoint and return the enhanced image as a PNG data URL.
+///
+/// `size` is sent as "auto" so the model returns the largest output it offers.
+pub async fn enhance(image_base64: &str, api_key: &str) -> Result<String, String> {
+    let key = api_key.trim();
+    if key.is_empty() {
+        return Err("missing OpenAI API key".to_string());
+    }
+
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(image_base64.trim())
+        .map_err(|e| format!("could not decode preview image: {e}"))?;
+
+    let image_part = reqwest::multipart::Part::bytes(bytes)
+        .file_name("image.jpg")
+        .mime_str("image/jpeg")
+        .map_err(|e| e.to_string())?;
+
+    let form = reqwest::multipart::Form::new()
+        .text("model", OPENAI_MODEL)
+        .text("prompt", ENHANCE_PROMPT)
+        .text("size", "auto")
+        .part("image", image_part);
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(OPENAI_EDITS_URL)
+        .bearer_auth(key)
+        .multipart(form)
+        .send()
+        .await
+        .map_err(|e| format!("request to OpenAI failed: {e}"))?;
+
+    let body = resp.text().await.map_err(|e| format!("reading OpenAI response failed: {e}"))?;
+    parse_edit_response(&body)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
