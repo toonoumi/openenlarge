@@ -461,7 +461,7 @@ fn develop_heavy(
     let small = proxy(&working, THUMB_EDGE);
     let defaults = default_invert_params();
     let ip = resolve_params(&defaults, &thumb, base);
-    let inv_thumb = invert_image(&small, &ip, Mode::B);
+    let inv_thumb = invert_image(&small, &ip, Mode::D);
     let inv_thumb = finish_image(&inv_thumb, &finish_from(&defaults));
     let thumbnail = to_jpeg_b64(&inv_thumb, false, 82)?;
 

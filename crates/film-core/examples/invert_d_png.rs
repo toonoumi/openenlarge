@@ -1,4 +1,4 @@
-//! Validation harness: decode a scan, run Mode B and Mode D, write side-by-side PNGs.
+//! Validation harness: decode a scan, run the Cineon inverter, write a PNG.
 //! Usage: cargo run -p film-core --example invert_d_png -- <scan...>
 //! Look at the PNGs across SEVERAL rolls; do not trust region stats.
 
@@ -49,9 +49,6 @@ fn main() {
             .file_stem()
             .and_then(|s| s.to_str())
             .unwrap_or("scan");
-
-        let pb = InversionParams { base, ..Default::default() };
-        encode(&invert_image(&full, &pb, Mode::B), &format!("/tmp/{stem}_B.png"));
 
         let pd = InversionParams { base, ..Default::default() };
         encode(&invert_image(&full, &pd, Mode::D), &format!("/tmp/{stem}_D.png"));

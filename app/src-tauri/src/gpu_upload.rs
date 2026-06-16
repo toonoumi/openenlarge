@@ -120,9 +120,8 @@ pub fn image_from_rgba_f32(w: u32, h: u32, data: &[f32]) -> Image {
     }
 }
 
-use crate::commands::{build_params, mode_from, wb_from_params};
+use crate::commands::{build_params, wb_from_params};
 use crate::session::InvertParams;
-use film_core::engine::Mode;
 use serde::Serialize;
 
 /// Flat, JS-friendly inversion uniforms. Matrices are column-major 9-vecs to
@@ -141,7 +140,7 @@ pub struct ResolvedInversion {
     pub paper_black: f32,
     pub paper_grade: f32,
     pub soft_clip: f32,
-    /// 0 = Mode B (density matrix), 1 = Mode C (per-channel). (2 = Naive exists in the shader but the app never emits it.)
+    /// Always 3 (Cineon). One engine; the shader still has dead branches 0-2.
     pub mode: u8,
 }
 
@@ -150,12 +149,7 @@ pub struct ResolvedInversion {
 pub fn resolve_to_uniforms(p: &InvertParams, base: [f32; 3]) -> ResolvedInversion {
     let mut ip = build_params(p, base);
     ip.wb = wb_from_params(p.temp, p.tint);
-    let mode = match mode_from(&p.mode) {
-        Mode::B => 0u8,
-        Mode::C => 1,
-        Mode::Naive => 2,
-        Mode::D => 3,
-    };
+    let mode = 3u8; // one engine: Cineon
     let m_pre: [f32; 9] = ip.m_pre.as_slice().try_into().expect("mat3 has 9 elements");
     let m_post: [f32; 9] = ip
         .m_post
