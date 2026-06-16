@@ -86,12 +86,12 @@
     color: var(--text-dim); font-size: 12px; cursor: pointer; user-select: none; }
   .omit input { cursor: pointer; accent-color: #bf6d3a; margin: 0; }
   .import { margin-top: 8px; width: 100%; padding: 10px; border-radius: 9px;
-    border: 1px solid rgba(0,0,0,0.25);
-    background: #bf6d3a; color: #f3ece6; font: inherit; font-weight: 600; cursor: pointer;
+    border: 1px solid rgba(244,157,78,0.5);
+    background: rgba(244,157,78,0.18); color: #fff; font: inherit; font-weight: 600; cursor: pointer;
     display: flex; align-items: center; justify-content: center; gap: 7px;
-    transition: transform 0.14s ease, background 0.14s ease; }
-  .import:hover:not(:disabled) { transform: scale(1.02); background: #cd7842; }
-  .import:active:not(:disabled) { transform: scale(0.99); background: #bf6d3a; }
+    transition: background 0.14s ease, border-color 0.14s ease; }
+  .import:hover:not(:disabled) { background: rgba(244,157,78,0.30); border-color: rgba(244,157,78,0.75); }
+  .import:active:not(:disabled) { background: rgba(244,157,78,0.30); }
   .import:disabled { opacity: 0.55; cursor: default; }
   @media (prefers-reduced-motion: reduce) {
     .import { transition: background 0.14s ease; }

@@ -534,12 +534,12 @@
   }
   .ghost:hover { background: rgba(255, 255, 255, 0.08); border-color: rgba(255, 255, 255, 0.18); }
   .primary {
-    padding: 9px 18px; border: 1px solid rgba(0, 0, 0, 0.25); border-radius: 10px; font-weight: 600; font-size: 13px;
-    background: #bf6d3a; color: #f3ece6; cursor: pointer;
-    transition: transform 0.14s ease, background 0.14s ease;
+    padding: 9px 18px; border: 1px solid rgba(244,157,78,0.5); border-radius: 10px; font-weight: 600; font-size: 13px;
+    background: rgba(244,157,78,0.18); color: #fff; cursor: pointer;
+    transition: background 0.14s ease, border-color 0.14s ease;
   }
-  .primary:hover:not(:disabled) { transform: scale(1.02); background: #cd7842; }
-  .primary:active:not(:disabled) { transform: scale(0.99); background: #bf6d3a; }
+  .primary:hover:not(:disabled) { background: rgba(244,157,78,0.30); border-color: rgba(244,157,78,0.75); }
+  .primary:active:not(:disabled) { background: rgba(244,157,78,0.30); }
   .primary:disabled { opacity: 0.55; cursor: default; }
   @media (prefers-reduced-motion: reduce) {
     .primary { transition: background 0.14s ease; }
