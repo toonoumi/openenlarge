@@ -4,7 +4,8 @@
   import { fly } from "svelte/transition";
   import { cubicOut } from "svelte/easing";
   import { hydrate, initPersistence } from "$lib/catalog";
-  import { module, hasImages, images, undevelopedCount, deleteTarget, activeId } from "$lib/store";
+  import { module, hasImages, images, undevelopedCount, deleteTarget, activeId, selection } from "$lib/store";
+  import { noneSelected } from "$lib/selection";
   import { matchUndoRedo } from "$lib/develop/history";
   import { commitActive, undoActive, redoActive, seedActive } from "$lib/develop/historyStore";
   import { developAll, deleteImage } from "$lib/workflow";
@@ -46,13 +47,15 @@
     confirming = true;
   }
 
-  $: deleteName = $deleteTarget
-    ? ($images.find((i) => i.id === $deleteTarget)?.file_name ?? "")
+  $: deleteCount = $deleteTarget.length;
+  $: deleteName = deleteCount === 1
+    ? ($images.find((i) => i.id === $deleteTarget[0])?.file_name ?? "")
     : "";
-  function runDelete(deleteFile: boolean) {
-    const id = $deleteTarget;
-    deleteTarget.set(null);
-    if (id) deleteImage(id, deleteFile);
+  async function runDelete(deleteFile: boolean) {
+    const ids = $deleteTarget;
+    deleteTarget.set([]);
+    selection.set(noneSelected());
+    for (const id of ids) await deleteImage(id, deleteFile);
   }
 
   // ⌘Z inside a text field should do the browser's native text undo, not image
@@ -133,11 +136,11 @@
     on:confirm={() => { confirming = false; developAll(); }}
     on:cancel={() => (confirming = false)} />
 {/if}
-{#if $deleteTarget}
-  <ConfirmDelete name={deleteName}
+{#if deleteCount > 0}
+  <ConfirmDelete name={deleteName} count={deleteCount}
     on:remove={() => runDelete(false)}
     on:trash={() => runDelete(true)}
-    on:cancel={() => deleteTarget.set(null)} />
+    on:cancel={() => deleteTarget.set([])} />
 {/if}
 
 <style>

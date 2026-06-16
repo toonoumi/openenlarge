@@ -3,12 +3,16 @@
   import { fade, scale } from "svelte/transition";
   import { t } from "$lib/i18n";
   export let name = "";
+  export let count = 1;
   const dispatch = createEventDispatcher<{ remove: void; trash: void; cancel: void }>();
+  $: title = count > 1
+    ? $t('confirmDelete.titleCount', { count })
+    : $t('confirmDelete.title', { name: name || $t('confirmDelete.fallbackName') });
 </script>
 
 <div class="scrim" on:click|self={() => dispatch("cancel")} transition:fade={{ duration: 150 }}>
   <div class="card" transition:scale={{ duration: 160, start: 0.96, opacity: 0 }}>
-    <div class="title">{$t('confirmDelete.title', { name: name || $t('confirmDelete.fallbackName') })}</div>
+    <div class="title">{title}</div>
     <div class="sub">{$t('confirmDelete.sub')}</div>
     <div class="warn">{$t('confirmDelete.warn')}</div>
     <div class="row">

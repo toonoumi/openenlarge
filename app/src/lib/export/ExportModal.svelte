@@ -14,7 +14,7 @@
   import { toInversionUniforms } from "../viewport/gl/invert";
   import { finishUniforms } from "../viewport/gl/uniforms";
   import { toneLutBytes, colorGrade, colorMix } from "../develop/finish";
-  import { allSelected, noneSelected, click, isAllSelected, toggleAll, type SelState } from "./selection";
+  import { allSelected, noneSelected, click, isAllSelected, toggleAll, type SelState } from "../selection";
   import { outName } from "./naming";
   import { t } from "$lib/i18n";
   import { withEffectiveBase } from "../develop/base";

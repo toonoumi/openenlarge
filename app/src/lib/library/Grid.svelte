@@ -1,7 +1,9 @@
 <script lang="ts">
   import { tick, onMount } from "svelte";
-  import { activeId, selectedFolder, gridZoom, folderImages } from "../store";
+  import { activeId, selectedFolder, gridZoom, folderImages, selection, selectClick } from "../store";
   import { t } from "$lib/i18n";
+
+  const mods = (e: MouseEvent) => ({ meta: e.metaKey || e.ctrlKey, shift: e.shiftKey });
   let scrollEl: HTMLDivElement;
   let containerW = 800;
   $: shown = $folderImages;
@@ -46,7 +48,9 @@
   <div class="scroll" bind:this={scrollEl} role="listbox" aria-label={$t('grid.folderImagesAria')} on:wheel={onWheel}>
     <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax({minCol}px,1fr))">
       {#each shown as img (img.id)}
-        <button data-id={img.id} class="cell" class:sel={$activeId === img.id} on:click={() => activeId.set(img.id)}>
+        <button data-id={img.id} class="cell" class:sel={$activeId === img.id}
+          class:multi={$selection.selected.has(img.id)}
+          on:click={(e) => selectClick(img.id, mods(e))}>
           <div class="ratio"><img src={img.thumbnail} alt={img.file_name} /></div>
         </button>
       {/each}
@@ -67,7 +71,8 @@
   .cell { display: block; padding: 0; border: 1px solid var(--glass-brd); border-radius: 11px;
     overflow: hidden; background: #0d0d10; cursor: pointer; transition: box-shadow 0.12s; }
   .cell:hover { box-shadow: 0 12px 26px rgba(0,0,0,0.5); }
-  .cell.sel { box-shadow: 0 0 0 2px #fff, 0 12px 26px rgba(0,0,0,0.5); }
+  .cell.multi { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent), 0 12px 26px rgba(0,0,0,0.5); }
+  .cell.sel { border-color: #fff; box-shadow: 0 0 0 2px #fff, 0 12px 26px rgba(0,0,0,0.5); }
   .ratio { position: relative; width: 100%; height: 0; padding-bottom: 100%; }
   .ratio img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: block; }
   .empty { color: var(--text-faint); padding: 16px; }

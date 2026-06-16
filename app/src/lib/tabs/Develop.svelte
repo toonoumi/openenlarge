@@ -2,12 +2,13 @@
   import { t } from "$lib/i18n";
   import { fade } from "svelte/transition";
   import { cubicOut } from "svelte/easing";
-  import { activeId, params, images, folderImages, tool, cropById, activeCrop, dustById, activeDust, deleteTarget, dustRev, developRev, folderBaseByPath, baseSampling, sampledBase } from "../store";
+  import { activeId, params, images, folderImages, tool, cropById, activeCrop, dustById, activeDust, deleteTarget, dustRev, developRev, folderBaseByPath, baseSampling, sampledBase, selectAll, deleteSelectionIds, setActive } from "../store";
   import { get } from "svelte/store";
   import { imageDir } from "../library/folderScope";
   import { withEffectiveBase } from "../develop/base";
   import { api } from "../api";
   import Filmstrip from "../panels/Filmstrip.svelte";
+  import ImageContextMenu from "../overlay/ImageContextMenu.svelte";
   import Viewport from "../viewport/Viewport.svelte";
   import QualityMenu from "../viewport/QualityMenu.svelte";
   import Histogram from "../viewport/Histogram.svelte";
@@ -150,15 +151,24 @@
     else if (e.key === "ArrowUp") idx = 0;
     else idx = list.length - 1;
     e.preventDefault();
-    activeId.set(list[idx].id);
+    setActive(list[idx].id);
     return true;
   }
 
   function onKey(e: KeyboardEvent) {
     const meta = e.metaKey || e.ctrlKey;
+    if (meta && (e.key === "a" || e.key === "A")) {
+      if (formFocused()) return;
+      e.preventDefault();
+      selectAll();
+      return;
+    }
     if (meta && e.key === "Backspace") {
       e.preventDefault();
-      if ($activeId && !formFocused()) deleteTarget.set($activeId);
+      if (!formFocused()) {
+        const ids = deleteSelectionIds();
+        if (ids.length) deleteTarget.set(ids);
+      }
       return;
     }
     if (meta && (e.key === "]" || e.key === "[")) {
@@ -220,8 +230,16 @@
 
   $: hasIr = active?.has_ir ?? false;
 
+  // Right-click on a filmstrip thumbnail opens the image Delete menu (acting on the
+  // whole selection); right-click anywhere else in Develop opens the quality menu.
   let menu: { x: number; y: number } | null = null;
-  function onContext(e: MouseEvent) { e.preventDefault(); menu = { x: e.clientX, y: e.clientY }; }
+  let thumbMenu: { x: number; y: number } | null = null;
+  function onContext(e: MouseEvent) {
+    e.preventDefault();
+    const onThumb = (e.target as HTMLElement).closest("[data-id]");
+    if (onThumb) { thumbMenu = { x: e.clientX, y: e.clientY }; menu = null; }
+    else { menu = { x: e.clientX, y: e.clientY }; thumbMenu = null; }
+  }
 
   // ---- Eyedropper state ----
   // One crosshair, two consumers: 'pc' = ColorMixer point-colour sample, 'wb' = gray-point
@@ -307,8 +325,11 @@
   <footer class="bottom"><Filmstrip /></footer>
 </div>
 {#if menu}<QualityMenu x={menu.x} y={menu.y}
-  on:delete={() => { if ($activeId) deleteTarget.set($activeId); menu = null; }}
+  on:delete={() => { const ids = deleteSelectionIds(); if (ids.length) deleteTarget.set(ids); menu = null; }}
   on:close={() => (menu = null)} />{/if}
+{#if thumbMenu}<ImageContextMenu x={thumbMenu.x} y={thumbMenu.y} count={deleteSelectionIds().length}
+  on:delete={() => { const ids = deleteSelectionIds(); if (ids.length) deleteTarget.set(ids); thumbMenu = null; }}
+  on:close={() => (thumbMenu = null)} />{/if}
 
 <style>
   .layout { display: grid; height: 100%; gap: 12px;

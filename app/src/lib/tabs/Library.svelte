@@ -4,7 +4,7 @@
   import Metadata from "../panels/Metadata.svelte";
   import Filmstrip from "../panels/Filmstrip.svelte";
   import ImageContextMenu from "../overlay/ImageContextMenu.svelte";
-  import { activeId, folderImages, deleteTarget } from "../store";
+  import { activeId, folderImages, deleteTarget, selectAll, deleteSelectionIds, setActive } from "../store";
 
   // Skip nav while a form control (e.g. the thumb-size slider) is focused, so its
   // own arrow-key behaviour wins.
@@ -15,22 +15,33 @@
 
   // Right-click a thumbnail (grid cell or filmstrip button — both carry data-id)
   // to open a Delete menu. Delegated here so neither child needs its own handler.
-  let ctxMenu: { x: number; y: number; id: string } | null = null;
+  // Right-click a thumbnail to open a Delete menu. Per design the menu acts on the
+  // whole current selection (its label shows the count), so right-click does not
+  // alter the selection.
+  let ctxMenu: { x: number; y: number } | null = null;
   function onContext(e: MouseEvent) {
     e.preventDefault();
     const id = (e.target as HTMLElement).closest("[data-id]")?.getAttribute("data-id");
     if (!id) { ctxMenu = null; return; }
-    activeId.set(id);
-    ctxMenu = { x: e.clientX, y: e.clientY, id };
+    ctxMenu = { x: e.clientX, y: e.clientY };
   }
 
   // Arrow keys navigate images within the selected folder (grid or filmstrip), no
   // focus required: ←/→ step, ↑ first, ↓ last. Scoped to the folder — switch folders
   // via the tree on the left.
   function onKey(e: KeyboardEvent) {
+    if ((e.metaKey || e.ctrlKey) && (e.key === "a" || e.key === "A")) {
+      if (formFocused()) return;
+      e.preventDefault();
+      selectAll();
+      return;
+    }
     if ((e.metaKey || e.ctrlKey) && e.key === "Backspace") {
       e.preventDefault();
-      if ($activeId && !formFocused()) deleteTarget.set($activeId);
+      if (!formFocused()) {
+        const ids = deleteSelectionIds();
+        if (ids.length) deleteTarget.set(ids);
+      }
       return;
     }
     if (e.metaKey || e.ctrlKey || e.altKey) return;
@@ -45,7 +56,7 @@
     else if (e.key === "ArrowUp") idx = 0;
     else idx = list.length - 1;
     e.preventDefault();
-    activeId.set(list[idx].id);
+    setActive(list[idx].id);
   }
 </script>
 
@@ -59,8 +70,8 @@
 </div>
 
 {#if ctxMenu}
-  <ImageContextMenu x={ctxMenu.x} y={ctxMenu.y}
-    on:delete={() => { if (ctxMenu) { deleteTarget.set(ctxMenu.id); ctxMenu = null; } }}
+  <ImageContextMenu x={ctxMenu.x} y={ctxMenu.y} count={deleteSelectionIds().length}
+    on:delete={() => { const ids = deleteSelectionIds(); if (ids.length) deleteTarget.set(ids); ctxMenu = null; }}
     on:close={() => (ctxMenu = null)} />
 {/if}
 

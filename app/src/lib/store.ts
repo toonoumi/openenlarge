@@ -5,6 +5,7 @@ import type { CropRect } from "./crop/types";
 import { createPerImageParams } from "./perImage";
 import { emptyDust, type DustEdits } from "./develop/dust";
 import { scopeToFolder } from "./library/folderScope";
+import { type SelState, type Mods, noneSelected, allSelected, click } from "./selection";
 
 export const images = writable<ImageEntry[]>([]);
 export const activeId = writable<string | null>(null);
@@ -68,13 +69,53 @@ export const folderImages = derived(
 );
 export const undevelopedCount = derived(folderImages, ($i) => $i.filter((x) => !x.developed).length);
 
+/** Multi-selection across the grid and filmstrips. `activeId` (the single image
+ * Develop/Metadata render) stays coupled: a plain click collapses the selection
+ * to that one image and makes it active; modifier clicks build the selection
+ * without changing which image is active. Cleared on folder change, after a
+ * delete, and on a plain click. */
+export const selection = writable<SelState>(noneSelected());
+
+const folderImageIds = (): string[] => get(folderImages).map((i) => i.id);
+
+/** Make `id` the single active + selected image (plain click, arrow-nav, folder). */
+export function setActive(id: string | null): void {
+  activeId.set(id);
+  selection.set(id ? { selected: new Set([id]), anchor: id } : noneSelected());
+}
+
+/** Handle a thumbnail click: plain -> setActive; Ctrl/Cmd or Shift -> extend the
+ * selection (leaving the active image untouched). */
+export function selectClick(id: string, mods: Mods): void {
+  if (mods.meta || mods.shift) {
+    selection.update((s) => click(s, folderImageIds(), id, mods));
+  } else {
+    setActive(id);
+  }
+}
+
+/** Ctrl/Cmd+A: select every image in the current folder. */
+export function selectAll(): void {
+  selection.set(allSelected(folderImageIds()));
+}
+
+/** Ids a delete should affect: the multi-selection if any, else the active image. */
+export function deleteSelectionIds(): string[] {
+  const sel = get(selection).selected;
+  if (sel.size > 0) return [...sel];
+  const a = get(activeId);
+  return a ? [a] : [];
+}
+
 /** Select a folder. Per design, if the active image is not in the new folder,
  * make the folder's first image active so the grid/filmstrip/metadata stay in sync. */
 export function selectFolder(path: string | null): void {
   selectedFolder.set(path);
   const scoped = scopeToFolder(get(images), path);
   const cur = get(activeId);
-  if (!scoped.some((i) => i.id === cur)) activeId.set(scoped[0]?.id ?? null);
+  // Reset to a single active+selected image so the grid/filmstrip/metadata stay
+  // in sync and any multi-selection is cleared on folder change.
+  setActive(scoped.some((i) => i.id === cur) ? cur : scoped[0]?.id ?? null);
 }
 
 /** Data-URL of the latest rendered develop preview; drives the histogram. */
@@ -89,8 +130,9 @@ export const tool = writable<Tool>("edit");
 export const baseSampling = writable<boolean>(false);
 export const sampledBase = writable<[number, number, number] | null>(null);
 
-/** Id of the image awaiting a delete confirmation (null = no dialog). */
-export const deleteTarget = writable<string | null>(null);
+/** Ids awaiting a delete confirmation (empty = no dialog). One id deletes a
+ * single image; many drive the "Delete N items" multi-delete. */
+export const deleteTarget = writable<string[]>([]);
 
 /** Bumped on any dust change and on undo/redo so the Viewport re-renders. */
 export const dustRev = writable<number>(0);
