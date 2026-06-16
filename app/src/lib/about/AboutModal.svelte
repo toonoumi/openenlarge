@@ -79,9 +79,12 @@
   button { padding: 8px 14px; border-radius: 9px; border: 1px solid var(--glass-brd); background: transparent; color: var(--text); }
   .link { border: 0; padding: 8px 10px; color: var(--accent); font-weight: 600; }
   .link:hover { background: var(--glass-hi); }
-  .go { background: #bf6d3a; color: #f3ece6; border: 0; font-weight: 600; transition: background 0.14s ease; }
-  .go:hover { background: #cd7842; }
-  .go:active { background: #bf6d3a; }
+  /* Matches the close buttons elsewhere (.primary translucent-accent style). */
+  .go { border-radius: 8px; font-weight: 600; cursor: pointer;
+    border: 1px solid rgba(244,157,78,0.5); background: rgba(244,157,78,0.18); color: #fff;
+    transition: background 0.12s ease, border-color 0.12s ease; }
+  .go:hover { background: rgba(244,157,78,0.30); border-color: rgba(244,157,78,0.75); }
+  .go:active { background: rgba(244,157,78,0.30); }
   .back { border: 0; width: 32px; height: 32px; padding: 0; font-size: 18px; color: var(--text-dim); flex: none; }
   .back:hover { background: var(--glass-hi); color: var(--text); }
   .licenses { max-height: 46vh; overflow-y: auto; margin-bottom: 16px; }
