@@ -1270,6 +1270,38 @@ pub fn sample_base_at(
     Ok(sample_base(&dev.working, Some(Rect { x, y, w, h })))
 }
 
+/// Result of `analyze`: the auto-derived Cineon black point for the image area.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct Analysis {
+    pub d_max: f32,
+}
+
+/// Auto-derive `D_max` from the IMAGE AREA (the persistent crop, normalized
+/// [x,y,w,h] 0..1 in working space). Excluding the borders is the whole point —
+/// black surround / rebate would otherwise inflate the density range and wash the
+/// image out (GitHub issue #1). `crop = None` analyzes the whole frame.
+#[tauri::command]
+pub fn analyze(
+    id: String,
+    params: InvertParams,
+    crop: Option<[f64; 4]>,
+    session: State<Session>,
+) -> Result<Analysis, String> {
+    use film_core::calibrate::{sample_dmax, Rect};
+    ensure_resident(&session, &id)?;
+    let images = session.images.lock().unwrap();
+    let img = images.get(&id).ok_or("unknown image id")?;
+    let dev = img.developed.as_ref().ok_or("not developed")?;
+    let base = effective_base(&params, dev.base);
+    let rect = crop.map(|nc| {
+        let (x, y, w, h) = crop_px(nc, dev.working.width, dev.working.height);
+        Rect { x, y, w, h }
+    });
+    Ok(Analysis {
+        d_max: sample_dmax(&dev.working, base, rect),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
