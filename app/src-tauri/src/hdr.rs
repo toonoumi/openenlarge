@@ -148,4 +148,34 @@ mod tests {
             || bytes.windows(apple.len()).any(|w| w == apple);
         assert!(has, "no gain-map metadata in output");
     }
+
+    #[test]
+    fn exif_embedding_preserves_gain_map() {
+        use crate::metadata::Metadata;
+        let sdr = solid(64, 64, [0.9, 0.9, 0.9]);
+        let hdr = solid(64, 64, [1.8, 1.8, 1.8]);
+        let bytes = encode_gain_map_jpeg(&sdr, &hdr, 90).expect("encode");
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("hdr.jpg");
+        std::fs::write(&path, &bytes).expect("write jpeg");
+
+        let meta = Metadata {
+            camera: Some("TestCam".into()),
+            note: Some("hello hdr".into()),
+            ..Default::default()
+        };
+        crate::exif_write::write_exif(&path, &meta).expect("exif embed");
+
+        let after = std::fs::read(&path).expect("read back");
+        assert!(
+            after.windows(4).any(|w| w == b"Exif"),
+            "EXIF marker missing after embed"
+        );
+        let iso = b"urn:iso";
+        let apple = b"hdrgainmap";
+        let has_gm = after.windows(iso.len()).any(|w| w == iso)
+            || after.windows(apple.len()).any(|w| w == apple);
+        assert!(has_gm, "gain-map metadata lost after EXIF embed");
+    }
 }
