@@ -152,6 +152,9 @@ pub struct Developed {
     pub base: [f32; 3],
     /// Detector confidence (0..1) for the auto base; low → UI suggests a repoint.
     pub base_confidence: f32,
+    /// Develop-time auto Cineon D_max (density range); per-image, stored so the
+    /// inversion never recomputes it on every view. Override: InvertParams.d_max_override.
+    pub d_max: f32,
 }
 
 /// A session image: always has path/metadata/thumbnail; `developed` is lazy.

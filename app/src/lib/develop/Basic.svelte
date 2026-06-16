@@ -104,17 +104,17 @@
     } catch { /* not developed yet */ }
   }
 
-  // Auto-analyze when the crop (or image) changes, but only when there is NO
-  // per-image override — so a deliberate value is never clobbered. D_max is
-  // scene-dependent (per-image), so there is no roll/folder default to honor.
-  // Mirrors the WB seed-guard idea.
-  let lastCropKey = "";
+  // Re-derive D_max only when the crop CHANGES on the current image — not on image
+  // switch (the stored develop-time d_max already covers that). Switching no longer
+  // recomputes analysis or adds an undo step.
+  let lastCrop = { id: "", key: "" };
   $: {
-    const key = `${$activeId}:${JSON.stringify(imageCrop)}`;
-    if ($activeId && key !== lastCropKey && get(params).d_max_override == null) {
-      lastCropKey = key;
+    const id = $activeId ?? "";
+    const key = JSON.stringify(imageCrop);
+    if (id && id === lastCrop.id && key !== lastCrop.key) {
       reanalyze();
     }
+    lastCrop = { id, key };
   }
 
   // A user drag of Temp/Tint makes WB user-controlled (sticky vs the base-change

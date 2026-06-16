@@ -205,6 +205,12 @@ pub(crate) fn effective_base(p: &InvertParams, dev_base: [f32; 3]) -> [f32; 3] {
     p.base_override.unwrap_or(dev_base)
 }
 
+/// Effective Cineon D_max for an inversion: the per-image override if set, else the
+/// develop-time auto value stored on `Developed`.
+pub(crate) fn effective_dmax(p: &InvertParams, dev_dmax: f32) -> f32 {
+    p.d_max_override.unwrap_or(dev_dmax)
+}
+
 /// Pick the film base for a freshly-developed working image. Returns (base, confidence).
 ///
 /// 1. Confident edge-detected rebate → use it.
@@ -487,12 +493,14 @@ fn develop_heavy(
     let has_ir = working.ir.is_some();
     let thumb = proxy(&full, AUTOWB_EDGE);
     let (base, base_confidence) = auto_base(&working);
+    let d_max = film_core::calibrate::sample_dmax(&working, base, None);
     let (w, h) = (full.width as u32, full.height as u32);
     drop(full);
 
     let small = proxy(&working, THUMB_EDGE);
     let defaults = default_invert_params();
-    let ip = resolve_params(&defaults, &thumb, base);
+    let mut ip = resolve_params(&defaults, &thumb, base);
+    ip.d_max = d_max;
     let inv_thumb = invert_image(&small, &ip, Mode::D);
     let inv_thumb = finish_image(&inv_thumb, &finish_from(&defaults));
     let thumbnail = to_jpeg_b64(&inv_thumb, false, 82)?;
@@ -519,6 +527,7 @@ fn develop_heavy(
             thumb,
             base,
             base_confidence,
+            d_max,
         });
         let metadata_json = metadata_to_json(&img.metadata)?;
         let entry = ImageEntry {
@@ -685,6 +694,7 @@ fn ensure_resident(session: &Session, id: &str) -> Result<(), String> {
     let (base, working, thumb) =
         crate::cache::read(&path).map_err(|e| format!("cache read: {e}"))?;
     let base_confidence = film_core::calibrate::detect_rebate_base(&working).confidence;
+    let d_max = film_core::calibrate::sample_dmax(&working, base, None);
     let mut images = session.images.lock().unwrap();
     if let Some(c) = images.get_mut(id) {
         if c.developed.is_none() {
@@ -693,6 +703,7 @@ fn ensure_resident(session: &Session, id: &str) -> Result<(), String> {
                 thumb,
                 base,
                 base_confidence,
+                d_max,
             });
         }
     }
@@ -743,7 +754,8 @@ pub fn render_view(
     if view.raw {
         return to_jpeg_b64(&scaled, true, PREVIEW_JPEG_QUALITY);
     }
-    let ip = resolve_params(&params, &dev.thumb, effective_base(&params, dev.base));
+    let mut ip = resolve_params(&params, &dev.thumb, effective_base(&params, dev.base));
+    ip.d_max = effective_dmax(&params, dev.d_max);
     let mut inv = invert_image(&scaled, &ip, mode_from(&params.mode));
     let stamps = view_stamps(
         &view.dust,
@@ -821,7 +833,8 @@ pub fn thumbnail(
     };
     let small = proxy(&base_img, THUMB_EDGE);
     let (ow, oh) = (small.width as u32, small.height as u32);
-    let ip = resolve_params(&params, &dev.thumb, effective_base(&params, dev.base));
+    let mut ip = resolve_params(&params, &dev.thumb, effective_base(&params, dev.base));
+    ip.d_max = effective_dmax(&params, dev.d_max);
     let mut inv = invert_image(&small, &ip, mode_from(&params.mode));
     let stamps = view_stamps(
         &view.dust,
@@ -863,7 +876,7 @@ pub fn export_image(
     session: State<Session>,
 ) -> Result<(), String> {
     ensure_resident(&session, &id)?;
-    let (path, base, thumb, metadata) = {
+    let (path, base, thumb, metadata, dev_dmax) = {
         let images = session.images.lock().unwrap();
         let img = images.get(&id).ok_or("unknown image id")?;
         let dev = img.developed.as_ref().ok_or("not developed")?;
@@ -872,6 +885,7 @@ pub fn export_image(
             dev.base,
             dev.thumb.clone(),
             img.metadata.clone(),
+            dev.d_max,
         )
     };
     let full = decode_any(Path::new(&path))?;
@@ -884,7 +898,8 @@ pub fn export_image(
         }
         None => full,
     };
-    let ip = resolve_params(&params, &thumb, effective_base(&params, base));
+    let mut ip = resolve_params(&params, &thumb, effective_base(&params, base));
+    ip.d_max = effective_dmax(&params, dev_dmax);
     let mut inv = invert_image(&full, &ip, mode_from(&params.mode));
     let stamps = export_stamps(&dust, inv.width, inv.height);
     dust::apply(&mut inv, &stamps);
@@ -937,16 +952,17 @@ pub fn export_begin(
     session: State<Session>,
 ) -> Result<ExportPrep, String> {
     ensure_resident(&session, &id)?;
-    let (path, base) = {
+    let (path, base, dev_dmax) = {
         let images = session.images.lock().unwrap();
         let img = images.get(&id).ok_or("unknown image id")?;
         let dev = img.developed.as_ref().ok_or("not developed")?;
-        (img.path.clone(), dev.base)
+        (img.path.clone(), dev.base, dev.d_max)
     };
     let full = decode_any(Path::new(&path))?;
     let baked = bake_working(&full, &spec); // geometry + pre-invert heal, full-res
     let (w, h, bytes) = pack_rgba16f(&baked, u32::MAX); // no cap for export
-    let uniforms = resolve_to_uniforms(&params, effective_base(&params, base));
+    let mut uniforms = resolve_to_uniforms(&params, effective_base(&params, base));
+    uniforms.d_max = effective_dmax(&params, dev_dmax);
     *session.pending_export.lock().unwrap() = Some(PreparedExport { w, h, bytes });
     Ok(ExportPrep { w, h, uniforms })
 }
@@ -1035,11 +1051,11 @@ pub fn as_shot_wb(
     session: State<Session>,
 ) -> Result<AsShotWb, String> {
     ensure_resident(&session, &id)?;
-    let (base, thumb) = {
+    let (base, thumb, dev_dmax) = {
         let images = session.images.lock().unwrap();
         let img = images.get(&id).ok_or("unknown image id")?;
         let dev = img.developed.as_ref().ok_or("not developed")?;
-        (dev.base, dev.thumb.clone())
+        (dev.base, dev.thumb.clone(), dev.d_max)
     };
     // Restrict the estimate to the image area so borders/rebate don't bias WB.
     let thumb = match crop {
@@ -1052,7 +1068,8 @@ pub fn as_shot_wb(
     // Estimate WB against the user's ACTUAL stock/mode so the gains neutralise the
     // colour space the image is actually rendered in. `build_params` leaves `wb` at
     // [1,1,1], so the estimate is independent of any temp/tint already on the sliders.
-    let ip = build_params(&params, effective_base(&params, base));
+    let mut ip = build_params(&params, effective_base(&params, base));
+    ip.d_max = effective_dmax(&params, dev_dmax);
     let first = invert_image(&thumb, &ip, mode_from(&params.mode));
     let gains = auto_wb_gains(&first);
     let (temp, tint) = gains_to_cct(gains);
@@ -1289,10 +1306,9 @@ pub fn resolved_inversion(
     let images = session.images.lock().unwrap();
     let img = images.get(&id).ok_or("unknown image id")?;
     let dev = img.developed.as_ref().ok_or("not developed")?;
-    Ok(resolve_to_uniforms(
-        &params,
-        effective_base(&params, dev.base),
-    ))
+    let mut u = resolve_to_uniforms(&params, effective_base(&params, dev.base));
+    u.d_max = effective_dmax(&params, dev.d_max);
+    Ok(u)
 }
 
 /// Sample the orange-mask base from a normalized rect [x,y,w,h] (0..1) over the
