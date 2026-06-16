@@ -82,6 +82,12 @@ export interface InvertParams {
   // --- Point Color: up to 8 sampled swatches ---
   pc_samples: PointColorSample[];
 }
+/** Scoped develop params returned by the local color-match (subset of InvertParams). */
+export type MatchedParams = Pick<InvertParams,
+  "temp" | "tint" | "exposure" | "contrast" | "saturation"
+  | "cg_sh_hue" | "cg_sh_sat" | "cg_sh_lum"
+  | "cg_hi_hue" | "cg_hi_sat" | "cg_hi_lum">;
+
 export interface AsShotWb { temp: number; tint: number }
 export interface ViewSpec {
   crop: [number, number, number, number];
@@ -206,6 +212,8 @@ export const api = {
     invoke<void>("save_pref", { key, value }),
   aiEnhanceImage: (imageBase64: string, apiKey: string) =>
     invoke<string>("ai_enhance_image", { imageBase64, apiKey }),
+  colorMatchParams: (id: string, params: InvertParams, refPath: string, strength: number) =>
+    invoke<MatchedParams>("color_match_params", { id, params, refPath, strength }),
   saveAppState: (key: string, value: string) =>
     invoke<void>("save_app_state", { key, value }),
   workingInfo: (id: string) =>
