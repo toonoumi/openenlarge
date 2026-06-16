@@ -130,7 +130,7 @@
 {/if}
 {#if confirming}
   <ConfirmDevelop count={confirmCount}
-    on:confirm={(e) => { confirming = false; developAll(e.detail?.stock); }}
+    on:confirm={() => { confirming = false; developAll(); }}
     on:cancel={() => (confirming = false)} />
 {/if}
 {#if $deleteTarget}
