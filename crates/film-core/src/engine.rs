@@ -35,6 +35,9 @@ pub struct InversionParams {
     pub paper_grade: f32,
     /// Cineon (Mode D) — highlight soft-clip threshold.
     pub soft_clip: f32,
+    /// HDR mode: expand highlights above the knee into [knee, HDR_HEADROOM] instead
+    /// of the SDR soft-clip toward 1.0. Used only for the HDR rendition (encode_hdr).
+    pub hdr: bool,
 }
 
 impl Default for InversionParams {
@@ -52,11 +55,17 @@ impl Default for InversionParams {
             paper_black: 0.0,
             paper_grade: 0.95,
             soft_clip: 0.9,
+            hdr: false,
         }
     }
 }
 
 const EPS: f32 = 1e-5;
+/// HDR highlight expansion: output above this knee is remapped into [knee, HDR_HEADROOM].
+const HDR_KNEE: f32 = 0.8;
+/// HDR headroom ceiling (linear-ish display units, ~1.3 stops over SDR white).
+/// Tuned on real scans later; keep modest to avoid clipping.
+const HDR_HEADROOM: f32 = 2.5;
 
 /// Kodak Cineon densitometry (darktable negadoctor). Per channel:
 /// restore the negative's density in log space, return to linear, apply a paper
@@ -81,7 +90,16 @@ pub fn invert_d(rgb: [f32; 3], p: &InversionParams) -> [f32; 3] {
             (p.print_exposure * (1.0 + p.paper_black) - p.print_exposure * ten_to_x).max(0.0);
         // WB as a linear gain on the print; keeps black neutral (0·wb = 0).
         let out = (print_lin * p.wb[c]).powf(p.paper_grade);
-        if out > p.soft_clip {
+        if p.hdr {
+            // HDR: expand highlights above the knee into [knee, HDR_HEADROOM] so
+            // speculars/lights exceed SDR white (the gain map captures this headroom).
+            if out > HDR_KNEE {
+                let t = ((out - HDR_KNEE) / (1.0 - HDR_KNEE)).clamp(0.0, 1.0);
+                HDR_KNEE + t * (HDR_HEADROOM - HDR_KNEE)
+            } else {
+                out
+            }
+        } else if out > p.soft_clip {
             let comp = (1.0 - p.soft_clip).max(EPS);
             p.soft_clip + (1.0 - (-(out - p.soft_clip) / comp).exp()) * comp
         } else {
@@ -222,6 +240,37 @@ mod tests {
         let min = out.iter().cloned().fold(f32::MAX, f32::min);
         assert!(max < 1e-4, "shadow at base should be ~black: {out:?}");
         assert!(max - min < 1e-4, "shadow not neutral under WB: {out:?}");
+    }
+
+    #[test]
+    fn invert_d_hdr_false_matches_today() {
+        let p = InversionParams { base: [0.7, 0.6, 0.5], ..Default::default() };
+        let phdr = InversionParams { hdr: false, ..p.clone() };
+        for probe in [[0.05f32, 0.04, 0.03], [0.3, 0.25, 0.2], [0.69, 0.59, 0.49]] {
+            assert_eq!(invert_d(probe, &p), invert_d(probe, &phdr), "hdr=false must equal default");
+        }
+    }
+
+    #[test]
+    fn invert_d_hdr_expands_highlights_above_knee() {
+        let base = [0.7, 0.6, 0.5];
+        let bright_neg = [0.7e-3, 0.6e-3, 0.5e-3]; // dense neg → bright positive
+        let sdr = invert_d(bright_neg, &InversionParams { base, hdr: false, ..Default::default() });
+        let hdr = invert_d(bright_neg, &InversionParams { base, hdr: true, ..Default::default() });
+        assert!(sdr[0] <= 1.0001, "SDR highlight caps ~1.0: {}", sdr[0]);
+        assert!(hdr[0] > 1.05, "HDR highlight exceeds 1.0: {}", hdr[0]);
+        assert!(hdr[0] <= 2.5001, "HDR highlight capped at headroom: {}", hdr[0]);
+    }
+
+    #[test]
+    fn invert_d_hdr_below_knee_unchanged() {
+        let base = [0.7, 0.6, 0.5];
+        let mid = [0.35f32, 0.30, 0.25];
+        let sdr = invert_d(mid, &InversionParams { base, hdr: false, ..Default::default() });
+        let hdr = invert_d(mid, &InversionParams { base, hdr: true, ..Default::default() });
+        if sdr[0] < 0.8 {
+            assert!((sdr[0] - hdr[0]).abs() < 1e-5, "below-knee differs: {} vs {}", sdr[0], hdr[0]);
+        }
     }
 
     #[test]
