@@ -165,6 +165,21 @@ export const api = {
       flipV: geom.flip_v ?? false, angle: geom.angle ?? 0,
       dust: wireDust(dust), irRemoval, format, metaOverride,
     }),
+  exportImageHdr: (
+    id: string, params: InvertParams, outPath: string,
+    imageCrop: [number, number, number, number] | null = null,
+    geom: { rot90?: number; flip_h?: boolean; flip_v?: boolean; angle?: number } = {},
+    dust: DustStroke[] = [],
+    irRemoval: IrRemoval = { enabled: false, sensitivity: 50 },
+    format: ExportFormat = { kind: "jpeg", quality: 90 },
+    metaOverride: MetaOverride | null = null,
+  ) =>
+    invoke<void>("export_image_hdr", {
+      id, params, outPath, imageCrop,
+      rot90: geom.rot90 ?? 0, flipH: geom.flip_h ?? false,
+      flipV: geom.flip_v ?? false, angle: geom.angle ?? 0,
+      dust: wireDust(dust), irRemoval, format, metaOverride,
+    }),
   developImage: (id: string) => invoke<ImageEntry>("develop_image", { id }),
   ensureDeveloped: (id: string) => invoke<ImageEntry>("ensure_developed", { id }),
   setQuality: (quality: Quality) => invoke<void>("set_quality", { quality }),
