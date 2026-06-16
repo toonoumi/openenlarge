@@ -151,8 +151,9 @@ pub struct DownloadProgress {
 }
 
 /// Download + verify all required assets into the upscaler dir, emitting
-/// cumulative progress. On any checksum mismatch the partial file is removed and
-/// an error is returned (no half-installed state).
+/// cumulative progress. Each asset is SHA-256-verified in memory BEFORE any file
+/// is written, so a mismatch installs nothing (no `.part`, no half-installed state)
+/// and returns an error.
 pub async fn download(app: &AppHandle, app_data: &Path) -> Result<(), String> {
     let assets = required();
     let total: u64 = assets.iter().map(|a| a.size).sum();
