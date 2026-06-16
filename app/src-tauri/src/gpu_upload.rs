@@ -311,18 +311,17 @@ mod tests {
     }
 
     #[test]
-    fn uniforms_none_stock_mode_c_is_identity_matrices_mode_1() {
+    fn uniforms_always_cineon_mode_3_identity_matrices() {
         let mut p = sample_invert_params();
         p.stock = "none".into();
-        p.mode = "c".into();
-        p.exposure = 1.0; // 1 EV → 2.0x
+        p.mode = "c".into(); // legacy value is ignored now
+        p.exposure = 1.0; // 1 EV → 2.0x print exposure
         let u = resolve_to_uniforms(&p, [0.8, 0.6, 0.4]);
-        assert_eq!(u.mode, 1, "c → 1");
+        assert_eq!(u.mode, 3, "always Cineon");
         assert_eq!(u.base, [0.8, 0.6, 0.4]);
-        // identity m_pre/m_post (column-major 9-vec)
         assert_eq!(u.m_pre, [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]);
         assert_eq!(u.m_post, [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]);
-        assert!((u.exposure - 2.0).abs() < 1e-5, "2^1");
+        assert!((u.print_exposure - 2.0).abs() < 1e-5, "2^1 print exposure");
     }
 
     #[test]
@@ -382,14 +381,13 @@ mod tests {
     }
 
     #[test]
-    fn uniforms_portra_mode_b_fits_nonidentity_mpost_mode_0() {
+    fn uniforms_portra_is_ignored_stays_cineon_identity() {
         let mut p = sample_invert_params();
         p.stock = "portra400".into();
-        p.mode = "b".into();
+        p.mode = "b".into(); // legacy values ignored
         let u = resolve_to_uniforms(&p, [0.8, 0.6, 0.4]);
-        assert_eq!(u.mode, 0, "b → 0");
-        // m_post from fit_m_post is NOT identity for a real stock
+        assert_eq!(u.mode, 3, "stock/mode ignored → Cineon");
         let identity = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
-        assert_ne!(u.m_post, identity, "stock fit produces a real matrix");
+        assert_eq!(u.m_post, identity, "no stock matrix applied");
     }
 }
