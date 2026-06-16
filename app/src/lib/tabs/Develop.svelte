@@ -129,6 +129,17 @@
     cropById.update((m) => ({ ...m, [id]: { ...base, rect: nr, rot90: nrot } }));
     commitActive();
   }
+
+  // Flip the committed image (mirrors onFlip's draft logic) — used by the develop
+  // context menus when a single image is selected.
+  function flipCommitted(axis: "h" | "v") {
+    const id = $activeId; if (!id) return;
+    const base: CropRect = $activeCrop ?? { rect: { x: 0, y: 0, w: 1, h: 1 }, aspect: "custom", orientation: origW >= origH ? "landscape" : "portrait", rot90: 0, flipH: false, flipV: false, angle: 0 };
+    const o = flipOrient({ rot90: base.rot90, flipH: base.flipH, flipV: base.flipV }, axis);
+    const nr = axis === "h" ? flipRectH(base.rect) : flipRectV(base.rect);
+    cropById.update((m) => ({ ...m, [id]: { ...base, rot90: o.rot90 as 0 | 1 | 2 | 3, flipH: o.flipH, flipV: o.flipV, rect: nr, angle: -base.angle } }));
+    commitActive();
+  }
   // True while a form control has focus, so its own arrow-key behaviour wins
   // (e.g. nudging a slider) instead of stepping the image.
   function formFocused(): boolean {
@@ -324,10 +335,15 @@
 
   <footer class="bottom"><Filmstrip /></footer>
 </div>
-{#if menu}<QualityMenu x={menu.x} y={menu.y}
+{#if menu}<QualityMenu x={menu.x} y={menu.y} showFlip={deleteSelectionIds().length === 1}
+  on:flipH={() => { flipCommitted("h"); menu = null; }}
+  on:flipV={() => { flipCommitted("v"); menu = null; }}
   on:delete={() => { const ids = deleteSelectionIds(); if (ids.length) deleteTarget.set(ids); menu = null; }}
   on:close={() => (menu = null)} />{/if}
 {#if thumbMenu}<ImageContextMenu x={thumbMenu.x} y={thumbMenu.y} count={deleteSelectionIds().length}
+  showFlip={deleteSelectionIds().length === 1}
+  on:flipH={() => { flipCommitted("h"); thumbMenu = null; }}
+  on:flipV={() => { flipCommitted("v"); thumbMenu = null; }}
   on:delete={() => { const ids = deleteSelectionIds(); if (ids.length) deleteTarget.set(ids); thumbMenu = null; }}
   on:close={() => (thumbMenu = null)} />{/if}
 

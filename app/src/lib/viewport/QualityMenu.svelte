@@ -6,6 +6,8 @@
   import { t } from "$lib/i18n";
   export let x = 0;
   export let y = 0;
+  /** When true, offer Flip horizontal/vertical (single selected image). */
+  export let showFlip = false;
   const dispatch = createEventDispatcher();
 
   async function pick(q: Quality) {
@@ -37,6 +39,11 @@
   <button class:on={$quality === "performance"} on:click={() => pick("performance")}>{$t('quality.performance')}</button>
   <button class:on={$quality === "quality"} on:click={() => pick("quality")}>{$t('quality.quality')}</button>
   <div class="divider"></div>
+  {#if showFlip}
+    <button on:click={() => dispatch("flipH")}>{$t('contextMenu.flipH')}</button>
+    <button on:click={() => dispatch("flipV")}>{$t('contextMenu.flipV')}</button>
+    <div class="divider"></div>
+  {/if}
   <button on:click={() => dispatch("delete")}>{$t('quality.deleteImage')}</button>
 </div>
 
@@ -47,6 +54,9 @@
   .head { font-size: 11px; color: var(--text-dim); padding: 4px 8px; }
   .divider { height: 1px; margin: 5px 6px; background: var(--glass-brd); }
   button { display: block; width: 100%; text-align: left; padding: 7px 8px; border: 0;
-    background: transparent; border-radius: 7px; color: var(--text-dim); }
+    background: transparent; border-radius: 7px; color: var(--text-dim);
+    transition: background 0.12s ease, color 0.12s ease; }
+  button:not(.on):hover { color: var(--text); background: var(--glass-hi); }
   button.on { color: var(--text); background: rgba(244,157,78,0.16); }
+  button.on:hover { background: rgba(244,157,78,0.22); }
 </style>
