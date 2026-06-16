@@ -1022,7 +1022,7 @@ pub(crate) fn finish_full_res(
 /// Re-decode the file at full resolution and export it in the chosen format.
 #[allow(clippy::too_many_arguments)] // Tauri command: flat args mirror the JS invoke contract
 #[tauri::command]
-pub fn export_image(
+pub async fn export_image(
     id: String,
     params: InvertParams,
     out_path: String,
@@ -1035,7 +1035,7 @@ pub fn export_image(
     ir_removal: IrRemoval,
     format: ExportFormat,
     meta_override: Option<MetaOverride>,
-    session: State<Session>,
+    session: State<'_, Session>,
 ) -> Result<(), String> {
     let (fin, metadata) = finish_full_res(
         &id, &params, image_crop, rot90, flip_h, flip_v, angle, &dust, &ir_removal, &session,
@@ -1071,7 +1071,7 @@ pub fn export_image(
 /// applied (the gain-map encoder has no size target).
 #[allow(clippy::too_many_arguments)]
 #[tauri::command]
-pub fn export_image_hdr(
+pub async fn export_image_hdr(
     id: String,
     params: InvertParams,
     out_path: String,
@@ -1084,7 +1084,7 @@ pub fn export_image_hdr(
     ir_removal: IrRemoval,
     format: ExportFormat,
     meta_override: Option<MetaOverride>,
-    session: State<Session>,
+    session: State<'_, Session>,
 ) -> Result<(), String> {
     ensure_resident(&session, &id)?;
     let (path, base, thumb, metadata, dev_dmax) = {
