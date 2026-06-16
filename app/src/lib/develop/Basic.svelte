@@ -147,7 +147,14 @@
       <Icon name={open ? "chevron-down" : "chevron-right"} size={14} />
       <span>{$t('basic.title')}</span>
     </button>
-    <button class="reset" on:click={resetBasic}>{$t('basic.reset')}</button>
+    <span class="headbtns">
+      <button class="hdrtoggle" class:on={$params.hdr}
+              title={$t('basic.hdrTitle')} aria-pressed={$params.hdr}
+              on:click={() => { params.update((p) => ({ ...p, hdr: !p.hdr })); commitActive(); }}>
+        {$t('basic.hdr')}
+      </button>
+      <button class="reset" on:click={resetBasic}>{$t('basic.reset')}</button>
+    </span>
   </div>
 
   {#if open}
@@ -209,6 +216,10 @@
     padding: 0; cursor: pointer; }
   .reset { background: transparent; border: 1px solid var(--glass-brd); color: var(--text-dim);
     border-radius: 6px; padding: 2px 8px; font-size: 11px; cursor: pointer; }
+  .headbtns { display: inline-flex; align-items: center; gap: 6px; }
+  .hdrtoggle { background: transparent; border: 1px solid var(--glass-brd); color: var(--text-dim);
+    border-radius: 6px; padding: 2px 8px; font-size: 11px; cursor: pointer; font-weight: 600; }
+  .hdrtoggle.on { color: #fff; border-color: var(--accent); background: rgba(244,157,78,0.18); }
   .sub { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;
     color: var(--text-dim); margin: 12px 0 4px; }
   .wbhead { display: flex; justify-content: space-between; align-items: center;

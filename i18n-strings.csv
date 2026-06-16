@@ -150,6 +150,8 @@ base.reanalyze,"Re-Analysis for crop","为裁剪重新分析","src/lib/develop/B
 base.lowConfidence,"⚠ Low-confidence film-edge color — tap the swatch to repoint","⚠ 片边颜色置信度低 — 点按色块重新取样","src/lib/develop/Basic.svelte","hint"
 basic.title,"Basic","基本","src/lib/develop/Basic.svelte","heading"
 basic.reset,"Reset","重置","src/lib/develop/Basic.svelte","button"
+basic.hdr,"HDR","HDR","src/lib/develop/Basic.svelte","toggle"
+basic.hdrTitle,"Preview in HDR (toggle)","以 HDR 预览（切换）","src/lib/develop/Basic.svelte","tooltip"
 basic.filmProfile,"Film Profile","胶片配置文件","src/lib/develop/Basic.svelte","label"
 basic.noFilmProfile,"No film profile","无胶片配置文件","src/lib/develop/Basic.svelte","option"
 basic.stock.portra400,"Kodak Portra 400","柯达 Portra 400","src/lib/develop/Basic.svelte","option"
