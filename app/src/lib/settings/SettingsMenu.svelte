@@ -9,6 +9,12 @@
   const dispatch = createEventDispatcher();
   const OPENAI_KEYS_URL = "https://platform.openai.com/api-keys";
   const PRIVACY_URL = "https://github.com/mohaelder/openenlarge#telemetry";
+  // Aptabase has no public dashboard link; access is by manual invite, so point
+  // interested users at a pre-filled access request.
+  const DASHBOARD_REQUEST_URL =
+    "mailto:calen0909@hotmail.com?subject=OpenEnlarge%20analytics%20dashboard%20access" +
+    "&body=Hi%2C%20I%27d%20like%20access%20to%20the%20OpenEnlarge%20analytics%20dashboard.%0A%0A" +
+    "Name%20%2F%20GitHub%3A%0AReason%3A%0AEmail%20to%20invite%20%28Aptabase%20account%29%3A%0A%0AThanks%21";
 </script>
 
 <div class="backdrop" on:click={() => dispatch("close")} transition:fade={{ duration: 120 }}></div>
@@ -43,6 +49,10 @@
       <button class:on={$telemetryEnabled} on:click={() => setTelemetryChoice(true)}>{$t("settings.telemetry.on")}</button>
     </div>
     <div class="hint">{$t("settings.telemetry.hint")}</div>
+    <button type="button" class="req-link"
+            on:click={() => openUrl(DASHBOARD_REQUEST_URL).catch(() => {})}>
+      {$t("settings.telemetry.requestAccess")} ↗
+    </button>
   </div>
   <button class="shortcuts" on:click={() => dispatch("shortcuts")}>
     <span class="kbd-icon" aria-hidden="true">⌨</span>
@@ -87,4 +97,8 @@
     color: var(--text); }
   .key::placeholder { color: var(--text-dim); }
   .hint { font-size: 11px; color: var(--text-dim); margin-top: 6px; line-height: 1.4; }
+  .req-link { display: inline-block; margin-top: 8px; padding: 0; background: none; border: 0;
+    cursor: pointer; font: inherit; font-size: 11px; color: var(--text-dim);
+    text-decoration: underline; text-decoration-style: dashed; text-underline-offset: 3px; }
+  .req-link:hover, .req-link:focus-visible { color: var(--accent); outline: none; }
 </style>

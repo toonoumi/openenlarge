@@ -360,6 +360,7 @@ settings.telemetry.heading,"Anonymous analytics","匿名分析","src/lib/setting
 settings.telemetry.on,"On","开启","src/lib/settings/SettingsMenu.svelte","button"
 settings.telemetry.off,"Off","关闭","src/lib/settings/SettingsMenu.svelte","button"
 settings.telemetry.hint,"Anonymous usage data only. No images or personal information are ever sent.","仅匿名使用数据。绝不发送任何图像或个人信息。","src/lib/settings/SettingsMenu.svelte","hint"
+settings.telemetry.requestAccess,"Request dashboard access","申请仪表板访问权限","src/lib/settings/SettingsMenu.svelte","link"
 basic.positiveLabel,"This is a positive image — it won't be inverted. Tap below to invert it anyway.","这是一张正片图像——不会进行反相。如需反相，请点击下方。","src/lib/develop/Basic.svelte","paragraph"
 basic.inverseBtn,"Inverse","反相","src/lib/develop/Basic.svelte","button"
 basic.treatPositive,"Looks like a negative — treat as positive instead?","看起来像负片——改为按正片处理？","src/lib/develop/Basic.svelte","link"

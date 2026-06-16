@@ -128,6 +128,8 @@ When enabled, we record only:
 
 We never send your **images, file names, file paths, or any personal information**, and there is no cross-session identifier that can be traced back to you. Nothing is transmitted unless you opt in — the consent gate is enforced in the Rust backend, not just the UI. The collection code is right here in the open: [`app/src-tauri/src/telemetry.rs`](app/src-tauri/src/telemetry.rs) and [`app/src/lib/telemetry.ts`](app/src/lib/telemetry.ts).
 
+**Want to see the numbers?** In the spirit of an open project, the aggregate dashboard is available on request — Aptabase has no public-link option, so access is granted by invitation. [Request dashboard access](mailto:calen0909@hotmail.com?subject=OpenEnlarge%20analytics%20dashboard%20access&body=Hi%2C%20I%27d%20like%20access%20to%20the%20OpenEnlarge%20analytics%20dashboard.%0A%0AName%20%2F%20GitHub%3A%0AReason%3A%0AEmail%20to%20invite%20%28Aptabase%20account%29%3A%0A%0AThanks%21) and you'll be invited manually.
+
 ## Contributing
 
 Issues and pull requests are welcome. Before opening a PR, run the same checks CI does:
