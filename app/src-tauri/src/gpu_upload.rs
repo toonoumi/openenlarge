@@ -384,4 +384,13 @@ mod tests {
         let identity = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
         assert_eq!(u.m_post, identity, "no stock matrix applied");
     }
+
+    #[test]
+    fn uniforms_reflect_d_max_override() {
+        let mut p = sample_invert_params();
+        p.d_max_override = Some(2.6);
+        let u = resolve_to_uniforms(&p, [0.8, 0.6, 0.4]);
+        assert_eq!(u.mode, 3);
+        assert!((u.d_max - 2.6).abs() < 1e-6, "override → uniform d_max");
+    }
 }
