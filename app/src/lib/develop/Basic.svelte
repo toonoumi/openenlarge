@@ -152,6 +152,9 @@
 
   {#if open}
     <div class="body" transition:slide={{ duration: 280, easing: cubicInOut }}>
+      <!-- Crop re-analysis (re-derive D_max + WB from the current crop) -->
+      <button class="recal reanalyze" on:click={reanalyze}>{$t('base.reanalyze')}</button>
+
       <!-- Film Base: tap the swatch to pick the rebate; the pick auto-applies to this image -->
       <div class="sub">{$t('base.title')}</div>
       <button class="baseswatch" class:on={$baseSampling} on:click={toggleRecalibrate}
@@ -162,7 +165,6 @@
       {#if lowConfBase}
         <p class="lowconf">{$t('base.lowConfidence')}</p>
       {/if}
-      <button class="recal" on:click={reanalyze}>{$t('base.reanalyze')}</button>
 
       <!-- White Balance -->
       <div class="sub">{$t('basic.whiteBalance')}</div>
@@ -233,5 +235,7 @@
   .baseswatch.on .cube.big { box-shadow: 0 0 0 2px rgba(244,157,78,0.7); }
   .recal { width: 100%; padding: 7px; border-radius: 8px; font-size: 12px; cursor: pointer;
     border: 1px solid var(--glass-brd); background: transparent; color: var(--text); margin-bottom: 8px; }
-  .lowconf { font-size: 11px; color: rgba(244,157,78,0.9); margin: 6px 0 8px; }
+  /* Crop re-analysis sits at the top of the panel — clear gap below before Film Base. */
+  .reanalyze { margin: 2px 0 16px; }
+  .lowconf { font-size: 11px; color: rgba(244,157,78,0.9); margin: 6px 0 0; }
 </style>
