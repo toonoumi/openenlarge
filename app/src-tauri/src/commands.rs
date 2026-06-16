@@ -96,7 +96,7 @@ fn working_satisfies(working_edge: u32, native_edge: u32, cap: u32) -> bool {
 
 pub(crate) fn default_invert_params() -> InvertParams {
     InvertParams {
-        mode: "b".into(),
+        mode: "d".into(),
         stock: "none".into(),
         base_override: None,
         exposure: 0.0,
@@ -1291,6 +1291,11 @@ pub fn sample_base_at(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn default_params_use_cineon_mode() {
+        assert_eq!(default_invert_params().mode, "d");
+    }
 
     #[test]
     fn mode_from_is_always_cineon() {
