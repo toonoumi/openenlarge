@@ -99,17 +99,17 @@
       <button class="go" on:click={download}>{$t("eraser.autoDownload")}</button>
     {/if}
   {:else}
+    <div class="sub">{$t("eraser.sensitivity")}</div>
+    <div class="slrow">
+      <input type="range" min="0" max="100" step="1" value={sensitivity} disabled={busy}
+             on:change={(e) => onSensitivity(+(e.target as HTMLInputElement).value)} />
+      <span class="val">{Math.round(sensitivity)}</span>
+    </div>
+
     <button class="go" class:busy disabled={busy || !id} on:click={detect}>
       {#if busy}<span class="spinner" aria-hidden="true"></span>{/if}
       <span>{busy ? $t("eraser.autoWorking") : $t("eraser.autoButton")}</span>
     </button>
-
-    <div class="sub">{$t("eraser.sensitivity")}</div>
-    <div class="slrow">
-      <input type="range" min="0" max="100" step="1" value={sensitivity}
-             on:change={(e) => onSensitivity(+(e.target as HTMLInputElement).value)} />
-      <span class="val">{Math.round(sensitivity)}</span>
-    </div>
 
     {#if result}
       <div class="result">
