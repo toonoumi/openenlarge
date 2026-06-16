@@ -200,12 +200,9 @@ fn stock_from(s: &str) -> Option<Stock> {
     }
 }
 
-pub(crate) fn mode_from(s: &str) -> Mode {
-    match s {
-        "c" => Mode::C,
-        "d" => Mode::D,
-        _ => Mode::B,
-    }
+pub(crate) fn mode_from(_s: &str) -> Mode {
+    // One engine. The `mode` wire field is vestigial; always Cineon.
+    Mode::D
 }
 
 pub(crate) fn build_params(p: &InvertParams, base: [f32; 3]) -> InversionParams {
@@ -1294,6 +1291,14 @@ pub fn sample_base_at(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mode_from_is_always_cineon() {
+        use film_core::engine::Mode;
+        for s in ["b", "c", "d", "naive", "anything"] {
+            assert_eq!(mode_from(s), Mode::D, "mode {s} must resolve to Cineon");
+        }
+    }
 
     #[test]
     fn gray_point_wb_neutral_sample_is_neutral() {
