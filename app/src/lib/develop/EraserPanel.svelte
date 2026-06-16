@@ -52,11 +52,11 @@
     <span class="val">{(brush * 100).toFixed(1)}%</span>
   </div>
 
-  <button class="ir on" class:active={brushMigan} aria-pressed={brushMigan}
-          title={$t('eraser.brushAiHelp')}
-          on:click={() => dispatch("brushMigan", !brushMigan)}>
-    {$t('eraser.brushAi')} <span class="state">{brushMigan ? $t('eraser.on') : $t('eraser.off')}</span>
-  </button>
+  <label class="check" title={$t('eraser.brushAiHelp')}>
+    <input type="checkbox" checked={brushMigan}
+           on:change={(e) => dispatch("brushMigan", (e.target as HTMLInputElement).checked)} />
+    <span>{$t('eraser.brushAi')}</span>
+  </label>
 
   {#if brushMigan}
     <button class="go" class:busy={aiBusy} disabled={aiBusy || strokeCount === 0 || aiApplied}
@@ -81,6 +81,9 @@
     background: transparent; color: var(--text); cursor: default; opacity: 0.5; }
   .ir.on { cursor: pointer; opacity: 1; }
   .ir.on.active { background: rgba(244,157,78,0.18); border-color: rgba(244,157,78,0.5); }
+  .check { display: flex; align-items: center; gap: 8px; margin: 8px 0 2px;
+    cursor: pointer; color: var(--text); font-size: 13px; user-select: none; }
+  .check input { width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; }
   .go { width: 100%; margin: 6px 0; padding: 9px 10px; border-radius: 8px;
     display: flex; align-items: center; justify-content: center; gap: 8px;
     border: 1px solid rgba(244,157,78,0.5); background: rgba(244,157,78,0.18); color: #fff;

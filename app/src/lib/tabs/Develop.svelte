@@ -261,7 +261,10 @@
   function setIrSens(v: number) { updateDust((d) => setIrSensitivity(d, v)); }
   function setAutoSens(v: number) { updateDust((d) => setAutoDustSensitivity(d, v)); }
   function setBrushAi(on: boolean) { updateDust((d) => setBrushMigan(d, on)); }
-  function aiErase() { updateDust((d) => setAiApplied(d, true)); }
+  let aiBusy = false;
+  function aiErase() { aiBusy = true; updateDust((d) => setAiApplied(d, true)); }
+  // Never let the erase spinner outlive the active image.
+  $: { $activeId; aiBusy = false; }
 
   $: hasIr = active?.has_ir ?? false;
 
@@ -323,6 +326,7 @@
                   brushMigan={dust.brushMigan} aiApplied={dust.aiApplied}
                   pointPick={pickTarget !== ""}
                   on:stroke={(e) => commitStroke(e.detail)} on:brush={(e) => (brush = e.detail)}
+                  on:aierased={() => (aiBusy = false)}
                   on:pointpick={onPointPick} />
       {/if}
     {:else}<div class="hint">{$t('develop.notDevelopedYet')}</div>{/if}
@@ -347,7 +351,7 @@
             <EraserPanel bind:brush {hasIr}
                          irEnabled={dust.irRemoval.enabled} irSensitivity={dust.irRemoval.sensitivity}
                          brushMigan={dust.brushMigan} aiApplied={dust.aiApplied}
-                         strokeCount={dust.strokes.length}
+                         strokeCount={dust.strokes.length} aiBusy={aiBusy}
                          on:reset={resetDustEdits}
                          on:irEnabled={(e) => setIrOn(e.detail)}
                          on:irSensitivity={(e) => setIrSens(e.detail)}

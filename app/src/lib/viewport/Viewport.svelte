@@ -38,7 +38,7 @@
   /** Whether the strokes have been MI-GAN-applied (heal baked) vs shown as overlay. */
   export let aiApplied = false;
 
-  const dispatch = createEventDispatcher<{ stroke: DustStroke; brush: number; pointpick: { r: number; g: number; b: number } }>();
+  const dispatch = createEventDispatcher<{ stroke: DustStroke; brush: number; pointpick: { r: number; g: number; b: number }; aierased: void }>();
 
   const CAP = 5000;
   const PAD = 60;
@@ -252,6 +252,7 @@
       if (!renderer || currentUploadKey() !== k) return; // stale (params changed mid-fetch)
       renderer.setSourceFloat(new Uint16Array(buf), info.w, info.h);
       texW = info.w; texH = info.h;
+      if (spec.migan) dispatch("aierased"); // MI-GAN apply bake finished → clear the button spinner
     } else {
       const info = await api.workingInfo(id);
       const buf = await api.workingPixels(id);
