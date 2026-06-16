@@ -335,6 +335,9 @@ export const dict: Record<string, Record<string, string>> = {
     "upscale.already8k": "This image is already 8K or larger on its longest side, so upscaling won't add detail.",
     "upscale.save": "Save upscaled image…",
     "upscale.hint": "Runs a local AI model on your device (no upload). Output is capped at 8K on the longest side; best results come from smaller sources.",
+    "upscale.res4k": "4K",
+    "upscale.res8k": "8K",
+    "upscale.enhancedLabel": "Upscale this result",
   },
   zh: {
     "app.brand": "OpenEnlarge",
@@ -670,5 +673,8 @@ export const dict: Record<string, Record<string, string>> = {
     "upscale.already8k": "该图像最长边已达到或超过 8K，放大不会增加细节。",
     "upscale.save": "保存放大后的图像…",
     "upscale.hint": "在本地设备上运行 AI 模型（不上传）。输出最长边上限为 8K；较小的原图效果最佳。",
+    "upscale.res4k": "4K",
+    "upscale.res8k": "8K",
+    "upscale.enhancedLabel": "放大此结果",
   },
 };

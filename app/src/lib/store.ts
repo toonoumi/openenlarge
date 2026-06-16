@@ -121,7 +121,7 @@ export function selectFolder(path: string | null): void {
 /** Data-URL of the latest rendered develop preview; drives the histogram. */
 export const previewSrc = writable<string>("");
 
-export type Tool = "edit" | "crop" | "eraser" | "enhance" | "upscale";
+export type Tool = "edit" | "crop" | "eraser" | "enhance";
 export const tool = writable<Tool>("edit");
 
 /** OpenAI API key for the AI Enhance tool. Persisted via prefs as `openai_api_key`. */

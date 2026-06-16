@@ -5,6 +5,12 @@
   import { commitActive } from "./historyStore";
   import { api, type MatchedParams } from "../api";
   import { open } from "@tauri-apps/plugin-dialog";
+  import UpscaleControls from "./UpscaleControls.svelte";
+
+  /** Develop context for upscaling the current image (passed from Develop.svelte). */
+  export let effParams: import("../api").InvertParams | null = null;
+  export let imageCrop: [number, number, number, number] | null = null;
+  export let geom: { rot90?: number; flip_h?: boolean; flip_v?: boolean; angle?: number } = {};
 
   let busy = false;
   let error = "";
@@ -87,6 +93,18 @@
     strength = 60;
   }
 
+  /** Upscale the current developed image at the chosen longest side. */
+  function runDevelopedUpscale(targetLong: number) {
+    const id = get(activeId);
+    if (!id || !effParams) return Promise.reject($t("aiEnhance.noImage"));
+    return api.upscaleImage(id, effParams, imageCrop, geom, targetLong);
+  }
+  /** Upscale the AI-enhanced PNG result. */
+  function runEnhancedUpscale(targetLong: number) {
+    const comma = result.indexOf(",");
+    return api.upscaleEnhanced(comma >= 0 ? result.slice(comma + 1) : result, targetLong);
+  }
+
   async function enhance() {
     error = "";
     result = "";
@@ -138,7 +156,19 @@
         {$t("aiEnhance.holdBefore")}
       </button>
     </div>
+    <div class="up-section">
+      <div class="up-label">{$t("upscale.enhancedLabel")}</div>
+      <UpscaleControls run={runEnhancedUpscale} />
+    </div>
   {/if}
+
+  <div class="up-section">
+    <div class="head">
+      <span>{$t("upscale.title")}</span>
+      <button type="button" class="help" aria-label={$t("upscale.hint")}>?<span class="tip">{$t("upscale.hint")}</span></button>
+    </div>
+    <UpscaleControls run={runDevelopedUpscale} disabled={!effParams} />
+  </div>
 
   <div class="match">
     <div class="head">
@@ -256,4 +286,7 @@
     border: 1px solid rgba(0,0,0,0.3); box-shadow: 0 1px 3px rgba(0,0,0,0.4); cursor: grab; }
   .strength input[type="range"]:active::-webkit-slider-thumb { cursor: grabbing; }
   .strength .val { width: 34px; text-align: right; color: var(--text-dim); }
+  .up-section { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--glass-brd); }
+  .up-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;
+    color: var(--text-dim); margin: 8px 0 2px; }
 </style>

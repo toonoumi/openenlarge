@@ -332,3 +332,6 @@ upscale.working,"Upscaling…","放大中…","src/lib/develop/UpscalePanel.svel
 upscale.already8k,"This image is already 8K or larger on its longest side, so upscaling won't add detail.","该图像最长边已达到或超过 8K，放大不会增加细节。","src/lib/develop/UpscalePanel.svelte","text"
 upscale.save,"Save upscaled image…","保存放大后的图像…","src/lib/develop/UpscalePanel.svelte","button"
 upscale.hint,"Runs a local AI model on your device (no upload). Output is capped at 8K on the longest side; best results come from smaller sources.","在本地设备上运行 AI 模型（不上传）。输出最长边上限为 8K；较小的原图效果最佳。","src/lib/develop/UpscalePanel.svelte","hint"
+upscale.res4k,"4K","4K","src/lib/develop/UpscaleControls.svelte","button"
+upscale.res8k,"8K","8K","src/lib/develop/UpscaleControls.svelte","button"
+upscale.enhancedLabel,"Upscale this result","放大此结果","src/lib/develop/AiEnhancePanel.svelte","label"

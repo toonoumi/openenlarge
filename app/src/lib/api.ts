@@ -219,14 +219,19 @@ export const api = {
     id: string, params: InvertParams,
     imageCrop: [number, number, number, number] | null = null,
     geom: { rot90?: number; flip_h?: boolean; flip_v?: boolean; angle?: number } = {},
+    targetLong = 7680,
     dust: DustStroke[] = [],
     irRemoval: IrRemoval = { enabled: false, sensitivity: 50 },
   ) =>
     invoke<{ previewDataUrl: string; outW: number; outH: number }>("upscale_image", {
       id, params, imageCrop,
       rot90: geom.rot90 ?? 0, flipH: geom.flip_h ?? false,
-      flipV: geom.flip_v ?? false, angle: geom.angle ?? 0,
+      flipV: geom.flip_v ?? false, angle: geom.angle ?? 0, targetLong,
       dust: wireDust(dust), irRemoval,
+    }),
+  upscaleEnhanced: (imageBase64: string, targetLong: number) =>
+    invoke<{ previewDataUrl: string; outW: number; outH: number }>("upscale_enhanced", {
+      imageBase64, targetLong,
     }),
   saveUpscaled: (outPath: string, format: ExportFormat, metaOverride: MetaOverride | null = null) =>
     invoke<void>("save_upscaled", { outPath, format, metaOverride }),
