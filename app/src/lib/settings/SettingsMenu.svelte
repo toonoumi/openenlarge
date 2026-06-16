@@ -2,6 +2,7 @@
   import { createEventDispatcher } from "svelte";
   import { fade } from "svelte/transition";
   import { locale, LOCALES, t } from "../i18n";
+  import { openaiApiKey } from "../store";
   import { runManualCheck } from "../update/updater";
   const dispatch = createEventDispatcher();
 </script>
@@ -15,6 +16,15 @@
         <button class:on={$locale === l.id} on:click={() => locale.set(l.id)}>{l.label}</button>
       {/each}
     </div>
+  </div>
+  <div class="grp">
+    <div class="head">{$t("settings.ai.heading")}</div>
+    <input
+      class="key" type="password" autocomplete="off" spellcheck="false"
+      placeholder={$t("settings.ai.keyPlaceholder")}
+      value={$openaiApiKey}
+      on:input={(e) => openaiApiKey.set((e.target as HTMLInputElement).value)} />
+    <div class="hint">{$t("settings.ai.hint")}</div>
   </div>
   <button class="shortcuts" on:click={() => dispatch("shortcuts")}>
     <span class="kbd-icon" aria-hidden="true">⌨</span>
@@ -44,4 +54,10 @@
     border: 1px solid var(--glass-brd); background: transparent; color: var(--text); }
   .shortcuts:hover { background: var(--glass-hi); }
   .kbd-icon { font-size: 14px; color: var(--text-dim); }
+  .grp + .grp { margin-top: 12px; }
+  .key { width: 100%; box-sizing: border-box; padding: 8px 10px; border-radius: 8px;
+    font-size: 12px; border: 1px solid var(--glass-brd); background: transparent;
+    color: var(--text); }
+  .key::placeholder { color: var(--text-dim); }
+  .hint { font-size: 11px; color: var(--text-dim); margin-top: 6px; line-height: 1.4; }
 </style>
