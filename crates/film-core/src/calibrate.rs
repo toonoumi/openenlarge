@@ -233,6 +233,42 @@ pub fn sample_dmax(img: &Image, base: [f32; 3], rect: Option<Rect>) -> f32 {
     d_max.clamp(1.0, 4.0)
 }
 
+/// Cineon `D_max` from a **measured white-point**: the fully-exposed leader,
+/// sampled in `rect`. The leader is the densest film (max light recorded), hence
+/// the darkest region of the scan, so per channel we take a robust low value (5th
+/// percentile, rejecting dust specks) as the white-point and convert to density
+/// `log10(base_c / white_c)`, then take the max across channels (keeps `D_max`
+/// scalar so white balance stays a separate print-side gain, not baked into the
+/// inversion). Clamped to `[1.0, 4.0]`, mirroring `sample_dmax`. Unlike
+/// `sample_dmax`, the anchor comes from the user's leader rect, not scene content —
+/// giving a roll-constant highlight anchor instead of a per-frame estimate.
+pub fn dmax_from_white_point(img: &Image, base: [f32; 3], rect: Option<Rect>) -> f32 {
+    const WHITE_PCT: f32 = 0.05; // 5th percentile of the leader patch
+    let small = downscale_for_detect(img, SAMPLE_CAP);
+    let r = scaled_rect(rect, img, &small);
+    let mut chans: [Vec<f32>; 3] = [Vec::new(), Vec::new(), Vec::new()];
+    for yy in r.y..(r.y + r.h).min(small.height) {
+        for xx in r.x..(r.x + r.w).min(small.width) {
+            let px = small.pixels[yy * small.width + xx];
+            for c in 0..3 {
+                chans[c].push(px[c]);
+            }
+        }
+    }
+    let mut d_max = 1.0f32;
+    for c in 0..3 {
+        if chans[c].is_empty() || base[c] <= 1e-6 {
+            continue;
+        }
+        chans[c].sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let idx = ((chans[c].len() as f32) * WHITE_PCT) as usize;
+        let white = chans[c][idx.min(chans[c].len() - 1)].max(1e-5);
+        let density = (base[c] / white).log10();
+        d_max = d_max.max(density);
+    }
+    d_max.clamp(1.0, 4.0)
+}
+
 /// Result of rebate detection: the sampled clear-film base and a 0..1 confidence.
 #[derive(Debug, Clone, Copy)]
 pub struct RebateBase {
@@ -616,5 +652,29 @@ mod tests {
         assert!(b[0] > 0.88, "bright R cluster, got {}", b[0]);
         assert!((b[1] / b[0] - 0.45).abs() < 0.03, "G/R ratio {}", b[1] / b[0]);
         assert!((b[2] / b[0] - 0.26).abs() < 0.03, "B/R ratio {}", b[2] / b[0]);
+    }
+
+    #[test]
+    fn dmax_from_white_point_uses_channel_max_density() {
+        // 4x4 uniform "leader" patch: dense (dark) scan values.
+        // base/white per channel: R 0.8/0.08 → 1.0, G 0.8/0.008 → 2.0, B 0.8/0.08 → 1.0.
+        // max across channels → 2.0.
+        let white = [0.08f32, 0.008, 0.08];
+        let pixels = vec![white; 16];
+        let img = Image { width: 4, height: 4, pixels, ir: None };
+        let d = dmax_from_white_point(&img, [0.8, 0.8, 0.8], None);
+        assert!((d - 2.0).abs() < 1e-3, "expected ~2.0, got {d}");
+    }
+
+    #[test]
+    fn dmax_from_white_point_clamps_to_range() {
+        // Extremely dense leader would exceed 4.0 → clamp; near-clear would underflow → 1.0.
+        let dense = vec![[1e-5f32, 1e-5, 1e-5]; 16];
+        let img = Image { width: 4, height: 4, pixels: dense, ir: None };
+        assert_eq!(dmax_from_white_point(&img, [0.8, 0.8, 0.8], None), 4.0);
+
+        let clearish = vec![[0.79f32, 0.79, 0.79]; 16];
+        let img2 = Image { width: 4, height: 4, pixels: clearish, ir: None };
+        assert_eq!(dmax_from_white_point(&img2, [0.8, 0.8, 0.8], None), 1.0);
     }
 }
