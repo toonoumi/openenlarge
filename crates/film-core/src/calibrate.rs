@@ -44,6 +44,55 @@ pub fn sample_base(img: &Image, rect: Option<Rect>) -> [f32; 3] {
     base
 }
 
+/// Luma band for sampling the base from a deliberately-drawn CLEAR-FILM rect:
+/// a central trimmed mean rejects dark specks and specular hot pixels.
+pub const BASE_BAND_REBATE: (f32, f32) = (0.1, 0.9);
+/// Luma band for the whole-frame FALLBACK: the brightest cluster is the clear
+/// film / lightbox. Trims the very top to avoid clipped specular highlights.
+pub const BASE_BAND_AUTO: (f32, f32) = (0.90, 0.99);
+
+/// Sample the film base as a single COHERENT color: collect the region's pixels,
+/// sort by luma, keep the [lo, hi] luma-rank band, and average RGB over that one
+/// pixel set. Unlike [`sample_base`] (three independent per-channel percentiles)
+/// the result is a real clear-film color, so it removes the orange mask without
+/// injecting a per-channel cast. Returns `[0,0,0]` for an empty region.
+pub fn sample_base_coherent(img: &Image, rect: Option<Rect>, lo: f32, hi: f32) -> [f32; 3] {
+    let r = rect.unwrap_or(Rect {
+        x: 0,
+        y: 0,
+        w: img.width,
+        h: img.height,
+    });
+    let mut px: Vec<[f32; 3]> = Vec::new();
+    for yy in r.y..(r.y + r.h).min(img.height) {
+        for xx in r.x..(r.x + r.w).min(img.width) {
+            px.push(img.pixels[yy * img.width + xx]);
+        }
+    }
+    if px.is_empty() {
+        return [0.0, 0.0, 0.0];
+    }
+    px.sort_by(|a, b| {
+        let la = (a[0] + a[1] + a[2]) / 3.0;
+        let lb = (b[0] + b[1] + b[2]) / 3.0;
+        la.partial_cmp(&lb).unwrap()
+    });
+    let lo = lo.clamp(0.0, 1.0);
+    let hi = hi.clamp(0.0, 1.0);
+    let n = px.len();
+    let i0 = ((n as f32 * lo) as usize).min(n - 1);
+    let i1 = ((n as f32 * hi) as usize).clamp(i0 + 1, n);
+    let band = &px[i0..i1];
+    let mut sum = [0.0f64; 3];
+    for p in band {
+        for c in 0..3 {
+            sum[c] += p[c] as f64;
+        }
+    }
+    let k = band.len() as f64;
+    [(sum[0] / k) as f32, (sum[1] / k) as f32, (sum[2] / k) as f32]
+}
+
 /// Default damping for [`auto_wb_gains`]: gains are shrunk toward neutral by this
 /// factor. Gray-world is aggressive; applying it at full strength overshoots,
 /// especially on film where highlights run warm. 0.7 corrects most of the cast
@@ -248,4 +297,34 @@ mod tests {
         );
     }
 
+    #[test]
+    fn coherent_base_is_a_trimmed_mean_of_one_pixel_set() {
+        // A clear-film rect: mostly uniform orange, plus a dark speck and a bright
+        // specular speck that a central luma band must trim away.
+        let mut img = Image::new(10, 1);
+        for i in 0..10 {
+            img.pixels[i] = [0.43, 0.19, 0.11];
+        }
+        img.pixels[0] = [0.02, 0.01, 0.01]; // dark speck (trimmed by lo)
+        img.pixels[9] = [0.99, 0.98, 0.97]; // specular speck (trimmed by hi)
+        let b = sample_base_coherent(&img, None, 0.1, 0.9);
+        for c in 0..3 {
+            assert!((b[c] - [0.43, 0.19, 0.11][c]).abs() < 1e-3, "ch {c} = {}", b[c]);
+        }
+    }
+
+    #[test]
+    fn coherent_base_bright_band_picks_clear_film_cluster() {
+        // A luma gradient (dark scene → bright clear film). The bright band must
+        // return ~the bright end, not the per-channel max or the global mean.
+        let mut img = Image::new(100, 1);
+        for i in 0..100 {
+            let v = i as f32 / 99.0;
+            img.pixels[i] = [v, v * 0.45, v * 0.26]; // orange-tinted ramp
+        }
+        let b = sample_base_coherent(&img, None, 0.90, 0.99);
+        assert!(b[0] > 0.88, "bright R cluster, got {}", b[0]);
+        assert!((b[1] / b[0] - 0.45).abs() < 0.03, "G/R ratio {}", b[1] / b[0]);
+        assert!((b[2] / b[0] - 0.26).abs() < 0.03, "B/R ratio {}", b[2] / b[0]);
+    }
 }
