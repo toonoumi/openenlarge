@@ -139,6 +139,14 @@
     }));
     autoWb();
   }
+
+  // Flip this image between negative (Cineon inversion) and positive (passthrough).
+  // Re-renders live; analysis (base/D_max) already ran at develop time so the flip
+  // is instant in both directions. Undoable.
+  function togglePositive() {
+    params.update((p) => ({ ...p, positive: !p.positive }));
+    commitActive();
+  }
 </script>
 
 <div class="section">
@@ -159,18 +167,26 @@
 
   {#if open}
     <div class="body" transition:slide={{ duration: 280, easing: cubicInOut }}>
-      <!-- Crop re-analysis (re-derive D_max + WB from the current crop) -->
-      <button class="recal reanalyze" on:click={reanalyze}>{$t('base.reanalyze')}</button>
+      {#if $params.positive}
+        <!-- Positive image: no inversion; offer to invert anyway. -->
+        <p class="posnote">{$t('basic.positiveLabel')}</p>
+        <button class="recal" on:click={togglePositive}>{$t('basic.inverseBtn')}</button>
+      {:else}
+        <!-- Crop re-analysis (re-derive D_max + WB from the current crop) -->
+        <button class="recal reanalyze" on:click={reanalyze}>{$t('base.reanalyze')}</button>
 
-      <!-- Film Base: tap the swatch to pick the rebate; the pick auto-applies to this image -->
-      <div class="sub">{$t('base.title')}</div>
-      <button class="baseswatch" class:on={$baseSampling} on:click={toggleRecalibrate}
-              title={$t('base.recalibrate')} aria-label={$t('base.recalibrate')}>
-        <span class="cube big" style="background:{baseCss(effBase)}"></span>
-        <span class="pick"><Icon name="pipette" size={18} /></span>
-      </button>
-      {#if lowConfBase}
-        <p class="lowconf">{$t('base.lowConfidence')}</p>
+        <!-- Film Base: tap the swatch to pick the rebate; the pick auto-applies to this image -->
+        <div class="sub">{$t('base.title')}</div>
+        <button class="baseswatch" class:on={$baseSampling} on:click={toggleRecalibrate}
+                title={$t('base.recalibrate')} aria-label={$t('base.recalibrate')}>
+          <span class="cube big" style="background:{baseCss(effBase)}"></span>
+          <span class="pick"><Icon name="pipette" size={18} /></span>
+        </button>
+        {#if lowConfBase}
+          <p class="lowconf">{$t('base.lowConfidence')}</p>
+        {/if}
+        <!-- Misdetection escape hatch: treat this negative as a positive instead. -->
+        <button class="treatpos" on:click={togglePositive}>{$t('basic.treatPositive')}</button>
       {/if}
 
       <!-- White Balance -->
@@ -253,4 +269,8 @@
   /* Crop re-analysis sits at the top of the panel — breathing room above + below. */
   .reanalyze { margin: 14px 0 16px; }
   .lowconf { font-size: 11px; color: rgba(244,157,78,0.9); margin: 6px 0 0; }
+  .posnote { font-size: 12px; color: var(--text-dim); margin: 14px 0 8px; line-height: 1.4; }
+  .treatpos { background: transparent; border: 0; color: var(--text-dim);
+    font-size: 11px; text-decoration: underline; cursor: pointer; padding: 6px 0 0; }
+  .treatpos:hover { color: var(--text); }
 </style>
