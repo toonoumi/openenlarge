@@ -25,7 +25,20 @@
 
   $: activeImg = $images.find((i) => i.id === $activeId);
   $: dir = activeImg ? imageDir(activeImg) : "";
-  $: effBase = $params.base_override ?? (dir ? $folderBaseByPath[dir] : null) ?? null;
+
+  // The backend auto-detects a film base per developed image. Surface it so the
+  // swatch isn't empty when nothing is manually set (the "auto" scope).
+  // Mirror crates/film-core/src/calibrate.rs REBATE_CONFIDENCE (keep in sync).
+  const REBATE_CONF_UI = 0.12;
+  let autoBase: { base: [number, number, number]; confidence: number } | null = null;
+  async function loadAutoBase(id: string | null) {
+    if (!id) { autoBase = null; return; }
+    try { autoBase = await api.autoBaseInfo(id); }
+    catch { autoBase = null; } // not developed yet
+  }
+  $: loadAutoBase($activeId);
+
+  $: effBase = $params.base_override ?? (dir ? $folderBaseByPath[dir] : null) ?? autoBase?.base ?? null;
 
   // ---- Film Base (collapsible; folds the old base-picker panel in here) ----
   let baseOpen = false;
@@ -33,6 +46,9 @@
   // eslint-disable-next-line @typescript-eslint/no-unused-expressions
   $: { $activeId; sampledBase.set(null); baseSampling.set(false); }
   $: baseScope = ($params.base_override ? "override" : (dir && $folderBaseByPath[dir] ? "folder" : "auto")) as "override" | "folder" | "auto";
+  // Hint to repoint only when the base actually in use is the auto one and its
+  // detection confidence is low (no override / folder base to mask it).
+  $: lowConfBase = baseScope === "auto" && autoBase != null && autoBase.confidence < REBATE_CONF_UI;
   const scopeKey = { override: "base.scopeOverride", folder: "base.scopeFolder", auto: "base.scopeAuto" } as const;
   // 8-bit swatch preview of a linear base (display gamma ~1/2.2).
   const baseCss = (b: [number, number, number] | null) =>
@@ -187,6 +203,9 @@
           <button class="basereset" disabled={!dir} on:click={applyDmaxRoll}>{$t('base.dmaxRoll')}</button>
           <button class="basereset" disabled={baseScope === "auto"} on:click={resetBase}>{$t('base.reset')}</button>
           <p class="scope">{$t(scopeKey[baseScope])}</p>
+          {#if lowConfBase}
+            <p class="lowconf">{$t('base.lowConfidence')}</p>
+          {/if}
         </div>
       {/if}
 
@@ -269,4 +288,5 @@
     border: 1px solid var(--glass-brd); background: transparent; color: var(--text-dim); }
   .basereset:disabled { opacity: 0.4; }
   .scope { font-size: 11px; color: var(--text-faint); margin: 8px 0 0; }
+  .lowconf { font-size: 11px; color: rgba(244,157,78,0.9); margin: 6px 0 0; }
 </style>
