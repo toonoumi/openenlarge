@@ -59,7 +59,10 @@ pub async fn enhance(image_base64: &str, api_key: &str) -> Result<String, String
         .text("size", "auto")
         .part("image", image_part);
 
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(180))
+        .build()
+        .map_err(|e| format!("could not create HTTP client: {e}"))?;
     let resp = client
         .post(OPENAI_EDITS_URL)
         .bearer_auth(key)
