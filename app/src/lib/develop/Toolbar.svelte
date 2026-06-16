@@ -8,6 +8,7 @@
     { id: "crop", icon: "crop", labelKey: "toolbar.crop", enabled: true },
     { id: "eraser", icon: "eraser", labelKey: "toolbar.eraser", enabled: true },
     { id: "enhance", icon: "sparkles", labelKey: "toolbar.enhance", enabled: true },
+    { id: "upscale", icon: "maximize", labelKey: "toolbar.upscale", enabled: true },
   ];
   $: activeIndex = Math.max(0, tools.findIndex((tl) => tl.id === $tool));
 </script>

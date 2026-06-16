@@ -23,6 +23,7 @@
   import BaseView from "../develop/BaseView.svelte";
   import EraserPanel from "../develop/EraserPanel.svelte";
   import AiEnhancePanel from "../develop/AiEnhancePanel.svelte";
+  import UpscalePanel from "../develop/UpscalePanel.svelte";
   import { addStroke, resetDust, emptyDust, setIrEnabled, setIrSensitivity, type DustStroke, type DustEdits } from "../develop/dust";
   import type { Rect, CropRect } from "../crop/types";
   import { defaultFull, conform, constrainToRotated } from "../crop/cropMath";
@@ -346,6 +347,10 @@
                          on:irSensitivity={(e) => setIrSens(e.detail)} />
           {:else if $tool === "enhance"}
             <AiEnhancePanel />
+          {:else if $tool === "upscale"}
+            <UpscalePanel id={$activeId} params={effParams} imageCrop={imageCrop}
+                          geom={{ rot90: cRot, flip_h: committed?.flipH ?? false, flip_v: committed?.flipV ?? false, angle: committed?.angle ?? 0 }}
+                          sourceLong={Math.round(Math.max(coW * (committed?.rect?.w ?? 1), coH * (committed?.rect?.h ?? 1)))} />
           {/if}
         </div>
       {/key}
