@@ -127,6 +127,11 @@ export const tool = writable<Tool>("edit");
 /** OpenAI API key for the AI Enhance tool. Persisted via prefs as `openai_api_key`. */
 export const openaiApiKey = writable<string>("");
 
+/** When true, importing skips camera-preview jpg/png files that share a folder and
+ * base name with a raw/master file. Persisted via prefs as `omit_preview_jpgs`;
+ * defaults on. */
+export const omitPreviewJpgs = writable<boolean>(true);
+
 /** Film-base recalibration: armed from the Basic panel's Film Base section. While
  * true the viewport shows the drag-to-sample overlay (the sidebar stays in edit
  * mode). `sampledBase` holds the most recently sampled linear base, or null. */

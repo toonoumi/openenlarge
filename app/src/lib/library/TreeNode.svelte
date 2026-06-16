@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { createEventDispatcher } from "svelte";
   import Icon from "../icons/Icon.svelte";
   import { selectedFolder, selectFolder } from "../store";
   import { countImages, type FolderNode } from "./folderTree";
@@ -8,11 +9,13 @@
   let open = true;
   $: hasChildren = node.children.length > 0;
   $: count = countImages(node);
+  const dispatch = createEventDispatcher<{ menu: { x: number; y: number; node: FolderNode } }>();
 </script>
 
 <div class="row" class:sel={$selectedFolder === node.fullPath}
   style="padding-left:{8 + depth * 16}px"
-  on:click={() => { selectFolder(node.fullPath); if (hasChildren) open = !open; }}>
+  on:click={() => { selectFolder(node.fullPath); if (hasChildren) open = !open; }}
+  on:contextmenu|preventDefault={(e) => dispatch("menu", { x: e.clientX, y: e.clientY, node })}>
   <span class="chev">
     {#if hasChildren}<Icon name={open ? "chevron-down" : "chevron-right"} size={12} />{/if}
   </span>
@@ -22,7 +25,7 @@
 </div>
 {#if open}
   {#each node.children as child}
-    <svelte:self node={child} depth={depth + 1} />
+    <svelte:self node={child} depth={depth + 1} on:menu />
   {/each}
 {/if}
 

@@ -7,8 +7,9 @@
   import Icon from "../icons/Icon.svelte";
   import { onMount } from "svelte";
   import { fade } from "svelte/transition";
-  import { activeId, images, folderImages, deleteTarget, selectAll, deleteSelectionIds, setActive } from "../store";
-  import { importPaths, filterImportable } from "../workflow";
+  import { activeId, images, folderImages, deleteTarget, selectAll, deleteSelectionIds, setActive, omitPreviewJpgs } from "../store";
+  import { importPaths, filterImportable, omitPreviewSidecars } from "../workflow";
+  import { get } from "svelte/store";
   import { revealItemInDir } from "@tauri-apps/plugin-opener";
   import { getCurrentWebview } from "@tauri-apps/api/webview";
   import { t } from "$lib/i18n";
@@ -27,7 +28,8 @@
       else if (p.type === "leave") dragging = false;
       else if (p.type === "drop") {
         dragging = false;
-        const paths = filterImportable(p.paths);
+        let paths = filterImportable(p.paths);
+        if (get(omitPreviewJpgs)) paths = omitPreviewSidecars(paths);
         if (paths.length) { importing = true; importPaths(paths).finally(() => (importing = false)); }
       }
     }).then((u) => { if (disposed) u(); else unlisten = u; });

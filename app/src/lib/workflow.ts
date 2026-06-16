@@ -21,6 +21,36 @@ export function filterImportable(paths: string[]): string[] {
   });
 }
 
+/** Extensions cameras emit as embedded previews of a raw/master file. */
+const PREVIEW_EXTENSIONS = new Set(["jpg", "jpeg", "png"]);
+
+/** Lowercased "directory/stem" key, so a preview only pairs with a master in the
+ *  same folder. Handles Windows separators and multi-dot names. */
+function dirStemKey(path: string): string {
+  const norm = path.replace(/\\/g, "/");
+  const slash = norm.lastIndexOf("/");
+  const dir = slash >= 0 ? norm.slice(0, slash) : "";
+  const file = slash >= 0 ? norm.slice(slash + 1) : norm;
+  const dot = file.lastIndexOf(".");
+  const stem = dot > 0 ? file.slice(0, dot) : file;
+  return (dir + "/" + stem).toLowerCase();
+}
+
+const extOf = (path: string): string => path.split(".").pop()?.toLowerCase() ?? "";
+
+/**
+ * Drop jpg/jpeg/png paths that are just camera previews of a raw/master file —
+ * i.e. a same-folder, same-base-name non-preview sibling exists in the batch.
+ * Standalone jpgs (no raw twin) are kept. Pure + order-preserving.
+ */
+export function omitPreviewSidecars(paths: string[]): string[] {
+  const masters = new Set<string>();
+  for (const p of paths) {
+    if (!PREVIEW_EXTENSIONS.has(extOf(p))) masters.add(dirStemKey(p));
+  }
+  return paths.filter((p) => !(PREVIEW_EXTENSIONS.has(extOf(p)) && masters.has(dirStemKey(p))));
+}
+
 /** Import each path into the catalog, upserting into `images` and making the
  * first import active if nothing is. Shared by the file dialog and drag-drop. */
 export async function importPaths(paths: string[]): Promise<void> {

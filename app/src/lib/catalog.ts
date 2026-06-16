@@ -5,7 +5,7 @@ import type { DustEdits } from "./develop/dust";
 import {
   images, editsById, cropById, dustById, metaById, quality,
   selectedFolder, gridZoom, module as moduleStore, activeId, folderBaseByPath,
-  updateLastCheck, updateSkipVersion, openaiApiKey,
+  updateLastCheck, updateSkipVersion, openaiApiKey, omitPreviewJpgs,
 } from "./store";
 import { locale } from "./i18n";
 
@@ -69,6 +69,9 @@ export function applySnapshot(snap: CatalogSnapshot): void {
     locale.set(snap.prefs.locale);
   if (typeof snap.prefs.openai_api_key === "string")
     openaiApiKey.set(snap.prefs.openai_api_key);
+  // Absent → keep the default (on); only an explicit "false" turns it off.
+  if (snap.prefs.omit_preview_jpgs !== undefined)
+    omitPreviewJpgs.set(snap.prefs.omit_preview_jpgs !== "false");
 
   const st = snap.app_state;
   if (st.selected_folder !== undefined)
@@ -166,10 +169,11 @@ export function initPersistence(): () => void {
   wireRecord(dustById, dust.save);
   wireRecord(metaById, meta.save);
 
-  let first = { q: true, loc: true, sf: true, gz: true, mod: true, aid: true, usv: true, ulc: true, oak: true };
+  let first = { q: true, loc: true, sf: true, gz: true, mod: true, aid: true, usv: true, ulc: true, oak: true, opj: true };
   quality.subscribe((q) => { if (first.q) { first.q = false; return; } savePref("quality", q); });
   locale.subscribe((l) => { if (first.loc) { first.loc = false; return; } savePref("locale", l); });
   openaiApiKey.subscribe((k) => { if (first.oak) { first.oak = false; return; } savePref("openai_api_key", k); });
+  omitPreviewJpgs.subscribe((b) => { if (first.opj) { first.opj = false; return; } savePref("omit_preview_jpgs", String(b)); });
   selectedFolder.subscribe((p) => { if (first.sf) { first.sf = false; return; } saveState("selected_folder", p ?? ""); });
   gridZoom.subscribe((z) => { if (first.gz) { first.gz = false; return; } saveState("grid_zoom", String(z)); });
   updateSkipVersion.subscribe((v) => { if (first.usv) { first.usv = false; return; } saveState("update_skip_version", v); });
