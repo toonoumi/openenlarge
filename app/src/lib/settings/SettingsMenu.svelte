@@ -57,9 +57,12 @@
     text-decoration: underline; text-decoration-style: dashed; text-underline-offset: 3px; }
   .head-link:hover, .head-link:focus-visible { color: var(--accent); outline: none; }
   .seg { display: flex; gap: 6px; }
-  .seg button { flex: 1; padding: 7px; border-radius: 8px; font-size: 12px;
-    border: 1px solid var(--glass-brd); background: transparent; color: var(--text-dim); }
+  .seg button { flex: 1; padding: 7px; border-radius: 8px; font-size: 12px; cursor: pointer;
+    border: 1px solid var(--glass-brd); background: transparent; color: var(--text-dim);
+    transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease; }
+  .seg button:not(.on):hover { background: var(--glass-hi); color: var(--text); }
   .seg button.on { color: #fff; background: rgba(244,157,78,0.18); border-color: rgba(244,157,78,0.5); }
+  .seg button.on:hover { background: rgba(244,157,78,0.30); border-color: rgba(244,157,78,0.75); }
   .shortcuts { display: flex; align-items: center; gap: 8px; width: 100%; margin-top: 12px;
     padding: 9px 10px; border-radius: 8px; font-size: 12px; text-align: left;
     border: 1px solid var(--glass-brd); background: transparent; color: var(--text); }
