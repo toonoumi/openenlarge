@@ -94,6 +94,9 @@ pub fn run() {
             commands::save_upscaled,
             commands::color_match_params,
             commands::reference_thumb,
+            commands::autodust_status,
+            commands::download_autodust,
+            commands::autodust_detect,
             tether::tether_start,
             tether::tether_stop,
         ])

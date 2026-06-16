@@ -13,6 +13,15 @@ pub mod engine;
 pub const TILE: usize = 256;
 pub const TILE_PAD: usize = 16;
 
+/// Result returned to the panel after a detect+remove run (preview + the number
+/// of defect pixels removed), mirroring the upscaler's preview-and-stash flow.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutoDustResult {
+    pub preview_data_url: String,
+    pub count: u32,
+}
+
 /// Connected-component pixel cap above which a region is treated as a real
 /// feature, not a defect, and dropped from the mask. This is the base value for
 /// a ~2k-long image; callers scale it with image area so the size-gate stays
