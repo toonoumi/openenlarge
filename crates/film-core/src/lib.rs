@@ -1,4 +1,5 @@
 pub mod calibrate;
+pub mod classify;
 pub mod curve;
 pub mod decode;
 pub mod dust;
