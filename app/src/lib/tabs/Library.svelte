@@ -126,7 +126,7 @@
     grid-template-areas: "left center right" "bottom bottom bottom"; }
   .left { grid-area: left; } .right { grid-area: right; }
   .left, .right { min-height: 0; }
-  .center { grid-area: center; min-height: 0; background: #181818; border: 1px solid var(--glass-brd);
+  .center { grid-area: center; min-height: 0; background: #111111; border: 1px solid var(--glass-brd);
     border-radius: 14px; }
   .pad { padding: 14px; height: 100%; }
   .bottom { grid-area: bottom; }

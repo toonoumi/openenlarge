@@ -1,7 +1,7 @@
 :root {
-  --bg-0: #0a0a0c;
-  --bg-1: #141418;
-  --glass-bg: rgba(28, 28, 34, 0.55);
+  --bg-0: #070708;
+  --bg-1: #0e0e11;
+  --glass-bg: rgba(17, 17, 17, 0.55);
   --glass-brd: rgba(255, 255, 255, 0.08);
   --glass-hi: rgba(255, 255, 255, 0.04);
   --text: #e8e8ea;
@@ -15,7 +15,7 @@
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
 body {
-  background: #181818;
+  background: #111111;
   color: var(--text);
   font: 13px/1.4 -apple-system, system-ui, sans-serif;
   overflow: hidden;

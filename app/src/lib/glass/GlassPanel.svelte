@@ -21,5 +21,5 @@
   }
   /* Flat: no shadow and blended into the page background (stroke only). The solid
      fill makes the backdrop blur a no-op, so drop it. */
-  .glass.flat { box-shadow: none; background: #181818; backdrop-filter: none; -webkit-backdrop-filter: none; }
+  .glass.flat { box-shadow: none; background: #111111; backdrop-filter: none; -webkit-backdrop-filter: none; }
 </style>

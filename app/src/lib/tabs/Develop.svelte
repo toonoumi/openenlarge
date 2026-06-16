@@ -379,10 +379,10 @@
   .right { grid-area: right; min-height: 0; position: relative; overflow-y: auto;
     scrollbar-width: none; -ms-overflow-style: none; }
   .right::-webkit-scrollbar { width: 0; height: 0; }
-  /* Blend the panel into the page: match the body background (#181818), drop the
+  /* Blend the panel into the page: match the body background (#111111), drop the
      floating drop-shadow and the now-pointless backdrop blur, and hide its
      scrollbar. Keep the inset top highlight that defines the glass edge. */
-  .right :global(.glass) { background: #181818; box-shadow: inset 0 1px 0 var(--glass-hi);
+  .right :global(.glass) { background: #111111; box-shadow: inset 0 1px 0 var(--glass-hi);
     backdrop-filter: none; -webkit-backdrop-filter: none;
     scrollbar-width: none; -ms-overflow-style: none; }
   .right :global(.glass)::-webkit-scrollbar { width: 0; height: 0; }
