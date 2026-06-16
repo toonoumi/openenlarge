@@ -210,6 +210,90 @@ pub fn apply_ir(img: &mut Image, ir: &[f32], sensitivity: f32) {
     inpaint_masked(img, &mask, RADIUS);
 }
 
+/// Build a whole-frame defect `Mask` from a single-channel probability map
+/// (`prob[y*w+x]` in [0,1], higher = more likely a defect). `sensitivity`
+/// (0..100) maps to a threshold (high sensitivity → low threshold → more
+/// flagged). Flagged pixels are dilated 1px (8-neighborhood). Connected
+/// components larger than `max_blob` pixels are dropped (they are real features,
+/// not dust/hair). The returned mask spans the whole frame (`x0=y0=0`).
+pub fn prob_defect_mask(
+    w: usize,
+    h: usize,
+    prob: &[f32],
+    sensitivity: f32,
+    max_blob: usize,
+) -> Mask {
+    let empty = Mask { x0: 0, y0: 0, w: 0, h: 0, bits: Vec::new() };
+    if w == 0 || h == 0 || prob.len() != w * h {
+        return empty;
+    }
+    // sensitivity 0..100 → threshold 0.85..0.25 (more sensitive = lower bar).
+    let s = sensitivity.clamp(0.0, 100.0) / 100.0;
+    let thr = 0.85 - 0.60 * s;
+
+    let mut raw = vec![false; w * h];
+    for i in 0..w * h {
+        if prob[i] >= thr {
+            raw[i] = true;
+        }
+    }
+    // Drop connected components (4-neighborhood) larger than max_blob.
+    let mut visited = vec![false; w * h];
+    let mut stack: Vec<usize> = Vec::new();
+    for start in 0..w * h {
+        if !raw[start] || visited[start] {
+            continue;
+        }
+        let mut comp: Vec<usize> = Vec::new();
+        stack.push(start);
+        visited[start] = true;
+        while let Some(i) = stack.pop() {
+            comp.push(i);
+            let (x, y) = (i % w, i / w);
+            if x > 0 {
+                let ni = i - 1;
+                if raw[ni] && !visited[ni] { visited[ni] = true; stack.push(ni); }
+            }
+            if x + 1 < w {
+                let ni = i + 1;
+                if raw[ni] && !visited[ni] { visited[ni] = true; stack.push(ni); }
+            }
+            if y > 0 {
+                let ni = i - w;
+                if raw[ni] && !visited[ni] { visited[ni] = true; stack.push(ni); }
+            }
+            if y + 1 < h {
+                let ni = i + w;
+                if raw[ni] && !visited[ni] { visited[ni] = true; stack.push(ni); }
+            }
+        }
+        if comp.len() > max_blob {
+            for i in comp {
+                raw[i] = false;
+            }
+        }
+    }
+    // Dilate 1px (8-neighborhood).
+    let mut bits = raw.clone();
+    for y in 0..h {
+        for x in 0..w {
+            if !raw[y * w + x] {
+                continue;
+            }
+            for dy in -1i32..=1 {
+                for dx in -1i32..=1 {
+                    let nx = x as i32 + dx;
+                    let ny = y as i32 + dy;
+                    if nx >= 0 && ny >= 0 && (nx as usize) < w && (ny as usize) < h {
+                        bits[ny as usize * w + nx as usize] = true;
+                    }
+                }
+            }
+        }
+    }
+    Mask { x0: 0, y0: 0, w, h, bits }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -430,5 +514,27 @@ mod tests {
         let before = img.clone();
         apply_ir(&mut img, &[0.1; 9], 50.0);
         assert_eq!(img, before);
+    }
+
+    #[test]
+    fn prob_mask_thresholds_dilates_and_drops_large_blobs() {
+        // 10x10 prob map: one strong speck at (5,5), and a large 6x6 block (a real
+        // feature) in the top-left that must be size-gated out.
+        let (w, h) = (10usize, 10usize);
+        let mut prob = vec![0.0f32; w * h];
+        prob[8 * w + 8] = 0.9; // isolated speck, clear of the block below
+        for y in 0..6 { for x in 0..6 { prob[y * w + x] = 0.9; } }
+        // sensitivity 50 → threshold ~0.55; max_blob 9 px drops the 36px block.
+        let m = prob_defect_mask(w, h, &prob, 50.0, 9);
+        // The speck (and its 1px dilation) is masked.
+        assert!(m.bits[8 * m.w + 8], "speck masked");
+        // The large block's center is NOT masked (size-gated).
+        assert!(!m.bits[2 * m.w + 2], "large feature dropped");
+    }
+
+    #[test]
+    fn prob_mask_empty_when_nothing_passes_threshold() {
+        let m = prob_defect_mask(8, 8, &vec![0.1f32; 64], 50.0, 9);
+        assert!(!m.bits.iter().any(|&b| b));
     }
 }
