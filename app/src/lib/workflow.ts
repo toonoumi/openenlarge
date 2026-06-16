@@ -8,6 +8,34 @@ export function undevelopedIds(list: ImageEntry[]): string[] {
   return list.filter((i) => !i.developed).map((i) => i.id);
 }
 
+/** Extensions we accept on import (file dialog filter + drag-drop). */
+export const IMPORT_EXTENSIONS = [
+  "jpg", "jpeg", "png", "dng", "tif", "tiff", "raf", "rw2", "nef", "arw", "cr3", "3fr", "raw",
+];
+
+/** Keep only paths whose extension we can import (case-insensitive). */
+export function filterImportable(paths: string[]): string[] {
+  return paths.filter((p) => {
+    const ext = p.split(".").pop()?.toLowerCase();
+    return !!ext && IMPORT_EXTENSIONS.includes(ext);
+  });
+}
+
+/** Import each path into the catalog, upserting into `images` and making the
+ * first import active if nothing is. Shared by the file dialog and drag-drop. */
+export async function importPaths(paths: string[]): Promise<void> {
+  for (const path of paths) {
+    try {
+      const entry = await api.importImage(path);
+      images.update((xs) =>
+        xs.some((i) => i.id === entry.id)
+          ? xs.map((i) => (i.id === entry.id ? entry : i))
+          : [...xs, entry]);
+      activeId.update((id) => id ?? entry.id);
+    } catch (e) { console.error("import failed", path, e); }
+  }
+}
+
 /** Resolve after the browser has had a chance to paint (two rAFs). Falls back to a
  * macrotask in non-DOM contexts (tests). */
 function nextPaint(): Promise<void> {

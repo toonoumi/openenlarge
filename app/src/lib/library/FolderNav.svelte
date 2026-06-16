@@ -1,7 +1,7 @@
 <script lang="ts">
   import { open as openDialog } from "@tauri-apps/plugin-dialog";
-  import { api } from "../api";
-  import { images, activeId, selectedFolder, selectFolder } from "../store";
+  import { images, selectedFolder, selectFolder } from "../store";
+  import { importPaths, IMPORT_EXTENSIONS } from "../workflow";
   import { buildTree } from "./folderTree";
   import TreeNode from "./TreeNode.svelte";
   import Icon from "../icons/Icon.svelte";
@@ -19,20 +19,11 @@
   }
 
   async function pickAndImport() {
-    const sel = await openDialog({ multiple: true, filters: [{ name: filterFilmScans, extensions: ["jpg", "jpeg", "png", "dng", "tif", "tiff", "raf", "rw2", "nef", "arw", "cr3", "3fr", "raw"] }] });
+    const sel = await openDialog({ multiple: true, filters: [{ name: filterFilmScans, extensions: IMPORT_EXTENSIONS }] });
     if (!sel) return;
     const paths = Array.isArray(sel) ? sel : [sel];
     importing = true;
-    for (const path of paths) {
-      try {
-        const entry = await api.importImage(path as string);
-        images.update((xs) =>
-          xs.some((i) => i.id === entry.id)
-            ? xs.map((i) => (i.id === entry.id ? entry : i))
-            : [...xs, entry]);
-        activeId.update((id) => id ?? entry.id);
-      } catch (e) { console.error(e); }
-    }
+    await importPaths(paths as string[]);
     importing = false;
   }
 </script>

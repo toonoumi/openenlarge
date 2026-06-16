@@ -4,8 +4,35 @@
   import Metadata from "../panels/Metadata.svelte";
   import Filmstrip from "../panels/Filmstrip.svelte";
   import ImageContextMenu from "../overlay/ImageContextMenu.svelte";
+  import Icon from "../icons/Icon.svelte";
+  import { onMount } from "svelte";
+  import { fade } from "svelte/transition";
   import { activeId, images, folderImages, deleteTarget, selectAll, deleteSelectionIds, setActive } from "../store";
+  import { importPaths, filterImportable } from "../workflow";
   import { revealItemInDir } from "@tauri-apps/plugin-opener";
+  import { getCurrentWebview } from "@tauri-apps/api/webview";
+  import { t } from "$lib/i18n";
+
+  // Drag-and-drop import. Tauri intercepts OS file drops at the window level (HTML5
+  // dnd is disabled), so we listen to the webview drag-drop event and only act while
+  // the Library tab is mounted. `dragging` drives the drop indicator overlay.
+  let dragging = false;
+  let importing = false;
+  onMount(() => {
+    let unlisten = () => {};
+    let disposed = false;
+    getCurrentWebview().onDragDropEvent((e) => {
+      const p = e.payload;
+      if (p.type === "enter" || p.type === "over") dragging = true;
+      else if (p.type === "leave") dragging = false;
+      else if (p.type === "drop") {
+        dragging = false;
+        const paths = filterImportable(p.paths);
+        if (paths.length) { importing = true; importPaths(paths).finally(() => (importing = false)); }
+      }
+    }).then((u) => { if (disposed) u(); else unlisten = u; });
+    return () => { disposed = true; unlisten(); };
+  });
 
   // Skip nav while a form control (e.g. the thumb-size slider) is focused, so its
   // own arrow-key behaviour wins.
@@ -81,6 +108,16 @@
     on:close={() => (ctxMenu = null)} />
 {/if}
 
+{#if dragging || importing}
+  <div class="dropzone" transition:fade={{ duration: 120 }}>
+    <div class="dropcard">
+      <Icon name="plus" size={26} />
+      <div class="dt">{importing ? $t('library.dropImporting') : $t('library.dropToImport')}</div>
+      <div class="df">{$t('library.dropFormats')}</div>
+    </div>
+  </div>
+{/if}
+
 <style>
   .layout { display: grid; height: 100%; gap: 14px;
     grid-template-columns: 232px 1fr 268px; grid-template-rows: 1fr 88px;
@@ -91,4 +128,15 @@
     border-radius: 14px; }
   .pad { padding: 14px; height: 100%; }
   .bottom { grid-area: bottom; }
+
+  /* Full-window drop indicator shown while files are dragged over the app. */
+  .dropzone { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center;
+    pointer-events: none; background: rgba(8, 8, 11, 0.55); backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px); }
+  .dropcard { display: flex; flex-direction: column; align-items: center; gap: 8px;
+    padding: 34px 46px; border-radius: 18px; color: var(--text);
+    border: 2px dashed rgba(191, 109, 58, 0.7); background: rgba(191, 109, 58, 0.08); }
+  .dropcard :global(svg) { color: #bf6d3a; }
+  .dt { font-size: 15px; font-weight: 650; }
+  .df { font-size: 12px; color: var(--text-dim); }
 </style>
