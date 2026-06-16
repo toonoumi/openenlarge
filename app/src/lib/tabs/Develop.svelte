@@ -29,6 +29,7 @@
   import { presetNormAspect } from "../crop/presets";
   import { rotateRectCW, rotateRectCCW, flipRectH, flipRectV, flipOrient, orientDims } from "../crop/transforms";
   import { commitActive, reseedActive } from "../develop/historyStore";
+  import { copyDevelopSettings, pasteDevelopSettings } from "../develop/copySettings";
   import { rgbToHslSample } from "../develop/colorPick";
   import { revealItemInDir } from "@tauri-apps/plugin-opener";
 
@@ -193,6 +194,18 @@
       e.preventDefault();
       const dir = e.key === "]" ? 1 : -1;
       if ($tool === "crop") onRotate(dir); else rotateCommitted(dir);
+      return;
+    }
+    if (meta && (e.key === "c" || e.key === "C")) {
+      if (formFocused()) return; // let native text copy win
+      e.preventDefault();
+      copyDevelopSettings();
+      return;
+    }
+    if (meta && (e.key === "v" || e.key === "V")) {
+      if (formFocused()) return; // let native text paste win
+      e.preventDefault();
+      pasteDevelopSettings();
       return;
     }
     if (navImages(e)) return;

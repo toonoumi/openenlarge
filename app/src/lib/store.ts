@@ -1,5 +1,5 @@
 import { writable, derived, get } from "svelte/store";
-import type { ImageEntry, Quality, MetaOverride } from "./api";
+import type { ImageEntry, Quality, MetaOverride, InvertParams } from "./api";
 import { defaultParams } from "./api";
 import type { CropRect } from "./crop/types";
 import { createPerImageParams } from "./perImage";
@@ -136,6 +136,16 @@ export const sampledBase = writable<[number, number, number] | null>(null);
 /** Ids awaiting a delete confirmation (empty = no dialog). One id deletes a
  * single image; many drive the "Delete N items" multi-delete. */
 export const deleteTarget = writable<string[]>([]);
+
+/** Copied tone/color develop settings (⌘/Ctrl+C), pasted onto other images with
+ * ⌘/Ctrl+V. Holds the tone/color subset of InvertParams (no film profile or
+ * per-image calibration). null = nothing copied yet. */
+export const settingsClipboard = writable<Partial<InvertParams> | null>(null);
+
+/** Ids awaiting a "paste settings" confirmation (length > 1 = dialog showing).
+ * Mirrors deleteTarget; a single-image paste applies immediately and never
+ * populates this. */
+export const applySettingsTarget = writable<string[]>([]);
 
 /** Bumped on any dust change and on undo/redo so the Viewport re-renders. */
 export const dustRev = writable<number>(0);

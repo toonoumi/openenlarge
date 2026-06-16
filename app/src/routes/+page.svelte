@@ -4,7 +4,8 @@
   import { fly } from "svelte/transition";
   import { cubicOut } from "svelte/easing";
   import { hydrate, initPersistence } from "$lib/catalog";
-  import { module, hasImages, images, undevelopedCount, deleteTarget, activeId, selection } from "$lib/store";
+  import { module, hasImages, images, undevelopedCount, deleteTarget, activeId, selection, applySettingsTarget } from "$lib/store";
+  import { applyClipboardTo } from "$lib/develop/copySettings";
   import { noneSelected } from "$lib/selection";
   import { matchUndoRedo } from "$lib/develop/history";
   import { commitActive, undoActive, redoActive, seedActive } from "$lib/develop/historyStore";
@@ -14,6 +15,8 @@
   import ProgressOverlay from "$lib/overlay/ProgressOverlay.svelte";
   import ConfirmDevelop from "$lib/overlay/ConfirmDevelop.svelte";
   import ConfirmDelete from "$lib/overlay/ConfirmDelete.svelte";
+  import ConfirmApplySettings from "$lib/overlay/ConfirmApplySettings.svelte";
+  import Toast from "$lib/overlay/Toast.svelte";
   import SettingsMenu from "$lib/settings/SettingsMenu.svelte";
   import KeymapModal from "$lib/keymap/KeymapModal.svelte";
   import AboutModal from "$lib/about/AboutModal.svelte";
@@ -142,6 +145,12 @@
     on:trash={() => runDelete(true)}
     on:cancel={() => deleteTarget.set([])} />
 {/if}
+{#if $applySettingsTarget.length > 1}
+  <ConfirmApplySettings count={$applySettingsTarget.length}
+    on:confirm={() => { const ids = $applySettingsTarget; applySettingsTarget.set([]); applyClipboardTo(ids); }}
+    on:cancel={() => applySettingsTarget.set([])} />
+{/if}
+<Toast />
 
 <style>
   .app { display: flex; flex-direction: column; height: 100vh; }
