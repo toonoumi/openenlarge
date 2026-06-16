@@ -41,8 +41,9 @@
 <div class="section">
   <div class="head"><span>{$t("aiEnhance.title")}</span><span class="exp">{$t("aiEnhance.experimental")}</span></div>
 
-  <button class="go" disabled={busy} on:click={enhance}>
-    {busy ? $t("aiEnhance.working") : $t("aiEnhance.button")}
+  <button class="go" class:busy disabled={busy} on:click={enhance}>
+    {#if busy}<span class="spinner" aria-hidden="true"></span>{/if}
+    <span>{busy ? $t("aiEnhance.working") : $t("aiEnhance.button")}</span>
   </button>
 
   {#if error}
@@ -79,9 +80,20 @@
     border: 1px solid rgba(244,157,78,0.5); color: var(--accent);
     border-radius: 4px; padding: 0 5px; }
   .go { width: 100%; padding: 9px 10px; margin: 6px 0; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
     border: 1px solid rgba(244,157,78,0.5); background: rgba(244,157,78,0.18);
     color: #fff; cursor: pointer; font-size: 13px; }
-  .go:disabled { opacity: 0.55; cursor: default; }
+  .go:disabled { cursor: default; }
+  /* While enhancing, dim slightly and softly pulse the accent fill. */
+  .go.busy { animation: pulse 1.4s ease-in-out infinite; }
+  .spinner { width: 13px; height: 13px; flex: none; border-radius: 50%;
+    border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff;
+    animation: spin 0.7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes pulse {
+    0%, 100% { background: rgba(244,157,78,0.18); }
+    50% { background: rgba(244,157,78,0.34); }
+  }
   .err { font-size: 11px; color: #ff9a9a; margin: 6px 0; line-height: 1.4; }
   .result { margin-top: 8px; }
   .img { display: block; width: 100%; padding: 0; border: 1px solid var(--glass-brd);
