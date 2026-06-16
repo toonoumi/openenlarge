@@ -12,7 +12,7 @@ use base64::Engine;
 pub const ENHANCE_PROMPT: &str = "Restore and enhance this photograph: remove sensor noise, film grain artifacts, dust, and scratches; sharpen and super-resolve fine detail. Keep the composition, subject, and content exactly intact. Preserve the original colors, white balance, and tonality faithfully. Output the cleanest, highest-resolution version possible.";
 
 const OPENAI_EDITS_URL: &str = "https://api.openai.com/v1/images/edits";
-const OPENAI_MODEL: &str = "gpt-image-1";
+const OPENAI_MODEL: &str = "gpt-image-2";
 
 /// Parse the OpenAI image-edit JSON response into a PNG data URL.
 /// On an API error payload or a missing image, returns a readable `Err`.
