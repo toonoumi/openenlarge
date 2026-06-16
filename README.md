@@ -42,9 +42,12 @@ Most tools treat a negative scan as a generic image and fit tone curves to flip 
 - **Full develop controls** — tonal curve, color grading, color wheels, exposure/black/gamma
 - **Crop, rotate, straighten, flip** with a live viewport and histogram
 - **Batch export** to 16-bit TIFF / PNG / JPEG — with an optional batch crop applied across the whole selection in one pass
+- **HDR preview & export** *(experimental)* — toggle any frame into true HDR; highlights glow beyond SDR white on HDR-capable displays, and the frame exports as a gain-map HDR JPEG that matches the preview
 - **In-app updates** — checks on launch or on demand from Settings and installs the new version in place
 - **Headless CLI** (`film-cli`) for scripting and batch inversion
 - **Cross-platform** — macOS, Windows, Linux, built on Tauri
+
+> **HDR is experimental.** The in-app HDR preview lights up on HDR-capable displays (verified on macOS; likely on Windows; Linux falls back to the SDR image with no loss). HDR export is gain-map JPEG only — TIFF and PNG stay SDR — and the develop sliders don't yet edit *into* the HDR headroom. That deeper HDR-aware editing is coming next.
 
 ## Architecture
 
