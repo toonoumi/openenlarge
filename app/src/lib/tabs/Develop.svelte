@@ -337,7 +337,7 @@
         </div>
       {/key}
     </GlassPanel>
-    <!-- Top/bottom fade gradients pinned to the panel edges so scrolled content
+    <!-- Top/bottom shadow gradients pinned to the panel edges so scrolled content
          fades out at the boundaries (infinity-scroll feel). -->
     <div class="edge-fade top" aria-hidden="true"></div>
     <div class="edge-fade bottom" aria-hidden="true"></div>
@@ -366,19 +366,21 @@
   .right { grid-area: right; min-height: 0; position: relative; overflow-y: auto;
     scrollbar-width: none; -ms-overflow-style: none; }
   .right::-webkit-scrollbar { width: 0; height: 0; }
-  /* Drop the floating drop-shadow on this panel so it sits flat against the page;
-     keep the inset top highlight that defines the glass edge. */
-  .right :global(.glass) { box-shadow: inset 0 1px 0 var(--glass-hi); }
-  /* Fade gradients at the panel's top/bottom edges. Tinted with the panel's own
-     surface colour (var(--glass-bg)) rather than black so they blend into the
-     container. Inset 1px to sit inside the GlassPanel border and rounded to match
-     its corners; non-interactive. */
+  /* Blend the panel into the page: match the body background (#181818), drop the
+     floating drop-shadow and the now-pointless backdrop blur, and hide its
+     scrollbar. Keep the inset top highlight that defines the glass edge. */
+  .right :global(.glass) { background: #181818; box-shadow: inset 0 1px 0 var(--glass-hi);
+    backdrop-filter: none; -webkit-backdrop-filter: none;
+    scrollbar-width: none; -ms-overflow-style: none; }
+  .right :global(.glass)::-webkit-scrollbar { width: 0; height: 0; }
+  /* Shadow gradients at the panel's top/bottom edges. Inset 1px to sit inside the
+     GlassPanel border and rounded to match its corners; non-interactive. */
   .edge-fade { position: absolute; left: 1px; right: 1px; height: 26px;
     pointer-events: none; z-index: 3; }
   .edge-fade.top { top: 1px; border-radius: var(--radius) var(--radius) 0 0;
-    background: linear-gradient(to bottom, var(--glass-bg), rgba(28,28,34,0)); }
+    background: linear-gradient(to bottom, rgba(0,0,0,0.55), rgba(0,0,0,0)); }
   .edge-fade.bottom { bottom: 1px; border-radius: 0 0 var(--radius) var(--radius);
-    background: linear-gradient(to top, var(--glass-bg), rgba(28,28,34,0)); }
+    background: linear-gradient(to top, rgba(0,0,0,0.55), rgba(0,0,0,0)); }
   .center { grid-area: center; min-height: 0; display: grid; place-items: center; }
   .hint { color: var(--text-dim); }
   .bottom { grid-area: bottom; min-width: 0; overflow: hidden; }
