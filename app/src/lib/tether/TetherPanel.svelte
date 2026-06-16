@@ -1,6 +1,7 @@
 <script lang="ts">
   import { open } from "@tauri-apps/plugin-dialog";
   import { t } from "$lib/i18n";
+  import Icon from "../icons/Icon.svelte";
   import { selectedFolder } from "../store";
   import { startTether, stopTether } from "./controller";
   import { tetherWatching, tetherDir, tetherAutoAdvance, tetherLast } from "./store";
@@ -30,6 +31,7 @@
 
 <div class="tether">
   <button class="toggle" class:on={$tetherWatching} on:click={toggle} disabled={busy}>
+    {#if !$tetherWatching}<Icon name="camera" size={15} />{/if}
     {$tetherWatching ? $t("tether.stop") : $t("tether.start")}
   </button>
 
@@ -57,6 +59,7 @@
     border: 1px solid rgba(255,255,255,0.10);
     background: rgba(255,255,255,0.06);
     color: var(--text); font-weight: 600; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; gap: 7px;
     transition: transform 0.14s ease, background 0.14s ease, border-color 0.14s ease; }
   .toggle:hover:not(:disabled) { transform: scale(1.02);
     background: rgba(255,255,255,0.10); border-color: rgba(255,255,255,0.16); }
