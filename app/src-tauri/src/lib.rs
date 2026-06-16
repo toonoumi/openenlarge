@@ -1,5 +1,6 @@
 mod ai_enhance;
 mod cache;
+mod color_match;
 mod catalog;
 mod commands;
 mod convert;
