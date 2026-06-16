@@ -255,7 +255,6 @@
   <div class="modal" transition:scale={{ start: 0.96, opacity: 0, duration: 240, easing: cubicOut }}>
     <header>
       <div class="title">
-        <span class="dot"></span>
         <h2>{$t('export.title')}</h2>
       </div>
       <button class="x" on:click={() => dispatch("close")} aria-label={$t('export.close')}>✕</button>
@@ -387,8 +386,6 @@
   header { display: flex; align-items: center; justify-content: space-between; }
   .title { display: flex; align-items: center; gap: 9px; }
   .title h2 { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: 0.2px; }
-  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent);
-    box-shadow: 0 0 10px var(--accent); }
   .x { background: transparent; border: 0; color: var(--text-faint); font-size: 13px;
     width: 26px; height: 26px; border-radius: 8px; transition: color 0.15s, background 0.15s; }
   .x:hover { color: var(--text); background: var(--glass-hi); }
@@ -484,8 +481,9 @@
     position: relative; z-index: 1; background: transparent; border: 0;
     padding: 8px 10px; border-radius: 7px;
     font-size: 12px; font-weight: 600; color: var(--text-dim);
-    transition: color 0.2s ease;
+    transition: color 0.2s ease, background 0.14s ease;
   }
+  .seg button:not(.active):hover { color: var(--text); background: rgba(255, 255, 255, 0.06); }
   .seg button.active { color: #fff; }
   .seg-ind {
     position: absolute; z-index: 0; top: 3px; bottom: 3px; left: 3px;
@@ -527,10 +525,15 @@
   }
   .ghost:hover { background: rgba(255, 255, 255, 0.08); border-color: rgba(255, 255, 255, 0.18); }
   .primary {
-    padding: 9px 18px; border: 0; border-radius: 10px; font-weight: 600; font-size: 13px;
-    background: var(--accent); color: #fff; cursor: pointer;
-    box-shadow: 0 4px 16px rgba(224, 52, 52, 0.32); transition: filter 0.15s, box-shadow 0.15s;
+    padding: 9px 18px; border: 1px solid rgba(0, 0, 0, 0.25); border-radius: 10px; font-weight: 600; font-size: 13px;
+    background: #bf6d3a; color: #f3ece6; cursor: pointer;
+    transition: transform 0.14s ease, background 0.14s ease;
   }
-  .primary:hover:not(:disabled) { filter: brightness(1.08); }
-  .primary:disabled { opacity: 0.45; cursor: default; box-shadow: none; }
+  .primary:hover:not(:disabled) { transform: scale(1.02); background: #cd7842; }
+  .primary:active:not(:disabled) { transform: scale(0.99); background: #bf6d3a; }
+  .primary:disabled { opacity: 0.55; cursor: default; }
+  @media (prefers-reduced-motion: reduce) {
+    .primary { transition: background 0.14s ease; }
+    .primary:hover:not(:disabled), .primary:active:not(:disabled) { transform: none; }
+  }
 </style>
