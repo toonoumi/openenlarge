@@ -204,6 +204,8 @@ export const api = {
     invoke<void>("save_meta", { id, metaJson }),
   savePref: (key: string, value: string) =>
     invoke<void>("save_pref", { key, value }),
+  aiEnhanceImage: (imageBase64: string, apiKey: string) =>
+    invoke<string>("ai_enhance_image", { imageBase64, apiKey }),
   saveAppState: (key: string, value: string) =>
     invoke<void>("save_app_state", { key, value }),
   workingInfo: (id: string) =>

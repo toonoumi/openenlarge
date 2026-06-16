@@ -121,8 +121,11 @@ export function selectFolder(path: string | null): void {
 /** Data-URL of the latest rendered develop preview; drives the histogram. */
 export const previewSrc = writable<string>("");
 
-export type Tool = "edit" | "crop" | "eraser";
+export type Tool = "edit" | "crop" | "eraser" | "enhance";
 export const tool = writable<Tool>("edit");
+
+/** OpenAI API key for the AI Enhance tool. Persisted via prefs as `openai_api_key`. */
+export const openaiApiKey = writable<string>("");
 
 /** Film-base recalibration: armed from the Basic panel's Film Base section. While
  * true the viewport shows the drag-to-sample overlay (the sidebar stays in edit

@@ -5,7 +5,7 @@ import type { DustEdits } from "./develop/dust";
 import {
   images, editsById, cropById, dustById, metaById, quality,
   selectedFolder, gridZoom, module as moduleStore, activeId, folderBaseByPath,
-  updateLastCheck, updateSkipVersion,
+  updateLastCheck, updateSkipVersion, openaiApiKey,
 } from "./store";
 import { locale } from "./i18n";
 
@@ -67,6 +67,8 @@ export function applySnapshot(snap: CatalogSnapshot): void {
     quality.set(snap.prefs.quality);
   if (snap.prefs.locale === "en" || snap.prefs.locale === "zh")
     locale.set(snap.prefs.locale);
+  if (typeof snap.prefs.openai_api_key === "string")
+    openaiApiKey.set(snap.prefs.openai_api_key);
 
   const st = snap.app_state;
   if (st.selected_folder !== undefined)
@@ -164,9 +166,10 @@ export function initPersistence(): () => void {
   wireRecord(dustById, dust.save);
   wireRecord(metaById, meta.save);
 
-  let first = { q: true, loc: true, sf: true, gz: true, mod: true, aid: true, usv: true, ulc: true };
+  let first = { q: true, loc: true, sf: true, gz: true, mod: true, aid: true, usv: true, ulc: true, oak: true };
   quality.subscribe((q) => { if (first.q) { first.q = false; return; } savePref("quality", q); });
   locale.subscribe((l) => { if (first.loc) { first.loc = false; return; } savePref("locale", l); });
+  openaiApiKey.subscribe((k) => { if (first.oak) { first.oak = false; return; } savePref("openai_api_key", k); });
   selectedFolder.subscribe((p) => { if (first.sf) { first.sf = false; return; } saveState("selected_folder", p ?? ""); });
   gridZoom.subscribe((z) => { if (first.gz) { first.gz = false; return; } saveState("grid_zoom", String(z)); });
   updateSkipVersion.subscribe((v) => { if (first.usv) { first.usv = false; return; } saveState("update_skip_version", v); });
