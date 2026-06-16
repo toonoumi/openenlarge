@@ -111,8 +111,6 @@
       <span class="val">{Math.round(sensitivity)}</span>
     </div>
 
-    {#if error}<div class="err">{error}</div>{/if}
-
     {#if result}
       <div class="result">
         <img src={result} alt={$t("eraser.autoTitle")} />
@@ -122,6 +120,7 @@
     {/if}
   {/if}
 
+  {#if error}<div class="err">{error}</div>{/if}
   <div class="hint">{$t("eraser.autoHint")}</div>
 </div>
 
