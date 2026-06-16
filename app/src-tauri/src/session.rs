@@ -54,6 +54,11 @@ pub struct InvertParams {
     /// base; when None, the develop-time auto base (`Developed.base`) is used.
     #[serde(default)]
     pub base_override: Option<[f32; 3]>,
+    /// Per-image Cineon `D_max` (density-range / black-point) override. When set,
+    /// used verbatim; when None, the engine default (2.0) is used. Set by the
+    /// `analyze` command (sampled inside the image-area crop).
+    #[serde(default)]
+    pub d_max_override: Option<f32>,
     /// Exposure in EV stops (−5..5); converted to a multiplier (2^ev) downstream.
     pub exposure: f32,
     pub black: f32,
