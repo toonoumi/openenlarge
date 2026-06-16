@@ -6,7 +6,7 @@
   const dispatch = createEventDispatcher();
 </script>
 
-<div class="backdrop" on:click={() => dispatch("close")}></div>
+<div class="backdrop" on:click={() => dispatch("close")} transition:fade={{ duration: 120 }}></div>
 <div class="menu" role="dialog" aria-label={$t("settings.dialogAriaLabel")} transition:fade={{ duration: 120 }}>
   <div class="grp">
     <div class="head">{$t("settings.language.heading")}</div>
@@ -27,10 +27,12 @@
 </div>
 
 <style>
-  .backdrop { position: fixed; inset: 0; z-index: 60; }
+  .backdrop { position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,0.5);
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
   .menu { position: fixed; top: 52px; right: 16px; z-index: 61; min-width: 224px;
     background: var(--glass-bg); border: 1px solid var(--glass-brd); border-radius: 12px;
-    padding: 12px; backdrop-filter: blur(20px); box-shadow: 0 12px 40px rgba(0,0,0,0.5); }
+    padding: 12px; backdrop-filter: blur(20px) saturate(140%); -webkit-backdrop-filter: blur(20px) saturate(140%);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.5); }
   .head { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;
     color: var(--text-dim); margin-bottom: 8px; }
   .seg { display: flex; gap: 6px; }
