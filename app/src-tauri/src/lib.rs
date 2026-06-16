@@ -86,6 +86,7 @@ pub fn run() {
             commands::auto_base_info,
             commands::analyze,
             commands::ai_enhance_image,
+            commands::color_match_params,
             tether::tether_start,
             tether::tether_stop,
         ])

@@ -1906,3 +1906,24 @@ mod adequacy_tests {
 pub async fn ai_enhance_image(image_base64: String, api_key: String) -> Result<String, String> {
     crate::ai_enhance::enhance(&image_base64, &api_key).await
 }
+
+/// Match the current image's color toning to a reference image (fully local).
+/// Returns the scoped develop params, blended by `strength` (0..100) from the
+/// current params toward the optimized match. The frontend spreads these onto
+/// the params store as a single undoable change.
+#[tauri::command]
+pub fn color_match_params(
+    id: String,
+    params: InvertParams,
+    ref_path: String,
+    strength: u8,
+    session: State<Session>,
+) -> Result<crate::color_match::MatchedParams, String> {
+    ensure_resident(&session, &id)?;
+    let images = session.images.lock().unwrap();
+    let img = images.get(&id).ok_or("unknown image id")?;
+    let dev = img.developed.as_ref().ok_or("not developed")?;
+    crate::color_match::match_to_reference(
+        &params, &dev.thumb, dev.base, dev.d_max, &ref_path, strength,
+    )
+}
