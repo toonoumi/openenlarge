@@ -502,7 +502,9 @@ fn develop_heavy(
     drop(full);
 
     let small = proxy(&working, THUMB_EDGE);
-    let defaults = default_invert_params();
+    // Honor the detected verdict so a positive's develop-time grid thumbnail isn't
+    // shown inverted before the image is opened (the per-image seed carries it after).
+    let defaults = InvertParams { positive, ..default_invert_params() };
     let mut ip = resolve_params(&defaults, &thumb, base);
     ip.d_max = d_max;
     let inv_thumb = invert_image(&small, &ip, Mode::D);
