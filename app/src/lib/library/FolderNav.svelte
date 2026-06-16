@@ -57,7 +57,19 @@
   .tree { flex: 1; overflow: auto; }
   .empty { color: var(--text-faint); padding: 8px; }
   .import { margin-top: 10px; width: 100%; padding: 11px; border: 0; border-radius: 11px;
-    background: var(--accent-grad); color: #fff; font: inherit; font-weight: 700; cursor: pointer;
-    display: flex; align-items: center; justify-content: center; gap: 7px; }
-  .import:disabled { opacity: 0.6; }
+    background: linear-gradient(180deg, #f6a559, #e07d3a);
+    color: #fff; font: inherit; font-weight: 650; letter-spacing: 0.2px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; gap: 7px;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.28), 0 4px 14px rgba(223,113,54,0.30);
+    transition: transform 0.16s cubic-bezier(0.2,0.7,0.3,1), box-shadow 0.16s ease, filter 0.16s ease; }
+  .import:hover:not(:disabled) { transform: scale(1.03);
+    filter: brightness(1.04);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.32), 0 8px 22px rgba(223,113,54,0.42); }
+  .import:active:not(:disabled) { transform: scale(0.985);
+    box-shadow: inset 0 1px 2px rgba(0,0,0,0.25), 0 2px 8px rgba(223,113,54,0.30); }
+  .import:disabled { opacity: 0.6; cursor: default; }
+  @media (prefers-reduced-motion: reduce) {
+    .import { transition: filter 0.16s ease, box-shadow 0.16s ease; }
+    .import:hover:not(:disabled), .import:active:not(:disabled) { transform: none; }
+  }
 </style>
