@@ -214,6 +214,117 @@ pub fn sample_dmax(img: &Image, base: [f32; 3], rect: Option<Rect>) -> f32 {
     d_max.clamp(1.0, 4.0)
 }
 
+/// Result of rebate detection: the sampled clear-film base and a 0..1 confidence.
+#[derive(Debug, Clone, Copy)]
+pub struct RebateBase {
+    pub base: [f32; 3],
+    pub confidence: f32,
+}
+
+/// Outer fraction of each edge scanned for the rebate.
+const REBATE_BAND_FRAC: f32 = 0.10;
+/// Patch length along the edge (in downscaled px).
+const REBATE_PATCH_LEN: usize = 32;
+/// Uniformity penalty: higher = stricter about flatness.
+const REBATE_UNIF_K: f32 = 4.0;
+/// Minimum detector score to trust the rebate base over the fallback. Provisional;
+/// tuned against real scans later.
+pub const REBATE_CONFIDENCE: f32 = 0.15;
+
+/// Nearest-neighbour downscale so detection stats are cheap/stable.
+fn downscale_for_detect(img: &Image, target_long: usize) -> Image {
+    let long = img.width.max(img.height);
+    if long <= target_long {
+        return img.clone();
+    }
+    let scale = target_long as f32 / long as f32;
+    let w = ((img.width as f32 * scale) as usize).max(1);
+    let h = ((img.height as f32 * scale) as usize).max(1);
+    let mut pixels = vec![[0.0f32; 3]; w * h];
+    for y in 0..h {
+        let sy = ((y as f32 / scale) as usize).min(img.height - 1);
+        for x in 0..w {
+            let sx = ((x as f32 / scale) as usize).min(img.width - 1);
+            pixels[y * w + x] = img.pixels[sy * img.width + sx];
+        }
+    }
+    Image { width: w, height: h, pixels, ir: None }
+}
+
+/// Mean RGB and mean per-channel coefficient-of-variation over a window.
+fn patch_stats(img: &Image, x0: usize, y0: usize, pw: usize, ph: usize) -> ([f32; 3], f32) {
+    let (mut sum, mut sumsq, mut n) = ([0.0f64; 3], [0.0f64; 3], 0u64);
+    for y in y0..(y0 + ph).min(img.height) {
+        for x in x0..(x0 + pw).min(img.width) {
+            let p = img.pixels[y * img.width + x];
+            for c in 0..3 {
+                sum[c] += p[c] as f64;
+                sumsq[c] += (p[c] as f64) * (p[c] as f64);
+            }
+            n += 1;
+        }
+    }
+    if n == 0 {
+        return ([0.0; 3], 1.0);
+    }
+    let nf = n as f64;
+    let mean = [(sum[0] / nf) as f32, (sum[1] / nf) as f32, (sum[2] / nf) as f32];
+    let mut cv_sum = 0.0f32;
+    for c in 0..3 {
+        let m = sum[c] / nf;
+        let var = (sumsq[c] / nf - m * m).max(0.0);
+        cv_sum += (var.sqrt() as f32) / (m as f32).max(1e-4);
+    }
+    (mean, cv_sum / 3.0)
+}
+
+/// bright × uniform × orange (each clamped 0..1). Orange requires the C-41 mask
+/// ordering R≥G≥B; a blue/neutral patch scores 0 even if bright and uniform.
+fn rebate_score(mean: [f32; 3], cv: f32) -> f32 {
+    let bright = ((mean[0] + mean[1] + mean[2]) / 3.0).clamp(0.0, 1.0);
+    let uniform = (1.0 - REBATE_UNIF_K * cv).clamp(0.0, 1.0);
+    let orange = if mean[0] >= mean[1] && mean[1] >= mean[2] {
+        ((mean[0] - mean[2]) / mean[0].max(1e-5)).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    bright * uniform * orange
+}
+
+/// Detect the C-41 orange-mask film base from the frame's edge bands. Scans the
+/// outer `REBATE_BAND_FRAC` of each edge, scores tiled patches by `rebate_score`,
+/// and returns the best patch's mean as `base` with its score as `confidence`.
+pub fn detect_rebate_base(img: &Image) -> RebateBase {
+    let small = downscale_for_detect(img, 512);
+    let (w, h) = (small.width, small.height);
+    if w == 0 || h == 0 {
+        return RebateBase { base: [0.0; 3], confidence: 0.0 };
+    }
+    let bw = ((w as f32 * REBATE_BAND_FRAC) as usize).max(1);
+    let bh = ((h as f32 * REBATE_BAND_FRAC) as usize).max(1);
+    let mut best = RebateBase { base: [0.0; 3], confidence: 0.0 };
+    let consider = |x0: usize, y0: usize, pw: usize, ph: usize, best: &mut RebateBase| {
+        let (mean, cv) = patch_stats(&small, x0, y0, pw, ph);
+        let s = rebate_score(mean, cv);
+        if s > best.confidence {
+            *best = RebateBase { base: mean, confidence: s };
+        }
+    };
+    let mut x = 0;
+    while x < w {
+        consider(x, 0, REBATE_PATCH_LEN, bh, &mut best);
+        consider(x, h.saturating_sub(bh), REBATE_PATCH_LEN, bh, &mut best);
+        x += REBATE_PATCH_LEN;
+    }
+    let mut y = 0;
+    while y < h {
+        consider(0, y, bw, REBATE_PATCH_LEN, &mut best);
+        consider(w.saturating_sub(bw), y, bw, REBATE_PATCH_LEN, &mut best);
+        y += REBATE_PATCH_LEN;
+    }
+    best
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -369,6 +480,53 @@ mod tests {
         for c in 0..3 {
             assert!((b[c] - [0.43, 0.19, 0.11][c]).abs() < 1e-3, "ch {c} = {}", b[c]);
         }
+    }
+
+    /// Build a HxW image: uniform `border` color in the outer 10% band on all
+    /// edges, `center` (optionally noisy) inside.
+    fn bordered(w: usize, h: usize, border: [f32; 3], center: [f32; 3], noisy: bool) -> Image {
+        let mut img = Image::new(w, h);
+        let bw = (w as f32 * 0.10) as usize;
+        let bh = (h as f32 * 0.10) as usize;
+        for y in 0..h {
+            for x in 0..w {
+                let edge = x < bw || x >= w - bw || y < bh || y >= h - bh;
+                let mut px = if edge { border } else { center };
+                if !edge && noisy {
+                    let j = if (x + y) % 2 == 0 { 0.18 } else { -0.18 };
+                    px = [(px[0] + j).clamp(0.0, 1.0), (px[1] + j).clamp(0.0, 1.0), (px[2] + j).clamp(0.0, 1.0)];
+                }
+                img.pixels[y * w + x] = px;
+            }
+        }
+        img
+    }
+
+    #[test]
+    fn detect_rebate_finds_orange_border_over_textured_center() {
+        let orange = [0.42, 0.19, 0.10];
+        let img = bordered(200, 150, orange, [0.5, 0.5, 0.5], true);
+        let r = detect_rebate_base(&img);
+        for c in 0..3 {
+            assert!((r.base[c] - orange[c]).abs() < 0.03, "ch {c}={}", r.base[c]);
+        }
+        assert!(r.confidence > 0.1, "confidence {}", r.confidence);
+    }
+
+    #[test]
+    fn detect_rebate_ignores_bright_blue_center_phoenix() {
+        let orange = [0.42, 0.19, 0.10];
+        let img = bordered(200, 150, orange, [0.30, 0.21, 0.55], false);
+        let r = detect_rebate_base(&img);
+        assert!(r.base[0] > r.base[2], "must pick orange (R>B), got {:?}", r.base);
+        assert!((r.base[0] - orange[0]).abs() < 0.05, "base {:?}", r.base);
+    }
+
+    #[test]
+    fn detect_rebate_low_confidence_when_no_orange_border() {
+        let img = Image { width: 200, height: 150, pixels: vec![[0.5, 0.5, 0.5]; 200 * 150], ir: None };
+        let r = detect_rebate_base(&img);
+        assert!(r.confidence < 0.05, "expected low confidence, got {}", r.confidence);
     }
 
     #[test]
