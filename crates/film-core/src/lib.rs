@@ -6,7 +6,6 @@ pub mod engine;
 pub mod export;
 pub mod finish;
 pub mod image;
-pub mod spectral;
 pub mod wb;
 
 pub use image::Image;

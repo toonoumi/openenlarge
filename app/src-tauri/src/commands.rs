@@ -13,9 +13,8 @@ use crate::session::{
 use film_core::calibrate::{auto_wb_gains, sample_base};
 use film_core::decode::{decode_ldr, decode_raw, decode_tiff};
 use film_core::dust::{self, Stamp};
-use film_core::engine::{invert_image, params_for_stock, InversionParams, Mode};
+use film_core::engine::{invert_image, InversionParams, Mode};
 use film_core::finish::{finish_image, tone_luts, ColorGrade, ColorMix, FinishParams, PcSample};
-use film_core::spectral::Stock;
 use film_core::wb::{gains_to_cct, wb_from_kelvin};
 use serde::Deserialize;
 use std::path::Path;
@@ -178,25 +177,6 @@ fn decode_any(path: &Path) -> Result<film_core::Image, String> {
         "tif" | "tiff" => decode_tiff(path).map_err(|e| format!("{e}")),
         "jpg" | "jpeg" | "png" => decode_ldr(path).map_err(|e| format!("{e}")),
         _ => decode_raw(path).map_err(|e| format!("{e}")),
-    }
-}
-
-fn stock_from(s: &str) -> Option<Stock> {
-    match s {
-        "portra400" => Some(Stock::Portra400),
-        "fujic200" => Some(Stock::FujiC200),
-        "portra160" => Some(Stock::Portra160),
-        "portra800" => Some(Stock::Portra800),
-        "ektar100" => Some(Stock::Ektar100),
-        "gold200" => Some(Stock::Gold200),
-        "ultramax400" => Some(Stock::Ultramax400),
-        "fujipro400h" => Some(Stock::FujiPro400H),
-        "fujixtra400" => Some(Stock::FujiXtra400),
-        "vision350d" => Some(Stock::Vision350D),
-        "vision3200t" => Some(Stock::Vision3200T),
-        "vision3250d" => Some(Stock::Vision3250D),
-        "vision3500t" => Some(Stock::Vision3500T),
-        _ => None,
     }
 }
 

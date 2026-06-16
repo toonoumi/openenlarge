@@ -177,33 +177,6 @@ pub fn invert_image(img: &crate::Image, p: &InversionParams, mode: Mode) -> crat
     }
 }
 
-/// Build inversion params whose `m_post` is fitted from the given film stock's
-/// physical model (`m_pre` stays identity). Used by Mode B for cross-channel
-/// dye unmixing.
-pub fn params_for_stock(
-    stock: crate::spectral::Stock,
-    base: [f32; 3],
-    exposure: f32,
-    black: f32,
-    gamma: f32,
-) -> InversionParams {
-    let data = crate::spectral::load_stock(stock);
-    // Neutral-balance the fit so a neutral input maps to neutral (else the raw
-    // concentration-recovery matrix injects a per-channel cast — e.g. Portra reads
-    // magenta). Crosstalk correction is preserved; WB handles the residual.
-    let m_post = crate::calibrate::balance_neutral(crate::calibrate::fit_m_post(&data));
-    InversionParams {
-        base,
-        m_pre: Matrix3::identity(),
-        m_post,
-        exposure,
-        black,
-        gamma,
-        wb: [1.0, 1.0, 1.0],
-        ..Default::default()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -354,26 +327,6 @@ mod tests {
         let b = invert_b(probe, &p);
         let diff: f32 = (0..3).map(|c| (n[c] - b[c]).abs()).sum();
         assert!(diff > 1e-2, "naive and B should differ; diff={diff}");
-    }
-
-    #[test]
-    fn stock_params_make_b_differ_from_identity() {
-        use crate::spectral::Stock;
-        let base = [0.5, 0.4, 0.3];
-        let plain = InversionParams {
-            base,
-            gamma: 1.0,
-            ..Default::default()
-        };
-        let stock = params_for_stock(Stock::Portra400, base, 1.0, 0.0, 1.0);
-        let probe = [0.3, 0.22, 0.15];
-        let a = invert_b(probe, &plain);
-        let b = invert_b(probe, &stock);
-        let diff: f32 = (0..3).map(|c| (a[c] - b[c]).abs()).sum();
-        assert!(
-            diff > 1e-3,
-            "stock M_post should change B output; diff={diff}"
-        );
     }
 
     #[test]
