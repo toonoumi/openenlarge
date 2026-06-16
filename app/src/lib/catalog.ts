@@ -1,7 +1,7 @@
 import { get } from "svelte/store";
 import { api, defaultParams, type InvertParams, type CatalogSnapshot, type ImageEntry, type MetaOverride } from "./api";
 import type { CropRect } from "./crop/types";
-import type { DustEdits } from "./develop/dust";
+import { emptyDust, type DustEdits } from "./develop/dust";
 import {
   images, editsById, cropById, dustById, metaById, quality,
   selectedFolder, gridZoom, module as moduleStore, activeId, folderBaseByPath,
@@ -50,7 +50,7 @@ export function applySnapshot(snap: CatalogSnapshot): void {
     // color grading added later) so the frontend always has a complete schema.
     if (e.params) editsMap[e.image_id] = { ...defaultParams(), ...e.params };
     if (e.crop !== undefined) cropMap[e.image_id] = e.crop;
-    if (e.dust) dustMap[e.image_id] = e.dust;
+    if (e.dust) dustMap[e.image_id] = { ...emptyDust(), ...e.dust };
     if (e.meta) metaMap[e.image_id] = e.meta;
   }
   const entries: ImageEntry[] = snap.images.map((ci) => ({

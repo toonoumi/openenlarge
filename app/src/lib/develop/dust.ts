@@ -4,10 +4,16 @@ export interface DustPoint { x: number; y: number }
 export interface DustStroke { points: DustPoint[]; r: number }
 /** IR-driven automatic dust removal settings. */
 export interface IrRemoval { enabled: boolean; sensitivity: number }
+/** AI (learned-model) auto dust/hair removal settings. */
+export interface AutoDust { enabled: boolean; sensitivity: number }
 /** Per-image dust edit state. */
-export interface DustEdits { strokes: DustStroke[]; irRemoval: IrRemoval }
+export interface DustEdits { strokes: DustStroke[]; irRemoval: IrRemoval; autoDust: AutoDust }
 
-export const emptyDust = (): DustEdits => ({ strokes: [], irRemoval: { enabled: false, sensitivity: 50 } });
+export const emptyDust = (): DustEdits => ({
+  strokes: [],
+  irRemoval: { enabled: false, sensitivity: 50 },
+  autoDust: { enabled: false, sensitivity: 50 },
+});
 
 export function addStroke(d: DustEdits, s: DustStroke): DustEdits {
   return { ...d, strokes: [...d.strokes, s] };
@@ -23,6 +29,12 @@ export function setIrEnabled(d: DustEdits, enabled: boolean): DustEdits {
 }
 export function setIrSensitivity(d: DustEdits, sensitivity: number): DustEdits {
   return { ...d, irRemoval: { ...d.irRemoval, sensitivity } };
+}
+export function setAutoDustEnabled(d: DustEdits, enabled: boolean): DustEdits {
+  return { ...d, autoDust: { ...d.autoDust, enabled } };
+}
+export function setAutoDustSensitivity(d: DustEdits, sensitivity: number): DustEdits {
+  return { ...d, autoDust: { ...d.autoDust, sensitivity } };
 }
 
 /** Normalized-to-width radius → on-screen pixels at the current zoom `eff`. */

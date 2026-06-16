@@ -235,6 +235,23 @@ export const api = {
     }),
   saveUpscaled: (outPath: string, format: ExportFormat, metaOverride: MetaOverride | null = null) =>
     invoke<void>("save_upscaled", { outPath, format, metaOverride }),
+  autodustStatus: () =>
+    invoke<{ installed: boolean; downloadBytes: number }>("autodust_status"),
+  downloadAutodust: () => invoke<void>("download_autodust"),
+  autodustDetect: (
+    id: string, params: InvertParams,
+    imageCrop: [number, number, number, number] | null = null,
+    geom: { rot90?: number; flip_h?: boolean; flip_v?: boolean; angle?: number } = {},
+    dust: DustStroke[] = [],
+    irRemoval: IrRemoval = { enabled: false, sensitivity: 50 },
+    sensitivity = 50,
+  ) =>
+    invoke<{ previewDataUrl: string; count: number }>("autodust_detect", {
+      id, params, imageCrop,
+      rot90: geom.rot90 ?? 0, flipH: geom.flip_h ?? false,
+      flipV: geom.flip_v ?? false, angle: geom.angle ?? 0,
+      dust: wireDust(dust), irRemoval, sensitivity,
+    }),
   colorMatchParams: (id: string, params: InvertParams, refPath: string, strength: number) =>
     invoke<MatchedParams>("color_match_params", { id, params, refPath, strength }),
   referenceThumb: (path: string) =>

@@ -130,6 +130,9 @@ export const openaiApiKey = writable<string>("");
 /** Whether the local upscaler runtime+model are installed (re-checked on tool open). */
 export const upscalerInstalled = writable<boolean>(false);
 
+/** Whether the local AI dust/hair models (+ shared runtime) are installed. */
+export const autodustInstalled = writable<boolean>(false);
+
 /** When true, importing skips camera-preview jpg/png files that share a folder and
  * base name with a raw/master file. Persisted via prefs as `omit_preview_jpgs`;
  * defaults on. */
