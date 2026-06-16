@@ -6,7 +6,8 @@
   import { previewSrc } from "../store";
   import { binPixels, channelPath } from "../viewport/histogram";
 
-  /** Control points in [0,1]×[0,1] (input → output), endpoints at x=0 and x=1. */
+  /** Control points in [0,1]×[0,1] (input → output); endpoints default to x=0 and
+   *  x=1 but may be dragged inward to clip the input range. */
   export let points: CurvePoint[];
   /** Stroke color of the curve line. */
   export let color = "#e8e8e8";
@@ -133,13 +134,12 @@
       const nx = clamp01(cx - grabOffset[0]);
       const ny = clamp01(cy - grabOffset[1]);
       const last = pts.length - 1;
-      const isEnd = dragIdx === 0 || dragIdx === last;
-      let x = pts[dragIdx][0];
-      if (!isEnd) {
-        const lo = pts[dragIdx - 1][0] + 1e-3;
-        const hi = pts[dragIdx + 1][0] - 1e-3;
-        x = Math.min(hi, Math.max(lo, nx));
-      }
+      // Every point (endpoints included) may slide along x, bounded by the canvas
+      // edge on the outside and its neighbour on the inside. Pulling an endpoint
+      // inward simply clips the input range (sampleCurve holds flat beyond it).
+      const lo = dragIdx === 0 ? 0 : pts[dragIdx - 1][0] + 1e-3;
+      const hi = dragIdx === last ? 1 : pts[dragIdx + 1][0] - 1e-3;
+      const x = Math.min(hi, Math.max(lo, nx));
       pts[dragIdx] = [x, ny];
     } else {
       // Move both bounding points in y, weighted by where along the segment we grabbed
