@@ -21,3 +21,15 @@ body {
   overflow: hidden;
 }
 button { font: inherit; color: var(--text); cursor: pointer; }
+
+/* Baseline hover for every button in the Develop editing panel (.editzone). Kept
+   at low specificity — a single class plus :where() for the exclusions — so any
+   component's own :hover (accent tints, toggled states) still wins; this only
+   fills in the buttons that define no hover of their own. Colour-swatch buttons
+   are excluded so the highlight never paints over the colour they display. */
+.editzone button {
+  transition: background 0.14s ease, color 0.14s ease, border-color 0.14s ease;
+}
+.editzone button:where(:not(.dot):not(.sw):not(.baseswatch):not(:disabled)):hover {
+  background: var(--glass-hi);
+}

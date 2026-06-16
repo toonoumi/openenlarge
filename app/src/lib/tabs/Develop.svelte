@@ -323,7 +323,7 @@
     {:else}<div class="hint">{$t('develop.notDevelopedYet')}</div>{/if}
   </section>
 
-  <aside class="right">
+  <aside class="right editzone">
     <GlassPanel>
       <Histogram />
       <Toolbar />
