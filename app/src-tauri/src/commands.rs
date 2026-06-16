@@ -209,25 +209,14 @@ pub(crate) fn mode_from(s: &str) -> Mode {
 }
 
 pub(crate) fn build_params(p: &InvertParams, base: [f32; 3]) -> InversionParams {
-    let exposure = 2f32.powf(p.exposure); // EV stops → linear multiplier
-    if p.mode == "d" {
-        // Cineon: reuse the exposure slider as print exposure; d_max/paper_* come
-        // from InversionParams::Default. WB is set later by the caller.
-        return InversionParams {
-            base,
-            print_exposure: exposure,
-            ..Default::default()
-        };
-    }
-    match stock_from(&p.stock) {
-        Some(s) if p.mode == "b" => params_for_stock(s, base, exposure, p.black, p.gamma),
-        _ => InversionParams {
-            base,
-            exposure,
-            black: p.black,
-            gamma: p.gamma,
-            ..Default::default()
-        },
+    // One engine: Kodak Cineon (negadoctor). The exposure slider drives print
+    // exposure; d_max/paper_* come from InversionParams::Default; WB is set by the
+    // caller (resolve_params / resolve_to_uniforms). `stock`/`mode`/`black`/`gamma`
+    // are vestigial — kept in the wire contract for back-compat, no longer read.
+    InversionParams {
+        base,
+        print_exposure: 2f32.powf(p.exposure), // EV stops → linear print exposure
+        ..Default::default()
     }
 }
 
@@ -1346,6 +1335,25 @@ mod tests {
             [0.1, 0.2, 0.3],
             "Some -> override"
         );
+    }
+
+    #[test]
+    fn build_params_is_always_cineon_regardless_of_mode_or_stock() {
+        use crate::commands_test_support::sample_invert_params;
+        // Even with the legacy Mode-B + Portra selection, we now build Cineon params:
+        // identity matrices, d_max at the default, exposure → print_exposure (2^ev).
+        let mut p = sample_invert_params();
+        p.mode = "b".into();
+        p.stock = "portra400".into();
+        p.exposure = 1.0; // 1 EV → 2.0x print exposure
+        let ip = build_params(&p, [0.8, 0.6, 0.4]);
+        assert_eq!(ip.base, [0.8, 0.6, 0.4]);
+        assert!((ip.print_exposure - 2.0).abs() < 1e-5, "exposure → print_exposure");
+        assert!((ip.d_max - 2.0).abs() < 1e-6, "d_max default");
+        assert!((ip.paper_grade - 0.5).abs() < 1e-6, "paper_grade default");
+        // Identity m_post == no per-stock cross-channel matrix (nalgebra isn't a
+        // direct dep of this crate, so compare against the engine default's identity).
+        assert_eq!(ip.m_post, InversionParams::default().m_post, "no stock matrix");
     }
 
     #[test]
