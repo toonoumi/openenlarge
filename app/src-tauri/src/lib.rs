@@ -1,4 +1,5 @@
 mod ai_enhance;
+mod autodust;
 mod cache;
 mod color_match;
 mod catalog;
@@ -89,6 +90,7 @@ pub fn run() {
             commands::upscaler_status,
             commands::download_upscaler,
             commands::upscale_image,
+            commands::upscale_enhanced,
             commands::save_upscaled,
             commands::color_match_params,
             commands::reference_thumb,

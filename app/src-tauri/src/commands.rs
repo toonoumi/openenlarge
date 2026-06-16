@@ -1973,6 +1973,20 @@ pub async fn download_upscaler(app: tauri::AppHandle) -> Result<(), String> {
     crate::upscale::assets::download(&app, &app_data).await
 }
 
+/// Decode encoded image bytes (PNG/JPEG/etc.) into a film_core::Image with RGB
+/// values in [0,1]. Used to upscale an externally-produced image (e.g. the
+/// AI-enhanced PNG) that isn't one of our developed source files.
+fn image_from_encoded(bytes: &[u8]) -> Result<film_core::Image, String> {
+    let dynimg = image::load_from_memory(bytes).map_err(|e| format!("decode image: {e}"))?;
+    let rgb = dynimg.to_rgb8();
+    let (w, h) = (rgb.width() as usize, rgb.height() as usize);
+    let pixels = rgb
+        .pixels()
+        .map(|p| [p[0] as f32 / 255.0, p[1] as f32 / 255.0, p[2] as f32 / 255.0])
+        .collect();
+    Ok(film_core::Image { width: w, height: h, pixels, ir: None })
+}
+
 /// Upscale the current developed image; stash full-res, return a preview.
 /// Emits `upscale://progress` ({ done, total }) per tile.
 #[allow(clippy::too_many_arguments)]
@@ -1986,6 +2000,7 @@ pub fn upscale_image(
     flip_h: bool,
     flip_v: bool,
     angle: f32,
+    target_long: u32,
     dust: Vec<DustStroke>,
     ir_removal: IrRemoval,
     session: State<Session>,
@@ -1995,7 +2010,7 @@ pub fn upscale_image(
     let (fin, metadata) = finish_full_res(
         &id, &params, image_crop, rot90, flip_h, flip_v, angle, &dust, &ir_removal, &session,
     )?;
-    let up = crate::upscale::run(&app_data, &fin, |done, total| {
+    let up = crate::upscale::run(&app_data, &fin, target_long, |done, total| {
         let _ = app.emit("upscale://progress", serde_json::json!({ "done": done, "total": total }));
     })?;
     let (out_w, out_h) = (up.width as u32, up.height as u32);
@@ -2006,6 +2021,38 @@ pub fn upscale_image(
     let preview_data_url = format!("data:image/jpeg;base64,{b64}");
     *session.pending_upscale.lock().unwrap() =
         Some(crate::session::PendingUpscale { image: up, metadata });
+    Ok(crate::upscale::UpscaleResult { preview_data_url, out_w, out_h })
+}
+
+/// Upscale an externally-produced image (base64-encoded PNG/JPEG, e.g. the AI
+/// Enhance result) to `target_long` on the longest side. Stashes the full-res
+/// result for `save_upscaled`; returns a preview. Emits `upscale://progress`.
+#[tauri::command]
+pub fn upscale_enhanced(
+    app: tauri::AppHandle,
+    image_base64: String,
+    target_long: u32,
+    session: State<Session>,
+) -> Result<crate::upscale::UpscaleResult, String> {
+    use base64::Engine;
+    use tauri::{Emitter, Manager};
+    let app_data = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(image_base64.trim())
+        .map_err(|e| format!("decode base64: {e}"))?;
+    let img = image_from_encoded(&bytes)?;
+    let up = crate::upscale::run(&app_data, &img, target_long, |done, total| {
+        let _ = app.emit("upscale://progress", serde_json::json!({ "done": done, "total": total }));
+    })?;
+    let (out_w, out_h) = (up.width as u32, up.height as u32);
+    let preview = crate::convert::proxy(&up, 1600);
+    let jpeg = crate::encode::encode_jpeg_bytes(&preview, 85)?;
+    let b64 = base64::engine::general_purpose::STANDARD.encode(&jpeg);
+    let preview_data_url = format!("data:image/jpeg;base64,{b64}");
+    *session.pending_upscale.lock().unwrap() = Some(crate::session::PendingUpscale {
+        image: up,
+        metadata: crate::metadata::Metadata::default(),
+    });
     Ok(crate::upscale::UpscaleResult { preview_data_url, out_w, out_h })
 }
 
