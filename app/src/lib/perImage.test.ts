@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { get, writable, type Writable } from "svelte/store";
 import { entryFor, createPerImageParams } from "./perImage";
+import { defaultParams } from "./api";
 import type { InvertParams } from "./api";
 
 // Minimal stand-in default; the real defaultParams is injected in app code.
@@ -61,5 +62,11 @@ describe("createPerImageParams", () => {
     const after = get(editsById)["A"];
     expect(after).not.toBe(before); // reference changed → wireRecord persists it
     expect(after.exposure).toBe(42);
+  });
+});
+
+describe("defaultParams", () => {
+  it("defaults positive to false (negative)", () => {
+    expect(defaultParams().positive).toBe(false);
   });
 });

@@ -39,7 +39,7 @@ describe("applySnapshot", () => {
       images: [{
         id: "a", path: "/x/a.dng", file_name: "a.dng", thumbnail: "t",
         metadata: { width: 100, height: 100, file_size: 0 }, offline: false,
-        developed: true, has_ir: false,
+        developed: true, has_ir: false, positive: false,
       }],
       edits: [{
         image_id: "a",

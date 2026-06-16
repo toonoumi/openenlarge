@@ -19,6 +19,7 @@ export type MetaField = (typeof META_FIELDS)[number];
 export interface ImageEntry {
   id: string; path: string; file_name: string; thumbnail: string;
   metadata: Metadata; developed: boolean; has_ir: boolean; offline: boolean;
+  positive: boolean;
 }
 export type Quality = "performance" | "quality";
 /** A tone-curve control point in [0,1]×[0,1] (input → output). */
@@ -81,6 +82,8 @@ export interface InvertParams {
   cm_magenta_hue: number; cm_magenta_sat: number; cm_magenta_lum: number;
   // --- Point Color: up to 8 sampled swatches ---
   pc_samples: PointColorSample[];
+  /** Positive passthrough: render the scan without inversion (slide/print). */
+  positive: boolean;
 }
 /** Scoped develop params returned by the local color-match (subset of InvertParams). */
 export type MatchedParams = Pick<InvertParams,
@@ -129,6 +132,7 @@ export interface ExportFormat {
 export interface CatalogImage {
   id: string; path: string; file_name: string; thumbnail: string;
   metadata: Metadata; offline: boolean; developed: boolean; has_ir: boolean;
+  positive: boolean;
 }
 /** One image's stored edits as returned by load_catalog (JSON already parsed). */
 export interface CatalogEdits {
@@ -325,4 +329,5 @@ export const defaultParams = (): InvertParams => ({
   cm_purple_hue: 0, cm_purple_sat: 0, cm_purple_lum: 0,
   cm_magenta_hue: 0, cm_magenta_sat: 0, cm_magenta_lum: 0,
   pc_samples: [],
+  positive: false,
 });
