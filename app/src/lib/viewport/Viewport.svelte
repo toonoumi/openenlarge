@@ -158,6 +158,59 @@
   function schedule() { if (timer) clearTimeout(timer); timer = setTimeout(render, 80); }
   function scheduleIfReady() { if (id && vpW && imgW) { clampCenter(); schedule(); } }
 
+  // ---- HDR gain-map overlay (settle mode) ----------------------------------
+  // When params.hdr is on we render a gain-map JPEG via api.encodeHdr and crossfade
+  // it in over the live SDR canvas once an edit settles. During an active gesture
+  // (any params/geometry change) the overlay fades out so the live SDR is visible.
+  let hdrSrc = "";
+  let hdrShown = false;
+  let hdrTimer: ReturnType<typeof setTimeout> | null = null;
+  let hdrPrevId: string | null = null;
+
+  // Build the SAME ViewSpec the live render uses for the current frame (geometry,
+  // persistent crop, dust/IR). HDR is a settled full-frame preview, so we render at
+  // the fit-scaled image dims (capped) like render() does — no zoom/pan view crop.
+  function hdrViewSpec(): import("../api").ViewSpec {
+    const rscale = Math.min(eff, CAP / Math.max(imgW, imgH));
+    const out_w = Math.max(1, Math.round(imgW * rscale));
+    const out_h = Math.max(1, Math.round(imgH * rscale));
+    return {
+      crop: [0, 0, imgW, imgH], out_w, out_h, raw, finish: true,
+      image_crop: imageCrop, rot90, flip_h: flipH, flip_v: flipV, angle, dust, ir_removal: irRemoval,
+    };
+  }
+
+  async function encodeHdr() {
+    if (!params.hdr || !id || !imgW || !vpW) return;
+    const curId = id;
+    try {
+      const data = await api.encodeHdr(id, params, hdrViewSpec());
+      if (id !== curId || !params.hdr) return; // image switched or toggled off mid-encode
+      hdrSrc = data;
+      hdrShown = true;
+    } catch (e) {
+      // "not developed" etc. are expected; swallow like seed()/reanalyze().
+      if (!(typeof e === "string" && e === "not developed")) console.error("encodeHdr failed", e);
+    }
+  }
+
+  // Any edit (params/geometry change) hides the overlay immediately (live SDR shows
+  // through), then debounces an encode that fades HDR back in once things settle.
+  function scheduleHdr() {
+    hdrShown = false; // live SDR while dragging
+    if (hdrTimer) clearTimeout(hdrTimer);
+    if (!params.hdr || !id) return;
+    hdrTimer = setTimeout(encodeHdr, 200);
+  }
+
+  // Clear the overlay on image switch so a stale HDR frame never shows for the wrong photo.
+  $: if (id !== hdrPrevId) { hdrPrevId = id; hdrSrc = ""; hdrShown = false; if (hdrTimer) clearTimeout(hdrTimer); }
+
+  // Re-run on any input that changes the rendered frame, plus the HDR toggle itself.
+  $: hdrKey = `${id}|${params.hdr}|${developRev}|${invKey}|${finishKey}|${geomKey}|${dustRev}|${irRemoval.enabled}|${irRemoval.sensitivity}|${vpW > 0}`;
+  $: if (params.hdr) { hdrKey; if (id && vpW && imgW) scheduleHdr(); }
+  $: if (!params.hdr) { hdrShown = false; if (hdrTimer) clearTimeout(hdrTimer); }
+
   // GPU path: WebGL2 available + non-raw. Dust/IR now stay on the GPU via a baked
   // (geometry + pre-invert heal) working texture; only raw/no-WebGL2 fall to CPU.
   $: gpuEligible = !!(useGL && renderer && !raw);
@@ -419,6 +472,12 @@
       style="position:absolute; width:{dispW}px; height:{dispH}px; left:{left}px; top:{top}px;"
     />
   {:else}<div class="hint">…</div>{/if}
+  {#if params.hdr && hdrSrc}
+    <img
+      class="hdr-overlay" src={hdrSrc} alt="" draggable="false" aria-hidden="true"
+      style="position:absolute; width:{dispW}px; height:{dispH}px; left:{left}px; top:{top}px; opacity:{hdrShown ? 1 : 0};"
+    />
+  {/if}
   {#if eraser && hovering}
     <div class="brush" style="left:{curX}px; top:{curY}px; width:{cursorR * 2}px; height:{cursorR * 2}px;"></div>
   {/if}
@@ -436,6 +495,9 @@
     top 180ms cubic-bezier(0.22, 0.61, 0.36, 1),
     width 180ms cubic-bezier(0.22, 0.61, 0.36, 1),
     height 180ms cubic-bezier(0.22, 0.61, 0.36, 1); }
+  .hdr-overlay { object-fit: contain; pointer-events: none; z-index: 1;
+    /* Lift the HDR headroom clamp so the gain-map JPEG can exceed SDR white. */
+    dynamic-range-limit: no-limit; transition: opacity 150ms; }
   .hint { color: var(--text-dim); position: absolute; inset: 0; display: grid; place-items: center; }
   .zoom { position: absolute; bottom: 8px; right: 10px; font-size: 11px; color: var(--text-dim);
     background: rgba(0,0,0,0.45); padding: 2px 8px; border-radius: 6px; z-index: 2; }
