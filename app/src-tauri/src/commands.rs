@@ -224,8 +224,13 @@ pub(crate) fn auto_base(working: &film_core::Image) -> ([f32; 3], f32) {
     }
     let (lo, hi) = BASE_BAND_AUTO;
     let fb = sample_base_coherent(working, None, lo, hi);
-    if fb[2] >= fb[0] && det.base[0] > det.base[2] {
-        return (det.base, det.confidence); // anti-blue: orange edge beats blue fallback
+    // Anti-blue: orange edge beats a non-orange (blue) fallback — but only if the
+    // edge has real brightness. A near-black noise patch can satisfy R>B ordering
+    // yet make a useless dmin; the luma floor rejects it (a dim real rebate is
+    // ~0.12–0.24 luma, well above 0.06), leaving the fallback for true rebate-less frames.
+    let det_luma = (det.base[0] + det.base[1] + det.base[2]) / 3.0;
+    if fb[2] >= fb[0] && det.base[0] > det.base[2] && det_luma > 0.06 {
+        return (det.base, det.confidence);
     }
     (fb, det.confidence)
 }
@@ -1453,6 +1458,25 @@ mod tests {
         let (base, conf) = auto_base(&img);
         assert!(conf < film_core::calibrate::REBATE_CONFIDENCE, "should be low-confidence: {conf}");
         assert!(base[0] > base[2], "anti-blue: must pick the orange edge, got {base:?}");
+    }
+
+    #[test]
+    fn auto_base_anti_blue_ignores_near_black_orange_edge() {
+        use film_core::Image;
+        // No real rebate: a near-black (noise-level) orange-ordered edge over a bright
+        // blue scene. The brightness floor must reject the near-black patch so we fall
+        // back rather than invert against a garbage ~0.02 dmin.
+        let (w, h) = (200usize, 150usize);
+        let mut img = Image::new(w, h);
+        let (bw, bh) = (20usize, 15usize);
+        for y in 0..h {
+            for x in 0..w {
+                let edge = x < bw || x >= w - bw || y < bh || y >= h - bh;
+                img.pixels[y * w + x] = if edge { [0.03, 0.02, 0.015] } else { [0.30, 0.22, 0.62] };
+            }
+        }
+        let (base, _conf) = auto_base(&img);
+        assert!(base[2] > base[0], "near-black edge must not be used as base: {base:?}");
     }
 
     #[test]
