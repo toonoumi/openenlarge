@@ -31,6 +31,41 @@ pub fn target_dims(in_w: u32, in_h: u32) -> Option<(u32, u32, u32, u32)> {
     Some((feed_w, feed_h, out_w, out_h))
 }
 
+use film_core::Image;
+
+/// Default tiling: 256 px tiles with 16 px overlap (bounded memory, seamless).
+pub const TILE: usize = 256;
+pub const TILE_PAD: usize = 16;
+
+/// Result returned to the panel after an upscale (preview only; full-res is stashed).
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpscaleResult {
+    pub preview_data_url: String,
+    pub out_w: u32,
+    pub out_h: u32,
+}
+
+/// Downscale `fin` to the model feed size, run tiled 4x, and resize to the exact
+/// 8K-capped target. Returns the full-res upscaled image. `on_tile(done,total)`
+/// reports inference progress.
+pub fn run(
+    app_data: &std::path::Path,
+    fin: &Image,
+    on_tile: impl FnMut(usize, usize),
+) -> Result<Image, String> {
+    let (fw, fh, ow, oh) = target_dims(fin.width as u32, fin.height as u32)
+        .ok_or("image is already at or above 8K on its longest side")?;
+    let feed = crate::convert::resize_to(fin, fw, fh);
+    let up = engine::upscale_4x(app_data, &feed, TILE, TILE_PAD, on_tile)?;
+    let up = if up.width as u32 == ow && up.height as u32 == oh {
+        up
+    } else {
+        crate::convert::resize_to(&up, ow, oh)
+    };
+    Ok(up)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

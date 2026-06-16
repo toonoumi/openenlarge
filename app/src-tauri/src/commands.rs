@@ -1949,3 +1949,85 @@ pub fn color_match_params(
         &params, &dev.thumb, dev.base, dev.d_max, &ref_path, strength,
     )
 }
+
+/// Whether the upscaler runtime+model are installed, and the download size.
+#[tauri::command]
+pub fn upscaler_status(app: tauri::AppHandle) -> Result<crate::upscale::assets::Status, String> {
+    use tauri::Manager;
+    let app_data = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    Ok(crate::upscale::assets::status(&app_data))
+}
+
+/// Download + verify the upscaler assets, emitting `upscale://download-progress`.
+#[tauri::command]
+pub async fn download_upscaler(app: tauri::AppHandle) -> Result<(), String> {
+    use tauri::Manager;
+    let app_data = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    crate::upscale::assets::download(&app, &app_data).await
+}
+
+/// Upscale the current developed image; stash full-res, return a preview.
+/// Emits `upscale://progress` ({ done, total }) per tile.
+#[allow(clippy::too_many_arguments)]
+#[tauri::command]
+pub fn upscale_image(
+    app: tauri::AppHandle,
+    id: String,
+    params: InvertParams,
+    image_crop: Option<[f64; 4]>,
+    rot90: u8,
+    flip_h: bool,
+    flip_v: bool,
+    angle: f32,
+    dust: Vec<DustStroke>,
+    ir_removal: IrRemoval,
+    session: State<Session>,
+) -> Result<crate::upscale::UpscaleResult, String> {
+    use tauri::{Emitter, Manager};
+    let app_data = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let (fin, metadata) = finish_full_res(
+        &id, &params, image_crop, rot90, flip_h, flip_v, angle, &dust, &ir_removal, &session,
+    )?;
+    let up = crate::upscale::run(&app_data, &fin, |done, total| {
+        let _ = app.emit("upscale://progress", serde_json::json!({ "done": done, "total": total }));
+    })?;
+    let (out_w, out_h) = (up.width as u32, up.height as u32);
+    let preview = crate::convert::proxy(&up, 1600);
+    let jpeg = crate::encode::encode_jpeg_bytes(&preview, 85)?;
+    use base64::Engine;
+    let b64 = base64::engine::general_purpose::STANDARD.encode(&jpeg);
+    let preview_data_url = format!("data:image/jpeg;base64,{b64}");
+    *session.pending_upscale.lock().unwrap() =
+        Some(crate::session::PendingUpscale { image: up, metadata });
+    Ok(crate::upscale::UpscaleResult { preview_data_url, out_w, out_h })
+}
+
+/// Save the stashed upscaled image to `out_path` in the chosen format, with EXIF.
+#[tauri::command]
+pub fn save_upscaled(
+    out_path: String,
+    format: ExportFormat,
+    meta_override: Option<MetaOverride>,
+    session: State<Session>,
+) -> Result<(), String> {
+    let guard = session.pending_upscale.lock().unwrap();
+    let pending = guard.as_ref().ok_or("no upscaled image to save")?;
+    let out = Path::new(&out_path);
+    match format.kind.as_str() {
+        "tiff" => {
+            if format.bit_depth == 16 {
+                film_core::export::write_tiff16(&pending.image, out).map_err(|e| format!("{e}"))
+            } else {
+                write_tiff8(&pending.image, out)
+            }
+        }
+        "png" => write_png(&pending.image, out, format.bit_depth),
+        "jpeg" => write_jpeg(&pending.image, out, format.quality, format.max_bytes),
+        other => Err(format!("unknown export format: {other}")),
+    }?;
+    let eff = effective_metadata(&pending.metadata, meta_override.as_ref());
+    if let Err(e) = crate::exif_write::write_exif(out, &eff) {
+        eprintln!("[exif] embed failed for {out_path}: {e}");
+    }
+    Ok(())
+}
