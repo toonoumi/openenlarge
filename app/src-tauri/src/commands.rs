@@ -2082,7 +2082,7 @@ fn image_from_encoded(bytes: &[u8]) -> Result<film_core::Image, String> {
 /// Emits `upscale://progress` ({ done, total }) per tile.
 #[allow(clippy::too_many_arguments)]
 #[tauri::command]
-pub fn upscale_image(
+pub async fn upscale_image(
     app: tauri::AppHandle,
     id: String,
     params: InvertParams,
@@ -2094,7 +2094,7 @@ pub fn upscale_image(
     target_long: u32,
     dust: Vec<DustStroke>,
     ir_removal: IrRemoval,
-    session: State<Session>,
+    session: State<'_, Session>,
 ) -> Result<crate::upscale::UpscaleResult, String> {
     use tauri::{Emitter, Manager};
     let app_data = app.path().app_data_dir().map_err(|e| e.to_string())?;
@@ -2119,11 +2119,11 @@ pub fn upscale_image(
 /// Enhance result) to `target_long` on the longest side. Stashes the full-res
 /// result for `save_upscaled`; returns a preview. Emits `upscale://progress`.
 #[tauri::command]
-pub fn upscale_enhanced(
+pub async fn upscale_enhanced(
     app: tauri::AppHandle,
     image_base64: String,
     target_long: u32,
-    session: State<Session>,
+    session: State<'_, Session>,
 ) -> Result<crate::upscale::UpscaleResult, String> {
     use base64::Engine;
     use tauri::{Emitter, Manager};
@@ -2149,11 +2149,11 @@ pub fn upscale_enhanced(
 
 /// Save the stashed upscaled image to `out_path` in the chosen format, with EXIF.
 #[tauri::command]
-pub fn save_upscaled(
+pub async fn save_upscaled(
     out_path: String,
     format: ExportFormat,
     meta_override: Option<MetaOverride>,
-    session: State<Session>,
+    session: State<'_, Session>,
 ) -> Result<(), String> {
     let guard = session.pending_upscale.lock().unwrap();
     let pending = guard.as_ref().ok_or("no upscaled image to save")?;
