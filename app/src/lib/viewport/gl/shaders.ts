@@ -201,6 +201,7 @@ uniform float u_exposure, u_black, u_gamma;
 uniform float u_d_max, u_print_exposure, u_paper_black, u_paper_grade, u_soft_clip;
 uniform int u_mode;           // 0=B 1=C 2=Naive 3=D
 uniform bool u_raw;           // true → output the scan (display gamma), no inversion
+uniform bool u_positive;      // true → positive passthrough (no inversion), WB+exposure only
 // Geometry: output→source UV mapping. The output is the crop sub-rect of the
 // (straightened) oriented image, so we invert the backend's source→output order
 // (orient → straighten → crop) by going crop → un-straighten → un-orient.
@@ -283,5 +284,10 @@ void main() {
   }
   vec3 rgb = texture(u_src, suv).rgb;
   if (u_raw) { o = vec4(pow(clamp(rgb, 0.0, 1.0), vec3(1.0/2.2)), 1.0); return; }
+  if (u_positive) {
+    // Positive passthrough: display-encode the linear scan with WB + exposure
+    // gain. Mirrors engine.rs develop_positive_px (pow(rgb*pe*wb, 1/2.2)).
+    o = vec4(pow(max(rgb * u_print_exposure * u_wb, 0.0), vec3(1.0/2.2)), 1.0); return;
+  }
   o = vec4(invert(rgb), 1.0);
 }`;
