@@ -45,7 +45,7 @@ describe("applySnapshot", () => {
         image_id: "a",
         params: { ...defaultParams(), exposure: 1.5 },
         crop: null,
-        dust: { strokes: [], irRemoval: { enabled: false, sensitivity: 50 }, autoDust: { enabled: false, sensitivity: 50 } },
+        dust: { strokes: [], irRemoval: { enabled: false, sensitivity: 50 }, autoDust: { enabled: false, sensitivity: 50 }, brushMigan: false },
         meta: { camera: "Leica M6", note: "roll 12" },
       }],
       prefs: { quality: "quality" },

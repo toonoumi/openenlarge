@@ -6,13 +6,15 @@ export interface DustStroke { points: DustPoint[]; r: number }
 export interface IrRemoval { enabled: boolean; sensitivity: number }
 /** AI (learned-model) auto dust/hair removal settings. */
 export interface AutoDust { enabled: boolean; sensitivity: number }
-/** Per-image dust edit state. */
-export interface DustEdits { strokes: DustStroke[]; irRemoval: IrRemoval; autoDust: AutoDust }
+/** Per-image dust edit state. `brushMigan` heals manual strokes with MI-GAN
+ * (applied on export; the live preview uses the fast classic fill). */
+export interface DustEdits { strokes: DustStroke[]; irRemoval: IrRemoval; autoDust: AutoDust; brushMigan: boolean }
 
 export const emptyDust = (): DustEdits => ({
   strokes: [],
   irRemoval: { enabled: false, sensitivity: 50 },
   autoDust: { enabled: false, sensitivity: 50 },
+  brushMigan: false,
 });
 
 export function addStroke(d: DustEdits, s: DustStroke): DustEdits {
@@ -35,6 +37,9 @@ export function setAutoDustEnabled(d: DustEdits, enabled: boolean): DustEdits {
 }
 export function setAutoDustSensitivity(d: DustEdits, sensitivity: number): DustEdits {
   return { ...d, autoDust: { ...d.autoDust, sensitivity } };
+}
+export function setBrushMigan(d: DustEdits, brushMigan: boolean): DustEdits {
+  return { ...d, brushMigan };
 }
 
 /** Normalized-to-width radius → on-screen pixels at the current zoom `eff`. */

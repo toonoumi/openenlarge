@@ -87,7 +87,10 @@
 </script>
 
 <div class="section">
-  <div class="head"><span>{$t("eraser.autoTitle")}</span><span class="exp">{$t("eraser.autoLocal")}</span></div>
+  <div class="head">
+    <span>{$t("eraser.autoTitle")}</span>
+    <button type="button" class="help" aria-label={$t("eraser.autoHint")}>?<span class="tip">{$t("eraser.autoHint")}</span></button>
+  </div>
 
   {#if checking}
     <div class="hint">{$t("eraser.autoChecking")}</div>
@@ -99,7 +102,10 @@
       <button class="go" on:click={download}>{$t("eraser.autoDownload")}</button>
     {/if}
   {:else}
-    <div class="sub">{$t("eraser.sensitivity")}</div>
+    <div class="sub">
+      <span>{$t("eraser.sensitivity")}</span>
+      <button type="button" class="help" aria-label={$t("eraser.autoSensitivityHelp")}>?<span class="tip">{$t("eraser.autoSensitivityHelp")}</span></button>
+    </div>
     <div class="slrow">
       <input type="range" min="0" max="100" step="1" value={sensitivity} disabled={busy}
              on:change={(e) => onSensitivity(+(e.target as HTMLInputElement).value)} />
@@ -121,14 +127,24 @@
   {/if}
 
   {#if error}<div class="err">{error}</div>{/if}
-  <div class="hint">{$t("eraser.autoHint")}</div>
 </div>
 
 <style>
   .section { margin-bottom: 12px; }
-  .head { display: flex; align-items: center; gap: 8px; color: var(--text); font-weight: 600; padding: 4px 0; }
-  .exp { font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em;
-    border: 1px solid rgba(244,157,78,0.5); color: var(--accent); border-radius: 4px; padding: 0 5px; }
+  .head { position: relative; display: flex; align-items: center; gap: 8px; color: var(--text); font-weight: 600; padding: 4px 0; }
+  /* "?" help chip with a hover/focus tooltip (replaces inline hint text). */
+  .help { display: inline-flex; align-items: center; justify-content: center;
+    width: 15px; height: 15px; padding: 0; border-radius: 50%;
+    border: 1px solid var(--glass-brd); background: transparent;
+    color: var(--text-dim); font-size: 10px; font-weight: 600; line-height: 1;
+    cursor: help; user-select: none; }
+  .help:hover, .help:focus-visible { color: var(--text); border-color: var(--accent); outline: none; }
+  .tip { position: absolute; left: 0; top: calc(100% + 4px); width: 100%; z-index: 30;
+    padding: 8px 10px; border-radius: 8px; background: var(--bg-1);
+    border: 1px solid var(--glass-brd); box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    color: var(--text-dim); font-size: 11px; font-weight: 400; line-height: 1.5;
+    opacity: 0; visibility: hidden; transition: opacity 0.14s ease; pointer-events: none; }
+  .help:hover .tip, .help:focus-visible .tip { opacity: 1; visibility: visible; }
   .go { width: 100%; padding: 9px 10px; margin: 6px 0; border-radius: 8px;
     display: flex; align-items: center; justify-content: center; gap: 8px;
     border: 1px solid rgba(244,157,78,0.5); background: rgba(244,157,78,0.18); color: #fff; cursor: pointer; font-size: 13px; }
@@ -139,7 +155,8 @@
   @keyframes spin { to { transform: rotate(360deg); } }
   .bar { width: 100%; height: 6px; border-radius: 3px; background: var(--glass-hi); overflow: hidden; margin: 6px 0; }
   .bar span { display: block; height: 100%; background: var(--accent); transition: width 0.2s ease; }
-  .sub { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;
+  .sub { position: relative; display: flex; align-items: center; gap: 6px;
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;
     color: var(--text-dim); margin: 12px 0 4px; }
   .slrow { display: flex; align-items: center; gap: 8px; }
   .slrow input[type="range"] { flex: 1; accent-color: var(--accent); }

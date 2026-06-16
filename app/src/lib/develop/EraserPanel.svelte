@@ -8,9 +8,11 @@
   export let hasIr = false;
   export let irEnabled = false;
   export let irSensitivity = 50;
+  /** Heal manual strokes with MI-GAN (applied on export; live uses classic fill). */
+  export let brushMigan = false;
 
   const dispatch = createEventDispatcher<{
-    reset: void; irEnabled: boolean; irSensitivity: number;
+    reset: void; irEnabled: boolean; irSensitivity: number; brushMigan: boolean;
   }>();
 </script>
 
@@ -43,6 +45,12 @@
     <input type="range" min="0.005" max="0.2" step="0.001" bind:value={brush} />
     <span class="val">{(brush * 100).toFixed(1)}%</span>
   </div>
+
+  <button class="ir on" class:active={brushMigan} aria-pressed={brushMigan}
+          title={$t('eraser.brushAiHelp')}
+          on:click={() => dispatch("brushMigan", !brushMigan)}>
+    {$t('eraser.brushAi')} <span class="state">{brushMigan ? $t('eraser.on') : $t('eraser.off')}</span>
+  </button>
 
   <button class="row" on:click={() => dispatch("reset")}>{$t('eraser.reset')}</button>
   <div class="hint">{$t('eraser.hint')}</div>

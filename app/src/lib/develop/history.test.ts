@@ -8,7 +8,7 @@ import {
 const snap = (exposure: number): EditSnapshot => ({
   params: { exposure } as unknown as EditSnapshot["params"],
   crop: null,
-  dust: { strokes: [], irRemoval: { enabled: false, sensitivity: 50 }, autoDust: { enabled: false, sensitivity: 50 } },
+  dust: { strokes: [], irRemoval: { enabled: false, sensitivity: 50 }, autoDust: { enabled: false, sensitivity: 50 }, brushMigan: false },
   meta: {},
 });
 
