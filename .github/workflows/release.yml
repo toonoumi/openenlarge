@@ -78,6 +78,14 @@ jobs:
             ARGS="$ARGS --config {\"bundle\":{\"windows\":{\"certificateThumbprint\":\"$WIN_CERT_THUMBPRINT\",\"timestampUrl\":\"http://timestamp.digicert.com\",\"digestAlgorithm\":\"sha256\"}}}"
           fi
           echo "TAURI_ARGS=$ARGS" >> "$GITHUB_ENV"
+          # ultrahdr-sys applies a `no-threads` source patch via `patch`; on the
+          # Windows runner that resolves to Strawberry Perl's patch.exe, which
+          # crashes (assertion in patch 2.5.9). We build the normal *threaded*
+          # libultrahdr, so the patch is irrelevant — skip it to dodge the broken
+          # tool. macOS/Linux have a working `patch` and apply it fine.
+          if [ "${{ matrix.platform }}" = "windows-latest" ]; then
+            echo "ULTRAHDR_SKIP_PATCHES=1" >> "$GITHUB_ENV"
+          fi
 
       - uses: tauri-apps/tauri-action@v0
         env:
