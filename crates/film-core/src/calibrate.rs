@@ -51,22 +51,43 @@ pub const BASE_BAND_REBATE: (f32, f32) = (0.1, 0.9);
 /// film / lightbox. Trims the very top to avoid clipped specular highlights.
 pub const BASE_BAND_AUTO: (f32, f32) = (0.90, 0.99);
 
+/// Long-edge cap for whole-region statistics (base color / density percentile).
+/// Sampling a downscaled proxy is ~constant-time and plenty accurate for a mean
+/// color or a robust percentile; sorting a full-res frame (hundreds of ms at
+/// 11–24 MP) on every develop / image-switch / export was the perf regression.
+const SAMPLE_CAP: usize = 512;
+
+/// Map a source-coord `rect` onto a downscaled image. `None` → the whole small
+/// image. Widths/heights floor at 1px so a tiny crop never yields an empty band.
+fn scaled_rect(rect: Option<Rect>, src: &Image, small: &Image) -> Rect {
+    match rect {
+        None => Rect { x: 0, y: 0, w: small.width, h: small.height },
+        Some(r) => {
+            let sx = small.width as f32 / src.width.max(1) as f32;
+            let sy = small.height as f32 / src.height.max(1) as f32;
+            Rect {
+                x: (r.x as f32 * sx) as usize,
+                y: (r.y as f32 * sy) as usize,
+                w: ((r.w as f32 * sx) as usize).max(1),
+                h: ((r.h as f32 * sy) as usize).max(1),
+            }
+        }
+    }
+}
+
 /// Sample the film base as a single COHERENT color: collect the region's pixels,
 /// sort by luma, keep the [lo, hi] luma-rank band, and average RGB over that one
 /// pixel set. Unlike [`sample_base`] (three independent per-channel percentiles)
 /// the result is a real clear-film color, so it removes the orange mask without
-/// injecting a per-channel cast. Returns `[0,0,0]` for an empty region.
+/// injecting a per-channel cast. Returns `[0,0,0]` for an empty region. Runs on a
+/// downscaled proxy (see [`SAMPLE_CAP`]) so cost is independent of source size.
 pub fn sample_base_coherent(img: &Image, rect: Option<Rect>, lo: f32, hi: f32) -> [f32; 3] {
-    let r = rect.unwrap_or(Rect {
-        x: 0,
-        y: 0,
-        w: img.width,
-        h: img.height,
-    });
+    let small = downscale_for_detect(img, SAMPLE_CAP);
+    let r = scaled_rect(rect, img, &small);
     let mut px: Vec<[f32; 3]> = Vec::new();
-    for yy in r.y..(r.y + r.h).min(img.height) {
-        for xx in r.x..(r.x + r.w).min(img.width) {
-            px.push(img.pixels[yy * img.width + xx]);
+    for yy in r.y..(r.y + r.h).min(small.height) {
+        for xx in r.x..(r.x + r.w).min(small.width) {
+            px.push(small.pixels[yy * small.width + xx]);
         }
     }
     if px.is_empty() {
@@ -185,16 +206,14 @@ pub fn auto_wb_gains_strength(img: &Image, strength: f32) -> [f32; 3] {
 /// within `rect` lets the caller exclude borders (the image-area crop).
 pub fn sample_dmax(img: &Image, base: [f32; 3], rect: Option<Rect>) -> f32 {
     const LOW_PCT: f32 = 0.01; // 1st percentile transmission
-    let r = rect.unwrap_or(Rect {
-        x: 0,
-        y: 0,
-        w: img.width,
-        h: img.height,
-    });
+    // Runs on a downscaled proxy (see SAMPLE_CAP) so cost is independent of source
+    // size — this is on the develop / image-switch / export hot paths.
+    let small = downscale_for_detect(img, SAMPLE_CAP);
+    let r = scaled_rect(rect, img, &small);
     let mut chans: [Vec<f32>; 3] = [Vec::new(), Vec::new(), Vec::new()];
-    for yy in r.y..(r.y + r.h).min(img.height) {
-        for xx in r.x..(r.x + r.w).min(img.width) {
-            let px = img.pixels[yy * img.width + xx];
+    for yy in r.y..(r.y + r.h).min(small.height) {
+        for xx in r.x..(r.x + r.w).min(small.width) {
+            let px = small.pixels[yy * small.width + xx];
             for c in 0..3 {
                 chans[c].push(px[c]);
             }
@@ -359,6 +378,51 @@ mod tests {
         // A pitch-black region (transmission ~0) must not blow up — clamped to 4.0.
         let dark = Image { width: 4, height: 1, pixels: vec![[0.0001, 0.0001, 0.0001]; 4], ir: None };
         assert!((sample_dmax(&dark, [1.0, 1.0, 1.0], None) - 4.0).abs() < 1e-4, "ceil 4.0");
+    }
+
+    #[test]
+    fn sample_dmax_downscale_preserves_range_on_large_image() {
+        // A >SAMPLE_CAP image must still recover the density range via the 512px
+        // proxy (perf fix). Column-wise transmission 1.0 → 0.01 → range ~2.0.
+        let (w, h) = (1024usize, 1024usize);
+        let mut img = Image::new(w, h);
+        for x in 0..w {
+            let t = 10f32.powf(-2.0 * x as f32 / (w - 1) as f32);
+            for y in 0..h {
+                img.pixels[y * w + x] = [t, t, t];
+            }
+        }
+        let d = sample_dmax(&img, [1.0, 1.0, 1.0], None);
+        assert!((d - 2.0).abs() < 0.25, "downscaled d_max ~2.0, got {d}");
+    }
+
+    #[test]
+    fn sample_base_coherent_downscale_keeps_color_and_rect() {
+        // >SAMPLE_CAP image: uniform orange border (outer 10%) over a noisy center;
+        // the AUTO bright band over a rect covering a border edge must still read
+        // the orange via the 512px proxy (rect scaled correctly).
+        let (w, h) = (1024usize, 1024usize);
+        let orange = [0.42, 0.19, 0.10];
+        let mut img = Image::new(w, h);
+        for y in 0..h {
+            for x in 0..w {
+                let edge = y < h / 10;
+                img.pixels[y * w + x] = if edge {
+                    orange
+                } else if (x + y) % 2 == 0 {
+                    [0.30, 0.30, 0.30]
+                } else {
+                    [0.20, 0.20, 0.20]
+                };
+            }
+        }
+        // Sample within the top border strip (full width, top 10%).
+        let rect = Some(Rect { x: 0, y: 0, w, h: h / 10 });
+        let (blo, bhi) = BASE_BAND_REBATE;
+        let b = sample_base_coherent(&img, rect, blo, bhi);
+        for c in 0..3 {
+            assert!((b[c] - orange[c]).abs() < 0.02, "ch {c} = {} (want {})", b[c], orange[c]);
+        }
     }
 
     #[test]
