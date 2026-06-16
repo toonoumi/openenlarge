@@ -58,7 +58,7 @@
   $: dateValue = toLocalInput($activeMeta.date ?? active?.metadata.date);
 </script>
 
-<GlassPanel>
+<GlassPanel shadow={false}>
   {#if active}
     {@const m = active.metadata}
     <header>

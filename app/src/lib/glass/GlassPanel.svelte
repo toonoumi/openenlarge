@@ -1,8 +1,10 @@
 <script lang="ts">
   export let pad = 12;
+  /** When false, drop the shadows and keep only the border (stroke). */
+  export let shadow = true;
 </script>
 
-<div class="glass" style="padding:{pad}px">
+<div class="glass" class:flat={!shadow} style="padding:{pad}px">
   <slot />
 </div>
 
@@ -17,4 +19,5 @@
     overflow: auto;
     height: 100%;
   }
+  .glass.flat { box-shadow: none; }
 </style>

@@ -82,8 +82,7 @@
   .left { grid-area: left; } .right { grid-area: right; }
   .left, .right { min-height: 0; }
   .center { grid-area: center; min-height: 0; background: var(--glass-bg); border: 1px solid var(--glass-brd);
-    border-radius: 14px; box-shadow: inset 0 1px 0 var(--glass-hi), 0 10px 30px rgba(0,0,0,0.32);
-    backdrop-filter: blur(22px); }
+    border-radius: 14px; backdrop-filter: blur(22px); }
   .pad { padding: 14px; height: 100%; }
   .bottom { grid-area: bottom; }
 </style>
