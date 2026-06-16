@@ -80,6 +80,33 @@ pub fn compute_stats(img: &Image) -> ImageStats {
     }
 }
 
+/// Decode a reference image file, downscale to a small working size, and compute
+/// its toning fingerprint. Returns Err with a readable message on decode failure.
+pub fn reference_stats(path: &str) -> Result<ImageStats, String> {
+    let dyn_img = image::open(path).map_err(|e| format!("reference decode: {e}"))?;
+    let small = dyn_img.thumbnail(256, 256).to_rgb8(); // long edge ≤256, keeps aspect
+    let pixels: Vec<[f32; 3]> = small
+        .pixels()
+        .map(|p| [p.0[0] as f32 / 255.0, p.0[1] as f32 / 255.0, p.0[2] as f32 / 255.0])
+        .collect();
+    let img = Image { width: small.width() as usize, height: small.height() as usize, pixels, ir: None };
+    Ok(compute_stats(&img))
+}
+
+/// Weighted squared distance between two fingerprints. Region a*/b* (color cast)
+/// dominate; L and global contrast/chroma are weighted lower so exposure/contrast
+/// don't fight the cast match.
+pub fn loss(cur: &ImageStats, target: &ImageStats) -> f32 {
+    let region = |c: &RegionStats, t: &RegionStats| -> f32 {
+        0.5 * (c.l - t.l).powi(2) + (c.a - t.a).powi(2) + (c.b - t.b).powi(2)
+    };
+    region(&cur.sh, &target.sh)
+        + region(&cur.mid, &target.mid)
+        + region(&cur.hi, &target.hi)
+        + 0.25 * (cur.l_std - target.l_std).powi(2)
+        + 0.25 * (cur.chroma - target.chroma).powi(2)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -101,5 +128,19 @@ mod tests {
         // A warm (orange) pixel should have positive b* (yellow) and positive a* (red).
         let s = compute_stats(&solid([0.8, 0.5, 0.2], 16));
         assert!(s.mid.b > 5.0 || s.hi.b > 5.0, "warm → +b*");
+    }
+
+    #[test]
+    fn loss_is_zero_for_identical_stats() {
+        let s = compute_stats(&solid([0.5, 0.4, 0.3], 32));
+        assert!(loss(&s, &s) < 1e-6, "identical stats → ~0 loss");
+    }
+
+    #[test]
+    fn loss_grows_with_cast_difference() {
+        let warm = compute_stats(&solid([0.8, 0.5, 0.2], 32));
+        let cool = compute_stats(&solid([0.2, 0.5, 0.8], 32));
+        let neutral = compute_stats(&solid([0.5, 0.5, 0.5], 32));
+        assert!(loss(&warm, &cool) > loss(&warm, &neutral), "opposite cast → larger loss");
     }
 }
