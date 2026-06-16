@@ -1,7 +1,8 @@
 import { get } from "svelte/store";
 import { images, activeId, module, developProgress, editsById, cropById, dustById, folderImages } from "./store";
-import { api, type ImageEntry } from "./api";
+import { api, defaultParams, type ImageEntry } from "./api";
 import { dropHistory } from "./develop/historyStore";
+import { track } from "./telemetry";
 
 /** Ids of images not yet developed, in order. Pure helper (testable). */
 export function undevelopedIds(list: ImageEntry[]): string[] {
@@ -85,6 +86,10 @@ export async function developAll(): Promise<void> {
     try {
       const updated = await api.developImage(id);
       images.update((list) => list.map((i) => (i.id === id ? updated : i)));
+      // First-develop seed: adopt the classifier's verdict only when the image has
+      // no stored edits yet, so re-develop / existing manual overrides are untouched.
+      editsById.update((m) =>
+        m[id] ? m : { ...m, [id]: { ...defaultParams(), positive: updated.positive } });
     } catch (e) {
       console.error("develop failed", id, e);
     }
@@ -94,6 +99,7 @@ export async function developAll(): Promise<void> {
     const first = get(folderImages)[0];
     if (first) activeId.set(first.id);
   }
+  track("images_developed", { count: ids.length });
   module.set("develop");
   // Keep the overlay up while the (heavy) Develop view mounts, then fade it out on
   // a free main thread so the dismiss animates instead of snapping.
