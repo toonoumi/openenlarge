@@ -22,6 +22,7 @@
   import CropPanel from "../crop/CropPanel.svelte";
   import BaseView from "../develop/BaseView.svelte";
   import EraserPanel from "../develop/EraserPanel.svelte";
+  import AiEnhancePanel from "../develop/AiEnhancePanel.svelte";
   import { addStroke, resetDust, emptyDust, setIrEnabled, setIrSensitivity, type DustStroke, type DustEdits } from "../develop/dust";
   import type { Rect, CropRect } from "../crop/types";
   import { defaultFull, conform, constrainToRotated } from "../crop/cropMath";
@@ -330,6 +331,8 @@
                          on:reset={resetDustEdits}
                          on:irEnabled={(e) => setIrOn(e.detail)}
                          on:irSensitivity={(e) => setIrSens(e.detail)} />
+          {:else if $tool === "enhance"}
+            <AiEnhancePanel />
           {/if}
         </div>
       {/key}
