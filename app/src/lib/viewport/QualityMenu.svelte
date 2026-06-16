@@ -1,6 +1,8 @@
 <script lang="ts">
   import { createEventDispatcher } from "svelte";
+  import { scale } from "svelte/transition";
   import { get } from "svelte/store";
+  import { anchorMenu } from "../overlay/anchorMenu";
   import { quality, activeId, images, developRev } from "../store";
   import { api, type Quality } from "../api";
   import { t } from "$lib/i18n";
@@ -36,7 +38,8 @@
   }
 </script>
 
-<div class="menu" style="left:{x}px; top:{y}px" on:pointerleave={() => dispatch("close")}>
+<div class="menu" use:anchorMenu={{ x, y }} on:pointerleave={() => dispatch("close")}
+     transition:scale={{ duration: 120, start: 0.94, opacity: 0 }}>
   <div class="head">{$t('quality.menuHeading')}</div>
   <button class:on={$quality === "performance"} on:click={() => pick("performance")}>{$t('quality.performance')}</button>
   <button class:on={$quality === "quality"} on:click={() => pick("quality")}>{$t('quality.quality')}</button>

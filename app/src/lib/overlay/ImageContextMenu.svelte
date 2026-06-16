@@ -1,6 +1,8 @@
 <script lang="ts">
   import { createEventDispatcher } from "svelte";
+  import { scale } from "svelte/transition";
   import { t } from "$lib/i18n";
+  import { anchorMenu } from "./anchorMenu";
   export let x = 0;
   export let y = 0;
   export let count = 1;
@@ -15,7 +17,8 @@
 <div class="backdrop"
      on:pointerdown={() => dispatch("close")}
      on:contextmenu|preventDefault={() => dispatch("close")}></div>
-<div class="menu" style="left:{x}px; top:{y}px" role="menu">
+<div class="menu" use:anchorMenu={{ x, y }} role="menu"
+     transition:scale={{ duration: 120, start: 0.94, opacity: 0 }}>
   {#if showFlip}
     <button on:click={() => dispatch("flipH")}>{$t('contextMenu.flipH')}</button>
     <button on:click={() => dispatch("flipV")}>{$t('contextMenu.flipV')}</button>
