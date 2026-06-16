@@ -5,7 +5,7 @@
   import { api, defaultParams } from "../api";
   import { reseedActive, commitActive } from "./historyStore";
   import { createSeedGuard } from "./seedGuard";
-  import { withEffectiveBase, setFolderBase, clearFolderBase, setFolderDmax } from "./base";
+  import { withEffectiveBase, setFolderBase, clearFolderBase, setFolderDmax, clearFolderDmax } from "./base";
   import { imageDir } from "../library/folderScope";
   import Icon from "../icons/Icon.svelte";
   import Slider from "./Slider.svelte";
@@ -61,6 +61,11 @@
       params.update((p) => ({ ...p, base_override: null }));
       commitActive();
     } else if (dir) clearFolderBase(dir);
+    // Symmetric D_max reset: clear the per-image override, else the folder default.
+    if ($params.d_max_override != null) {
+      params.update((p) => ({ ...p, d_max_override: null }));
+      commitActive();
+    } else if (dir) clearFolderDmax(dir);
   }
 
   // Seed Temp/Tint from the estimated as-shot white point when the image OR the
