@@ -29,6 +29,12 @@
   import { rotateRectCW, rotateRectCCW, flipRectH, flipRectV, flipOrient, orientDims } from "../crop/transforms";
   import { commitActive, reseedActive } from "../develop/historyStore";
   import { rgbToHslSample } from "../develop/colorPick";
+  import { revealItemInDir } from "@tauri-apps/plugin-opener";
+
+  async function revealImage(id: string | null) {
+    const img = $images.find((i) => i.id === id);
+    if (img) { try { await revealItemInDir(img.path); } catch (e) { console.error("reveal failed", e); } }
+  }
 
   $: active = $images.find((i) => i.id === $activeId);
   $: origW = active?.metadata.width ?? 0;
@@ -244,11 +250,12 @@
   // Right-click on a filmstrip thumbnail opens the image Delete menu (acting on the
   // whole selection); right-click anywhere else in Develop opens the quality menu.
   let menu: { x: number; y: number } | null = null;
-  let thumbMenu: { x: number; y: number } | null = null;
+  let thumbMenu: { x: number; y: number; id: string } | null = null;
   function onContext(e: MouseEvent) {
     e.preventDefault();
     const onThumb = (e.target as HTMLElement).closest("[data-id]");
-    if (onThumb) { thumbMenu = { x: e.clientX, y: e.clientY }; menu = null; }
+    const id = onThumb?.getAttribute("data-id");
+    if (onThumb && id) { thumbMenu = { x: e.clientX, y: e.clientY, id }; menu = null; }
     else { menu = { x: e.clientX, y: e.clientY }; thumbMenu = null; }
   }
 
@@ -335,15 +342,17 @@
 
   <footer class="bottom"><Filmstrip /></footer>
 </div>
-{#if menu}<QualityMenu x={menu.x} y={menu.y} showFlip={deleteSelectionIds().length === 1}
+{#if menu}<QualityMenu x={menu.x} y={menu.y} showFlip={deleteSelectionIds().length === 1} showReveal={true}
   on:flipH={() => { flipCommitted("h"); menu = null; }}
   on:flipV={() => { flipCommitted("v"); menu = null; }}
+  on:reveal={() => { revealImage($activeId); menu = null; }}
   on:delete={() => { const ids = deleteSelectionIds(); if (ids.length) deleteTarget.set(ids); menu = null; }}
   on:close={() => (menu = null)} />{/if}
 {#if thumbMenu}<ImageContextMenu x={thumbMenu.x} y={thumbMenu.y} count={deleteSelectionIds().length}
-  showFlip={deleteSelectionIds().length === 1}
+  showFlip={deleteSelectionIds().length === 1} showReveal={true}
   on:flipH={() => { flipCommitted("h"); thumbMenu = null; }}
   on:flipV={() => { flipCommitted("v"); thumbMenu = null; }}
+  on:reveal={() => { if (thumbMenu) revealImage(thumbMenu.id); thumbMenu = null; }}
   on:delete={() => { const ids = deleteSelectionIds(); if (ids.length) deleteTarget.set(ids); thumbMenu = null; }}
   on:close={() => (thumbMenu = null)} />{/if}
 

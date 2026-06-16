@@ -8,6 +8,8 @@
   export let y = 0;
   /** When true, offer Flip horizontal/vertical (single selected image). */
   export let showFlip = false;
+  /** When true, offer "Open in folder" (reveals the active image's file). */
+  export let showReveal = false;
   const dispatch = createEventDispatcher();
 
   async function pick(q: Quality) {
@@ -42,6 +44,10 @@
   {#if showFlip}
     <button on:click={() => dispatch("flipH")}>{$t('contextMenu.flipH')}</button>
     <button on:click={() => dispatch("flipV")}>{$t('contextMenu.flipV')}</button>
+    <div class="divider"></div>
+  {/if}
+  {#if showReveal}
+    <button on:click={() => dispatch("reveal")}>{$t('contextMenu.reveal')}</button>
     <div class="divider"></div>
   {/if}
   <button on:click={() => dispatch("delete")}>{$t('quality.deleteImage')}</button>
