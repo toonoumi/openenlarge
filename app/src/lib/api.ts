@@ -212,6 +212,24 @@ export const api = {
     invoke<void>("save_pref", { key, value }),
   aiEnhanceImage: (imageBase64: string, apiKey: string) =>
     invoke<string>("ai_enhance_image", { imageBase64, apiKey }),
+  upscalerStatus: () =>
+    invoke<{ installed: boolean; downloadBytes: number }>("upscaler_status"),
+  downloadUpscaler: () => invoke<void>("download_upscaler"),
+  upscaleImage: (
+    id: string, params: InvertParams,
+    imageCrop: [number, number, number, number] | null = null,
+    geom: { rot90?: number; flip_h?: boolean; flip_v?: boolean; angle?: number } = {},
+    dust: DustStroke[] = [],
+    irRemoval: IrRemoval = { enabled: false, sensitivity: 50 },
+  ) =>
+    invoke<{ previewDataUrl: string; outW: number; outH: number }>("upscale_image", {
+      id, params, imageCrop,
+      rot90: geom.rot90 ?? 0, flipH: geom.flip_h ?? false,
+      flipV: geom.flip_v ?? false, angle: geom.angle ?? 0,
+      dust: wireDust(dust), irRemoval,
+    }),
+  saveUpscaled: (outPath: string, format: ExportFormat, metaOverride: MetaOverride | null = null) =>
+    invoke<void>("save_upscaled", { outPath, format, metaOverride }),
   colorMatchParams: (id: string, params: InvertParams, refPath: string, strength: number) =>
     invoke<MatchedParams>("color_match_params", { id, params, refPath, strength }),
   saveAppState: (key: string, value: string) =>

@@ -121,11 +121,14 @@ export function selectFolder(path: string | null): void {
 /** Data-URL of the latest rendered develop preview; drives the histogram. */
 export const previewSrc = writable<string>("");
 
-export type Tool = "edit" | "crop" | "eraser" | "enhance";
+export type Tool = "edit" | "crop" | "eraser" | "enhance" | "upscale";
 export const tool = writable<Tool>("edit");
 
 /** OpenAI API key for the AI Enhance tool. Persisted via prefs as `openai_api_key`. */
 export const openaiApiKey = writable<string>("");
+
+/** Whether the local upscaler runtime+model are installed (re-checked on tool open). */
+export const upscalerInstalled = writable<boolean>(false);
 
 /** When true, importing skips camera-preview jpg/png files that share a folder and
  * base name with a raw/master file. Persisted via prefs as `omit_preview_jpgs`;
