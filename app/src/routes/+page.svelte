@@ -99,7 +99,7 @@
 <div class="app">
   <header class="topbar">
     <button class="brand" on:click={() => (aboutOpen = true)} aria-label={$t('app.about.ariaLabel')}>
-      <img class="logo" src="/favicon.png" alt="" /> {$t('app.brand')}
+      <img class="logo" src="/favicon.png" alt="" />
     </button>
     <nav class="tabs">
       <button class:active={$module === "library"} on:click={() => module.set("library")}>{$t('app.tab.library')}</button>

@@ -66,6 +66,7 @@ confirmDevelop.confirm,"Develop all","全部显影","src/lib/overlay/ConfirmDeve
 confirmDevelop.filmStock,"Film stock","胶片型号","src/lib/overlay/ConfirmDevelop.svelte","label"
 confirmDevelop.filmStockOptional,"optional","可选","src/lib/overlay/ConfirmDevelop.svelte","hint"
 contextMenu.delete,"Delete…","删除…","src/lib/overlay/ImageContextMenu.svelte","button"
+contextMenu.reveal,"Open in folder","打开所在文件夹","src/lib/overlay/ImageContextMenu.svelte","button"
 contextMenu.deleteCount,"Delete {count} items","删除 {count} 张照片","src/lib/overlay/ImageContextMenu.svelte","button"
 contextMenu.flipH,"Flip horizontal","水平翻转","src/lib/overlay/ImageContextMenu.svelte","button"
 contextMenu.flipV,"Flip vertical","垂直翻转","src/lib/overlay/ImageContextMenu.svelte","button"

@@ -4,7 +4,8 @@
   import Metadata from "../panels/Metadata.svelte";
   import Filmstrip from "../panels/Filmstrip.svelte";
   import ImageContextMenu from "../overlay/ImageContextMenu.svelte";
-  import { activeId, folderImages, deleteTarget, selectAll, deleteSelectionIds, setActive } from "../store";
+  import { activeId, images, folderImages, deleteTarget, selectAll, deleteSelectionIds, setActive } from "../store";
+  import { revealItemInDir } from "@tauri-apps/plugin-opener";
 
   // Skip nav while a form control (e.g. the thumb-size slider) is focused, so its
   // own arrow-key behaviour wins.
@@ -14,16 +15,20 @@
   }
 
   // Right-click a thumbnail (grid cell or filmstrip button — both carry data-id)
-  // to open a Delete menu. Delegated here so neither child needs its own handler.
-  // Right-click a thumbnail to open a Delete menu. Per design the menu acts on the
-  // whole current selection (its label shows the count), so right-click does not
-  // alter the selection.
-  let ctxMenu: { x: number; y: number } | null = null;
+  // to open the context menu. Delete acts on the whole current selection (its label
+  // shows the count), so right-click doesn't alter the selection; "Open in folder"
+  // reveals the specific file that was right-clicked (tracked via ctxMenu.id).
+  let ctxMenu: { x: number; y: number; id: string } | null = null;
   function onContext(e: MouseEvent) {
     e.preventDefault();
     const id = (e.target as HTMLElement).closest("[data-id]")?.getAttribute("data-id");
     if (!id) { ctxMenu = null; return; }
-    ctxMenu = { x: e.clientX, y: e.clientY };
+    ctxMenu = { x: e.clientX, y: e.clientY, id };
+  }
+
+  async function revealImage(id: string) {
+    const img = $images.find((i) => i.id === id);
+    if (img) { try { await revealItemInDir(img.path); } catch (e) { console.error("reveal failed", e); } }
   }
 
   // Arrow keys navigate images within the selected folder (grid or filmstrip), no
@@ -70,7 +75,8 @@
 </div>
 
 {#if ctxMenu}
-  <ImageContextMenu x={ctxMenu.x} y={ctxMenu.y} count={deleteSelectionIds().length}
+  <ImageContextMenu x={ctxMenu.x} y={ctxMenu.y} count={deleteSelectionIds().length} showReveal={true}
+    on:reveal={() => { if (ctxMenu) revealImage(ctxMenu.id); ctxMenu = null; }}
     on:delete={() => { const ids = deleteSelectionIds(); if (ids.length) deleteTarget.set(ids); ctxMenu = null; }}
     on:close={() => (ctxMenu = null)} />
 {/if}
