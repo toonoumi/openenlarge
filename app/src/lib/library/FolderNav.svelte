@@ -54,10 +54,13 @@
       {#each tree as root}<TreeNode node={root} isRoot={true} on:menu={onFolderMenu} />{/each}
       {#if $images.length === 0}<div class="empty">{$t('folderNav.noImages')}</div>{/if}
     </div>
-    <label class="omit">
-      <input type="checkbox" bind:checked={$omitPreviewJpgs} />
-      <span>{$t('folderNav.omitPreviewJpgs')}</span>
-    </label>
+    <div class="omit-row">
+      <label class="omit">
+        <input type="checkbox" bind:checked={$omitPreviewJpgs} />
+        <span>{$t('folderNav.omitPreviewJpgs')}</span>
+      </label>
+      <button type="button" class="help" aria-label={$t('folderNav.omitPreviewJpgsHelp')}>?<span class="tip">{$t('folderNav.omitPreviewJpgsHelp')}</span></button>
+    </div>
     <button class="import" on:click={pickAndImport} disabled={importing}>
       <Icon name="plus" /> {importing ? $t('folderNav.importing') : $t('folderNav.import')}
     </button>
@@ -82,9 +85,23 @@
   .ttl { font-size: 11px; text-transform: uppercase; letter-spacing: 0.7px; color: var(--text-faint); padding: 2px 6px 10px; }
   .tree { flex: 1; overflow: auto; }
   .empty { color: var(--text-faint); padding: 8px; }
-  .omit { display: flex; align-items: center; gap: 7px; margin-top: 10px; padding: 2px 4px;
+  .omit-row { position: relative; display: flex; align-items: center; gap: 6px; margin-top: 10px; }
+  .omit { display: flex; align-items: center; gap: 7px; padding: 2px 4px;
     color: var(--text-dim); font-size: 12px; cursor: pointer; user-select: none; }
   .omit input { cursor: pointer; accent-color: #bf6d3a; margin: 0; }
+  /* "?" help chip with a hover/focus tooltip. */
+  .help { display: inline-flex; align-items: center; justify-content: center;
+    width: 15px; height: 15px; padding: 0; border-radius: 50%;
+    border: 1px solid var(--glass-brd); background: transparent;
+    color: var(--text-dim); font-size: 10px; font-weight: 600; line-height: 1;
+    cursor: help; user-select: none; }
+  .help:hover, .help:focus-visible { color: var(--text); border-color: var(--accent); outline: none; }
+  .tip { position: absolute; left: 0; top: calc(100% + 4px); width: 100%; z-index: 30;
+    padding: 8px 10px; border-radius: 8px; background: var(--bg-1);
+    border: 1px solid var(--glass-brd); box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    color: var(--text-dim); font-size: 11px; font-weight: 400; line-height: 1.5;
+    opacity: 0; visibility: hidden; transition: opacity 0.14s ease; pointer-events: none; }
+  .help:hover .tip, .help:focus-visible .tip { opacity: 1; visibility: visible; }
   .import { margin-top: 8px; width: 100%; padding: 10px; border-radius: 9px;
     border: 1px solid rgba(244,157,78,0.5);
     background: rgba(244,157,78,0.18); color: #fff; font: inherit; font-weight: 600; cursor: pointer;
