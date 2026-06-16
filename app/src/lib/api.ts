@@ -45,6 +45,7 @@ export interface InvertParams {
     | "gold200" | "ultramax400" | "fujipro400h" | "fujixtra400"
     | "vision350d" | "vision3200t" | "vision3250d" | "vision3500t";
   base_override: [number, number, number] | null;
+  d_max_override: number | null;
   exposure: number; // EV stops (−5..5)
   black: number; gamma: number;
   auto_wb: boolean;
@@ -168,8 +169,10 @@ export const api = {
   deleteImage: (id: string, deleteFile: boolean) => invoke<void>("delete_image", { id, deleteFile }),
   thumbnail: (id: string, params: InvertParams, view: ThumbView = {}) =>
     invoke<string>("thumbnail", { id, params, view: { ...view, dust: wireDust(view.dust) } }),
-  asShotWb: (id: string, params: InvertParams) =>
-    invoke<AsShotWb>("as_shot_wb", { id, params }),
+  asShotWb: (id: string, params: InvertParams, crop: [number, number, number, number] | null = null) =>
+    invoke<AsShotWb>("as_shot_wb", { id, params, crop }),
+  analyze: (id: string, params: InvertParams, crop: [number, number, number, number] | null = null) =>
+    invoke<{ d_max: number }>("analyze", { id, params, crop }),
   grayPointWb: (params: InvertParams, rgb: [number, number, number]) =>
     invoke<AsShotWb>("gray_point_wb", { params, rgb }),
   loadCatalog: () => invoke<CatalogSnapshot>("load_catalog"),
@@ -222,7 +225,7 @@ export const api = {
 };
 
 export const defaultParams = (): InvertParams => ({
-  mode: "d", stock: "none", base_override: null,
+  mode: "d", stock: "none", base_override: null, d_max_override: null,
   exposure: 0, black: 0, gamma: 0.4545,
   auto_wb: true, temp: 5500, tint: 0, wb_manual: false,
   contrast: 0, highlights: 0, shadows: 0, whites: 0, blacks: 0,

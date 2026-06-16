@@ -61,6 +61,10 @@ export const updateSkipVersion = writable<string>("");
  * app_state as `folder_base:{dir}`. A per-image base_override wins over this. */
 export const folderBaseByPath = writable<Record<string, [number, number, number]>>({});
 
+/** Folder/roll-default D_max, keyed by image directory path. Persisted via
+ * app_state as `folder_dmax:{dir}`. A per-image d_max_override wins over this. */
+export const folderDmaxByPath = writable<Record<string, number>>({});
+
 /** The imported images that live in the selected folder (recursive on parents).
  * The grid, filmstrip, and Develop navigation/range all scope to this. */
 export const folderImages = derived(

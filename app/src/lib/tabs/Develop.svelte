@@ -298,7 +298,7 @@
       {#key $tool}
         <div class="toolpane" in:fade={{ duration: 160, easing: cubicOut }}>
           {#if $tool === "edit"}
-            <Basic onWbPick={toggleWbPick} wbPicking={pickTarget === "wb"} />
+            <Basic onWbPick={toggleWbPick} wbPicking={pickTarget === "wb"} imageCrop={imageCrop} />
             <TonalCurve />
             <ColorGrading />
             <ColorMixer onPick={togglePcPick} picking={pickTarget === "pc"} />

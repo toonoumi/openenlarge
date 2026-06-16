@@ -1,11 +1,11 @@
 <script lang="ts">
   import { get } from "svelte/store";
   import { t } from "$lib/i18n";
-  import { params, activeId, images, folderBaseByPath, baseSampling, sampledBase } from "../store";
+  import { params, activeId, images, folderBaseByPath, folderDmaxByPath, baseSampling, sampledBase } from "../store";
   import { api, defaultParams } from "../api";
   import { reseedActive, commitActive } from "./historyStore";
   import { createSeedGuard } from "./seedGuard";
-  import { withEffectiveBase, setFolderBase, clearFolderBase } from "./base";
+  import { withEffectiveBase, setFolderBase, clearFolderBase, setFolderDmax } from "./base";
   import { imageDir } from "../library/folderScope";
   import Icon from "../icons/Icon.svelte";
   import Slider from "./Slider.svelte";
@@ -17,6 +17,9 @@
   // sampled pixel; this component only toggles it and reflects the active state.
   export let onWbPick: (() => void) | null = null;
   export let wbPicking = false;
+  // The persistent normalized image crop [x,y,w,h] (null = full frame). Analysis
+  // (base / D_max / WB) runs against this so black scan borders don't skew it.
+  export let imageCrop: [number, number, number, number] | null = null;
 
   let open = true;
 
@@ -75,7 +78,7 @@
     const key = id ? `${id}:${stock}:${baseKey}` : null;
     if (!shouldSeed(key, force)) return;
     try {
-      const wb = await api.asShotWb(id!, withEffectiveBase(get(params), dir));
+      const wb = await api.asShotWb(id!, withEffectiveBase(get(params), dir), imageCrop);
       params.update((p) => ({ ...p, temp: wb.temp, tint: wb.tint, wb_manual: false }));
       reseedActive();
     } catch { /* not developed yet */ }
@@ -83,6 +86,40 @@
   $: seed($activeId, $params.stock, JSON.stringify(effBase));
 
   function autoWb() { seed($activeId, $params.stock, JSON.stringify(effBase), true); }
+
+  // ---- Crop-aware D_max analysis ----
+  // Derive D_max from the image area (the persistent crop) and apply it to THIS
+  // image, then reseed WB so the white point matches the new dynamic range.
+  async function reanalyze() {
+    const id = get(activeId); if (!id) return;
+    try {
+      const { d_max } = await api.analyze(id, withEffectiveBase(get(params), dir), imageCrop);
+      params.update((p) => ({ ...p, d_max_override: d_max }));
+      commitActive();
+      autoWb();
+    } catch { /* not developed yet */ }
+  }
+
+  // Analyze within the crop and promote the result to the roll/folder default.
+  async function applyDmaxRoll() {
+    const id = get(activeId); if (!id || !dir) return;
+    try {
+      const { d_max } = await api.analyze(id, withEffectiveBase(get(params), dir), imageCrop);
+      setFolderDmax(dir, d_max);
+    } catch { /* not developed yet */ }
+  }
+
+  // Auto-analyze when the crop (or image) changes, but only when there is NO
+  // per-image override AND no folder D_max — so a deliberate value is never
+  // clobbered. Mirrors the WB seed-guard idea.
+  let lastCropKey = "";
+  $: {
+    const key = `${$activeId}:${JSON.stringify(imageCrop)}`;
+    if ($activeId && key !== lastCropKey && get(params).d_max_override == null && !(dir && $folderDmaxByPath[dir])) {
+      lastCropKey = key;
+      reanalyze();
+    }
+  }
 
   // A user drag of Temp/Tint makes WB user-controlled (sticky vs the base-change
   // auto-reseed). Fires only on real input events, not programmatic seed updates.
@@ -141,6 +178,8 @@
             <button disabled={!$sampledBase} on:click={applyBaseRoll}>{$t('base.applyRoll')}</button>
             <button disabled={!$sampledBase} on:click={applyBaseThisImage}>{$t('base.thisImage')}</button>
           </div>
+          <button class="recal" on:click={reanalyze}>{$t('base.reanalyze')}</button>
+          <button class="basereset" disabled={!dir} on:click={applyDmaxRoll}>{$t('base.dmaxRoll')}</button>
           <button class="basereset" disabled={baseScope === "auto"} on:click={resetBase}>{$t('base.reset')}</button>
           <p class="scope">{$t(scopeKey[baseScope])}</p>
         </div>
