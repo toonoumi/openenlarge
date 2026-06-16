@@ -5,6 +5,8 @@ mod convert;
 mod encode;
 mod exif_write;
 mod gpu_upload;
+#[allow(dead_code)] // public encoder consumed by upcoming HDR export task
+mod hdr;
 mod metadata;
 mod session;
 mod tether;
