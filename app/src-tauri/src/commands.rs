@@ -783,6 +783,35 @@ pub fn render_view(
     to_jpeg_b64(&out, false, PREVIEW_JPEG_QUALITY)
 }
 
+/// Dual-render one prepared image (invert → dust → IR → finish) as SDR and HDR,
+/// then mux into a gain-map JPEG. Shared by the HDR preview command and HDR export.
+/// `src` carries the optional IR plane used when `ir_removal.enabled`.
+fn render_and_encode_hdr(
+    src: &film_core::Image,
+    ip: &InversionParams,
+    mode: Mode,
+    finish: &FinishParams,
+    stamps: &[Stamp],
+    ir_removal: &IrRemoval,
+    quality: u8,
+) -> Result<Vec<u8>, String> {
+    let render = |ip: &InversionParams| -> film_core::Image {
+        let mut inv = invert_image(src, ip, mode);
+        dust::apply(&mut inv, stamps);
+        if ir_removal.enabled {
+            if let Some(ir) = src.ir.as_ref() {
+                dust::apply_ir(&mut inv, ir, ir_removal.sensitivity);
+            }
+        }
+        finish_image(&inv, finish)
+    };
+    let sdr = render(ip);
+    let mut ip_hdr = ip.clone();
+    ip_hdr.hdr = true;
+    let hdr = render(&ip_hdr);
+    crate::hdr::encode_gain_map_jpeg(&sdr, &hdr, quality)
+}
+
 /// Render the developed image (geometry + crop + develop params) as an SDR base
 /// AND an HDR rendition, encode a gain-map JPEG, and return it as a data URL for
 /// an `<img src>`. The SDR rendition matches `render_view`'s finished output
@@ -845,25 +874,7 @@ pub fn encode_hdr(
         view.out_h.max(1),
     );
 
-    // Shared retouch + finish applied to one inverted image; returns the finished
-    // display-referred result (matches `render_view` when `view.finish`).
-    let render = |ip: &InversionParams| -> film_core::Image {
-        let mut inv = invert_image(&scaled, ip, mode);
-        dust::apply(&mut inv, &stamps);
-        if view.ir_removal.enabled {
-            if let Some(ir) = scaled.ir.as_ref() {
-                dust::apply_ir(&mut inv, ir, view.ir_removal.sensitivity);
-            }
-        }
-        finish_image(&inv, &finish)
-    };
-
-    let sdr = render(&ip);
-    let mut ip_hdr = ip.clone();
-    ip_hdr.hdr = true;
-    let hdr = render(&ip_hdr);
-
-    let jpeg = crate::hdr::encode_gain_map_jpeg(&sdr, &hdr, PREVIEW_JPEG_QUALITY)?;
+    let jpeg = render_and_encode_hdr(&scaled, &ip, mode, &finish, &stamps, &view.ir_removal, PREVIEW_JPEG_QUALITY)?;
     use base64::Engine;
     let b64 = base64::engine::general_purpose::STANDARD.encode(&jpeg);
     Ok(format!("data:image/jpeg;base64,{b64}"))
@@ -1752,6 +1763,38 @@ mod tests {
         .unwrap();
         assert!(p.ir_removal.enabled);
         assert!((p.ir_removal.sensitivity - 60.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn render_and_encode_hdr_emits_gain_map() {
+        use crate::commands_test_support::sample_invert_params;
+        let src = film_core::Image {
+            width: 8,
+            height: 8,
+            pixels: vec![[0.6, 0.4, 0.25]; 64],
+            ir: None,
+        };
+        let params = sample_invert_params();
+        let ip = resolve_params(&params, &src, effective_base(&params, [0.6, 0.4, 0.25]));
+        let finish = finish_from(&params);
+        let bytes = render_and_encode_hdr(
+            &src,
+            &ip,
+            mode_from(&params.mode),
+            &finish,
+            &[],
+            &IrRemoval { enabled: false, sensitivity: 50.0 },
+            90,
+        )
+        .expect("encode");
+        assert_eq!(&bytes[0..2], &[0xFF, 0xD8], "not a JPEG");
+        let iso = b"urn:iso";
+        let apple = b"hdrgainmap";
+        assert!(
+            bytes.windows(iso.len()).any(|w| w == iso)
+                || bytes.windows(apple.len()).any(|w| w == apple),
+            "no gain map"
+        );
     }
 }
 
