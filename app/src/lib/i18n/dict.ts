@@ -364,9 +364,7 @@ export const dict: Record<string, Record<string, string>> = {
     "settings.telemetry.off": "Off",
     "settings.telemetry.hint": "Anonymous usage data only. No images or personal information are ever sent.",
     "settings.telemetry.requestAccess": "Request dashboard access",
-    "basic.positiveLabel": "This is a positive image — it won't be inverted. Tap below to invert it anyway.",
     "basic.inverseBtn": "Inverse",
-    "basic.treatPositive": "Looks like a negative — treat as positive instead?",
   },
   zh: {
     "app.brand": "OpenEnlarge",
@@ -731,8 +729,6 @@ export const dict: Record<string, Record<string, string>> = {
     "settings.telemetry.off": "关闭",
     "settings.telemetry.hint": "仅匿名使用数据。绝不发送任何图像或个人信息。",
     "settings.telemetry.requestAccess": "申请仪表板访问权限",
-    "basic.positiveLabel": "这是一张正片图像——不会进行反相。如需反相，请点击下方。",
     "basic.inverseBtn": "反相",
-    "basic.treatPositive": "看起来像负片——改为按正片处理？",
   },
 };
