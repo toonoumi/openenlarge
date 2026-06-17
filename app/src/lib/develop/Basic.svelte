@@ -32,10 +32,19 @@
   // Mirror crates/film-core/src/calibrate.rs REBATE_CONFIDENCE (keep in sync).
   const REBATE_CONF_UI = 0.12;
   let autoBase: { base: [number, number, number]; confidence: number } | null = null;
-  async function loadAutoBase(id: string | null, _developed?: boolean) {
+  // Only the (image, developed-state) pair should drive a refetch. `activeImg` gets a
+  // fresh object reference on every `images` mutation (e.g. the live thumbnail write-back
+  // in Develop.svelte), so keying the reactive on the object alone refetches constantly —
+  // and since the auto base wobbles between develops, that re-arms the WB auto-seed guard
+  // (effBase changes → new key) into an unbounded seed→params→thumbnail→images→base loop.
+  let autoBaseKey = "";
+  async function loadAutoBase(id: string | null, developed?: boolean) {
+    const key = `${id ?? ""}|${developed ? 1 : 0}`;
+    if (key === autoBaseKey) return; // unrelated `images` churn — base is unchanged
+    autoBaseKey = key;
     if (!id) { autoBase = null; return; }
     try { autoBase = await api.autoBaseInfo(id); }
-    catch { autoBase = null; } // not developed yet
+    catch { autoBase = null; autoBaseKey = ""; } // not developed yet — allow a retry
   }
   // `activeImg?.developed` is a pure reactive trigger: on the first develop of a
   // not-yet-developed image it flips false->true and re-fetches so the swatch fills.

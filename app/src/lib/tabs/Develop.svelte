@@ -332,10 +332,11 @@
         <CropView id={$activeId} params={effParams} imgW={oW} imgH={oH}
                   bind:rect {lockRatio} {rot90} {flipH} {flipV} {angle}
                   on:custom={() => (aspect = "custom")} on:straighten={(e) => onStraighten(e.detail)} />
-      {:else if $baseSampling}
-        <BaseView id={$activeId} params={effParams} imgW={origW} imgH={origH}
-                  on:sampled={(e) => sampledBase.set(e.detail)} />
       {:else}
+        <!-- The Viewport stays mounted while the film-base picker is armed; BaseView
+             overlays it. Unmounting the Viewport tears down its GPU context and forces
+             a full working-buffer re-fetch + re-upload on dismiss (a multi-second blank),
+             so we keep it alive and just cover it. -->
         <Viewport id={$activeId} params={effParams} imgW={effW} imgH={effH} imageCrop={imageCrop}
                   rot90={cRot} flipH={committed?.flipH ?? false} flipV={committed?.flipV ?? false} angle={committed?.angle ?? 0}
                   eraser={$tool === "eraser"} {brush} dust={dust.strokes} irRemoval={dust.irRemoval} dustRev={$dustRev} developRev={$developRev}
@@ -345,6 +346,12 @@
                   on:stroke={(e) => commitStroke(e.detail)} on:brush={(e) => (brush = e.detail)}
                   on:aierased={() => (aiBusy = false)}
                   on:pointpick={onPointPick} />
+        {#if $baseSampling}
+          <div class="picker-overlay">
+            <BaseView id={$activeId} params={effParams} imgW={origW} imgH={origH}
+                      on:sampled={(e) => sampledBase.set(e.detail)} />
+          </div>
+        {/if}
       {/if}
     {:else}<div class="hint">{$t('develop.notDevelopedYet')}</div>{/if}
   </section>
@@ -430,7 +437,10 @@
     background: linear-gradient(to bottom, rgba(0,0,0,0.55), rgba(0,0,0,0)); }
   .edge-fade.bottom { bottom: 1px; border-radius: 0 0 var(--radius) var(--radius);
     background: linear-gradient(to top, rgba(0,0,0,0.55), rgba(0,0,0,0)); }
-  .center { grid-area: center; min-height: 0; display: grid; place-items: center; }
+  .center { grid-area: center; min-height: 0; display: grid; place-items: center; position: relative; }
+  /* Film-base picker overlay: covers the still-mounted Viewport (opaque so it doesn't
+     bleed through) while keeping the Viewport's GPU texture alive for an instant dismiss. */
+  .picker-overlay { position: absolute; inset: 0; z-index: 6; background: #111111; }
   .hint { color: var(--text-dim); }
   .bottom { grid-area: bottom; min-width: 0; overflow: hidden; }
 </style>
