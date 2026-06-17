@@ -37,6 +37,9 @@
   export let brushMigan = false;
   /** Whether the strokes have been MI-GAN-applied (heal baked) vs shown as overlay. */
   export let aiApplied = false;
+  /** AI auto-dust: detector-driven defect heal, live on the main display. */
+  export let autoDustEnabled = false;
+  export let autoDustSensitivity = 50;
 
   const dispatch = createEventDispatcher<{ stroke: DustStroke; brush: number; pointpick: { r: number; g: number; b: number; u: number; v: number }; aierased: void }>();
 
@@ -219,7 +222,7 @@
   // (geometry + pre-invert heal) working texture; only raw/no-WebGL2 fall to CPU.
   $: gpuEligible = !!(useGL && renderer && !raw);
   // Bake mode: dust/IR active → request the baked working texture + identity geometry.
-  $: bakeMode = dust.length > 0 || irRemoval.enabled;
+  $: bakeMode = dust.length > 0 || irRemoval.enabled || autoDustEnabled;
 
   // Key the uploaded working texture. In bake mode it depends on dust strokes + the
   // baked geometry (re-bake on commit/geometry change); else just the image id.
@@ -227,7 +230,7 @@
   // for stroke changes here — the dust array itself is not in the key).
   function currentUploadKey(): string {
     if (bakeMode) {
-      return `bake|${id}|${developRev}|${dustRev}|${irRemoval.enabled}|${irRemoval.sensitivity}|${brushMigan}|${aiApplied}|${imageCrop ? imageCrop.join(',') : 'full'}|${rot90}|${flipH}|${flipV}|${angle}`;
+      return `bake|${id}|${developRev}|${dustRev}|${irRemoval.enabled}|${irRemoval.sensitivity}|${brushMigan}|${aiApplied}|${autoDustEnabled}|${autoDustSensitivity}|${imageCrop ? imageCrop.join(',') : 'full'}|${rot90}|${flipH}|${flipV}|${angle}`;
     }
     return `raw|${id}|${developRev}`;
   }
@@ -246,9 +249,10 @@
         image_crop: imageCrop, dust, ir_removal: irRemoval,
         migan: brushMigan && aiApplied,
         skip_dust_heal: brushMigan && !aiApplied,
+        auto_dust: { enabled: autoDustEnabled, sensitivity: autoDustSensitivity },
       };
       const info = await api.workingBakedInfo(id, spec);
-      const buf = await api.workingBakedPixels(id, spec);
+      const buf = await api.workingBakedPixels(id, spec, params);
       if (!renderer || currentUploadKey() !== k) return; // stale (params changed mid-fetch)
       renderer.setSourceFloat(new Uint16Array(buf), info.w, info.h);
       texW = info.w; texH = info.h;
@@ -305,7 +309,7 @@
 
   // Upload the working float texture. Re-fires when the image changes or, in bake
   // mode, when strokes/IR/geometry change (currentUploadKey dedupes redundant runs).
-  $: if (gpuEligible) { id; developRev; dustRev; irRemoval.enabled; irRemoval.sensitivity; brushMigan; aiApplied; imageCrop; rot90; flipH; flipV; angle; uploadWorking(); }
+  $: if (gpuEligible) { id; developRev; dustRev; irRemoval.enabled; irRemoval.sensitivity; brushMigan; aiApplied; autoDustEnabled; autoDustSensitivity; imageCrop; rot90; flipH; flipV; angle; uploadWorking(); }
   $: if (!gpuEligible) uploadKey = "";
 
   // Inversion params now drive GPU uniforms (no backend pixel fetch) when eligible.
