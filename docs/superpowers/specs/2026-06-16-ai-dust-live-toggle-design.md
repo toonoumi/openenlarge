@@ -32,6 +32,13 @@ export button are removed.
 - No attempt to make CPU inference fast; live sensitivity dragging is not a goal
   (slider still commits on release).
 - No GPU/DirectML work (Windows runs ONNX on CPU, per the prior fix).
+- **CPU fallback (`render_view`, no-WebGL2)** does not apply auto-dust in this
+  iteration — it lacks an `AppHandle` and runs at zoom resolution (detector cache
+  would thrash). Deferred follow-up; auto-dust applies on the GPU bake path,
+  which covers all WebGL2-capable machines.
+- **Export** (`export_image`/`export_begin`) keeps applying committed brush
+  strokes only; baking the auto-dust heal into the exported file is a deferred
+  follow-up.
 
 ## Key insight
 
