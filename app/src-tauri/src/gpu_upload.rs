@@ -2,7 +2,7 @@
 //! WebGL2 `RGBA16F` texture upload, and resolve inversion params into a flat,
 //! serialisable uniform set the GPU shader consumes.
 
-use crate::commands::{export_stamps, DustStroke, IrRemoval};
+use crate::commands::{export_stamps, AutoDust, DustStroke, IrRemoval};
 use crate::convert::proxy;
 use crate::convert::{crop, orient, rotate};
 use film_core::Image;
@@ -24,6 +24,9 @@ pub struct BakeSpec {
     /// Heal dust strokes with MI-GAN instead of the classic fill.
     #[serde(default)]
     pub migan: bool,
+    /// AI auto-dust: detector-driven defect mask, MI-GAN healed at bake time.
+    #[serde(default)]
+    pub auto_dust: AutoDust,
 }
 
 /// Geometry only (orient → straighten → persistent crop) on the raw negative.

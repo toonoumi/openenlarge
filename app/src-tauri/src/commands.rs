@@ -656,9 +656,10 @@ pub struct IrRemoval {
     pub sensitivity: f32,
 }
 
-/// AI (learned-model) auto dust/hair removal settings from the UI. Carried on the
-/// wire for forward-compatibility; the heal itself runs via the explicit
-/// `autodust_detect` command (the model is too slow for the per-render path).
+/// AI (learned-model) auto dust/hair removal settings from the UI. When
+/// `enabled`, the bake path inverts the working buffer, runs the cached detector,
+/// thresholds at `sensitivity`, and MI-GAN-heals the defect mask (unioned with
+/// brush strokes) — see `working_baked_pixels` / `bake_for_view`.
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct AutoDust {
     pub enabled: bool,
