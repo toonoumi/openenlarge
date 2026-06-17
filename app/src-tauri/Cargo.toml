@@ -50,13 +50,13 @@ tokio = { version = "1", features = ["rt-multi-thread", "time", "net"] }
 
 
 # Per-platform GPU execution providers for ort. Each MUST keep `api-24` (rc.12
-# fails to compile without it). macOS = CoreML, Windows = DirectML; Linux keeps
-# the base CPU-only ort above. Do NOT enable multiple GPU EPs on one target.
+# fails to compile without it). macOS = CoreML. Windows/Linux run on CPU: the
+# hosted `onnxruntime.dll` is a DirectML build whose DirectML EP crashes the
+# process on our models (native access violation, uncatchable) regardless of GPU,
+# so we do NOT enable the `directml` feature. Do NOT enable multiple GPU EPs on
+# one target.
 [target.'cfg(target_os = "macos")'.dependencies]
 ort = { version = "=2.0.0-rc.12", default-features = false, features = ["load-dynamic", "ndarray", "api-24", "coreml"] }
-
-[target.'cfg(target_os = "windows")'.dependencies]
-ort = { version = "=2.0.0-rc.12", default-features = false, features = ["load-dynamic", "ndarray", "api-24", "directml"] }
 
 [dev-dependencies]
 tempfile = "3"

@@ -23,10 +23,12 @@ pub struct Asset {
 // path works). The macOS dylib is the ONNX Runtime 1.26.0 osx-arm64 build
 // RE-SIGNED with "Developer ID Application: Aako, Inc (N7BMGT3KJY)" + hardened
 // runtime, so it passes library validation when dlopen'd by the same-team app.
-// Windows/Linux are the stock 1.26.0 CPU builds (CoreML accelerates macOS; the
-// DirectML EP requested on Windows falls back to CPU on a CPU-only runtime —
-// see docs/upscaler-assets.md). Bump the tag + these values only when the
-// runtime/model changes, NOT on every app release.
+// CoreML accelerates macOS. The hosted Windows `onnxruntime.dll` is actually a
+// DirectML build (imports dxgi.dll, contains DmlExecutionProvider) — NOT the
+// stock CPU build once assumed — so its DirectML EP does not fall back to CPU and
+// crashes on our models; we therefore run CPU on Windows by not requesting it
+// (see upscale/autodust `make_session`). Linux is the stock CPU build. Bump the
+// tag + these values only when the runtime/model changes, NOT on every release.
 // ============================================================================
 #[cfg(target_os = "macos")]
 const RUNTIME: Asset = Asset {
