@@ -210,6 +210,9 @@
           rot90: crop?.rot90 ?? 0, flip_h: crop?.flipH ?? false, flip_v: crop?.flipV ?? false,
           angle: crop?.angle ?? 0, image_crop: imageCrop,
           dust: d.strokes, ir_removal: d.irRemoval,
+          // Export keeps committed brush strokes only; AI auto-dust is a live-view
+          // feature (deferred for export), so it is disabled on the export bake.
+          auto_dust: { enabled: false, sensitivity: 50 },
         };
         const bit16 = (kind === "tiff" || kind === "png") && bitDepth === 16;
 
