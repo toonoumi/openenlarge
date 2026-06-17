@@ -82,6 +82,8 @@ toast.settingsCopied,"Settings copied","已复制设置","src/lib/toast.ts","toa
 toast.copyFirst,"Copy settings first","请先复制设置","src/lib/toast.ts","toast"
 toast.settingsApplied,"Settings applied","已应用设置","src/lib/toast.ts","toast"
 toast.settingsAppliedN,"Settings applied to {count} images","已应用设置到 {count} 张照片","src/lib/toast.ts","toast"
+toast.autoDustRemoved,"{count} dust spots removed","已去除 {count} 处污点","src/lib/develop/AutoDustPanel.svelte","toast"
+toast.autoDustNone,"No dust detected","未检测到污点","src/lib/develop/AutoDustPanel.svelte","toast"
 contextMenu.delete,"Delete…","删除…","src/lib/overlay/ImageContextMenu.svelte","button"
 contextMenu.reveal,"Open in folder","打开所在文件夹","src/lib/overlay/ImageContextMenu.svelte","button"
 contextMenu.deleteCount,"Delete {count} items","删除 {count} 张照片","src/lib/overlay/ImageContextMenu.svelte","button"

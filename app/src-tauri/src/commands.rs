@@ -1548,6 +1548,41 @@ fn union_mask(mut a: film_core::dust::Mask, b: &film_core::dust::Mask) -> film_c
     a
 }
 
+/// Count connected components (4-neighbour) of set pixels in a whole-frame mask —
+/// i.e. the number of distinct dust/defect spots, for the "N dust spots removed"
+/// toast. Empty mask → 0.
+fn count_blobs(mask: &film_core::dust::Mask) -> u32 {
+    let (w, h) = (mask.w, mask.h);
+    if w == 0 || h == 0 {
+        return 0;
+    }
+    let mut seen = vec![false; w * h];
+    let mut stack: Vec<usize> = Vec::new();
+    let mut blobs = 0u32;
+    for start in 0..w * h {
+        if !mask.bits[start] || seen[start] {
+            continue;
+        }
+        blobs += 1;
+        seen[start] = true;
+        stack.push(start);
+        while let Some(p) = stack.pop() {
+            let (x, y) = (p % w, p / w);
+            let mut push = |q: usize, seen: &mut Vec<bool>, stack: &mut Vec<usize>| {
+                if mask.bits[q] && !seen[q] {
+                    seen[q] = true;
+                    stack.push(q);
+                }
+            };
+            if x > 0 { push(p - 1, &mut seen, &mut stack); }
+            if x + 1 < w { push(p + 1, &mut seen, &mut stack); }
+            if y > 0 { push(p - w, &mut seen, &mut stack); }
+            if y + 1 < h { push(p + w, &mut seen, &mut stack); }
+        }
+    }
+    blobs
+}
+
 /// Heal an already-geometry-baked working buffer: dust strokes per the spec's
 /// mode (classic Telea, MI-GAN, or skipped for the AI-mask overlay), unioned with
 /// the optional auto-dust defect `auto_mask`, then IR. When `auto_mask` is present
@@ -1619,7 +1654,7 @@ pub async fn working_baked_pixels(
     // The heal can run the detector + MI-GAN (seconds) — keep it off the main
     // thread so the UI (and the WKWebView, which shares the main thread on macOS)
     // stays responsive. Returns any freshly computed prob map to cache.
-    let (bytes, fresh) = tauri::async_runtime::spawn_blocking(move || {
+    let (bytes, fresh, blobs) = tauri::async_runtime::spawn_blocking(move || {
         let baked = bake_geometry(&working, &spec);
         let (auto_mask, fresh) = if do_auto && crate::autodust::assets::installed(&app_data) {
             let (m, fr) = auto_dust_mask(&app_data, &baked, &ip, mode, sens, cached);
@@ -1627,14 +1662,20 @@ pub async fn working_baked_pixels(
         } else {
             (None, None)
         };
+        // Distinct dust spots removed (for the completion toast) — only when auto-dust ran.
+        let blobs = auto_mask.as_ref().map(count_blobs);
         let healed = bake_for_view_from_baked(&app_data, baked, &spec, auto_mask.as_ref());
         let (_, _, bytes) = pack_rgba16f(&healed, MAX_GPU_EDGE);
-        (bytes, fresh)
+        (bytes, fresh, blobs)
     })
     .await
     .map_err(|e| e.to_string())?;
     if let Some(p) = fresh {
         session.autodust_prob.lock().unwrap().insert(id, p);
+    }
+    if let Some(n) = blobs {
+        use tauri::Emitter;
+        let _ = app.emit("autodust://result", serde_json::json!({ "count": n }));
     }
     Ok(tauri::ipc::Response::new(bytes))
 }

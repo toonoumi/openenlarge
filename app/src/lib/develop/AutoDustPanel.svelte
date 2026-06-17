@@ -1,9 +1,10 @@
 <script lang="ts">
   import { onMount, onDestroy, createEventDispatcher } from "svelte";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-  import { t } from "$lib/i18n";
+  import { t, translate } from "$lib/i18n";
   import { api } from "../api";
   import { autodustInstalled } from "../store";
+  import { showToast } from "../toast";
 
   /** Image id — the toggle is disabled when nothing is loaded. */
   export let id: string | null;
@@ -24,6 +25,7 @@
   let error = "";
 
   let unlistenDl: UnlistenFn | null = null;
+  let unlistenResult: UnlistenFn | null = null;
 
   $: mb = (downloadBytes / 1_000_000).toFixed(0);
   $: dlPct = Math.min(dlTotal ? (dlReceived / dlTotal) * 100 : 0, 100);
@@ -31,6 +33,11 @@
   onMount(async () => {
     unlistenDl = await listen<{ received: number; total: number }>(
       "autodust://download-progress", (e) => { dlReceived = e.payload.received; dlTotal = e.payload.total; });
+    // Completion toast: backend emits the distinct-spot count after each auto-dust heal.
+    unlistenResult = await listen<{ count: number }>("autodust://result", (e) => {
+      const n = e.payload.count;
+      showToast(n > 0 ? translate("toast.autoDustRemoved", { count: n }) : translate("toast.autoDustNone"));
+    });
     try {
       const s = await api.autodustStatus();
       $autodustInstalled = s.installed;
@@ -38,7 +45,7 @@
     } catch (e) { error = String(e); }
     checking = false;
   });
-  onDestroy(() => { unlistenDl?.(); });
+  onDestroy(() => { unlistenDl?.(); unlistenResult?.(); });
 
   async function download() {
     error = ""; downloading = true; dlReceived = 0; dlTotal = downloadBytes;
