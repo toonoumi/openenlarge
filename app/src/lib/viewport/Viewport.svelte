@@ -41,7 +41,7 @@
   export let autoDustEnabled = false;
   export let autoDustSensitivity = 50;
 
-  const dispatch = createEventDispatcher<{ stroke: DustStroke; brush: number; pointpick: { r: number; g: number; b: number; u: number; v: number }; aierased: void }>();
+  const dispatch = createEventDispatcher<{ stroke: DustStroke; brush: number; pointpick: { r: number; g: number; b: number; u: number; v: number }; aierased: void; autodusted: void }>();
 
   const CAP = 5000;
   const PAD = 60;
@@ -257,6 +257,7 @@
       renderer.setSourceFloat(new Uint16Array(buf), info.w, info.h);
       texW = info.w; texH = info.h;
       if (spec.migan) dispatch("aierased"); // MI-GAN apply bake finished → clear the button spinner
+      if (spec.auto_dust.enabled) dispatch("autodusted"); // auto-dust heal bake finished → clear toggle spinner
     } else {
       const info = await api.workingInfo(id);
       const buf = await api.workingPixels(id);

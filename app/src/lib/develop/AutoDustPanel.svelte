@@ -9,6 +9,8 @@
   export let id: string | null;
   /** Whether AI auto-dust is on (live heal on the main display). */
   export let enabled = false;
+  /** True while the heal bake is running (detector + MI-GAN can take many seconds). */
+  export let busy = false;
   /** Persisted per-image sensitivity (0..100). */
   export let sensitivity = 50;
 
@@ -82,7 +84,8 @@
       <span class="val">{Math.round(sensitivity)}</span>
     </div>
 
-    <button class="go" class:active={enabled} disabled={!id} on:click={toggle}>
+    <button class="go" class:active={enabled} class:busy disabled={!id || busy} on:click={toggle}>
+      {#if busy}<span class="spinner" aria-hidden="true"></span>{/if}
       <span>{$t("eraser.autoButton")}</span>
     </button>
   {/if}
@@ -113,6 +116,9 @@
   .go:disabled { opacity: 0.55; cursor: default; }
   /* Active = auto-dust toggled on (heal showing on the main display). */
   .go.active { background: rgba(244,157,78,0.34); border-color: rgba(244,157,78,0.85); }
+  .spinner { width: 13px; height: 13px; flex: none; border-radius: 50%;
+    border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff; animation: spin 0.7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
   .bar { width: 100%; height: 6px; border-radius: 3px; background: var(--glass-hi); overflow: hidden; margin: 6px 0; }
   .bar span { display: block; height: 100%; background: var(--accent); transition: width 0.2s ease; }
   .sub { position: relative; display: flex; align-items: center; gap: 6px;
