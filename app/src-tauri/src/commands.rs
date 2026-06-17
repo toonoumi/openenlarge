@@ -659,7 +659,7 @@ pub struct IrRemoval {
 /// AI (learned-model) auto dust/hair removal settings from the UI. When
 /// `enabled`, the bake path inverts the working buffer, runs the cached detector,
 /// thresholds at `sensitivity`, and MI-GAN-heals the defect mask (unioned with
-/// brush strokes) — see `working_baked_pixels` / `bake_for_view`.
+/// brush strokes) — see `working_baked_pixels` / `bake_for_view_from_baked`.
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct AutoDust {
     pub enabled: bool,
@@ -2172,70 +2172,6 @@ pub async fn download_autodust(app: tauri::AppHandle) -> Result<(), String> {
     use tauri::Manager;
     let app_data = app.path().app_data_dir().map_err(|e| e.to_string())?;
     crate::autodust::assets::download(&app, &app_data).await
-}
-
-/// One-click AI dust/hair removal on the current developed image. Finishes the
-/// full-res positive, runs the detector once (cached in the Session so the
-/// sensitivity slider only re-thresholds + refills), builds the defect mask at
-/// `sensitivity`, MI-GAN-inpaints it, stashes the healed full-res result for
-/// `save_upscaled`, and returns a preview + the number of pixels removed.
-#[allow(clippy::too_many_arguments)]
-#[tauri::command]
-pub async fn autodust_detect(
-    app: tauri::AppHandle,
-    id: String,
-    params: InvertParams,
-    image_crop: Option<[f64; 4]>,
-    rot90: u8,
-    flip_h: bool,
-    flip_v: bool,
-    angle: f32,
-    dust: Vec<DustStroke>,
-    ir_removal: IrRemoval,
-    sensitivity: f32,
-    session: State<'_, Session>,
-) -> Result<crate::autodust::AutoDustResult, String> {
-    use tauri::Manager;
-    let app_data = app.path().app_data_dir().map_err(|e| e.to_string())?;
-    if !crate::autodust::assets::installed(&app_data) {
-        return Err("AI dust models are not installed".into());
-    }
-    // Finished positive full-res image (same pipeline as upscale/export).
-    let (fin, metadata) = finish_full_res(
-        &id, &params, image_crop, rot90, flip_h, flip_v, angle, &dust, &ir_removal, &session,
-    )?;
-
-    // Detector runs once per image; cache the probability map keyed by id+dims.
-    let dims = (fin.width, fin.height);
-    let prob = {
-        let mut cache = session.autodust_prob.lock().unwrap();
-        match cache.get(&id) {
-            Some((w, h, p)) if (*w, *h) == dims => p.clone(),
-            _ => {
-                let p = crate::autodust::engine::detect(&app_data, &fin)?;
-                cache.insert(id.clone(), (dims.0, dims.1, p.clone()));
-                p
-            }
-        }
-    };
-
-    // max_blob scales with image area so the size-gate is resolution-independent.
-    let max_blob = (crate::autodust::MAX_BLOB * fin.width.max(fin.height) / 2000).max(1);
-    let mask = film_core::dust::prob_defect_mask(fin.width, fin.height, &prob, sensitivity, max_blob);
-    let count = mask.bits.iter().filter(|&&b| b).count() as u32;
-
-    let mut healed = fin.clone();
-    crate::autodust::engine::inpaint(&app_data, &mut healed, &mask)?;
-
-    let preview = crate::convert::proxy(&healed, 1600);
-    let jpeg = crate::encode::encode_jpeg_bytes(&preview, 85)?;
-    use base64::Engine;
-    let b64 = base64::engine::general_purpose::STANDARD.encode(&jpeg);
-    let preview_data_url = format!("data:image/jpeg;base64,{b64}");
-
-    *session.pending_upscale.lock().unwrap() =
-        Some(crate::session::PendingUpscale { image: healed, metadata });
-    Ok(crate::autodust::AutoDustResult { preview_data_url, count })
 }
 
 /// Whether the upscaler runtime+model are installed, and the download size.

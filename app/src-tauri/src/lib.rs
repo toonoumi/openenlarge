@@ -124,7 +124,6 @@ pub fn run() {
             commands::reference_thumb,
             commands::autodust_status,
             commands::download_autodust,
-            commands::autodust_detect,
             telemetry::set_telemetry,
             telemetry::telemetry_event,
             tether::tether_start,
