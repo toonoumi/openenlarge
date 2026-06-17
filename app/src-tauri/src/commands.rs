@@ -1505,6 +1505,21 @@ fn full_mask_from_stamps(w: usize, h: usize, stamps: &[Stamp]) -> film_core::dus
     film_core::dust::Mask { x0: 0, y0: 0, w, h, bits }
 }
 
+/// OR two whole-frame masks (`x0=y0=0`, same `w,h`). An empty side (`w==0`)
+/// yields the other; used to merge the auto-dust defect mask with brush strokes.
+fn union_mask(mut a: film_core::dust::Mask, b: &film_core::dust::Mask) -> film_core::dust::Mask {
+    if a.w == 0 || a.h == 0 {
+        return b.clone();
+    }
+    if b.w == 0 || b.h == 0 || a.bits.len() != b.bits.len() {
+        return a;
+    }
+    for (av, bv) in a.bits.iter_mut().zip(b.bits.iter()) {
+        *av = *av || *bv;
+    }
+    a
+}
+
 /// Bake the GPU working buffer: geometry, then heal dust strokes per the spec's
 /// mode (classic Telea, MI-GAN, or skipped for the AI-mask overlay), then IR. The
 /// MI-GAN branch needs `app_data` for the model; falls back to Telea if missing.
@@ -1678,6 +1693,23 @@ pub fn analyze_white_point(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn union_mask_ors_full_frame_bits() {
+        use film_core::dust::Mask;
+        let a = Mask { x0: 0, y0: 0, w: 2, h: 1, bits: vec![true, false] };
+        let b = Mask { x0: 0, y0: 0, w: 2, h: 1, bits: vec![false, true] };
+        let u = super::union_mask(a, &b);
+        assert_eq!(u.bits, vec![true, true]);
+    }
+
+    #[test]
+    fn union_mask_with_empty_returns_other() {
+        use film_core::dust::Mask;
+        let a = Mask { x0: 0, y0: 0, w: 0, h: 0, bits: Vec::new() };
+        let b = Mask { x0: 0, y0: 0, w: 2, h: 1, bits: vec![true, false] };
+        assert_eq!(super::union_mask(a, &b).bits, vec![true, false]);
+    }
 
     #[test]
     fn white_point_dmax_matches_engine() {

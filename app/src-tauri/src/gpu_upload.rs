@@ -222,6 +222,7 @@ mod tests {
             },
             skip_dust_heal: false,
             migan: false,
+            auto_dust: AutoDust::default(),
         };
         let out = bake_working(&img, &spec);
         assert_eq!((out.width, out.height), (4, 4));
@@ -254,6 +255,7 @@ mod tests {
             },
             skip_dust_heal: false,
             migan: false,
+            auto_dust: AutoDust::default(),
         };
         let out = bake_working(&img, &spec);
         assert_eq!((out.width, out.height), (5, 4));
@@ -280,6 +282,7 @@ mod tests {
             },
             skip_dust_heal: false,
             migan: false,
+            auto_dust: AutoDust::default(),
         };
         let geom = bake_geometry(&img, &spec);
         let baked = bake_working(&img, &spec);
