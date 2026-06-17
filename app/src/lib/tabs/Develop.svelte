@@ -259,10 +259,13 @@
   const resetDustEdits = () => updateDust((d) => resetDust(d));
   function setIrOn(on: boolean) { updateDust((d) => setIrEnabled(d, on)); }
   function setIrSens(v: number) { updateDust((d) => setIrSensitivity(d, v)); }
-  function setAutoSens(v: number) { updateDust((d) => setAutoDustSensitivity(d, v)); }
-  function setAutoOn(on: boolean) { updateDust((d) => setAutoDustEnabled(d, on)); }
+  function setAutoSens(v: number) { if (dust.autoDust.enabled) autoBusy = true; updateDust((d) => setAutoDustSensitivity(d, v)); }
+  function setAutoOn(on: boolean) { autoBusy = on; updateDust((d) => setAutoDustEnabled(d, on)); }
   function setBrushAi(on: boolean) { updateDust((d) => setBrushMigan(d, on)); }
   let aiBusy = false;
+  // Spinner for the AI auto-dust toggle: set the instant the user taps (proves the
+  // tap registered), cleared when the Viewport's bake completes (`autodusted`).
+  let autoBusy = false;
   function aiErase() { aiBusy = true; updateDust((d) => setAiApplied(d, true)); }
   // Never let the erase spinner outlive the active image.
   $: { $activeId; aiBusy = false; }
@@ -345,6 +348,7 @@
                   pointPick={pickTarget !== ""}
                   on:stroke={(e) => commitStroke(e.detail)} on:brush={(e) => (brush = e.detail)}
                   on:aierased={() => (aiBusy = false)}
+                  on:autodusted={() => (autoBusy = false)}
                   on:pointpick={onPointPick} />
         {#if $baseSampling}
           <div class="picker-overlay">
@@ -383,6 +387,7 @@
                          on:aiErase={aiErase} />
             <AutoDustPanel id={$activeId}
                            enabled={dust.autoDust.enabled}
+                           busy={autoBusy}
                            sensitivity={dust.autoDust.sensitivity}
                            on:toggle={(e) => setAutoOn(e.detail)}
                            on:sensitivity={(e) => setAutoSens(e.detail)} />
