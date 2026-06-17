@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { DustStroke, IrRemoval } from "./develop/dust";
+import type { DustStroke, IrRemoval, AutoDust } from "./develop/dust";
 export type { DustStroke, IrRemoval };
 
 export interface Metadata {
@@ -110,6 +110,7 @@ export interface BakeSpec {
   image_crop: [number, number, number, number] | null;
   dust: DustStroke[];
   ir_removal: IrRemoval;
+  auto_dust: AutoDust;
 }
 
 /** Persistent per-image edits that shape a thumbnail (no zoom/view crop). */
@@ -244,20 +245,6 @@ export const api = {
   autodustStatus: () =>
     invoke<{ installed: boolean; downloadBytes: number }>("autodust_status"),
   downloadAutodust: () => invoke<void>("download_autodust"),
-  autodustDetect: (
-    id: string, params: InvertParams,
-    imageCrop: [number, number, number, number] | null = null,
-    geom: { rot90?: number; flip_h?: boolean; flip_v?: boolean; angle?: number } = {},
-    dust: DustStroke[] = [],
-    irRemoval: IrRemoval = { enabled: false, sensitivity: 50 },
-    sensitivity = 50,
-  ) =>
-    invoke<{ previewDataUrl: string; count: number }>("autodust_detect", {
-      id, params, imageCrop,
-      rot90: geom.rot90 ?? 0, flipH: geom.flip_h ?? false,
-      flipV: geom.flip_v ?? false, angle: geom.angle ?? 0,
-      dust: wireDust(dust), irRemoval, sensitivity,
-    }),
   colorMatchParams: (id: string, params: InvertParams, refPath: string, strength: number) =>
     invoke<MatchedParams>("color_match_params", { id, params, refPath, strength }),
   referenceThumb: (path: string) =>
@@ -279,8 +266,10 @@ export const api = {
   workingBakedInfo: (id: string, spec: BakeSpec) =>
     invoke<{ w: number; h: number }>("working_baked_info", { id, spec: { ...spec, dust: wireDust(spec.dust) } }),
 
-  workingBakedPixels: (id: string, spec: BakeSpec) =>
-    invoke<ArrayBuffer>("working_baked_pixels", { id, spec: { ...spec, dust: wireDust(spec.dust) } }),
+  workingBakedPixels: (id: string, spec: BakeSpec, params: InvertParams) =>
+    invoke<ArrayBuffer>("working_baked_pixels", {
+      id, params, spec: { ...spec, dust: wireDust(spec.dust) },
+    }),
 
   resolvedInversion: (id: string, params: InvertParams) =>
     invoke<import("./viewport/gl/invert").ResolvedInversion>("resolved_inversion", { id, params }),
