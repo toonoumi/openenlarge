@@ -228,14 +228,14 @@
           <button class="auto" on:click={autoWb}>{$t('basic.auto')}</button>
         </span>
       </div>
-      <Slider label={$t('basic.temp')} min={2000} max={50000} step={0.5} scale="reciprocal"
+      <Slider label={$t('basic.temp')} min={2000} max={50000} step={0.5} scale="reciprocal" scrubStep={10}
         bind:value={$params.temp} def={5500} gradient={TEMP_GRADIENT} format={kelvin} on:input={markWbManual} />
       <Slider label={$t('basic.tint')} min={-150} max={150} step={1}
         bind:value={$params.tint} def={0} gradient={TINT_GRADIENT} format={signed} on:input={markWbManual} />
 
       <!-- Tone -->
       <div class="sub">{$t('basic.tone')}</div>
-      <Slider label={$t('basic.exposure')} min={-5} max={5} step={0.05} bind:value={$params.exposure} def={0} format={ev} />
+      <Slider label={$t('basic.exposure')} min={-5} max={5} step={0.01} bind:value={$params.exposure} def={0} format={ev} />
       <Slider label={$t('basic.contrast')} min={-100} max={100} bind:value={$params.contrast} def={0} format={signed} />
       <Slider label={$t('basic.highlights')} min={-100} max={100} bind:value={$params.highlights} def={0} format={signed} />
       <Slider label={$t('basic.shadows')} min={-100} max={100} bind:value={$params.shadows} def={0} format={signed} />

@@ -3,10 +3,12 @@
   import { t } from "$lib/i18n";
   import { PRESETS } from "./presets";
   import Icon from "../icons/Icon.svelte";
+  import { scrubValue } from "$lib/actions/scrubValue";
 
   export let aspect: string;
   export let orientation: "landscape" | "portrait";
   export let angle: number;
+  let angleEl: HTMLInputElement;
   const dispatch = createEventDispatcher<{ preset: string; swap: void; reset: void; rotate: number; flip: "h" | "v" }>();
 </script>
 
@@ -35,8 +37,8 @@
 
   <div class="sub">{$t('crop.straighten')}</div>
   <div class="slrow">
-    <input type="range" min="-45" max="45" step="0.1" bind:value={angle} on:dblclick={() => (angle = 0)} />
-    <span class="val">{angle.toFixed(1)}°</span>
+    <input type="range" min="-45" max="45" step="0.1" bind:value={angle} bind:this={angleEl} on:dblclick={() => (angle = 0)} />
+    <span class="val" use:scrubValue={{ input: angleEl }}>{angle.toFixed(1)}°</span>
   </div>
 
   <button class="row" on:click={() => dispatch("reset")}>{$t('crop.reset')}</button>

@@ -9,6 +9,7 @@
   import { editsById, cropById, dustById, metaById } from "../store";
   import { defaultParams, type ExportFormat, type BakeSpec } from "../api";
   import { api } from "../api";
+  import { scrubValue } from "$lib/actions/scrubValue";
   import { emptyDust } from "../develop/dust";
   import { FinishRenderer } from "../viewport/gl/renderer";
   import { toInversionUniforms } from "../viewport/gl/invert";
@@ -137,6 +138,8 @@
   let bitDepth: 8 | 16 = 16;
   let quality = 90;
   let maxMb = 0; // 0 = unlimited
+  let qualityEl: HTMLInputElement;
+  let maxMbEl: HTMLInputElement;
 
   $: kindIndex = kind === "jpeg" ? 0 : kind === "tiff" ? 1 : 2;
 
@@ -333,13 +336,13 @@
         {#if kind === "jpeg"}
           <div class="opts" in:slideFade out:collapseOut>
             <div class="field">
-              <span class="flabel">{$t('export.quality')} <b>{quality}</b></span>
-              <input class="range" type="range" min="1" max="100" bind:value={quality}
+              <span class="flabel">{$t('export.quality')} <b use:scrubValue={{ input: qualityEl }}>{quality}</b></span>
+              <input class="range" type="range" min="1" max="100" bind:value={quality} bind:this={qualityEl}
                      style="--pct:{((quality - 1) / 99) * 100}%" />
             </div>
             <div class="field">
-              <span class="flabel">{$t('export.maxSize')} <b>{maxMb === 0 ? $t('export.unlimited') : $t('export.maxSizeMb', { mb: maxMb })}</b></span>
-              <input class="range" type="range" min="0" max="20" step="0.5" bind:value={maxMb}
+              <span class="flabel">{$t('export.maxSize')} <b use:scrubValue={{ input: maxMbEl }}>{maxMb === 0 ? $t('export.unlimited') : $t('export.maxSizeMb', { mb: maxMb })}</b></span>
+              <input class="range" type="range" min="0" max="20" step="0.5" bind:value={maxMb} bind:this={maxMbEl}
                      style="--pct:{(maxMb / 20) * 100}%" />
             </div>
           </div>

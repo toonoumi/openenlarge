@@ -6,6 +6,9 @@
   import { api, type MatchedParams } from "../api";
   import { open } from "@tauri-apps/plugin-dialog";
   import UpscaleControls from "./UpscaleControls.svelte";
+  import { scrubValue } from "$lib/actions/scrubValue";
+
+  let strengthEl: HTMLInputElement;
 
   /** Develop context for upscaling the current image (passed from Develop.svelte). */
   export let effParams: import("../api").InvertParams | null = null;
@@ -194,9 +197,9 @@
     {#if matchedFull}
       <label class="strength">
         <span>{$t("colorMatch.strength")}</span>
-        <input type="range" min="0" max="100" bind:value={strength}
+        <input type="range" min="0" max="100" bind:value={strength} bind:this={strengthEl}
                on:input={applyStrength} on:change={() => commitActive()} />
-        <span class="val">{strength}%</span>
+        <span class="val" use:scrubValue={{ input: strengthEl }}>{strength}%</span>
       </label>
       <button class="reset" on:click={resetMatch}>{$t("colorMatch.reset")}</button>
     {/if}

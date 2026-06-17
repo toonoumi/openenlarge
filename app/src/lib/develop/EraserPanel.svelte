@@ -1,6 +1,10 @@
 <script lang="ts">
   import { createEventDispatcher } from "svelte";
   import { t } from "$lib/i18n";
+  import { scrubValue } from "$lib/actions/scrubValue";
+
+  let irEl: HTMLInputElement;
+  let brushEl: HTMLInputElement;
 
   /** Brush radius normalized to image width (0.005..0.2). */
   export let brush: number;
@@ -33,9 +37,9 @@
     {#if irEnabled}
       <div class="sub">{$t('eraser.sensitivity')}</div>
       <div class="slrow">
-        <input type="range" min="0" max="100" step="1" value={irSensitivity}
+        <input type="range" min="0" max="100" step="1" value={irSensitivity} bind:this={irEl}
                on:input={(e) => dispatch("irSensitivity", +(e.target as HTMLInputElement).value)} />
-        <span class="val">{Math.round(irSensitivity)}</span>
+        <span class="val" use:scrubValue={{ input: irEl }}>{Math.round(irSensitivity)}</span>
       </div>
     {/if}
   {:else}
@@ -48,8 +52,8 @@
 
   <div class="sub">{$t('eraser.brushSize')}</div>
   <div class="slrow">
-    <input type="range" min="0.005" max="0.2" step="0.001" bind:value={brush} />
-    <span class="val">{(brush * 100).toFixed(1)}%</span>
+    <input type="range" min="0.005" max="0.2" step="0.001" bind:value={brush} bind:this={brushEl} />
+    <span class="val" use:scrubValue={{ input: brushEl }}>{(brush * 100).toFixed(1)}%</span>
   </div>
 
   <label class="check" title={$t('eraser.brushAiHelp')}>

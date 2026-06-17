@@ -5,6 +5,9 @@
   import { t } from "$lib/i18n";
   import { api, type InvertParams, type DustStroke, type IrRemoval, type ExportFormat } from "../api";
   import { autodustInstalled } from "../store";
+  import { scrubValue } from "$lib/actions/scrubValue";
+
+  let sensitivityEl: HTMLInputElement;
 
   /** Everything needed to finish the full-res positive image for detection. */
   export let id: string | null;
@@ -108,8 +111,9 @@
     </div>
     <div class="slrow">
       <input type="range" min="0" max="100" step="1" value={sensitivity} disabled={busy}
+             bind:this={sensitivityEl}
              on:change={(e) => onSensitivity(+(e.target as HTMLInputElement).value)} />
-      <span class="val">{Math.round(sensitivity)}</span>
+      <span class="val" use:scrubValue={{ input: sensitivityEl }}>{Math.round(sensitivity)}</span>
     </div>
 
     <button class="go" class:busy disabled={busy || !id} on:click={detect}>
