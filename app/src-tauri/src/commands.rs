@@ -1505,6 +1505,34 @@ fn full_mask_from_stamps(w: usize, h: usize, stamps: &[Stamp]) -> film_core::dus
     film_core::dust::Mask { x0: 0, y0: 0, w, h, bits }
 }
 
+/// Build the auto-dust defect mask for a baked NEGATIVE working image: invert to
+/// a positive, run the detector (reusing `cached` prob if its dims match, else
+/// run once), and threshold at `sensitivity`. Returns the whole-frame mask plus
+/// the prob map to cache when freshly computed. Detector failure → empty mask.
+fn auto_dust_mask(
+    app_data: &Path,
+    baked: &film_core::Image,
+    ip: &InversionParams,
+    mode: Mode,
+    sensitivity: f32,
+    cached: Option<(usize, usize, Vec<f32>)>,
+) -> (film_core::dust::Mask, Option<(usize, usize, Vec<f32>)>) {
+    let (w, h) = (baked.width, baked.height);
+    let empty = film_core::dust::Mask { x0: 0, y0: 0, w: 0, h: 0, bits: Vec::new() };
+    // Positive image the detector expects (no finishing layer needed).
+    let positive = invert_image(baked, ip, mode);
+    let (prob, fresh) = match cached {
+        Some((cw, ch, p)) if (cw, ch) == (w, h) && p.len() == w * h => (p, None),
+        _ => match crate::autodust::engine::detect(app_data, &positive) {
+            Ok(p) => (p.clone(), Some((w, h, p))),
+            Err(_) => return (empty, None),
+        },
+    };
+    let max_blob = (crate::autodust::MAX_BLOB * w.max(h) / 2000).max(1);
+    let mask = film_core::dust::prob_defect_mask(w, h, &prob, sensitivity, max_blob);
+    (mask, fresh)
+}
+
 /// OR two whole-frame masks (`x0=y0=0`, same `w,h`). An empty side (`w==0`)
 /// yields the other; used to merge the auto-dust defect mask with brush strokes.
 fn union_mask(mut a: film_core::dust::Mask, b: &film_core::dust::Mask) -> film_core::dust::Mask {
