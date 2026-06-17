@@ -1548,21 +1548,36 @@ fn union_mask(mut a: film_core::dust::Mask, b: &film_core::dust::Mask) -> film_c
     a
 }
 
-/// Bake the GPU working buffer: geometry, then heal dust strokes per the spec's
-/// mode (classic Telea, MI-GAN, or skipped for the AI-mask overlay), then IR. The
-/// MI-GAN branch needs `app_data` for the model; falls back to Telea if missing.
-fn bake_for_view(app_data: &Path, working: &film_core::Image, spec: &BakeSpec) -> film_core::Image {
-    let mut img = bake_geometry(working, spec);
-    if !spec.skip_dust_heal {
-        let stamps = export_stamps(&spec.dust, img.width, img.height);
-        if spec.migan && crate::autodust::assets::installed(app_data) {
-            let mask = full_mask_from_stamps(img.width, img.height, &stamps);
-            if mask.bits.iter().any(|&b| b) {
-                let _ = crate::autodust::engine::inpaint(app_data, &mut img, &mask);
-            }
+/// Heal an already-geometry-baked working buffer: dust strokes per the spec's
+/// mode (classic Telea, MI-GAN, or skipped for the AI-mask overlay), unioned with
+/// the optional auto-dust defect `auto_mask`, then IR. When `auto_mask` is present
+/// (or `spec.migan`) and the model is installed, the combined mask is MI-GAN
+/// healed; otherwise strokes fall back to the classic Telea fill.
+fn bake_for_view_from_baked(
+    app_data: &Path,
+    mut img: film_core::Image,
+    spec: &BakeSpec,
+    auto_mask: Option<&film_core::dust::Mask>,
+) -> film_core::Image {
+    let stamps = export_stamps(&spec.dust, img.width, img.height);
+    let want_migan =
+        (spec.migan || auto_mask.is_some()) && crate::autodust::assets::installed(app_data);
+    if want_migan {
+        // Brush strokes (unless in mask-overlay mode) ∪ the auto-dust defect mask.
+        let stroke_mask = if spec.skip_dust_heal {
+            film_core::dust::Mask { x0: 0, y0: 0, w: 0, h: 0, bits: Vec::new() }
         } else {
-            film_core::dust::apply(&mut img, &stamps);
+            full_mask_from_stamps(img.width, img.height, &stamps)
+        };
+        let mut mask = stroke_mask;
+        if let Some(am) = auto_mask {
+            mask = union_mask(mask, am);
         }
+        if mask.bits.iter().any(|&b| b) {
+            let _ = crate::autodust::engine::inpaint(app_data, &mut img, &mask);
+        }
+    } else if !spec.skip_dust_heal {
+        film_core::dust::apply(&mut img, &stamps);
     }
     if spec.ir_removal.enabled {
         if let Some(ir) = img.ir.clone() {
@@ -1579,30 +1594,48 @@ fn bake_for_view(app_data: &Path, working: &film_core::Image, spec: &BakeSpec) -
 pub async fn working_baked_pixels(
     app: tauri::AppHandle,
     id: String,
+    params: InvertParams,
     spec: BakeSpec,
     session: State<'_, Session>,
 ) -> Result<tauri::ipc::Response, String> {
     use tauri::Manager;
     let app_data = app.path().app_data_dir().map_err(|e| e.to_string())?;
     ensure_resident(&session, &id)?;
-    let working = {
+    let (working, ip, mode) = {
         let images = session.images.lock().unwrap();
         let img = images.get(&id).ok_or("unknown image id")?;
-        img.developed
-            .as_ref()
-            .ok_or("not developed")?
-            .working
-            .clone()
+        let dev = img.developed.as_ref().ok_or("not developed")?;
+        let mut ip = resolve_params(&params, &dev.thumb, effective_base(&params, dev.base));
+        ip.d_max = effective_dmax(&params, dev.d_max);
+        (dev.working.clone(), ip, mode_from(&params.mode))
     };
-    // The heal can run MI-GAN (seconds) — do it off the main thread so the UI
-    // (and the WKWebView, which shares the main thread on macOS) stays responsive.
-    let bytes = tauri::async_runtime::spawn_blocking(move || {
-        let baked = bake_for_view(&app_data, &working, &spec);
-        let (_, _, bytes) = pack_rgba16f(&baked, MAX_GPU_EDGE);
-        bytes
+    let cached = if spec.auto_dust.enabled {
+        session.autodust_prob.lock().unwrap().get(&id).cloned()
+    } else {
+        None
+    };
+    let do_auto = spec.auto_dust.enabled;
+    let sens = spec.auto_dust.sensitivity;
+    // The heal can run the detector + MI-GAN (seconds) — keep it off the main
+    // thread so the UI (and the WKWebView, which shares the main thread on macOS)
+    // stays responsive. Returns any freshly computed prob map to cache.
+    let (bytes, fresh) = tauri::async_runtime::spawn_blocking(move || {
+        let baked = bake_geometry(&working, &spec);
+        let (auto_mask, fresh) = if do_auto && crate::autodust::assets::installed(&app_data) {
+            let (m, fr) = auto_dust_mask(&app_data, &baked, &ip, mode, sens, cached);
+            (Some(m), fr)
+        } else {
+            (None, None)
+        };
+        let healed = bake_for_view_from_baked(&app_data, baked, &spec, auto_mask.as_ref());
+        let (_, _, bytes) = pack_rgba16f(&healed, MAX_GPU_EDGE);
+        (bytes, fresh)
     })
     .await
     .map_err(|e| e.to_string())?;
+    if let Some(p) = fresh {
+        session.autodust_prob.lock().unwrap().insert(id, p);
+    }
     Ok(tauri::ipc::Response::new(bytes))
 }
 
