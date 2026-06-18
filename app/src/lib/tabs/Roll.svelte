@@ -85,9 +85,8 @@
 
   let destroyed = false;
   onDestroy(() => {
+    schedulePersist.flush();   // flush while destroyed is still false, so the final look persists
     destroyed = true;
-    // Flush persist pass so a mid-drag leave still saves.
-    schedulePersist.flush();
   });
 
   // --- Tiny concurrency pool: run `fns` with at most `concurrency` in-flight at once.
@@ -146,17 +145,20 @@
     const frames = get(developedFolderImages);
     const ids = frames.map((f) => f.id);
 
-    // Write tone/color look into every frame's edits (persisted automatically via write-through).
+    // Compute the next edits — apply tone/color look into every frame's edits.
     let nextEdits = applyToneColorToAll(get(editsById), ids, draft.params);
-    // Also persist base/dmax overrides when set in the draft (null-guarded).
+    // Also apply base/dmax overrides when set in the draft (null-guarded).
     if (draft.params.base_override != null) nextEdits = applyBaseToAll(nextEdits, ids, draft.params.base_override);
     if (draft.params.d_max_override != null) nextEdits = applyWhitePointToAll(nextEdits, ids, draft.params.d_max_override);
+
+    // Guard: discard stale batch BEFORE writing stores so a stale run doesn't clobber newer state.
+    if (persistToken !== token || destroyed) return;
+
+    // Write tone/color look into every frame's edits (persisted automatically via write-through).
     editsById.set(nextEdits);
 
     // Persist crop to all frames when the draft has a crop set (null-guarded).
     if (draft.crop != null) cropById.set(applyCropToAll(get(cropById), ids, draft.crop));
-
-    if (persistToken !== token || destroyed) return;
 
     // Persist thumbnail for each frame — reuse previewMap renders, no re-render.
     const snap = previewMap;
