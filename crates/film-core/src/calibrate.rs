@@ -75,21 +75,10 @@ fn scaled_rect(rect: Option<Rect>, src: &Image, small: &Image) -> Rect {
     }
 }
 
-/// Sample the film base as a single COHERENT color: collect the region's pixels,
-/// sort by luma, keep the [lo, hi] luma-rank band, and average RGB over that one
-/// pixel set. Unlike [`sample_base`] (three independent per-channel percentiles)
-/// the result is a real clear-film color, so it removes the orange mask without
-/// injecting a per-channel cast. Returns `[0,0,0]` for an empty region. Runs on a
-/// downscaled proxy (see [`SAMPLE_CAP`]) so cost is independent of source size.
-pub fn sample_base_coherent(img: &Image, rect: Option<Rect>, lo: f32, hi: f32) -> [f32; 3] {
-    let small = downscale_for_detect(img, SAMPLE_CAP);
-    let r = scaled_rect(rect, img, &small);
-    let mut px: Vec<[f32; 3]> = Vec::new();
-    for yy in r.y..(r.y + r.h).min(small.height) {
-        for xx in r.x..(r.x + r.w).min(small.width) {
-            px.push(small.pixels[yy * small.width + xx]);
-        }
-    }
+/// Sort a region's pixels by luma, keep the central [lo, hi] luma-rank band, and
+/// average RGB over that one pixel set — a coherent clear-film color whose trim
+/// rejects dark specks and specular hot pixels. Returns `[0,0,0]` for empty input.
+fn coherent_band_avg(mut px: Vec<[f32; 3]>, lo: f32, hi: f32) -> [f32; 3] {
     if px.is_empty() {
         return [0.0, 0.0, 0.0];
     }
@@ -112,6 +101,42 @@ pub fn sample_base_coherent(img: &Image, rect: Option<Rect>, lo: f32, hi: f32) -
     }
     let k = band.len() as f64;
     [(sum[0] / k) as f32, (sum[1] / k) as f32, (sum[2] / k) as f32]
+}
+
+/// Sample the film base as a single COHERENT color: collect the region's pixels,
+/// sort by luma, keep the [lo, hi] luma-rank band, and average RGB over that one
+/// pixel set. Unlike [`sample_base`] (three independent per-channel percentiles)
+/// the result is a real clear-film color, so it removes the orange mask without
+/// injecting a per-channel cast. Returns `[0,0,0]` for an empty region. Runs on a
+/// downscaled proxy (see [`SAMPLE_CAP`]) so cost is independent of source size.
+pub fn sample_base_coherent(img: &Image, rect: Option<Rect>, lo: f32, hi: f32) -> [f32; 3] {
+    let small = downscale_for_detect(img, SAMPLE_CAP);
+    let r = scaled_rect(rect, img, &small);
+    let mut px: Vec<[f32; 3]> = Vec::new();
+    for yy in r.y..(r.y + r.h).min(small.height) {
+        for xx in r.x..(r.x + r.w).min(small.width) {
+            px.push(small.pixels[yy * small.width + xx]);
+        }
+    }
+    coherent_band_avg(px, lo, hi)
+}
+
+/// Like [`sample_base_coherent`] but reads source pixels DIRECTLY at full
+/// resolution (no whole-image downscale). For the manual base picker, where the
+/// rect is a small, deliberately-aimed patch: the 512-proxy point-samples only a
+/// handful of source pixels for a small rect (nearest-neighbor at an ~`src/512`
+/// stride), so the result is aliased and grain/dust-sensitive. Reading every true
+/// pixel in the rect lets the [lo,hi] trim reject specks over a full population,
+/// giving a stable color even on a thin rebate. Cheap because the rect is small —
+/// do NOT call with a full-frame rect (sorts the whole image; use the proxy).
+pub fn sample_base_coherent_fullres(img: &Image, rect: Rect, lo: f32, hi: f32) -> [f32; 3] {
+    let mut px: Vec<[f32; 3]> = Vec::new();
+    for yy in rect.y..(rect.y + rect.h).min(img.height) {
+        for xx in rect.x..(rect.x + rect.w).min(img.width) {
+            px.push(img.pixels[yy * img.width + xx]);
+        }
+    }
+    coherent_band_avg(px, lo, hi)
 }
 
 /// Default damping for [`auto_wb_gains`]: gains are shrunk toward neutral by this
@@ -456,6 +481,37 @@ mod tests {
         let rect = Some(Rect { x: 0, y: 0, w, h: h / 10 });
         let (blo, bhi) = BASE_BAND_REBATE;
         let b = sample_base_coherent(&img, rect, blo, bhi);
+        for c in 0..3 {
+            assert!((b[c] - orange[c]).abs() < 0.02, "ch {c} = {} (want {})", b[c], orange[c]);
+        }
+    }
+
+    #[test]
+    fn sample_base_coherent_fullres_trims_grain_and_dust_on_thin_rebate() {
+        // A THIN orange rebate (12px) on a wide (>>SAMPLE_CAP) image, peppered with
+        // grain and dark dust specks. Reading every full-res pixel lets the [lo,hi]
+        // trim reject the specks and recover the true mean orange.
+        let (w, h) = (4096usize, 64usize);
+        let orange = [0.42f32, 0.19, 0.10];
+        let band = 12usize; // ~0.3% of width — a narrow rephotographed rebate
+        let mut img = Image::new(w, h);
+        for y in 0..h {
+            for x in 0..w {
+                // Deterministic ± grain, plus a sprinkling of near-black dust.
+                let grain = (((x * 7 + y * 13) % 5) as f32 - 2.0) * 0.01;
+                let dust = (x * 31 + y * 17) % 23 == 0;
+                let p = if x < band {
+                    if dust { [0.02, 0.02, 0.02] } else { [orange[0] + grain, orange[1] + grain, orange[2] + grain] }
+                } else {
+                    [0.85, 0.85, 0.80]
+                };
+                img.pixels[y * w + x] = p;
+            }
+        }
+        // Rect parked inside the rebate (cols 1..11).
+        let r = Rect { x: 1, y: 0, w: band - 2, h };
+        let (lo, hi) = BASE_BAND_REBATE;
+        let b = sample_base_coherent_fullres(&img, r, lo, hi);
         for c in 0..3 {
             assert!((b[c] - orange[c]).abs() < 0.02, "ch {c} = {} (want {})", b[c], orange[c]);
         }

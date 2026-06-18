@@ -9,14 +9,25 @@
   export let imgH = 0;
 
   const dispatch = createEventDispatcher<{ sampled: [number, number, number] }>();
-  const PAD = 60, CAP = 4000;
-  // Sampled patch as a fraction of image WIDTH (~1%); height matched for square px.
-  // Click samples a small averaged patch (robust to grain/dust) rather than one pixel.
-  const PATCH = 0.01;
+  const PAD = 60;
+  // Long-edge cap for the source render. Shared by the on-screen view AND the
+  // loupe, so the loupe zooms real working-image pixels (the same buffer the
+  // backend samples) rather than an upscaled display proxy.
+  const CAP = 2400;
+  // Sampled patch as a fraction of image WIDTH; height matched for square px.
+  // Small (~0.4%) so it fits inside a thin rebate without straddling the scene;
+  // the loupe lets the user aim it, and the backend trims grain/dust over it.
+  const PATCH = 0.004;
+  // Loupe geometry: a circular pixel-zoom that follows the cursor.
+  const LOUPE_D = 184;          // diameter (px)
+  const LOUPE_FRAC = 0.02;      // fraction of image WIDTH shown across the loupe
+  const LOUPE_GAP = 22;         // offset from the cursor
+
   let el: HTMLDivElement;
   let src = "";
   let vpW = 0, vpH = 0;
   let mark: { x: number; y: number } | null = null; // last sampled point (normalized)
+  let hover: { sx: number; sy: number; nx: number; ny: number } | null = null;
 
   function measure() { if (el) { vpW = el.clientWidth; vpH = el.clientHeight; } }
   onMount(() => { measure(); const ro = new ResizeObserver(measure); if (el) ro.observe(el); return () => ro.disconnect(); });
@@ -31,7 +42,7 @@
   let lastKey = "";
   async function render() {
     if (!id || !imgW || !vpW) return;
-    const rscale = Math.min(fit, CAP / Math.max(imgW, imgH));
+    const rscale = Math.min(1, CAP / Math.max(imgW, imgH));
     const out_w = Math.max(1, Math.round(imgW * rscale));
     const out_h = Math.max(1, Math.round(imgH * rscale));
     try {
@@ -60,24 +71,60 @@
     } catch { /* ignore */ }
   }
 
-  function onClick(e: MouseEvent) {
-    if (!dispW || !dispH) return;
+  // Normalized image coords from a pointer event, or null if outside the negative.
+  function locate(e: MouseEvent): { sx: number; sy: number; nx: number; ny: number } | null {
+    if (!dispW || !dispH) return null;
     const r = el.getBoundingClientRect();
-    const nx = (e.clientX - r.left - imgScreen.left) / dispW;
-    const ny = (e.clientY - r.top - imgScreen.top) / dispH;
-    if (nx < 0 || nx > 1 || ny < 0 || ny > 1) return; // clicked outside the negative
-    mark = { x: nx, y: ny };
-    sampleAt(nx, ny);
+    const sx = e.clientX - r.left, sy = e.clientY - r.top;
+    const nx = (sx - imgScreen.left) / dispW;
+    const ny = (sy - imgScreen.top) / dispH;
+    if (nx < 0 || nx > 1 || ny < 0 || ny > 1) return null;
+    return { sx, sy, nx, ny };
   }
+
+  function onMove(e: MouseEvent) { hover = locate(e); }
+  function onLeave() { hover = null; }
+
+  function onClick(e: MouseEvent) {
+    const p = locate(e);
+    if (!p) return; // clicked outside the negative
+    mark = { x: p.nx, y: p.ny };
+    sampleAt(p.nx, p.ny);
+  }
+
+  // ── Loupe placement & content ────────────────────────────────────────────
+  // Background sized so the cursor's image point sits at the loupe center, with
+  // `image-rendering: pixelated` so individual pixels are visible for aiming.
+  $: bgW = LOUPE_D / LOUPE_FRAC;
+  $: bgH = imgW > 0 ? bgW * (imgH / imgW) : bgW;
+  $: reticle = PATCH * bgW; // sample-patch size in loupe px (square)
+  // Flip the loupe to whichever side keeps it on-screen.
+  $: loupeLeft = hover
+    ? (hover.sx + LOUPE_GAP + LOUPE_D <= vpW ? hover.sx + LOUPE_GAP : hover.sx - LOUPE_GAP - LOUPE_D)
+    : 0;
+  $: loupeTop = hover
+    ? (hover.sy - LOUPE_GAP - LOUPE_D >= 0 ? hover.sy - LOUPE_GAP - LOUPE_D : hover.sy + LOUPE_GAP)
+    : 0;
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
-<div class="basevp" bind:this={el} on:click={onClick}>
+<div class="basevp" bind:this={el} on:click={onClick} on:mousemove={onMove} on:mouseleave={onLeave}>
   {#if src}
     <img {src} alt="negative" draggable="false"
       style="position:absolute; left:{imgScreen.left}px; top:{imgScreen.top}px; width:{dispW}px; height:{dispH}px;" />
     {#if mark}
       <div class="mark" style="left:{imgScreen.left + mark.x * dispW}px; top:{imgScreen.top + mark.y * dispH}px;"></div>
+    {/if}
+    {#if hover}
+      <!-- focus dot at the cursor on the full image, for context -->
+      <div class="focus" style="left:{hover.sx}px; top:{hover.sy}px;"></div>
+      <!-- pixel-zoom loupe -->
+      <div class="loupe" style="left:{loupeLeft}px; top:{loupeTop}px; width:{LOUPE_D}px; height:{LOUPE_D}px;
+        background-image:url('{src}');
+        background-size:{bgW}px {bgH}px;
+        background-position:{LOUPE_D / 2 - hover.nx * bgW}px {LOUPE_D / 2 - hover.ny * bgH}px;">
+        <div class="reticle" style="width:{reticle}px; height:{reticle}px;"></div>
+      </div>
     {/if}
   {:else}<div class="hint">…</div>{/if}
 </div>
@@ -89,4 +136,14 @@
   .mark { position: absolute; width: 14px; height: 14px; transform: translate(-50%, -50%);
     border: 2px solid rgba(120,220,255,0.95); border-radius: 50%;
     box-shadow: 0 0 0 1px rgba(0,0,0,0.5); pointer-events: none; }
+  .focus { position: absolute; width: 5px; height: 5px; transform: translate(-50%, -50%);
+    background: rgba(120,220,255,0.95); border-radius: 50%;
+    box-shadow: 0 0 0 1px rgba(0,0,0,0.6); pointer-events: none; }
+  .loupe { position: absolute; border-radius: 50%; pointer-events: none;
+    background-repeat: no-repeat; image-rendering: pixelated;
+    border: 2px solid rgba(255,255,255,0.85);
+    box-shadow: 0 2px 10px rgba(0,0,0,0.45), 0 0 0 1px rgba(0,0,0,0.5); }
+  .loupe .reticle { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    border: 1.5px solid rgba(120,220,255,0.95);
+    box-shadow: 0 0 0 1px rgba(0,0,0,0.7); }
 </style>
