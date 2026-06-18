@@ -17,7 +17,13 @@
   // Sampled patch as a fraction of image WIDTH; height matched for square px.
   // Small (~0.4%) so it fits inside a thin rebate without straddling the scene;
   // the loupe lets the user aim it, and the backend trims grain/dust over it.
-  const PATCH = 0.004;
+  // Scroll-wheel over the picker grows/shrinks it around the cursor (clamped),
+  // so the user can dial the patch to the rebate width on the fly.
+  const PATCH_DEFAULT = 0.004;
+  const PATCH_MIN = 0.001;
+  const PATCH_MAX = 0.02; // at this size the reticle fills the loupe (= LOUPE_FRAC)
+  const PATCH_STEP = 1.12; // multiplicative zoom per wheel notch
+  let patch = PATCH_DEFAULT;
   // Loupe geometry: a circular pixel-zoom that follows the cursor.
   const LOUPE_D = 184;          // diameter (px)
   const LOUPE_FRAC = 0.02;      // fraction of image WIDTH shown across the loupe
@@ -60,8 +66,8 @@
   // Sample a small averaged patch centered on a normalized point in the raw negative.
   async function sampleAt(nx: number, ny: number) {
     if (!id) return;
-    const w = PATCH;
-    const h = imgH > 0 ? PATCH * (imgW / imgH) : PATCH; // square in pixels
+    const w = patch;
+    const h = imgH > 0 ? patch * (imgW / imgH) : patch; // square in pixels
     const x = clamp01(nx - w / 2);
     const y = clamp01(ny - h / 2);
     const rect: [number, number, number, number] = [x, y, Math.min(w, 1 - x), Math.min(h, 1 - y)];
@@ -92,12 +98,33 @@
     sampleAt(p.nx, p.ny);
   }
 
+  // Re-sampling is debounced so a fast scroll doesn't flood the backend; the
+  // reticle still resizes live (it's driven by `patch` reactively).
+  let resampleTimer: ReturnType<typeof setTimeout> | null = null;
+  function scheduleResample(nx: number, ny: number) {
+    if (resampleTimer) clearTimeout(resampleTimer);
+    resampleTimer = setTimeout(() => { resampleTimer = null; sampleAt(nx, ny); }, 70);
+  }
+
+  // Scroll over the picker grows/shrinks the sample rect around the cursor and
+  // re-samples the base there. Up = grow, down = shrink (clamped to min/max).
+  function onWheel(e: WheelEvent) {
+    const p = locate(e) ?? hover;
+    if (!p) return; // pointer not over the negative
+    const factor = e.deltaY < 0 ? PATCH_STEP : 1 / PATCH_STEP;
+    const next = Math.min(PATCH_MAX, Math.max(PATCH_MIN, patch * factor));
+    if (next === patch) return; // already at a clamp; nothing to do
+    patch = next;
+    mark = { x: p.nx, y: p.ny };
+    scheduleResample(p.nx, p.ny);
+  }
+
   // ── Loupe placement & content ────────────────────────────────────────────
   // Background sized so the cursor's image point sits at the loupe center, with
   // `image-rendering: pixelated` so individual pixels are visible for aiming.
   $: bgW = LOUPE_D / LOUPE_FRAC;
   $: bgH = imgW > 0 ? bgW * (imgH / imgW) : bgW;
-  $: reticle = PATCH * bgW; // sample-patch size in loupe px (square)
+  $: reticle = patch * bgW; // sample-patch size in loupe px (square)
   // Flip the loupe to whichever side keeps it on-screen.
   $: loupeLeft = hover
     ? (hover.sx + LOUPE_GAP + LOUPE_D <= vpW ? hover.sx + LOUPE_GAP : hover.sx - LOUPE_GAP - LOUPE_D)
@@ -108,7 +135,7 @@
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
-<div class="basevp" bind:this={el} on:click={onClick} on:mousemove={onMove} on:mouseleave={onLeave}>
+<div class="basevp" bind:this={el} on:click={onClick} on:mousemove={onMove} on:mouseleave={onLeave} on:wheel|preventDefault={onWheel}>
   {#if src}
     <img {src} alt="negative" draggable="false"
       style="position:absolute; left:{imgScreen.left}px; top:{imgScreen.top}px; width:{dispW}px; height:{dispH}px;" />
