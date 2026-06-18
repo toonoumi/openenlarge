@@ -165,11 +165,27 @@ pub fn auto_wb_gains_strength(img: &Image, strength: f32) -> [f32; 3] {
     if img.pixels.is_empty() {
         return [1.0, 1.0, 1.0];
     }
-    // Average only near-neutral, well-exposed pixels. `sat_max` rejects chromatic
-    // content that violates the gray assumption; `hi`/`lo` drop clipped highlights
-    // (often warm-biased) and shadow noise.
-    let accumulate = |sat_max: f32, hi: f32, lo: f32| -> ([f64; 3], u64) {
-        let (mut sum, mut n) = ([0.0f64; 3], 0u64);
+    // Exposure-invariant brightness gates. The gray-world gains are channel
+    // ratios, so a uniform exposure nudge cancels out — *except* through which
+    // pixels survive the bright/dark gate. Deriving the gate from the image's own
+    // distribution (percentiles of max-channel / luma, both of which scale with
+    // exposure) keeps the selected set — and the gains — stable under exposure,
+    // which is what made auto-WB jump on small exposure changes (B4). Computed
+    // once, deterministically (a total sort), so re-runs are bit-identical.
+    let percentile = |key: &dyn Fn(&[f32; 3]) -> f32, q: f32| -> f32 {
+        let mut v: Vec<f32> = img.pixels.iter().map(key).collect();
+        v.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let idx = (((v.len() - 1) as f32) * q).round() as usize;
+        v[idx.min(v.len() - 1)]
+    };
+    let hi = percentile(&|p| p[0].max(p[1]).max(p[2]), 0.95); // drop brightest 5% (often warm-clipped)
+    let lo = percentile(&|p| (p[0] + p[1] + p[2]) / 3.0, 0.05); // drop darkest 5% (shadow noise)
+
+    // Collect near-neutral, well-exposed pixels per channel. `sat_max` rejects
+    // chromatic content that violates the gray assumption; `hi`/`lo` drop clipped
+    // highlights and shadow noise.
+    let collect = |sat_max: f32, hi: f32, lo: f32| -> [Vec<f32>; 3] {
+        let mut chans: [Vec<f32>; 3] = [Vec::new(), Vec::new(), Vec::new()];
         for p in &img.pixels {
             let mx = p[0].max(p[1]).max(p[2]);
             let mn = p[0].min(p[1]).min(p[2]);
@@ -182,32 +198,40 @@ pub fn auto_wb_gains_strength(img: &Image, strength: f32) -> [f32; 3] {
                 continue;
             }
             for c in 0..3 {
-                sum[c] += p[c] as f64;
+                chans[c].push(p[c]);
             }
-            n += 1;
         }
-        (sum, n)
+        chans
     };
 
     // Need a meaningful sample. If a strong global cast desaturates too few pixels,
     // relax saturation; if still empty (e.g. all clipped), fall back to everything.
-    let min_keep = (img.pixels.len() as u64 / 20).max(1); // ≥5%
-    let (mut sum, mut n) = accumulate(0.25, 0.95, 0.05);
-    if n < min_keep {
-        let r = accumulate(0.6, 0.95, 0.05);
-        sum = r.0;
-        n = r.1;
+    let min_keep = (img.pixels.len() / 20).max(1); // ≥5%
+    let mut chans = collect(0.25, hi, lo);
+    if chans[0].len() < min_keep {
+        chans = collect(0.6, hi, lo);
     }
-    if n == 0 {
-        let r = accumulate(1.0, 1.1, 0.0);
-        sum = r.0;
-        n = r.1;
+    if chans[0].is_empty() {
+        chans = collect(1.0, f32::INFINITY, 0.0);
     }
-    if n == 0 {
+    if chans[0].is_empty() {
         return [1.0, 1.0, 1.0];
     }
 
-    let mean = [sum[0] / n as f64, sum[1] / n as f64, sum[2] / n as f64];
+    // Per-channel trimmed mean (drop the top/bottom 10%): a robust central
+    // estimate that ignores the few chromatic outliers that slip past the gate,
+    // so the result doesn't lurch when one such pixel enters/leaves the crop.
+    let trimmed_mean = |v: &mut Vec<f32>| -> f64 {
+        v.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let cut = v.len() / 10;
+        let slice = &v[cut..(v.len() - cut).max(cut + 1)];
+        slice.iter().map(|&x| x as f64).sum::<f64>() / slice.len() as f64
+    };
+    let mean = [
+        trimmed_mean(&mut chans[0]),
+        trimmed_mean(&mut chans[1]),
+        trimmed_mean(&mut chans[2]),
+    ];
     let gray = (mean[0] + mean[1] + mean[2]) / 3.0;
     let raw = [
         (gray / mean[0].max(1e-6)) as f32,
@@ -630,6 +654,65 @@ mod tests {
             spread(full) < 1e-4,
             "not neutral at full strength: {full:?}"
         );
+    }
+
+    #[test]
+    fn auto_wb_gains_invariant_to_exposure_scaling() {
+        // A scene whose chroma is correlated with brightness: shadows lean red,
+        // highlights lean blue (a tame, sub-saturation cast). A uniform exposure
+        // nudge scales every pixel equally, which must NOT change the white
+        // balance — the gray-world gains are channel ratios, so the scale cancels.
+        // The only way it can wobble is if an *absolute* luma gate drops a
+        // brightness-correlated slice of pixels; the estimator must avoid that.
+        let n = 200usize;
+        let pixels: Vec<[f32; 3]> = (0..n)
+            .map(|i| {
+                let frac = i as f32 / (n - 1) as f32;
+                let l = 0.10 + 0.80 * frac; // luma 0.10 .. 0.90
+                let c = frac - 0.5; // -0.5 (shadow, red) .. +0.5 (highlight, blue)
+                [l * (1.0 - 0.10 * c), l, l * (1.0 + 0.10 * c)]
+            })
+            .collect();
+        let img = Image {
+            width: n,
+            height: 1,
+            pixels: pixels.clone(),
+            ir: None,
+        };
+        let scaled = Image {
+            width: n,
+            height: 1,
+            pixels: pixels.iter().map(|p| [p[0] * 1.5, p[1] * 1.5, p[2] * 1.5]).collect(),
+            ir: None,
+        };
+
+        let g = auto_wb_gains(&img);
+        let gs = auto_wb_gains(&scaled);
+        for c in 0..3 {
+            assert!(
+                (g[c] - gs[c]).abs() < 0.01,
+                "exposure changed WB on channel {c}: {g:?} vs {gs:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn auto_wb_gains_deterministic_on_repeat() {
+        // Same pixels in → bit-identical gains out (the floor for "same image →
+        // same temperature on repeated auto-WB").
+        let pixels: Vec<[f32; 3]> = (0..256)
+            .map(|i| {
+                let l = 0.2 + 0.6 * (i as f32 / 255.0);
+                [l * 1.04, l, l * 0.97]
+            })
+            .collect();
+        let img = Image {
+            width: 256,
+            height: 1,
+            pixels,
+            ir: None,
+        };
+        assert_eq!(auto_wb_gains(&img), auto_wb_gains(&img));
     }
 
     #[test]
