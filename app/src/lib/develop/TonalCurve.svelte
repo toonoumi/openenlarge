@@ -1,6 +1,7 @@
 <script lang="ts">
   import { t } from "$lib/i18n";
   import { params } from "../store";
+  import type { ParamsStore } from "../perImage";
   import Icon from "../icons/Icon.svelte";
   import HelpDot from "./HelpDot.svelte";
 
@@ -9,6 +10,7 @@
   // arm it; the sampled D_max is applied by the reactor in Basic.svelte.
   export let onWpPick: (() => void) | null = null;
   export let wpPicking = false;
+  export let paramsStore: ParamsStore = params;
   import Slider from "./Slider.svelte";
   import CurveEditor from "./CurveEditor.svelte";
   import { signed } from "./gradients";
@@ -26,16 +28,16 @@
   const HIST = { master: ["r", "g", "b"], r: ["r"], g: ["g"], b: ["b"] } as const;
 
   $: key = KEY[mode];
-  $: points = $params[key] as CurvePoint[];
+  $: points = $paramsStore[key] as CurvePoint[];
 
   function onCurve(e: CustomEvent<CurvePoint[]>) {
-    params.update((p) => ({ ...p, [key]: e.detail }));
+    paramsStore.update((p) => ({ ...p, [key]: e.detail }));
   }
   // Reset the entire Tone Curve section on the active image: all four curves
   // (master + R/G/B) back to identity and every region slider back to 0.
   function resetTone() {
     const identity = () => IDENTITY_CURVE.map((q) => [...q] as CurvePoint);
-    params.update((p) => ({
+    paramsStore.update((p) => ({
       ...p,
       tc_curve: identity(), tc_red: identity(), tc_green: identity(), tc_blue: identity(),
       tc_highlights: 0, tc_lights: 0, tc_darks: 0, tc_shadows: 0,
@@ -76,10 +78,10 @@
       <CurveEditor {points} color={COLOR[mode]} hist={[...HIST[mode]]} on:change={onCurve} />
 
       <div class="sub">{$t('curve.region')}</div>
-      <Slider label={$t('curve.highlights')} min={-100} max={100} bind:value={$params.tc_highlights} def={0} format={signed} />
-      <Slider label={$t('curve.lights')} min={-100} max={100} bind:value={$params.tc_lights} def={0} format={signed} />
-      <Slider label={$t('curve.darks')} min={-100} max={100} bind:value={$params.tc_darks} def={0} format={signed} />
-      <Slider label={$t('curve.shadows')} min={-100} max={100} bind:value={$params.tc_shadows} def={0} format={signed} />
+      <Slider label={$t('curve.highlights')} min={-100} max={100} bind:value={$paramsStore.tc_highlights} def={0} format={signed} />
+      <Slider label={$t('curve.lights')} min={-100} max={100} bind:value={$paramsStore.tc_lights} def={0} format={signed} />
+      <Slider label={$t('curve.darks')} min={-100} max={100} bind:value={$paramsStore.tc_darks} def={0} format={signed} />
+      <Slider label={$t('curve.shadows')} min={-100} max={100} bind:value={$paramsStore.tc_shadows} def={0} format={signed} />
     </div>
   {/if}
 </div>

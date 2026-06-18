@@ -1,12 +1,16 @@
 <script lang="ts">
   import { t } from "$lib/i18n";
   import { params } from "../store";
+  import type { ParamsStore } from "../perImage";
   import { defaultParams, CM_BANDS, type PointColorSample } from "../api";
   import Icon from "../icons/Icon.svelte";
   import Slider from "./Slider.svelte";
   import { signed, CM_HUE_GRADIENTS, CM_SAT_GRADIENTS, CM_LUM_GRADIENT } from "./gradients";
   import { slide } from "svelte/transition";
   import { cubicInOut } from "svelte/easing";
+
+  export let paramsStore: ParamsStore = params;
+  export let showPointColor = true;
 
   // Set by Task 13 (Develop.svelte passes a callback to arm the viewport dropper).
   export let onPick: (() => void) | null = null;
@@ -30,14 +34,14 @@
     a === "hue" ? "hue" : a === "saturation" ? "sat" : "lum";
 
   // Index-typed accessor for the cm_* flat fields (InvertParams has no index signature).
-  $: P = $params as unknown as Record<string, number>;
+  $: P = $paramsStore as unknown as Record<string, number>;
   function setField(key: string, v: number) {
-    params.update((p) => ({ ...p, [key]: v }) as typeof p);
+    paramsStore.update((p) => ({ ...p, [key]: v }) as typeof p);
   }
 
   function resetMixer() {
     const d = defaultParams() as unknown as Record<string, number>;
-    params.update((p) => {
+    paramsStore.update((p) => {
       const next = { ...p } as unknown as Record<string, unknown>;
       for (const b of CM_BANDS) for (const s of ["hue", "sat", "lum"])
         next[`cm_${b}_${s}`] = d[`cm_${b}_${s}`];
@@ -45,16 +49,16 @@
     });
   }
   function resetPoint() {
-    params.update((p) => ({ ...p, pc_samples: [] }));
+    paramsStore.update((p) => ({ ...p, pc_samples: [] }));
   }
 
   // --- Point Color sample editing ---
   let selected = 0;
-  $: samples = $params.pc_samples ?? [];
+  $: samples = $paramsStore.pc_samples ?? [];
   $: sel = samples[selected] as PointColorSample | undefined;
 
   function updateSample(patch: Partial<PointColorSample>) {
-    params.update((p) => {
+    paramsStore.update((p) => {
       const arr = (p.pc_samples ?? []).slice();
       if (!arr[selected]) return p;
       arr[selected] = { ...arr[selected], ...patch };
@@ -62,7 +66,7 @@
     });
   }
   function removeSample(i: number) {
-    params.update((p) => {
+    paramsStore.update((p) => {
       const arr = (p.pc_samples ?? []).slice();
       arr.splice(i, 1);
       if (selected >= arr.length) selected = Math.max(0, arr.length - 1);
@@ -88,7 +92,9 @@
     <div class="body" transition:slide={{ duration: 280, easing: cubicInOut }}>
       <div class="tabs">
         <button class:on={tab === "mixer"} on:click={() => (tab = "mixer")}>{$t('colorMixer.tab.mixer')}</button>
-        <button class:on={tab === "point"} on:click={() => (tab = "point")}>{$t('colorMixer.tab.point')}</button>
+        {#if showPointColor}
+          <button class:on={tab === "point"} on:click={() => (tab = "point")}>{$t('colorMixer.tab.point')}</button>
+        {/if}
       </div>
 
       {#if tab === "mixer"}
@@ -121,7 +127,7 @@
               on:input={(e) => setField(`cm_${b}_${suffix(adjust as Exclude<Adjust, "all">)}`, +(e.target as HTMLInputElement).value)} />
           {/each}
         {/if}
-      {:else}
+      {:else if showPointColor}
         <div class="point">
           <button class="dropper" class:on={picking} on:click={() => onPick?.()}>
             <Icon name="pipette" size={14} />
