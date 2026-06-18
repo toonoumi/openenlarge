@@ -270,19 +270,20 @@ export const api = {
   /** Emit one anonymous event; the backend drops it unless the user opted in. */
   telemetryEvent: (name: string, props?: Record<string, unknown>) =>
     invoke<void>("telemetry_event", { name, props: props ?? null }),
-  workingInfo: (id: string) =>
-    invoke<{ w: number; h: number }>("working_info", { id }),
+  // `hires` selects the deep-zoom tier (high-res file decode) over the fit proxy.
+  workingInfo: (id: string, hires = false) =>
+    invoke<{ w: number; h: number }>("working_info", { id, hires }),
 
   // Tauri returns the command's `Response` bytes as an ArrayBuffer.
-  workingPixels: (id: string) =>
-    invoke<ArrayBuffer>("working_pixels", { id }),
+  workingPixels: (id: string, hires = false) =>
+    invoke<ArrayBuffer>("working_pixels", { id, hires }),
 
-  workingBakedInfo: (id: string, spec: BakeSpec) =>
-    invoke<{ w: number; h: number }>("working_baked_info", { id, spec: { ...spec, dust: wireDust(spec.dust) } }),
+  workingBakedInfo: (id: string, spec: BakeSpec, hires = false) =>
+    invoke<{ w: number; h: number }>("working_baked_info", { id, spec: { ...spec, dust: wireDust(spec.dust) }, hires }),
 
-  workingBakedPixels: (id: string, spec: BakeSpec, params: InvertParams) =>
+  workingBakedPixels: (id: string, spec: BakeSpec, params: InvertParams, hires = false) =>
     invoke<ArrayBuffer>("working_baked_pixels", {
-      id, params, spec: { ...spec, dust: wireDust(spec.dust) },
+      id, params, spec: { ...spec, dust: wireDust(spec.dust) }, hires,
     }),
 
   resolvedInversion: (id: string, params: InvertParams) =>

@@ -85,6 +85,20 @@
   $: zoomed = interactive && eff > fit + 1e-6;
   $: label = eff <= fit + 1e-6 ? $t("viewport.fit") : $t("viewport.zoomPercent", { percent: Math.round(eff * 100) });
 
+  // Deep-zoom tier: when the on-screen (device-pixel) long edge exceeds the proxy's
+  // native pixels AND the source has more resolution to offer, request the high-res
+  // texture. Hysteresis (enter > PROXY_EDGE, leave < 0.9×) avoids thrash at the edge.
+  const PROXY_EDGE = 2560;
+  let hiTier = false;
+  $: {
+    const srcLong = Math.max(imgW, imgH);
+    const dpr = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
+    const dispDevice = eff * srcLong * dpr;
+    if (srcLong <= PROXY_EDGE) hiTier = false; // nothing sharper than the proxy to fetch
+    else if (!hiTier && dispDevice > PROXY_EDGE) hiTier = true;
+    else if (hiTier && dispDevice < PROXY_EDGE * 0.9) hiTier = false;
+  }
+
   // `e` defaults to the current effective scale, but callers that have just
   // reassigned `scale` must pass the new value: `eff` is a reactive derived
   // value that hasn't recomputed yet within the same tick, so clamping against
@@ -248,10 +262,11 @@
   // Contract: the parent must bump `dustRev` on any change to `dust` (it's the proxy
   // for stroke changes here — the dust array itself is not in the key).
   function currentUploadKey(): string {
+    const tier = hiTier ? 'hi' : 'lo';
     if (bakeMode) {
-      return `bake|${id}|${developRev}|${dustRev}|${irRemoval.enabled}|${irRemoval.sensitivity}|${brushMigan}|${aiApplied}|${autoDustEnabled}|${autoDustSensitivity}|${imageCrop ? imageCrop.join(',') : 'full'}|${rot90}|${flipH}|${flipV}|${angle}`;
+      return `bake|${tier}|${id}|${developRev}|${dustRev}|${irRemoval.enabled}|${irRemoval.sensitivity}|${brushMigan}|${aiApplied}|${autoDustEnabled}|${autoDustSensitivity}|${imageCrop ? imageCrop.join(',') : 'full'}|${rot90}|${flipH}|${flipV}|${angle}`;
     }
-    return `raw|${id}|${developRev}`;
+    return `raw|${tier}|${id}|${developRev}`;
   }
 
   // Upload the working float texture to the GPU. In bake mode, fetch the BAKED
@@ -270,16 +285,16 @@
         skip_dust_heal: brushMigan && !aiApplied,
         auto_dust: { enabled: autoDustEnabled, sensitivity: autoDustSensitivity },
       };
-      const info = await api.workingBakedInfo(id, spec);
-      const buf = await api.workingBakedPixels(id, spec, params);
+      const info = await api.workingBakedInfo(id, spec, hiTier);
+      const buf = await api.workingBakedPixels(id, spec, params, hiTier);
       if (!renderer || currentUploadKey() !== k) return; // stale (params changed mid-fetch)
       renderer.setSourceFloat(new Uint16Array(buf), info.w, info.h);
       texW = info.w; texH = info.h;
       if (spec.migan) dispatch("aierased"); // MI-GAN apply bake finished → clear the button spinner
       if (spec.auto_dust.enabled) dispatch("autodusted"); // auto-dust heal bake finished → clear toggle spinner
     } else {
-      const info = await api.workingInfo(id);
-      const buf = await api.workingPixels(id);
+      const info = await api.workingInfo(id, hiTier);
+      const buf = await api.workingPixels(id, hiTier);
       if (!renderer || currentUploadKey() !== k) return; // image changed mid-fetch
       renderer.setSourceFloat(new Uint16Array(buf), info.w, info.h);
       texW = info.w; texH = info.h;
@@ -329,7 +344,7 @@
 
   // Upload the working float texture. Re-fires when the image changes or, in bake
   // mode, when strokes/IR/geometry change (currentUploadKey dedupes redundant runs).
-  $: if (gpuEligible) { id; developRev; dustRev; irRemoval.enabled; irRemoval.sensitivity; brushMigan; aiApplied; autoDustEnabled; autoDustSensitivity; imageCrop; rot90; flipH; flipV; angle; uploadWorking(); }
+  $: if (gpuEligible) { id; developRev; dustRev; irRemoval.enabled; irRemoval.sensitivity; brushMigan; aiApplied; autoDustEnabled; autoDustSensitivity; imageCrop; rot90; flipH; flipV; angle; hiTier; uploadWorking(); }
   $: if (!gpuEligible) uploadKey = "";
 
   // Inversion params now drive GPU uniforms (no backend pixel fetch) when eligible.
