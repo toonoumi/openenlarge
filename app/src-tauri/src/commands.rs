@@ -272,6 +272,52 @@ pub(crate) fn crop_px(norm: [f64; 4], w: usize, h: usize) -> (usize, usize, usiz
     (x, y, cw, ch)
 }
 
+/// Apply the same lossless geometry the render/export pipeline applies *before* the
+/// persistent crop (orient → straighten), so a normalized crop expressed in oriented
+/// image space samples the region the user actually sees. Returns a borrow when the
+/// geometry is identity to skip copying the whole buffer.
+fn geom_base(
+    img: &film_core::Image,
+    rot90: u8,
+    flip_h: bool,
+    flip_v: bool,
+    angle: f32,
+) -> std::borrow::Cow<'_, film_core::Image> {
+    use std::borrow::Cow;
+    let oriented: Cow<film_core::Image> = if rot90 % 4 == 0 && !flip_h && !flip_v {
+        Cow::Borrowed(img)
+    } else {
+        Cow::Owned(orient(img, rot90, flip_h, flip_v))
+    };
+    if angle.abs() < 1e-4 {
+        oriented
+    } else {
+        Cow::Owned(rotate(&oriented, angle))
+    }
+}
+
+/// Geometry-aware `sample_dmax`: orient/straighten the working buffer to match the UI
+/// before mapping the normalized crop, so flipped/rotated frames analyze the correct
+/// image area (a crop in oriented space applied to the un-oriented buffer samples the
+/// wrong region — washing out brightness on horizontally-flipped images).
+fn sample_dmax_oriented(
+    working: &film_core::Image,
+    base: [f32; 3],
+    crop: Option<[f64; 4]>,
+    rot90: u8,
+    flip_h: bool,
+    flip_v: bool,
+    angle: f32,
+) -> f32 {
+    use film_core::calibrate::{sample_dmax, Rect};
+    let geom = geom_base(working, rot90, flip_h, flip_v, angle);
+    let rect = crop.map(|nc| {
+        let (x, y, w, h) = crop_px(nc, geom.width, geom.height);
+        Rect { x, y, w, h }
+    });
+    sample_dmax(&geom, base, rect)
+}
+
 /// Map normalized strokes → `Stamp`s in OUTPUT pixel space.
 /// `base_w/base_h` are the WORKING image dims BEFORE the view crop is applied
 /// (oriented + straightened + persistent image_crop, but NOT the per-render view
@@ -470,27 +516,36 @@ pub fn import_image(
 /// small auto-WB thumb, and sample the base. Drops full_res. Returns the updated
 /// entry (real dimensions + developed=true).
 #[tauri::command]
-pub fn develop_image(
+pub async fn develop_image(
     id: String,
-    session: State<Session>,
-    catalog: State<crate::catalog::Catalog>,
+    session: State<'_, Session>,
+    catalog: State<'_, crate::catalog::Catalog>,
 ) -> Result<ImageEntry, String> {
-    develop_heavy(id, &session, &catalog)
+    develop_heavy(id, &session, &catalog).await
 }
 
-/// Decode the RAW, build the quality-capped working image + auto-WB thumb, sample
-/// the base, refresh the thumbnail/catalog, and write the cache sidecar. This is
-/// the expensive path shared by `develop_image` and `ensure_developed`.
-fn develop_heavy(
-    id: String,
-    session: &Session,
-    catalog: &crate::catalog::Catalog,
-) -> Result<ImageEntry, String> {
-    let cap = session.quality.lock().unwrap().cap();
-    let path = {
-        let images = session.images.lock().unwrap();
-        images.get(&id).ok_or("unknown image id")?.path.clone()
-    };
+/// Owned result of the CPU-heavy decode/analysis, computed off the UI thread and
+/// then folded into the session + catalog by `develop_heavy`.
+struct DevelopComputed {
+    working: film_core::Image,
+    thumb: film_core::Image,
+    base: [f32; 3],
+    base_confidence: f32,
+    positive: bool,
+    positive_confidence: f32,
+    d_max: f32,
+    has_ir: bool,
+    w: u32,
+    h: u32,
+    thumbnail: String,
+    cache_working: film_core::Image,
+    cache_thumb: film_core::Image,
+}
+
+/// Pure CPU work: decode the RAW, build the quality-capped working image + auto-WB
+/// thumb, sample the base, and render the grid thumbnail. Owned in/owned out so it
+/// can run inside `spawn_blocking` (no `Session` borrow crosses the thread boundary).
+fn develop_compute(path: String, cap: u32) -> Result<DevelopComputed, String> {
     let full = decode_any(Path::new(&path))?;
     let working = proxy(&full, cap);
     let has_ir = working.ir.is_some();
@@ -520,34 +575,70 @@ fn develop_heavy(
     };
     let cache_thumb = thumb.clone();
 
+    Ok(DevelopComputed {
+        working,
+        thumb,
+        base,
+        base_confidence,
+        positive,
+        positive_confidence,
+        d_max,
+        has_ir,
+        w,
+        h,
+        thumbnail,
+        cache_working,
+        cache_thumb,
+    })
+}
+
+/// Decode the RAW (off the UI thread), then fold the result into the session,
+/// refresh the thumbnail/catalog, and write the cache sidecar. The expensive path
+/// shared by `develop_image` and `ensure_developed`.
+async fn develop_heavy(
+    id: String,
+    session: &Session,
+    catalog: &crate::catalog::Catalog,
+) -> Result<ImageEntry, String> {
+    let cap = session.quality.lock().unwrap().cap();
+    let path = {
+        let images = session.images.lock().unwrap();
+        images.get(&id).ok_or("unknown image id")?.path.clone()
+    };
+    // The RAW decode + base/d_max analysis runs for seconds on large files; keep it
+    // off the main thread (which the WKWebView shares on macOS) so the UI stays live.
+    let c = tauri::async_runtime::spawn_blocking(move || develop_compute(path, cap))
+        .await
+        .map_err(|e| e.to_string())??;
+
     // Mutate session state and build the entry inside the lock, then release
     // the guard before the expensive cache write (tens of MB, zstd + file IO).
     let (entry, metadata_json) = {
         let mut images = session.images.lock().unwrap();
         let img = images.get_mut(&id).ok_or("unknown image id")?;
-        img.metadata.width = w;
-        img.metadata.height = h;
-        img.thumbnail = thumbnail.clone();
+        img.metadata.width = c.w;
+        img.metadata.height = c.h;
+        img.thumbnail = c.thumbnail.clone();
         img.developed = Some(Developed {
-            working,
-            thumb,
-            base,
-            base_confidence,
-            d_max,
-            positive,
-            positive_confidence,
+            working: c.working,
+            thumb: c.thumb,
+            base: c.base,
+            base_confidence: c.base_confidence,
+            d_max: c.d_max,
+            positive: c.positive,
+            positive_confidence: c.positive_confidence,
         });
         let metadata_json = metadata_to_json(&img.metadata)?;
         let entry = ImageEntry {
             id: id.clone(),
             path: img.path.clone(),
             file_name: img.file_name.clone(),
-            thumbnail,
+            thumbnail: c.thumbnail,
             metadata: img.metadata.clone(),
             developed: true,
-            has_ir,
+            has_ir: c.has_ir,
             offline: false,
-            positive,
+            positive: c.positive,
         };
         (entry, metadata_json)
     }; // lock released here
@@ -558,7 +649,7 @@ fn develop_heavy(
 
     // Write cache sidecar (best-effort; never fails the develop command).
     if let Err(e) =
-        crate::cache::write(&session.cache_path(&id), base, &cache_working, &cache_thumb)
+        crate::cache::write(&session.cache_path(&id), c.base, &c.cache_working, &c.cache_thumb)
     {
         eprintln!("[cache] write failed for {id}: {e}");
     }
@@ -577,10 +668,10 @@ pub fn set_quality(quality: Quality, session: State<Session>) -> Result<(), Stri
 /// (Quality mode on a source larger than the cache cap). Performance switches and
 /// already-full-res buffers return without any decode.
 #[tauri::command]
-pub fn ensure_developed(
+pub async fn ensure_developed(
     id: String,
-    session: State<Session>,
-    catalog: State<crate::catalog::Catalog>,
+    session: State<'_, Session>,
+    catalog: State<'_, crate::catalog::Catalog>,
 ) -> Result<ImageEntry, String> {
     let cap = session.quality.lock().unwrap().cap();
     // Best-effort cache rehydration; ignore "not developed" — we full-develop below.
@@ -616,7 +707,7 @@ pub fn ensure_developed(
     if let Some(entry) = adequate_entry {
         return Ok(entry);
     }
-    develop_heavy(id, &session, &catalog)
+    develop_heavy(id, &session, &catalog).await
 }
 
 /// Drop an image from the session. With `delete_file`, also move the original
@@ -736,35 +827,58 @@ fn ensure_resident(session: &Session, id: &str) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn render_view(
+pub async fn render_view(
     id: String,
     params: InvertParams,
     view: ViewSpec,
-    session: State<Session>,
+    session: State<'_, Session>,
 ) -> Result<String, String> {
-    let _t_resident = std::time::Instant::now(); // [TIMEDBG]
     ensure_resident(&session, &id)?;
-    eprintln!("[TIMEDBG] render_view ensure_resident {:?}", _t_resident.elapsed()); // [TIMEDBG]
-    let _t = std::time::Instant::now(); // [TIMEDBG]
-    let images = session.images.lock().unwrap();
-    eprintln!("[TIMEDBG] render_view lock {:?}", _t.elapsed()); // [TIMEDBG]
-    let img = images.get(&id).ok_or("unknown image id")?;
-    let dev = img.developed.as_ref().ok_or("not developed")?;
-    eprintln!(
-        "[TIMEDBG] render_view working={}x{} raw={} out={}x{}",
-        dev.working.width, dev.working.height, view.raw, view.out_w, view.out_h
-    ); // [TIMEDBG]
-    let _t_geom = std::time::Instant::now(); // [TIMEDBG]
+    // Snapshot the owned inputs the CPU render needs, then drop the lock so the
+    // pipeline (geometry → resize → invert → dust → finish → JPEG) can run off the
+    // UI thread. The working clone is the cost of getting it off the main thread.
+    let (working, thumb, base, d_max, meta_w, meta_h) = {
+        let images = session.images.lock().unwrap();
+        let img = images.get(&id).ok_or("unknown image id")?;
+        let dev = img.developed.as_ref().ok_or("not developed")?;
+        (
+            dev.working.clone(),
+            dev.thumb.clone(),
+            dev.base,
+            dev.d_max,
+            img.metadata.width,
+            img.metadata.height,
+        )
+    };
+    tauri::async_runtime::spawn_blocking(move || {
+        render_view_compute(&working, &thumb, base, d_max, meta_w, meta_h, &params, &view)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
 
-    // Geometry: orient (lossless) → straighten → persistent crop, then the view crop.
+/// Pure CPU render of one preview frame: geometry (orient → straighten → persistent
+/// crop → view crop) → resize → invert → dust/IR → finish → JPEG. Owned inputs so it
+/// runs in `spawn_blocking` without borrowing the `Session`.
+#[allow(clippy::too_many_arguments)]
+fn render_view_compute(
+    working: &film_core::Image,
+    thumb: &film_core::Image,
+    base: [f32; 3],
+    d_max: f32,
+    meta_w: u32,
+    meta_h: u32,
+    params: &InvertParams,
+    view: &ViewSpec,
+) -> Result<String, String> {
     // Each stage borrows the previous buffer when it would be a no-op, so an
     // identity/full-frame view (e.g. the film-base picker: no rot/flip/straighten/crop)
-    // skips cloning the whole working image — the dominant cost on large/Quality buffers.
+    // skips re-copying the whole working image — the dominant cost on large buffers.
     let oriented_owned;
     let oriented: &film_core::Image = if view.rot90 == 0 && !view.flip_h && !view.flip_v {
-        &dev.working
+        working
     } else {
-        oriented_owned = orient(&dev.working, view.rot90, view.flip_h, view.flip_v);
+        oriented_owned = orient(working, view.rot90, view.flip_h, view.flip_v);
         &oriented_owned
     };
     let straightened_owned;
@@ -785,11 +899,7 @@ pub fn render_view(
     };
     // The view crop is in oriented full-res coords → map to working px via the
     // oriented metadata width (orientation is lossless, so the ratio is preserved).
-    let (ometa_w, _) = orient_dims(
-        img.metadata.width as usize,
-        img.metadata.height as usize,
-        view.rot90,
-    );
+    let (ometa_w, _) = orient_dims(meta_w as usize, meta_h as usize, view.rot90);
     let s_scale = oriented.width as f64 / ometa_w.max(1) as f64;
     let cx = (view.crop[0] * s_scale).max(0.0).round() as usize;
     let cy = (view.crop[1] * s_scale).max(0.0).round() as usize;
@@ -810,16 +920,12 @@ pub fn render_view(
     }
     let (cw_px, ch_px) = (cropped.width, cropped.height);
     let scaled = resize_to(cropped, view.out_w.max(1), view.out_h.max(1));
-    eprintln!("[TIMEDBG] render_view geom+resize {:?}", _t_geom.elapsed()); // [TIMEDBG]
 
     if view.raw {
-        let _t_jpeg = std::time::Instant::now(); // [TIMEDBG]
-        let r = to_jpeg_b64(&scaled, true, PREVIEW_JPEG_QUALITY);
-        eprintln!("[TIMEDBG] render_view raw jpeg {:?}", _t_jpeg.elapsed()); // [TIMEDBG]
-        return r;
+        return to_jpeg_b64(&scaled, true, PREVIEW_JPEG_QUALITY);
     }
-    let mut ip = resolve_params(&params, &dev.thumb, effective_base(&params, dev.base));
-    ip.d_max = effective_dmax(&params, dev.d_max);
+    let mut ip = resolve_params(params, thumb, effective_base(params, base));
+    ip.d_max = effective_dmax(params, d_max);
     let mut inv = invert_image(&scaled, &ip, mode_from(&params.mode));
     let stamps = view_stamps(
         &view.dust,
@@ -839,7 +945,7 @@ pub fn render_view(
         }
     }
     let out = if view.finish {
-        finish_image(&inv, &finish_from(&params))
+        finish_image(&inv, &finish_from(params))
     } else {
         inv
     };
@@ -1303,6 +1409,10 @@ pub fn as_shot_wb(
     id: String,
     params: InvertParams,
     crop: Option<[f64; 4]>,
+    rot90: Option<u8>,
+    flip_h: Option<bool>,
+    flip_v: Option<bool>,
+    angle: Option<f32>,
     session: State<Session>,
 ) -> Result<AsShotWb, String> {
     ensure_resident(&session, &id)?;
@@ -1312,11 +1422,20 @@ pub fn as_shot_wb(
         let dev = img.developed.as_ref().ok_or("not developed")?;
         (dev.base, dev.thumb.clone(), dev.d_max)
     };
-    // Restrict the estimate to the image area so borders/rebate don't bias WB.
+    // Restrict the estimate to the image area so borders/rebate don't bias WB. The
+    // crop is in oriented space, so orient/straighten the thumb first to match the
+    // render pipeline (otherwise flipped frames estimate WB from the wrong region).
     let thumb = match crop {
         Some(nc) => {
-            let (x, y, w, h) = crop_px(nc, thumb.width, thumb.height);
-            crate::convert::crop(&thumb, x, y, w, h)
+            let geom = geom_base(
+                &thumb,
+                rot90.unwrap_or(0),
+                flip_h.unwrap_or(false),
+                flip_v.unwrap_or(false),
+                angle.unwrap_or(0.0),
+            );
+            let (x, y, w, h) = crop_px(nc, geom.width, geom.height);
+            crate::convert::crop(&geom, x, y, w, h)
         }
         None => thumb,
     };
@@ -1495,12 +1614,24 @@ pub fn working_info(id: String, session: State<Session>) -> Result<WorkingInfo, 
 /// Raw half-float RGBA bytes of the linear working image (pre-inversion), for a
 /// one-shot WebGL2 RGBA16F upload. Returned as raw IPC bytes (no base64/JPEG).
 #[tauri::command]
-pub fn working_pixels(id: String, session: State<Session>) -> Result<tauri::ipc::Response, String> {
+pub async fn working_pixels(
+    id: String,
+    session: State<'_, Session>,
+) -> Result<tauri::ipc::Response, String> {
     ensure_resident(&session, &id)?;
-    let images = session.images.lock().unwrap();
-    let img = images.get(&id).ok_or("unknown image id")?;
-    let dev = img.developed.as_ref().ok_or("not developed")?;
-    let (_, _, bytes) = pack_rgba16f(&dev.working, MAX_GPU_EDGE);
+    let working = {
+        let images = session.images.lock().unwrap();
+        let img = images.get(&id).ok_or("unknown image id")?;
+        img.developed.as_ref().ok_or("not developed")?.working.clone()
+    };
+    // pack_rgba16f is O(pixels); offload so a full-res working buffer doesn't stall
+    // the UI on image switch.
+    let bytes = tauri::async_runtime::spawn_blocking(move || {
+        let (_, _, bytes) = pack_rgba16f(&working, MAX_GPU_EDGE);
+        bytes
+    })
+    .await
+    .map_err(|e| e.to_string())?;
     Ok(tauri::ipc::Response::new(bytes))
 }
 
@@ -1749,11 +1880,13 @@ pub fn sample_base_at(
     let img = images.get(&id).ok_or("unknown image id")?;
     let dev = img.developed.as_ref().ok_or("not developed")?;
     let (x, y, w, h) = crop_px(rect, dev.working.width, dev.working.height);
-    use film_core::calibrate::{sample_base_coherent, BASE_BAND_REBATE};
+    use film_core::calibrate::{sample_base_coherent_fullres, BASE_BAND_REBATE};
     let (lo, hi) = BASE_BAND_REBATE;
-    Ok(sample_base_coherent(
+    // Full-res (no 512-proxy bleed): the picker rect is a small, deliberately-aimed
+    // patch, so the loupe-aimed color is what gets sampled even on a thin rebate.
+    Ok(sample_base_coherent_fullres(
         &dev.working,
-        Some(Rect { x, y, w, h }),
+        Rect { x, y, w, h },
         lo,
         hi,
     ))
@@ -1791,20 +1924,30 @@ pub fn analyze(
     id: String,
     params: InvertParams,
     crop: Option<[f64; 4]>,
+    rot90: Option<u8>,
+    flip_h: Option<bool>,
+    flip_v: Option<bool>,
+    angle: Option<f32>,
     session: State<Session>,
 ) -> Result<Analysis, String> {
-    use film_core::calibrate::{sample_dmax, Rect};
     ensure_resident(&session, &id)?;
     let images = session.images.lock().unwrap();
     let img = images.get(&id).ok_or("unknown image id")?;
     let dev = img.developed.as_ref().ok_or("not developed")?;
     let base = effective_base(&params, dev.base);
-    let rect = crop.map(|nc| {
-        let (x, y, w, h) = crop_px(nc, dev.working.width, dev.working.height);
-        Rect { x, y, w, h }
-    });
+    // The crop is in oriented (post orient/straighten) space — match the render
+    // pipeline's geometry before sampling so flipped/rotated frames analyze the
+    // correct image area.
     Ok(Analysis {
-        d_max: sample_dmax(&dev.working, base, rect),
+        d_max: sample_dmax_oriented(
+            &dev.working,
+            base,
+            crop,
+            rot90.unwrap_or(0),
+            flip_h.unwrap_or(false),
+            flip_v.unwrap_or(false),
+            angle.unwrap_or(0.0),
+        ),
     })
 }
 
@@ -1859,6 +2002,31 @@ mod tests {
         let img = film_core::Image { width: 4, height: 4, pixels: vec![white; 16], ir: None };
         let d = dmax_from_white_point(&img, [0.8, 0.8, 0.8], None);
         assert!((d - 2.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn analyze_sampling_follows_orientation() {
+        // Left half bright (transmission 1.0 → density 0), right half dark
+        // (transmission 1e-3 → density 3.0). A crop of the *oriented* left half must
+        // sample the source LEFT half when un-flipped, but the source RIGHT half once
+        // a horizontal flip is applied — otherwise flipped frames re-analyze the wrong
+        // region and the D_max (hence brightness) is wrong.
+        let (w, h) = (64usize, 8usize);
+        let mut pixels = vec![[1.0f32; 3]; w * h];
+        for y in 0..h {
+            for x in (w / 2)..w {
+                pixels[y * w + x] = [1e-3; 3];
+            }
+        }
+        let img = film_core::Image { width: w, height: h, pixels, ir: None };
+        let base = [1.0f32; 3];
+        let left_half = Some([0.0, 0.0, 0.5, 1.0]);
+
+        let unflipped = sample_dmax_oriented(&img, base, left_half, 0, false, false, 0.0);
+        assert!(unflipped < 1.5, "un-flipped left crop should be bright: {unflipped}");
+
+        let flipped = sample_dmax_oriented(&img, base, left_half, 0, true, false, 0.0);
+        assert!(flipped > 2.5, "flipped left crop should sample the dark region: {flipped}");
     }
 
     #[test]
