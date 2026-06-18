@@ -132,12 +132,12 @@
 
 <style>
   .roll { height: 100%; min-height: 0; display: grid; grid-template-columns: 1fr 320px; }
-  .sheet { overflow-y: auto; padding: 8px; }
-  .grid { display: grid; gap: 12px; align-content: start;
-    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
-  .cell { display: block; padding: 0; border: 1px solid var(--glass-brd); border-radius: 11px;
-    overflow: hidden; background: #0d0d10; cursor: pointer; transition: box-shadow 0.12s; }
-  .cell:hover { box-shadow: 0 12px 26px rgba(0,0,0,0.5); }
+  .sheet { overflow-y: auto; padding: 0; background: #0d0d0f; }
+  .grid { display: grid; gap: 0; align-content: start;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+  .cell { display: block; padding: 0; border: 0; border-right: 1px solid #222; border-bottom: 1px solid #222;
+    border-radius: 0; overflow: hidden; background: #0d0d0f; cursor: pointer; transition: none; }
+  .cell:hover { box-shadow: none; }
   .ratio { position: relative; width: 100%; height: 0; padding-bottom: 75%; }
   .ratio img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: block; }
   .empty { color: var(--text-faint); padding: 16px; }
