@@ -7,8 +7,24 @@ use crate::Image;
 use rayon::prelude::*;
 
 const EPS: f32 = 1e-5;
-/// Unsharp-mask gain at texture = ±1 (empirical).
-const USM_GAIN: f32 = 1.5;
+// --- Texture (unsharp / clarity) constants. Shared with shaders.ts USM_FRAG. ---
+/// Blur sigma as a fraction of the image's *smaller* dimension. Defining the
+/// radius in image-fraction (not pixels) keeps the spatial span identical between
+/// the CPU full-res export and the GPU (often proxy-resolution) preview, which is
+/// the parity contract for I3. ~0.0025 → ~6px sigma on a 2560px proxy, wide
+/// enough that the high-pass survives the proxy downscale and the slider visibly
+/// bites at both ends.
+const TEXTURE_SIGMA_FRAC: f32 = 0.0025;
+/// Cap the blur radius (in pixels) so huge exports stay bounded; mirrored by
+/// MAXR in shaders.ts. Both paths clamp identically so the kernels match.
+const TEXTURE_MAX_RADIUS: usize = 64;
+/// Unsharp gain at texture = +1 (sharpen). Raised from the old 1.5 so the slider
+/// reaches a clearly sharper / higher-local-contrast result.
+const USM_POS_GAIN: f32 = 2.5;
+/// Unsharp gain at texture = -1 (soften). 1.0 makes the output *exactly* the
+/// blurred image at the extreme (out = v + (-1)·(v - blur) = blur), i.e. clearly
+/// soft instead of the old barely-perceptible negative high-pass.
+const USM_NEG_GAIN: f32 = 1.0;
 
 // --- Tone Curve region (parametric) constants. Shared with shaders.ts / curve.ts. ---
 /// Per-slider lift at ±1 in its zone.
@@ -464,35 +480,64 @@ pub fn finish_pixel(rgb: [f32; 3], p: &FinishParams) -> [f32; 3] {
     point_color(mixed, &p.cm.samples)
 }
 
-/// Separable 3-tap Gaussian (radius 1, weights 1/4,1/2,1/4). Edges clamp. Small
-/// radius keeps it cheap; texture is a local effect.
-fn blur(img: &Image) -> Image {
+/// Blur sigma (px) and radius (px) for an image of these dims. Sigma scales with
+/// the smaller dimension (image-fraction, see `TEXTURE_SIGMA_FRAC`); radius is
+/// 3σ, clamped so it never collapses to 0 or exceeds `TEXTURE_MAX_RADIUS`. The
+/// GPU (shaders.ts) derives the same values from its viewport, so a full-res CPU
+/// export and a proxy GPU preview blur the same fraction of the frame.
+fn texture_blur(w: usize, h: usize) -> (f32, usize) {
+    let sigma = (TEXTURE_SIGMA_FRAC * (w.min(h) as f32)).max(0.5);
+    let radius = ((3.0 * sigma).ceil() as usize).clamp(1, TEXTURE_MAX_RADIUS);
+    (sigma, radius)
+}
+
+/// Normalised 1-D Gaussian over [-radius, radius]. Matches the in-shader weights.
+fn gaussian_kernel(sigma: f32, radius: usize) -> Vec<f32> {
+    let inv = 1.0 / (2.0 * sigma * sigma);
+    let r = radius as i32;
+    let mut k: Vec<f32> = (-r..=r).map(|i| (-(i * i) as f32 * inv).exp()).collect();
+    let sum: f32 = k.iter().sum();
+    for w in &mut k {
+        *w /= sum;
+    }
+    k
+}
+
+/// Separable Gaussian blur. Edges clamp (CLAMP_TO_EDGE on the GPU). Sigma/radius
+/// come from `texture_blur` so the span is resolution-independent.
+fn blur(img: &Image, sigma: f32, radius: usize) -> Image {
     let (w, h) = (img.width, img.height);
+    let r = radius as i32;
+    let kernel = gaussian_kernel(sigma, radius);
     let idx = |x: usize, y: usize| y * w + x;
+    // Horizontal pass.
     let mut tmp = vec![[0.0_f32; 3]; w * h];
-    // Horizontal
-    for y in 0..h {
-        for x in 0..w {
-            let xl = x.saturating_sub(1);
-            let xr = (x + 1).min(w - 1);
-            let (a, b, c) = (
-                img.pixels[idx(xl, y)],
-                img.pixels[idx(x, y)],
-                img.pixels[idx(xr, y)],
-            );
-            tmp[idx(x, y)] = std::array::from_fn(|i| 0.25 * a[i] + 0.5 * b[i] + 0.25 * c[i]);
+    tmp.par_iter_mut().enumerate().for_each(|(p, out)| {
+        let (x, y) = (p % w, p / w);
+        let mut acc = [0.0_f32; 3];
+        for (j, &kw) in kernel.iter().enumerate() {
+            let xx = (x as i32 + j as i32 - r).clamp(0, w as i32 - 1) as usize;
+            let s = img.pixels[idx(xx, y)];
+            for c in 0..3 {
+                acc[c] += kw * s[c];
+            }
         }
-    }
-    // Vertical
+        *out = acc;
+    });
+    // Vertical pass.
     let mut out = vec![[0.0_f32; 3]; w * h];
-    for y in 0..h {
-        let yu = y.saturating_sub(1);
-        let yd = (y + 1).min(h - 1);
-        for x in 0..w {
-            let (a, b, c) = (tmp[idx(x, yu)], tmp[idx(x, y)], tmp[idx(x, yd)]);
-            out[idx(x, y)] = std::array::from_fn(|i| 0.25 * a[i] + 0.5 * b[i] + 0.25 * c[i]);
+    out.par_iter_mut().enumerate().for_each(|(p, o)| {
+        let (x, y) = (p % w, p / w);
+        let mut acc = [0.0_f32; 3];
+        for (j, &kw) in kernel.iter().enumerate() {
+            let yy = (y as i32 + j as i32 - r).clamp(0, h as i32 - 1) as usize;
+            let s = tmp[idx(x, yy)];
+            for c in 0..3 {
+                acc[c] += kw * s[c];
+            }
         }
-    }
+        *o = acc;
+    });
     Image {
         width: w,
         height: h,
@@ -501,10 +546,16 @@ fn blur(img: &Image) -> Image {
     } // scratch image: ir restored by apply_texture
 }
 
-/// Unsharp mask: out = v + amount * (v − blur(v)). amount in −1..1.
+/// Unsharp mask: out = v + k·(v − blur(v)). `amount` in −1..1; k is asymmetric so
+/// +1 strongly sharpens and −1 lands exactly on the blur (clearly soft).
 fn apply_texture(img: &Image, amount: f32) -> Image {
-    let b = blur(img);
-    let k = USM_GAIN * amount;
+    let (sigma, radius) = texture_blur(img.width, img.height);
+    let b = blur(img, sigma, radius);
+    let k = if amount >= 0.0 {
+        amount * USM_POS_GAIN
+    } else {
+        amount * USM_NEG_GAIN
+    };
     // par_iter().zip() over two equal-length indexed slices preserves order.
     let pixels = img
         .pixels
@@ -863,6 +914,59 @@ mod tests {
                 assert!((0.0..=1.0).contains(&v), "value {v} out of range");
             }
         }
+    }
+
+    #[test]
+    fn texture_minus_one_equals_blur() {
+        // At texture = -1 the unsharp collapses to the blurred image (k = -1 →
+        // v + -1·(v - blur) = blur), i.e. clearly soft. A flat-finish image (no
+        // tone/color ops) lets us compare apply_texture's output against blur().
+        let p = FinishParams {
+            texture: -1.0,
+            ..Default::default()
+        };
+        // 8x8 ramp so the blur genuinely differs from the source.
+        let (w, h) = (8usize, 8usize);
+        let pixels: Vec<[f32; 3]> = (0..w * h)
+            .map(|i| {
+                let v = (i % w) as f32 / (w as f32 - 1.0);
+                [v, 1.0 - v, 0.5]
+            })
+            .collect();
+        let img = Image {
+            width: w,
+            height: h,
+            pixels,
+            ir: None,
+        };
+        // finish_pixel is identity at defaults, so finished == source here.
+        let out = finish_image(&img, &p);
+        let (sigma, radius) = texture_blur(w, h);
+        let want = blur(&img, sigma, radius);
+        for (i, (&got, &exp)) in out.pixels.iter().zip(want.pixels.iter()).enumerate() {
+            for c in 0..3 {
+                assert!(
+                    (got[c] - exp[c]).abs() < 1e-5,
+                    "px {i} chan {c}: got {} want {}",
+                    got[c],
+                    exp[c]
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn texture_blur_radius_scales_with_image() {
+        // Image-fraction sigma: a larger frame gets a proportionally wider blur,
+        // clamped to [1, TEXTURE_MAX_RADIUS]. This is what keeps a full-res export
+        // and a proxy preview spatially matched.
+        let (_, small) = texture_blur(200, 300);
+        let (_, big) = texture_blur(4000, 6000);
+        assert!(small >= 1);
+        assert!(big > small, "big {big} should exceed small {small}");
+        assert!(big <= TEXTURE_MAX_RADIUS);
+        let (_, huge) = texture_blur(60_000, 60_000);
+        assert_eq!(huge, TEXTURE_MAX_RADIUS, "radius must cap");
     }
 
     #[test]
