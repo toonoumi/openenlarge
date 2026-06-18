@@ -111,29 +111,19 @@
     sampleAt(p.nx, p.ny);
   }
 
-  // Re-sampling is debounced so a fast scroll doesn't flood the backend; the
-  // reticle still resizes live (it's driven by `patch` reactively).
-  let resampleTimer: ReturnType<typeof setTimeout> | null = null;
-  function scheduleResample(nx: number, ny: number) {
-    if (resampleTimer) clearTimeout(resampleTimer);
-    resampleTimer = setTimeout(() => { resampleTimer = null; sampleAt(nx, ny); }, 70);
+  // Resizing only sets the sample-rect size (the reticle updates live via the
+  // reactive `patch`); it does NOT sample. The user finalizes the size with the
+  // gesture/scroll, then taps to actually sample & apply (see onClick).
+  function resizePatch(next: number) {
+    patch = Math.min(PATCH_MAX, Math.max(PATCH_MIN, next));
   }
 
-  function resizePatch(next: number, at: { nx: number; ny: number } | null) {
-    next = Math.min(PATCH_MAX, Math.max(PATCH_MIN, next));
-    if (next === patch) return; // already at a clamp; nothing to do
-    patch = next;
-    if (at) { mark = { x: at.nx, y: at.ny }; scheduleResample(at.nx, at.ny); }
-  }
-
-  // Scroll over the picker grows/shrinks the sample rect around the cursor and
-  // re-samples the base there. Up = grow, down = shrink (clamped to min/max).
-  // preventDefault|stopPropagation so the picker — not the viewport/webview —
-  // owns the wheel (incl. ctrl/⌘+wheel page zoom).
+  // Scroll over the picker grows/shrinks the sample rect. Up = grow, down =
+  // shrink (clamped to min/max). preventDefault|stopPropagation so the picker —
+  // not the viewport/webview — owns the wheel (incl. ctrl/⌘+wheel page zoom).
   function onWheel(e: WheelEvent) {
-    const p = locate(e) ?? hover;
-    if (!p) return; // pointer not over the negative
-    resizePatch(patch * (e.deltaY < 0 ? PATCH_STEP : 1 / PATCH_STEP), p);
+    if (!(locate(e) ?? hover)) return; // pointer not over the negative
+    resizePatch(patch * (e.deltaY < 0 ? PATCH_STEP : 1 / PATCH_STEP));
   }
 
   // macOS WebKit delivers a trackpad PINCH as non-standard gesture* events (not
@@ -145,7 +135,7 @@
   function onGestureChange(e: Event) {
     e.preventDefault();
     const scale = (e as unknown as { scale?: number }).scale ?? 1;
-    resizePatch(gesturePatch * scale, hover);
+    resizePatch(gesturePatch * scale);
   }
 
   // ── Loupe placement & content ────────────────────────────────────────────
