@@ -66,6 +66,21 @@ fn sigmoid(x: f32) -> f32 {
     1.0 / (1.0 + (-x).exp())
 }
 
+/// sRGB transfer (linear [0,1] → gamma-encoded [0,1]) and its inverse. MI-GAN was
+/// trained on gamma-encoded sRGB photos, so we encode before inference + decode
+/// after (see `inpaint`'s base-neutralization).
+fn srgb_encode(x: f32) -> f32 {
+    let x = x.clamp(0.0, 1.0);
+    if x <= 0.003_130_8 { 12.92 * x } else { 1.055 * x.powf(1.0 / 2.4) - 0.055 }
+}
+fn srgb_decode(x: f32) -> f32 {
+    let x = x.clamp(0.0, 1.0);
+    if x <= 0.040_45 { x / 12.92 } else { ((x + 0.055) / 1.055).powf(2.4) }
+}
+
+/// Smallest film-base divisor (avoid divide-by-zero on a degenerate channel).
+const BASE_EPS: f32 = 1e-4;
+
 /// Indices of `tiles` whose inner rect overlaps any masked pixel. Used to skip
 /// clean tiles so MI-GAN only runs where there is something to fill.
 pub fn masked_tiles(tiles: &[Tile], mask: &Mask) -> Vec<usize> {
@@ -169,7 +184,7 @@ pub fn detect(app_data: &Path, src: &Image) -> Result<Vec<f32>, String> {
 /// KEEP and 0 = HOLE — and one uint8 output `result` [1,3,h,w]. The pipeline
 /// crops around the hole, resizes to 512, inpaints, and blends back internally,
 /// so we feed each masked tile at native size and keep fills sharp.
-pub fn inpaint(app_data: &Path, img: &mut Image, mask: &Mask) -> Result<(), String> {
+pub fn inpaint(app_data: &Path, img: &mut Image, mask: &Mask, base: [f32; 3]) -> Result<(), String> {
     if mask.w == 0 || mask.h == 0 {
         return Ok(());
     }
@@ -177,7 +192,17 @@ pub fn inpaint(app_data: &Path, img: &mut Image, mask: &Mask) -> Result<(), Stri
     let tiles = plan_tiles(img.width, img.height, TILE, TILE_PAD);
     let sel = masked_tiles(&tiles, mask);
 
-    let to_u8 = |v: f32| -> u8 { (v.clamp(0.0, 1.0) * 255.0 + 0.5) as u8 };
+    // Feed MI-GAN a NEUTRAL, gamma-encoded image: divide out the per-channel film
+    // base (orange mask) so the three channels are balanced, then sRGB-encode. This
+    // matches the model's training domain and — crucially — keeps the fill's
+    // per-channel error balanced, so the Cineon inversion (`log10(px/base)` per
+    // channel) no longer turns a tiny fill error into a complementary-colored halo
+    // on smooth regions (e.g. sky). The output is decoded + re-based back to the
+    // raw-negative linear space the GPU expects.
+    let enc = |v: f32, b: f32| -> u8 {
+        (srgb_encode((v / b.max(BASE_EPS)).clamp(0.0, 1.0)) * 255.0 + 0.5) as u8
+    };
+    let dec = |u: u8, b: f32| -> f32 { srgb_decode(u as f32 / 255.0) * b };
 
     for &i in &sel {
         let t = tiles[i];
@@ -189,9 +214,9 @@ pub fn inpaint(app_data: &Path, img: &mut Image, mask: &Mask) -> Result<(), Stri
                 let gx = t.sx + xx;
                 let gy = t.sy + yy;
                 let p = img.pixels[gy * img.width + gx];
-                image_t[[0, 0, yy, xx]] = to_u8(p[0]);
-                image_t[[0, 1, yy, xx]] = to_u8(p[1]);
-                image_t[[0, 2, yy, xx]] = to_u8(p[2]);
+                image_t[[0, 0, yy, xx]] = enc(p[0], base[0]);
+                image_t[[0, 1, yy, xx]] = enc(p[1], base[1]);
+                image_t[[0, 2, yy, xx]] = enc(p[2], base[2]);
                 if gx < mask.w && gy < mask.h && mask.bits[gy * mask.w + gx] {
                     mask_t[[0, 0, yy, xx]] = 0; // hole
                 }
@@ -221,9 +246,9 @@ pub fn inpaint(app_data: &Path, img: &mut Image, mask: &Mask) -> Result<(), Stri
                 }
                 let (sy, sx) = (t.iy + yy, t.ix + xx);
                 img.pixels[gy * img.width + gx] = [
-                    view[[0, 0, sy, sx]] as f32 / 255.0,
-                    view[[0, 1, sy, sx]] as f32 / 255.0,
-                    view[[0, 2, sy, sx]] as f32 / 255.0,
+                    dec(view[[0, 0, sy, sx]], base[0]),
+                    dec(view[[0, 1, sy, sx]], base[1]),
+                    dec(view[[0, 2, sy, sx]], base[2]),
                 ];
             }
         }
@@ -234,6 +259,37 @@ pub fn inpaint(app_data: &Path, img: &mut Image, mask: &Mask) -> Result<(), Stri
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn enc_dec_roundtrips_within_quantization() {
+        // The base-neutralize + sRGB transform must round-trip a normal (kept) pixel
+        // so non-hole pixels aren't shifted. Test the valid sky range (neg ≤ base).
+        let base = [0.85f32, 0.62, 0.42];
+        for c in 0..3 {
+            for &ratio in &[0.2f32, 0.5, 0.9] {
+                let v = base[c] * ratio;
+                let u = (srgb_encode((v / base[c]).clamp(0.0, 1.0)) * 255.0 + 0.5) as u8;
+                let back = srgb_decode(u as f32 / 255.0) * base[c];
+                assert!((back - v).abs() < 0.01, "roundtrip v={v} c={c} back={back}");
+            }
+        }
+    }
+
+    #[test]
+    fn neutral_fill_has_no_color_cast_after_inversion() {
+        // The fix's mechanism: a neutral fill value `g` (what MI-GAN produces on a
+        // smooth region in the neutralized space) decodes to a negative whose
+        // per-channel ratio to `base` is CONSTANT across channels — so the Cineon
+        // inversion `log10(px/base)` yields only a luminance change, never a colored
+        // halo. (The old raw path filled per-channel in the orange negative, so the
+        // ratios diverged → complementary-colored halo on sky.)
+        let base = [0.85f32, 0.62, 0.42];
+        for &g in &[40u8, 120, 200] {
+            let neg: [f32; 3] = std::array::from_fn(|c| srgb_decode(g as f32 / 255.0) * base[c]);
+            let r: [f32; 3] = std::array::from_fn(|c| neg[c] / base[c]);
+            assert!((r[0] - r[1]).abs() < 1e-6 && (r[1] - r[2]).abs() < 1e-6, "ratios {r:?}");
+        }
+    }
 
     #[test]
     fn masked_tiles_selects_only_tiles_overlapping_the_mask() {

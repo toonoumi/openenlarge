@@ -1797,6 +1797,7 @@ fn bake_for_view_from_baked(
     mut img: film_core::Image,
     spec: &BakeSpec,
     auto_mask: Option<&film_core::dust::Mask>,
+    base: [f32; 3],
 ) -> film_core::Image {
     let stamps = export_stamps(&spec.dust, img.width, img.height);
     let want_migan =
@@ -1813,7 +1814,7 @@ fn bake_for_view_from_baked(
             mask = union_mask(mask, am);
         }
         if mask.bits.iter().any(|&b| b) {
-            let _ = crate::autodust::engine::inpaint(app_data, &mut img, &mask);
+            let _ = crate::autodust::engine::inpaint(app_data, &mut img, &mask, base);
         }
     } else if !spec.skip_dust_heal {
         film_core::dust::apply(&mut img, &stamps);
@@ -1840,13 +1841,16 @@ pub async fn working_baked_pixels(
     use tauri::Manager;
     let app_data = app.path().app_data_dir().map_err(|e| e.to_string())?;
     ensure_resident(&session, &id)?;
-    let (working, ip, mode) = {
+    let (working, ip, mode, base) = {
         let images = session.images.lock().unwrap();
         let img = images.get(&id).ok_or("unknown image id")?;
         let dev = img.developed.as_ref().ok_or("not developed")?;
-        let mut ip = resolve_params(&params, &dev.thumb, effective_base(&params, dev.base));
+        // The SAME base the inversion divides by — neutralizing it before MI-GAN
+        // keeps the heal's per-channel error balanced (no colored halo on sky).
+        let base = effective_base(&params, dev.base);
+        let mut ip = resolve_params(&params, &dev.thumb, base);
         ip.d_max = effective_dmax(&params, dev.d_max);
-        (dev.working.clone(), ip, mode_from(&params.mode))
+        (dev.working.clone(), ip, mode_from(&params.mode), base)
     };
     let cached = if spec.auto_dust.enabled {
         session.autodust_prob.lock().unwrap().get(&id).cloned()
@@ -1868,7 +1872,7 @@ pub async fn working_baked_pixels(
         };
         // Distinct dust spots removed (for the completion toast) — only when auto-dust ran.
         let blobs = auto_mask.as_ref().map(count_blobs);
-        let healed = bake_for_view_from_baked(&app_data, baked, &spec, auto_mask.as_ref());
+        let healed = bake_for_view_from_baked(&app_data, baked, &spec, auto_mask.as_ref(), base);
         let (_, _, bytes) = pack_rgba16f(&healed, MAX_GPU_EDGE);
         (bytes, fresh, blobs)
     })
