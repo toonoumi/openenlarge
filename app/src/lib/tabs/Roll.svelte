@@ -929,13 +929,13 @@
     border-radius: 9px;
     font-weight: 600;
     font-size: 12px;
-    background: var(--accent-grad, rgba(255,255,255,0.15));
-    border: 1px solid rgba(255,255,255,0.25);
+    background: rgba(244,157,78,0.18);
+    border: 1px solid rgba(244,157,78,0.5);
     color: #fff;
     cursor: pointer;
-    transition: background 0.15s;
+    transition: background 0.15s, border-color 0.15s;
   }
-  .done-btn:hover { background: rgba(255,255,255,0.22); }
+  .done-btn:hover { background: rgba(244,157,78,0.28); border-color: rgba(244,157,78,0.7); }
   .ref-strip {
     grid-area: strip;
     display: flex;
