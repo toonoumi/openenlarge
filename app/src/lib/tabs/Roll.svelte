@@ -15,6 +15,7 @@
   import { api, defaultParams } from "$lib/api";
   import { debounce } from "$lib/catalog";
   import FramePreview from "$lib/roll/FramePreview.svelte";
+  import { exportContactSheet } from "$lib/roll/exportSheet";
 
   // Fresh roll draft each time the section opens (seed from defaults per spec).
   onMount(() => { resetRollDraft(); });
@@ -111,6 +112,9 @@
     <button class="apply-btn" on:click={onApplyClick}>
       {$t('roll.applyLook')}
     </button>
+    <button class="export-btn" on:click={exportContactSheet} disabled={$developedFolderImages.length === 0}>
+      {$t('roll.export.button')}
+    </button>
   </aside>
 </div>
 
@@ -141,4 +145,9 @@
     gap: 8px; padding: 12px; overflow-y: auto; }
   .apply-btn { margin-top: auto; padding: 10px 16px; border-radius: 9px; border: 0;
     background: var(--accent-grad); color: white; font-weight: 600; cursor: pointer; }
+  .export-btn { padding: 8px 16px; border-radius: 9px; font-weight: 600; font-size: 12px;
+    background: var(--glass-hi); border: 1px solid var(--glass-brd); color: var(--text);
+    transition: background 0.15s, border-color 0.15s; cursor: pointer; }
+  .export-btn:hover:not(:disabled) { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.18); }
+  .export-btn:disabled { opacity: 0.45; cursor: default; }
 </style>
