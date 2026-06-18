@@ -132,6 +132,20 @@ won't work but installers are still fine.
 
 ### 5. Write the notes (TWO versions — this is the important part)
 
+**Bilingual from 0.4.1 onward — write every set of notes in English AND 简体中文.**
+OpenEnlarge ships an EN/ZH UI and has a sizeable Chinese audience, so both the
+GitHub body and the in-app updater notes must carry both languages. Match the app's
+established 中文 terminology (e.g. 显影 = Develop, 纹理 = Texture, 鲜明度 = Presence,
+裁剪 = Crop, 导出 = Export, 自动除尘 = auto-dust, 画质设置 = Quality setting) — grep
+`i18n-strings.csv` when unsure. Translate, don't transliterate; keep the same
+New/Improvements/Fixes grouping in each language.
+
+- **GitHub body:** lead with the English block, then a `## 中文` heading with the full
+  translation (one bilingual body; do not create a second release).
+- **Updater notes:** the `<pre>` shows one string, so include both languages in it —
+  the English block, a blank line, then the 中文 block (plain text, `•` bullets, no
+  Markdown in either).
+
 **a) GitHub release body — Markdown.** Rendered on the releases page. Group as
 New / Fixes, lead with the headline, list downloads. Save to a temp file and apply:
 
@@ -186,8 +200,9 @@ redeploys the GitHub Pages site automatically (`.github/workflows/pages.yml`).
 - **First release of the auto-updater era:** existing users on the prior version
   get their old update path; the polished in-app notes only matter from the *next*
   release onward. Still fix `latest.json` every time so it's right going forward.
-- **i18n:** the in-app updater notes are shown as-is in one language. The website
-  (`web/i18n.js`) has EN + ZH — if release work touched site copy, keep both in
-  sync (EN/ZH key counts must match).
+- **i18n:** the in-app updater notes render as-is in one `<pre>`, so make them
+  bilingual (EN + 中文 in the one string) per step 5. The website (`web/i18n.js`) has
+  EN + ZH — if release work touched site copy, keep both in sync (EN/ZH key counts
+  must match).
 - Don't invent a version or publish on the user's behalf. Recommend, confirm, ship
   the draft, hand off.
