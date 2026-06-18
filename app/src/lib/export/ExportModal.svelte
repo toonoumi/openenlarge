@@ -414,15 +414,17 @@
   .backdrop {
     position: fixed; inset: 0; z-index: 50;
     display: grid; place-items: center;
-    background: rgba(6, 6, 9, 0.5);
-    backdrop-filter: blur(16px) saturate(125%);
-    -webkit-backdrop-filter: blur(16px) saturate(125%);
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
   }
   .modal {
     width: min(880px, 92vw); max-height: 88vh;
     display: flex; flex-direction: column; gap: 14px;
     padding: 18px;
-    background: linear-gradient(180deg, rgba(34, 34, 40, 0.94), rgba(19, 19, 23, 0.94));
+    background: var(--glass-bg);
+    backdrop-filter: blur(20px) saturate(140%);
+    -webkit-backdrop-filter: blur(20px) saturate(140%);
     border: 1px solid var(--glass-brd);
     border-radius: var(--radius);
     box-shadow: 0 28px 80px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.05);

@@ -26,5 +26,7 @@
   .sub { color: var(--text-dim); margin-bottom: 18px; font-size: 12px; }
   .row { display: flex; gap: 10px; justify-content: flex-end; }
   button { padding: 8px 14px; border-radius: 9px; border: 1px solid var(--glass-brd); background: transparent; }
-  .go { background: var(--accent-grad); color: white; border: 0; font-weight: 600; }
+  .go { background: rgba(244,157,78,0.18); border: 1px solid rgba(244,157,78,0.5); color: #fff; font-weight: 600;
+    transition: background 0.14s ease, border-color 0.14s ease; }
+  .go:hover { background: rgba(244,157,78,0.30); border-color: rgba(244,157,78,0.75); }
 </style>
