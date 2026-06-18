@@ -26,6 +26,11 @@
   import type { Rect, CropRect } from "$lib/crop/types";
   import { emptyDust } from "$lib/develop/dust";
   import { developRev, dustById } from "$lib/store";
+  import Icon from "$lib/icons/Icon.svelte";
+
+  // 8-bit swatch preview of a linear base (display gamma ~1/2.2). Copied from Basic.svelte.
+  const baseCss = (b: [number, number, number] | null) =>
+    b ? `rgb(${b.map((v) => Math.round(255 * Math.min(1, Math.max(0, v ** (1 / 2.2))))).join(",")})` : "transparent";
 
   // Entry gate: enabled after confirm (or if no conflicts / skip-pref set).
   let mirrorEnabled = false;
@@ -207,6 +212,14 @@
   $: refFrameParams = refId ? ($editsById[refId] ?? defaultParams()) : defaultParams();
   $: refEffParams = withEffectiveBase(refFrameParams, refDir);
 
+  // Effective base for the film-base swatch: roll draft override if set, else
+  // the first (reference) frame's effective base (folder base or per-image base_override).
+  $: firstFrame = $developedFolderImages[0] ?? null;
+  $: firstFrameDir = firstFrame ? imageDir(firstFrame) : "";
+  $: firstFrameParams = firstFrame ? ($editsById[firstFrame.id] ?? defaultParams()) : defaultParams();
+  $: firstFrameEffBase = withEffectiveBase(firstFrameParams, firstFrameDir).base_override ?? null;
+  $: swatchBase = ($rollDraft.params.base_override ?? firstFrameEffBase) as [number,number,number] | null;
+
   // Reference frame dust edits (view-only in crop mode).
   $: refDust = refId ? ($dustById[refId] ?? emptyDust()) : emptyDust();
 
@@ -273,7 +286,13 @@
   function onStraighten(v: number) { angle = Math.max(-45, Math.min(45, v)); }
 
   // Reactively commit the draft crop on every change so the mirror picks it up live.
+  // NOTE: explicitly reference rect/rot90/flipH/flipV/angle/aspect/orientation so
+  // Svelte tracks them as dependencies of this block (Svelte does not look inside
+  // function bodies for dependencies, so draftCrop() alone would only re-run on
+  // cropInit changes — rotation and flip changes would never propagate to all frames).
   $: if (cropInit) {
+    // Touch all crop variables so Svelte's dependency tracker picks them up.
+    void rect; void rot90; void flipH; void flipV; void angle; void aspect; void orientation;
     rollDraft.update((d) => ({ ...d, crop: draftCrop() }));
   }
 
@@ -376,19 +395,25 @@
         <button class="tool-entry-btn" on:click={enterCropMode} disabled={$developedFolderImages.length === 0}>
           {$t('roll.crop.tool')}
         </button>
+        <!-- Film base: Tune-identical swatch + pipette widget -->
         <div class="panel-section-label">{$t('roll.base.heading')}</div>
-        <div class="panel-btn-row">
-          <button class="tool-entry-btn" on:click={enterBaseMode} disabled={$developedFolderImages.length === 0}>
-            {$t('roll.base.sample')}
-          </button>
-          <button class="tool-entry-btn" on:click={onAutoBase} disabled={$developedFolderImages.length === 0}>
-            {$t('roll.base.auto')}
+        <button class="baseswatch" class:on={(editMode as string) === "base"} disabled={$developedFolderImages.length === 0}
+                on:click={enterBaseMode} title={$t('roll.base.sample')} aria-label={$t('roll.base.sample')}>
+          <span class="cube big" style="background:{baseCss(swatchBase)}"></span>
+          <span class="pick"><Icon name="pipette" size={18} /></span>
+        </button>
+        <button class="auto-link" on:click={onAutoBase} disabled={$developedFolderImages.length === 0}>
+          {$t('roll.base.auto')}
+        </button>
+
+        <!-- White point: Tune-identical pipette button -->
+        <div class="wp-row">
+          <span class="panel-section-label">{$t('roll.wp.heading')}</span>
+          <button class="wbdrop" class:on={(editMode as string) === "wp"} disabled={$developedFolderImages.length === 0}
+                  on:click={enterWpMode} title={$t('roll.wp.pick')} aria-label={$t('roll.wp.pick')}>
+            <Icon name="pipette" size={14} />
           </button>
         </div>
-        <div class="panel-section-label">{$t('roll.wp.heading')}</div>
-        <button class="tool-entry-btn" on:click={enterWpMode} disabled={$developedFolderImages.length === 0}>
-          {$t('roll.wp.pick')}
-        </button>
       </div>
       <button class="export-btn" on:click={exportContactSheet} disabled={$developedFolderImages.length === 0}>
         {$t('roll.export.button')}
@@ -647,9 +672,37 @@
   /* Panel section labels and button rows (sheet mode) */
   .panel-section-label { font-size: 10px; font-weight: 600; color: var(--text-dim, #888);
     text-transform: uppercase; letter-spacing: 0.06em; padding: 4px 0 2px; }
-  .panel-btn-row { display: flex; gap: 4px; }
-  .panel-btn-row .tool-entry-btn { flex: 1; }
-
   /* Mode hint inside ref-panel-inner (base / wp modes) */
   .panel-mode-hint { font-size: 11px; color: var(--text-dim, #888); padding: 4px 0; }
+
+  /* Film-base swatch widget — identical to Basic.svelte's .baseswatch/.cube/.pick */
+  .cube { width: 16px; height: 16px; border-radius: 4px; border: 1px solid var(--glass-brd);
+    flex: none; }
+  .cube.big { width: 100%; height: 30px; border-radius: 8px; box-sizing: border-box; }
+  .baseswatch { position: relative; display: flex; width: 100%; padding: 0; border: 0;
+    background: transparent; cursor: pointer; margin: 4px 0 2px; }
+  .baseswatch:disabled { opacity: 0.45; cursor: default; }
+  .baseswatch .pick { position: absolute; inset: 0; display: flex; align-items: center;
+    justify-content: center; color: #fff; background: rgba(0,0,0,0.4); border-radius: 8px;
+    opacity: 0; transition: opacity 120ms; }
+  .baseswatch:hover:not(:disabled) .pick, .baseswatch.on .pick { opacity: 1; }
+  .baseswatch.on .cube.big { box-shadow: 0 0 0 2px rgba(244,157,78,0.7); }
+
+  /* Small "auto" text link next to the swatch — secondary affordance only */
+  .auto-link { background: transparent; border: none; color: var(--text-dim, #888);
+    font-size: 11px; padding: 0 0 4px; cursor: pointer; text-align: left; }
+  .auto-link:hover:not(:disabled) { color: var(--text); }
+  .auto-link:disabled { opacity: 0.45; cursor: default; }
+
+  /* White-point row: label + pipette button side by side */
+  .wp-row { display: flex; align-items: center; justify-content: space-between;
+    gap: 6px; margin-top: 4px; }
+  .wp-row .panel-section-label { padding: 0; margin: 0; }
+
+  /* WB pipette button — identical to Basic.svelte's .wbdrop */
+  .wbdrop { display: inline-flex; align-items: center; justify-content: center;
+    background: transparent; border: 1px solid var(--glass-brd); color: var(--text-dim);
+    border-radius: 6px; padding: 2px 6px; cursor: pointer; }
+  .wbdrop.on { color: var(--text); border-color: var(--accent); }
+  .wbdrop:disabled { opacity: 0.45; cursor: default; }
 </style>
