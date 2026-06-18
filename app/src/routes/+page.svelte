@@ -124,8 +124,9 @@
     </button>
     <nav class="tabs">
       <button class:active={$module === "library"} on:click={() => module.set("library")}>{$t('app.tab.library')}</button>
+      <button>{$t('app.tab.develop')}</button>
       <button class:active={$module === "develop"} disabled={!$hasImages} on:click={gotoDevelop}>
-        {$t('app.tab.develop')}
+        {$t('app.tab.tune')}
         {#if $undevelopedCount > 0}<span class="badge">{$undevelopedCount}</span>{/if}
       </button>
       <button disabled={!$hasDeveloped} on:click={() => (exporting = true)}>{$t('app.tab.export')}</button>
