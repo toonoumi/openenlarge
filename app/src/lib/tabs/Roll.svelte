@@ -134,6 +134,10 @@
   onDestroy(() => {
     schedulePersist.flush();   // flush while destroyed is still false, so the final look persists
     destroyed = true;
+    if (previewRafHandle !== null) {
+      cancelAnimationFrame(previewRafHandle);
+      previewRafHandle = null;
+    }
   });
 
   // --- Tiny concurrency pool: run `fns` with at most `concurrency` in-flight at once.
@@ -153,32 +157,91 @@
 
   // --- PASS 1: PREVIEW — cheap, frequent, display-only (120 ms debounce) --------
   // Renders draft thumbnails into previewMap. Does NOT write editsById or saveThumbnail.
-  const schedulePreview = debounce(async (draft: typeof $rollDraft) => {
-    const token = ++previewToken;
-    const frames = get(developedFolderImages);
-    const view = draftThumbView(draft.crop);
 
-    // Build render tasks in folder order so the first (visible) frames update first.
-    const tasks = frames.map((frame) => async () => {
-      const merged = livePreviewParams(draft.params, editsEntry(frame.id));
-      const params = withEffectiveBase(
-        {
-          ...merged,
-          ...(draft.params.base_override != null ? { base_override: draft.params.base_override } : {}),
-          ...(draft.params.d_max_override != null ? { d_max_override: draft.params.d_max_override } : {}),
-        },
-        imageDir(frame),
-      );
-      const dataUrl = await api.thumbnail(frame.id, params, view);
-      // Commit each result as it arrives if still fresh; avoids waiting for the whole batch.
-      if (previewToken === token && !destroyed) {
-        previewMap = { ...previewMap, [frame.id]: dataUrl };
+  // Single-in-flight guard: only one preview batch runs at a time.
+  let previewRunning = false;
+  let previewPending: typeof $rollDraft | null = null;
+  // rAF handle for the coalescing loop (cancelled on batch end / component destroy).
+  let previewRafHandle: number | null = null;
+
+  async function runPreviewBatch(draft: typeof $rollDraft): Promise<void> {
+    previewRunning = true;
+    try {
+      const token = ++previewToken;
+      const frames = get(developedFolderImages);
+      const view = draftThumbView(draft.crop);
+
+      // Accumulator: start from current previewMap so unrendered frames keep their old preview.
+      const acc: Record<string, string> = { ...previewMap };
+      let dirty = false;
+
+      // Start a single rAF coalescing loop — commits previewMap at most ~60/sec.
+      if (previewRafHandle !== null) cancelAnimationFrame(previewRafHandle);
+      if (typeof requestAnimationFrame !== "undefined") {
+        const rafLoop = () => {
+          if (dirty && previewToken === token && !destroyed) {
+            previewMap = { ...acc };
+            dirty = false;
+          }
+          // Keep looping until this batch is superseded or the component is destroyed.
+          if (previewToken === token && !destroyed) {
+            previewRafHandle = requestAnimationFrame(rafLoop);
+          } else {
+            previewRafHandle = null;
+          }
+        };
+        previewRafHandle = requestAnimationFrame(rafLoop);
       }
-      return { id: frame.id, dataUrl };
-    });
 
-    // Limit to 5 concurrent backend renders.
-    await pooled(tasks, 5);
+      // Build render tasks in folder order so the first (visible) frames update first.
+      const tasks = frames.map((frame) => async () => {
+        const merged = livePreviewParams(draft.params, editsEntry(frame.id));
+        const params = withEffectiveBase(
+          {
+            ...merged,
+            ...(draft.params.base_override != null ? { base_override: draft.params.base_override } : {}),
+            ...(draft.params.d_max_override != null ? { d_max_override: draft.params.d_max_override } : {}),
+          },
+          imageDir(frame),
+        );
+        const dataUrl = await api.thumbnail(frame.id, params, view);
+        // Write into accumulator (plain property set — no Svelte reactivity triggered here).
+        if (previewToken === token && !destroyed) {
+          acc[frame.id] = dataUrl;
+          dirty = true;
+        }
+        return { id: frame.id, dataUrl };
+      });
+
+      // Limit to 5 concurrent backend renders.
+      await pooled(tasks, 5);
+
+      // Batch complete: cancel the rAF loop and do one final commit (covers SSR/test envs too).
+      if (previewRafHandle !== null) {
+        cancelAnimationFrame(previewRafHandle);
+        previewRafHandle = null;
+      }
+      if (previewToken === token && !destroyed) {
+        previewMap = { ...acc };
+      }
+    } finally {
+      previewRunning = false;
+      // If a newer draft arrived while we were running, render it now.
+      if (previewPending !== null) {
+        const next = previewPending;
+        previewPending = null;
+        runPreviewBatch(next);
+      }
+    }
+  }
+
+  const schedulePreview = debounce((draft: typeof $rollDraft) => {
+    if (previewRunning) {
+      // Queue the latest draft; an in-flight batch will pick it up on completion.
+      previewPending = draft;
+      return;
+    }
+    runPreviewBatch(draft);
   }, 120);
 
   // --- PASS 2: PERSIST — heavy, deferred, fires once after drag settles (600 ms) --
