@@ -1151,6 +1151,22 @@ pub fn thumbnail(
     to_jpeg_b64(&fin, false, 82)
 }
 
+/// Persist an image's edited-look thumbnail (the data URL the frontend rendered via
+/// `thumbnail`) to the session and catalog, so the filmstrip shows the user's edits
+/// after relaunch instead of reverting to the develop-time default-params render.
+#[tauri::command]
+pub fn save_thumbnail(
+    id: String,
+    thumbnail: String,
+    session: State<Session>,
+    catalog: State<crate::catalog::Catalog>,
+) -> Result<(), String> {
+    if let Some(img) = session.images.lock().unwrap().get_mut(&id) {
+        img.thumbnail = thumbnail.clone();
+    }
+    catalog.update_thumbnail(&id, &thumbnail).map_err(|e| format!("{e}"))
+}
+
 /// Decode the full-res file, apply geometry + inversion + dust/IR + finishing, and
 /// return the finished image and its source metadata. Shared by `export_image` and
 /// the upscaler so both produce identical pixels.

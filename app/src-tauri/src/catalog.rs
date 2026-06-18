@@ -123,6 +123,16 @@ impl Catalog {
         Ok(())
     }
 
+    /// Persist just the thumbnail (the frontend's edited-look render). Lets the strip
+    /// thumbnail survive relaunch instead of reverting to the develop-time default.
+    pub fn update_thumbnail(&self, id: &str, thumbnail: &str) -> rusqlite::Result<()> {
+        self.conn.lock().unwrap().execute(
+            "UPDATE images SET thumbnail = ?2 WHERE id = ?1",
+            rusqlite::params![id, thumbnail],
+        )?;
+        Ok(())
+    }
+
     /// Remove an image and its edits (atomically).
     pub fn delete_image(&self, id: &str) -> rusqlite::Result<()> {
         let conn = self.conn.lock().unwrap();

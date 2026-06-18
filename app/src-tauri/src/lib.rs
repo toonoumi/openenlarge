@@ -115,6 +115,7 @@ pub fn run() {
             commands::render_view,
             commands::encode_hdr,
             commands::thumbnail,
+            commands::save_thumbnail,
             commands::export_image,
             commands::export_image_hdr,
             commands::export_begin,

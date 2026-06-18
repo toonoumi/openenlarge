@@ -258,6 +258,9 @@
       try {
         const t = await api.thumbnail(id, effParams, view);
         images.update((xs) => xs.map((i) => (i.id === id ? { ...i, thumbnail: t } : i)));
+        // Persist the edited-look thumbnail so the filmstrip keeps the user's edits
+        // across relaunch instead of reverting to the develop-time default render.
+        api.saveThumbnail(id, t).catch(() => { /* best-effort */ });
       } catch { /* ignore */ }
     }, 400);
   }
