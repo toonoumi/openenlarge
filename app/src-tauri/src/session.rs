@@ -267,7 +267,7 @@ pub struct Session {
     pub images: Mutex<HashMap<String, CachedImage>>,
     pub quality: Mutex<Quality>,
     pub cache_dir: Mutex<std::path::PathBuf>,
-    pub pending_export: Mutex<Option<PreparedExport>>,
+    pub pending_export: Mutex<HashMap<String, PreparedExport>>,
     pub pending_upscale: Mutex<Option<PendingUpscale>>,
     /// Cached AI-dust probability map per image id (`(w, h, w*h f32 in [0,1])`).
     /// The detector runs once; the sensitivity slider only re-thresholds + refills.

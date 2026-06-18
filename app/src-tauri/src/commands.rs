@@ -1306,11 +1306,12 @@ pub struct ExportPrep {
 /// and return the dims + resolved inversion uniforms. The frontend then renders
 /// the GPU invert+finish offscreen and calls export_finish with the readback.
 #[tauri::command]
-pub fn export_begin(
+pub async fn export_begin(
     id: String,
     params: InvertParams,
     spec: BakeSpec,
-    session: State<Session>,
+    max_edge: u32,
+    session: State<'_, Session>,
 ) -> Result<ExportPrep, String> {
     ensure_resident(&session, &id)?;
     let (path, base, dev_dmax) = {
@@ -1319,21 +1320,48 @@ pub fn export_begin(
         let dev = img.developed.as_ref().ok_or("not developed")?;
         (img.path.clone(), dev.base, dev.d_max)
     };
-    let full = decode_any(Path::new(&path))?;
-    let baked = bake_working(&full, &spec); // geometry + pre-invert heal, full-res
-    let (w, h, bytes) = pack_rgba16f(&baked, u32::MAX); // no cap for export
+    // Decode + bake (full-res) off the UI thread so batch export can overlap this
+    // with other images' GPU render + encode. When the baked image exceeds the GPU
+    // texture cap, skip the (large) f16 pack and stash nothing: the frontend falls
+    // back to CPU export and re-decodes, so there's no buffer to leak in the map.
+    let (w, h, bytes) = tauri::async_runtime::spawn_blocking(move || {
+        let full = decode_any(Path::new(&path))?;
+        let baked = bake_working(&full, &spec); // geometry + pre-invert heal, full-res
+        if baked.width.max(baked.height) as u32 > max_edge {
+            return Ok::<(u32, u32, Option<Vec<u8>>), String>((
+                baked.width as u32,
+                baked.height as u32,
+                None,
+            ));
+        }
+        let (w, h, bytes) = pack_rgba16f(&baked, u32::MAX); // no cap for export
+        Ok((w, h, Some(bytes)))
+    })
+    .await
+    .map_err(|e| e.to_string())??;
     let mut uniforms = resolve_to_uniforms(&params, effective_base(&params, base));
     uniforms.d_max = effective_dmax(&params, dev_dmax);
-    *session.pending_export.lock().unwrap() = Some(PreparedExport { w, h, bytes });
+    if let Some(bytes) = bytes {
+        session
+            .pending_export
+            .lock()
+            .unwrap()
+            .insert(id, PreparedExport { w, h, bytes });
+    }
     Ok(ExportPrep { w, h, uniforms })
 }
 
 /// Return the stashed half-float bytes for upload (consumes nothing; kept until export_finish).
 #[tauri::command]
-pub fn export_pixels(session: State<Session>) -> Result<tauri::ipc::Response, String> {
-    let guard = session.pending_export.lock().unwrap();
-    let prep = guard.as_ref().ok_or("no prepared export")?;
-    Ok(tauri::ipc::Response::new(prep.bytes.clone()))
+pub fn export_pixels(id: String, session: State<Session>) -> Result<tauri::ipc::Response, String> {
+    // Move the stashed buffer out of the map (frees it here, not at export_finish).
+    let prep = session
+        .pending_export
+        .lock()
+        .unwrap()
+        .remove(&id)
+        .ok_or("no prepared export")?;
+    Ok(tauri::ipc::Response::new(prep.bytes))
 }
 
 /// `bit16 = true` → `data` is f32 RGBA (4 floats/px); else RGBA8 (4 bytes/px).
@@ -1347,53 +1375,59 @@ pub struct ExportReadback {
 /// Build an Image from the GPU readback and encode it with the chosen format.
 #[allow(clippy::too_many_arguments)]
 #[tauri::command]
-pub fn export_finish(
+pub async fn export_finish(
     id: String,
     out_path: String,
     readback: ExportReadback,
     data: Vec<u8>,
     format: ExportFormat,
     meta_override: Option<MetaOverride>,
-    session: State<Session>,
+    session: State<'_, Session>,
 ) -> Result<(), String> {
-    let img = if readback.bit16 {
-        // data is little-endian f32 RGBA
-        let floats: Vec<f32> = data
-            .chunks_exact(4)
-            .map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]]))
-            .collect();
-        image_from_rgba_f32(readback.w, readback.h, &floats)
-    } else {
-        image_from_rgba8(readback.w, readback.h, &data)
-    };
-    let out = Path::new(&out_path);
-    match format.kind.as_str() {
-        "tiff" => {
-            if format.bit_depth == 16 {
-                film_core::export::write_tiff16(&img, out).map_err(|e| format!("{e}"))
-            } else {
-                write_tiff8(&img, out)
-            }
-        }
-        "png" => write_png(&img, out, format.bit_depth),
-        "jpeg" => write_jpeg(&img, out, format.quality, format.max_bytes),
-        other => Err(format!("unknown export format: {other}")),
-    }?;
-
-    // Best-effort EXIF embed, mirroring export_image. The pixel file is already
-    // written and valid; a metadata failure is logged but never fails the export.
+    // Snapshot the metadata before the lock-free encode so batch export can overlap
+    // this encode/write with other images' decode/bake. (The stashed input buffer
+    // was already freed by export_pixels.)
     let metadata = {
         let images = session.images.lock().unwrap();
         images.get(&id).map(|i| i.metadata.clone())
     };
-    if let Some(md) = metadata {
-        let eff = effective_metadata(&md, meta_override.as_ref());
-        if let Err(e) = crate::exif_write::write_exif(out, &eff) {
-            eprintln!("[exif] embed failed for {out_path}: {e}");
+    tauri::async_runtime::spawn_blocking(move || {
+        let img = if readback.bit16 {
+            // data is little-endian f32 RGBA
+            let floats: Vec<f32> = data
+                .chunks_exact(4)
+                .map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+                .collect();
+            image_from_rgba_f32(readback.w, readback.h, &floats)
+        } else {
+            image_from_rgba8(readback.w, readback.h, &data)
+        };
+        let out = Path::new(&out_path);
+        match format.kind.as_str() {
+            "tiff" => {
+                if format.bit_depth == 16 {
+                    film_core::export::write_tiff16(&img, out).map_err(|e| format!("{e}"))
+                } else {
+                    write_tiff8(&img, out)
+                }
+            }
+            "png" => write_png(&img, out, format.bit_depth),
+            "jpeg" => write_jpeg(&img, out, format.quality, format.max_bytes),
+            other => Err(format!("unknown export format: {other}")),
+        }?;
+
+        // Best-effort EXIF embed, mirroring export_image. The pixel file is already
+        // written and valid; a metadata failure is logged but never fails the export.
+        if let Some(md) = metadata {
+            let eff = effective_metadata(&md, meta_override.as_ref());
+            if let Err(e) = crate::exif_write::write_exif(out, &eff) {
+                eprintln!("[exif] embed failed for {out_path}: {e}");
+            }
         }
-    }
-    *session.pending_export.lock().unwrap() = None; // release the buffer
-    Ok(())
+        Ok::<(), String>(())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Estimated as-shot white point for the developed image, as (Kelvin, tint).

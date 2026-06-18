@@ -186,8 +186,13 @@
     const exportCanvas = document.createElement("canvas");
     const exportRenderer = new FinishRenderer(exportCanvas);
     const gpuOk = exportRenderer.available;
+    const maxTex = gpuOk ? exportRenderer.maxTextureSize() : 0;
 
-    for (const img of chosen) {
+    // One image, start to finish. Safe to run several concurrently: the only shared
+    // GPU state is `exportRenderer`, and `renderExport` is synchronous (atomic), so
+    // workers can't interleave GPU calls — they only overlap the backend's async
+    // decode/bake (exportBegin) and encode/write (exportFinish).
+    async function exportOne(img: (typeof chosen)[number]) {
       try {
         const p = withEffectiveBase($editsById[img.id] ?? defaultParams(), imageDir(img));
         const crop = resolveCrop(batchCrop, draft, $cropById[img.id] ?? null);
@@ -206,7 +211,7 @@
           await api.exportImageHdr(img.id, p, outPath, imageCrop, geom, d.strokes, d.irRemoval, format, metaOverride);
           written.push(outPath);
           done++;
-          continue;
+          return;
         }
 
         const spec: BakeSpec = {
@@ -222,10 +227,9 @@
         let exported = false;
         if (gpuOk) {
           try {
-            const prep = await api.exportBegin(img.id, p, spec);
-            const maxTex = exportRenderer.maxTextureSize();
+            const prep = await api.exportBegin(img.id, p, spec, maxTex);
             if (prep.w <= maxTex && prep.h <= maxTex) {
-              const buf = await api.exportPixels();
+              const buf = await api.exportPixels(img.id);
               const out = exportRenderer.renderExport(
                 new Uint16Array(buf), prep.w, prep.h,
                 toInversionUniforms(prep.uniforms),
@@ -254,6 +258,20 @@
         failures.push(`${img.file_name}: ${e}`);
       }
     }
+
+    // Bounded worker pool. `next++` is synchronous, so no two workers claim the
+    // same image (no await between the bound check and the increment).
+    const CONCURRENCY = 4;
+    let next = 0;
+    const worker = async () => {
+      while (next < chosen.length) {
+        await exportOne(chosen[next++]);
+      }
+    };
+    await Promise.all(
+      Array.from({ length: Math.min(CONCURRENCY, chosen.length) }, () => worker()),
+    );
+
     running = false;
     exportedPaths = written;
     failedCount = failures.length;
