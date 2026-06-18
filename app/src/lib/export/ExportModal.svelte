@@ -6,7 +6,7 @@
   import { join } from "@tauri-apps/api/path";
   import { revealItemInDir } from "@tauri-apps/plugin-opener";
   import { developedFolderImages } from "./eligible";
-  import { editsById, cropById, dustById, metaById } from "../store";
+  import { editsById, cropById, dustById, metaById, selection } from "../store";
   import { defaultParams, type ExportFormat, type BakeSpec } from "../api";
   import { api } from "../api";
   import { scrubValue } from "$lib/actions/scrubValue";
@@ -64,11 +64,18 @@
   $: ids = imgs.map((i) => i.id);
 
   // Start empty: `ids` is a `$:`-derived value and is still undefined during this
-  // initializer (reactive statements run after init). The guard below selects-all
-  // once the developed-image list is known.
+  // initializer (reactive statements run after init). Once the developed-image list
+  // is known, seed the selection from the current grid/filmstrip selection (restricted
+  // to the images this dialog lists); fall back to all if none of them apply.
   let sel: SelState = noneSelected();
   let initialized = false;
-  $: if (!initialized && ids.length > 0) { sel = allSelected(ids); initialized = true; }
+  $: if (!initialized && ids.length > 0) {
+    const picked = ids.filter((id) => $selection.selected.has(id));
+    sel = picked.length > 0
+      ? { selected: new Set(picked), anchor: picked[picked.length - 1] }
+      : allSelected(ids);
+    initialized = true;
+  }
 
   function onItemClick(e: MouseEvent, id: string) {
     if (running) return;
