@@ -10,7 +10,7 @@
   import Icon from "../icons/Icon.svelte";
   import HelpDot from "./HelpDot.svelte";
   import Slider from "./Slider.svelte";
-  import { TEMP_GRADIENT, TINT_GRADIENT, SAT_GRADIENT, signed, ev, kelvin } from "./gradients";
+  import { TEMP_GRADIENT, TINT_GRADIENT, SAT_GRADIENT, signed, ev, relKelvin } from "./gradients";
   import { slide } from "svelte/transition";
   import { cubicInOut } from "svelte/easing";
 
@@ -133,6 +133,26 @@
 
   function autoWb() { seed($activeId, $params.stock, JSON.stringify(effBase), true); }
 
+  // As-shot neutral baseline for the Temp readout. Temp is shown as a relative ±
+  // offset from this point (feedback I2: absolute Kelvin is meaningless to the user).
+  // Tracked independently of seed() so the readout is correct even on images that
+  // were already seeded earlier (or where WB is sticky/manual) — the baseline is the
+  // auto white point, not the user's current setting. Re-fetched when the image or
+  // the effective base changes (both move the neutral point).
+  let tempBaseline = 5500;
+  let baselineKey = "";
+  async function loadBaseline(id: string | null, baseKey: string) {
+    if (!id) { tempBaseline = 5500; baselineKey = ""; return; }
+    const key = `${id}:${baseKey}`;
+    if (key === baselineKey) return;
+    baselineKey = key;
+    try {
+      const wb = await api.asShotWb(id, withEffectiveBase(get(params), dir), imageCrop, geom);
+      tempBaseline = wb.temp;
+    } catch { baselineKey = ""; /* not developed yet — allow a retry */ }
+  }
+  $: loadBaseline($activeId, JSON.stringify(effBase));
+
   // ---- Crop-aware D_max analysis ----
   // Derive D_max from the image area (the persistent crop) and apply it to THIS
   // image, then reseed WB so the white point matches the new dynamic range.
@@ -245,9 +265,13 @@
           <button class="auto" on:click={autoWb}>{$t('basic.auto')}</button>
         </span>
       </div>
-      <Slider label={$t('basic.temp')} min={2000} max={50000} step={0.5} scale="reciprocal" scrubStep={10}
-        bind:value={$params.temp} def={5500} gradient={TEMP_GRADIENT} format={kelvin} on:input={markWbManual} />
-      <Slider label={$t('basic.tint')} min={-150} max={150} step={1}
+      <!-- Temp: tightened film range (2800–10000 K) on the reciprocal track so the
+           thumb isn't hyper-sensitive, shown as a relative ± offset from the as-shot
+           neutral. Tint: range trimmed to ±100 and stepped finely (0.1) to kill the
+           banding a coarse 1-unit step produced across a sweep (I2). -->
+      <Slider label={$t('basic.temp')} min={2800} max={10000} step={0.5} scale="reciprocal" scrubStep={10}
+        bind:value={$params.temp} def={tempBaseline} gradient={TEMP_GRADIENT} format={(v) => relKelvin(v - tempBaseline)} on:input={markWbManual} />
+      <Slider label={$t('basic.tint')} min={-100} max={100} step={0.1}
         bind:value={$params.tint} def={0} gradient={TINT_GRADIENT} format={signed} on:input={markWbManual} />
 
       <!-- Tone -->

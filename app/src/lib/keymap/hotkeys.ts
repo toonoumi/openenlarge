@@ -33,6 +33,15 @@ export const hotkeyGroups: HotkeyGroup[] = [
     ],
   },
   {
+    heading: "keymap.group.adjust",
+    items: [
+      { keys: [["Q"], ["E"]], label: "keymap.adjust.temp" },
+      { keys: [["A"], ["D"]], label: "keymap.adjust.tint" },
+      { keys: [["Z"], ["C"]], label: "keymap.adjust.exposure" },
+      { keys: [["Shift"]], label: "keymap.adjust.fine" },
+    ],
+  },
+  {
     heading: "keymap.group.crop",
     items: [
       { keys: [["Enter"]], label: "keymap.crop.commit" },

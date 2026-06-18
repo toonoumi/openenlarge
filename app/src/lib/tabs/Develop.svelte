@@ -171,6 +171,59 @@
     return tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA";
   }
 
+  // ---- F3: keyboard adjustment nudges ----
+  // Q/E temp, A/D tint, Z/C exposure (left key lowers, right raises). Each press is a
+  // coarse step; holding Shift gives the 1/10 fine step. Steps mirror the retuned I2
+  // slider ranges. Temp is nudged in mireds (1e6/K) so a press moves the white point
+  // by an even perceptual amount across the reciprocal track, then clamped to the same
+  // 2800–10000 K range as the slider. Each nudge marks WB manual (so the auto-reseed
+  // won't clobber it) and commits one undo step.
+  const TEMP_MIN = 2800, TEMP_MAX = 10000;
+  const NUDGE = { tempMired: 5, tint: 2, exposure: 0.1 }; // coarse; Shift = ×0.1
+  const clampN = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+
+  function adjTemp(miredStep: number) {
+    // +mired = lower Kelvin (warmer); -mired = higher Kelvin (cooler).
+    params.update((p) => ({
+      ...p,
+      temp: clampN(1e6 / (1e6 / p.temp + miredStep), TEMP_MIN, TEMP_MAX),
+      wb_manual: true,
+    }));
+    commitActive();
+  }
+  function adjTint(delta: number) {
+    params.update((p) => ({
+      ...p,
+      tint: clampN(Math.round((p.tint + delta) * 10) / 10, -100, 100),
+      wb_manual: true,
+    }));
+    commitActive();
+  }
+  function adjExposure(delta: number) {
+    params.update((p) => ({
+      ...p,
+      exposure: clampN(Math.round((p.exposure + delta) * 100) / 100, -5, 5),
+    }));
+    commitActive();
+  }
+
+  /** Handle a Q/E/A/D/Z/C adjustment nudge. Returns true if it consumed the key. */
+  function adjustKey(e: KeyboardEvent): boolean {
+    if (e.metaKey || e.ctrlKey || e.altKey || formFocused()) return false;
+    const f = e.shiftKey ? 0.1 : 1; // Shift → 1/10 fine step
+    switch (e.key.toLowerCase()) {
+      case "q": adjTemp(NUDGE.tempMired * f); break;   // warmer (Kelvin↓)
+      case "e": adjTemp(-NUDGE.tempMired * f); break;  // cooler (Kelvin↑)
+      case "a": adjTint(-NUDGE.tint * f); break;       // toward green
+      case "d": adjTint(NUDGE.tint * f); break;        // toward magenta
+      case "z": adjExposure(-NUDGE.exposure * f); break; // darker
+      case "c": adjExposure(NUDGE.exposure * f); break;  // brighter
+      default: return false;
+    }
+    e.preventDefault();
+    return true;
+  }
+
   // Arrow keys step through images from anywhere in Develop (not just the filmstrip).
   function navImages(e: KeyboardEvent): boolean {
     if (e.metaKey || e.ctrlKey || e.altKey) return false;
@@ -224,6 +277,7 @@
       return;
     }
     if (navImages(e)) return;
+    if (adjustKey(e)) return;
     if (e.key === "Escape" && pickTarget) { pickTarget = ""; return; }
     if ($tool !== "crop") return;
     if (e.key === "Enter") { commitCrop(); tool.set("edit"); }

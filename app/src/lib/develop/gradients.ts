@@ -1,8 +1,9 @@
 // CSS linear-gradient track backgrounds for sliders.
-// Temp runs on a reciprocal (mired) scale, so neutral 5500K sits at ~66% of the
-// track (not 50%); the grey midpoint is placed to match. See sliderScale.ts.
+// Temp runs on a reciprocal (mired) scale over the tightened 2800–10000 K film
+// range (I2), so neutral 5500K sits at ~68% of the track (not 50%); the grey
+// midpoint is placed to match. See sliderScale.ts.
 export const TEMP_GRADIENT =
-  "linear-gradient(90deg, #4a90ff 0%, #cfd8e6 66%, #ffd24a 100%)";
+  "linear-gradient(90deg, #4a90ff 0%, #cfd8e6 68%, #ffd24a 100%)";
 export const TINT_GRADIENT =
   "linear-gradient(90deg, #4ad24a 0%, #cfcfcf 50%, #ff4af0 100%)";
 export const SAT_GRADIENT =
@@ -23,6 +24,14 @@ export function ev(v: number): string {
 /** Kelvin display (rounded to nearest 10). */
 export function kelvin(v: number): string {
   return `${Math.round(v / 10) * 10}`;
+}
+
+/** Signed Kelvin offset from a baseline, rounded to nearest 10 (e.g. +400, -300, 0).
+ *  Temp is shown relative to the as-shot/neutral white point — absolute Kelvin is
+ *  meaningless to the user (feedback I2). */
+export function relKelvin(delta: number): string {
+  const r = Math.round(delta / 10) * 10;
+  return r > 0 ? `+${r}` : `${r}`;
 }
 
 /** Per-band hue-slider tracks (Lightroom-style: band hue shifting to its neighbors).
