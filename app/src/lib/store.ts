@@ -198,6 +198,10 @@ export const sampledBase = writable<[number, number, number] | null>(null);
 export const sampledDmax = writable<number | null>(null);
 export const whitePointPinned = writable<Set<string>>(new Set());
 
+// Pre-reanalyze snapshot: the d_max_override + pin state captured immediately
+// before a crop re-analysis, so B3's re-analyze is always one-click revertible.
+export const preReanalyze = writable<{ id: string; d_max_override: number | null; pinned: boolean } | null>(null);
+
 /** Ids awaiting a delete confirmation (empty = no dialog). One id deletes a
  * single image; many drive the "Delete N items" multi-delete. */
 export const deleteTarget = writable<string[]>([]);

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { get } from "svelte/store";
   import { t } from "$lib/i18n";
-  import { params, activeId, images, folderBaseByPath, baseSampling, sampledBase, sampledDmax, whitePointPinned } from "../store";
+  import { params, activeId, images, folderBaseByPath, baseSampling, sampledBase, sampledDmax, whitePointPinned, preReanalyze } from "../store";
   import { api, defaultParams } from "../api";
   import { reseedActive, commitActive } from "./historyStore";
   import { createSeedGuard } from "./seedGuard";
@@ -62,7 +62,7 @@
 
   // Reset any in-progress sampling when the active image changes.
   // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-  $: { $activeId; sampledBase.set(null); baseSampling.set(false); sampledDmax.set(null); }
+  $: { $activeId; sampledBase.set(null); baseSampling.set(false); sampledDmax.set(null); preReanalyze.set(null); }
   // 8-bit swatch preview of a linear base (display gamma ~1/2.2).
   const baseCss = (b: [number, number, number] | null) =>
     b ? `rgb(${b.map((v) => Math.round(255 * Math.min(1, Math.max(0, v ** (1 / 2.2))))).join(",")})` : "transparent";
@@ -158,12 +158,25 @@
   // image, then reseed WB so the white point matches the new dynamic range.
   async function reanalyze() {
     const id = get(activeId); if (!id) return;
+    // Snapshot the pre-reanalyze state so this is always one-click revertible (B3).
+    preReanalyze.set({ id, d_max_override: get(params).d_max_override ?? null, pinned: isPinned(id) });
     try {
       const { d_max } = await api.analyze(id, withEffectiveBase(get(params), dir), imageCrop, geom);
       params.update((p) => ({ ...p, d_max_override: d_max }));
       commitActive();
       autoWb();
-    } catch { /* not developed yet */ }
+    } catch { preReanalyze.set(null); /* not developed yet */ }
+  }
+  // Restore the d_max_override + pin captured before the last re-analyze (B3).
+  function revertReanalyze() {
+    const snap = get(preReanalyze); if (!snap) return;
+    const id = get(activeId);
+    if (id && id === snap.id) {
+      setPinned(id, snap.pinned);
+      params.update((p) => ({ ...p, d_max_override: snap.d_max_override }));
+      commitActive();
+    }
+    preReanalyze.set(null);
   }
   function manualReanalyze() {
     const id = get(activeId); if (id) setPinned(id, false);
@@ -240,6 +253,9 @@
       {#if !$params.positive}
         <!-- Crop re-analysis (re-derive D_max + WB from the current crop) -->
         <button class="recal reanalyze" on:click={manualReanalyze}>{$t('base.reanalyze')}</button>
+        {#if $preReanalyze && $preReanalyze.id === $activeId}
+          <button class="recal revert" on:click={revertReanalyze}>{$t('base.revertReanalyze')}</button>
+        {/if}
 
         <!-- Film Base: tap the swatch to pick the rebate; the pick auto-applies to this image -->
         <div class="sub">{$t('base.title')}</div>
