@@ -1,5 +1,5 @@
 import { writable, derived, get } from "svelte/store";
-import type { ImageEntry, Quality, MetaOverride, InvertParams } from "./api";
+import type { ImageEntry, MetaOverride, InvertParams } from "./api";
 import { defaultParams } from "./api";
 import type { CropRect } from "./crop/types";
 import { createPerImageParams } from "./perImage";
@@ -17,8 +17,6 @@ export const module = writable<"library" | "develop">("library");
 const _perImage = createPerImageParams(activeId, () => defaultParams());
 export const params = _perImage.params;
 export const editsById = _perImage.editsById;
-
-export const quality = writable<Quality>("performance");
 
 /** Bumped whenever an image's resident working buffer is re-developed/upgraded,
  *  so the Viewport busts its GPU/CPU render caches and re-fetches the buffer. */

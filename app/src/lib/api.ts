@@ -21,7 +21,6 @@ export interface ImageEntry {
   metadata: Metadata; developed: boolean; has_ir: boolean; offline: boolean;
   positive: boolean;
 }
-export type Quality = "performance" | "quality";
 /** A tone-curve control point in [0,1]×[0,1] (input → output). */
 export type CurvePoint = [number, number];
 /** Identity curve: a straight 0→0, 1→1 line. */
@@ -193,7 +192,6 @@ export const api = {
     }),
   developImage: (id: string) => invoke<ImageEntry>("develop_image", { id }),
   ensureDeveloped: (id: string) => invoke<ImageEntry>("ensure_developed", { id }),
-  setQuality: (quality: Quality) => invoke<void>("set_quality", { quality }),
   /** Forget an image; when deleteFile is true also move the file to the OS trash. */
   deleteImage: (id: string, deleteFile: boolean) => invoke<void>("delete_image", { id, deleteFile }),
   thumbnail: (id: string, params: InvertParams, view: ThumbView = {}) =>

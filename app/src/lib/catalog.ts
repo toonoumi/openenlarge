@@ -3,7 +3,7 @@ import { api, defaultParams, type InvertParams, type CatalogSnapshot, type Image
 import type { CropRect } from "./crop/types";
 import { emptyDust, type DustEdits } from "./develop/dust";
 import {
-  images, editsById, cropById, dustById, metaById, quality,
+  images, editsById, cropById, dustById, metaById,
   selectedFolder, gridZoom, module as moduleStore, activeId, folderBaseByPath,
   updateLastCheck, updateSkipVersion, openaiApiKey, omitPreviewJpgs,
   telemetryEnabled, telemetryDecided,
@@ -65,8 +65,6 @@ export function applySnapshot(snap: CatalogSnapshot): void {
   dustById.set(dustMap);
   metaById.set(metaMap);
 
-  if (snap.prefs.quality === "performance" || snap.prefs.quality === "quality")
-    quality.set(snap.prefs.quality);
   if (snap.prefs.locale === "en" || snap.prefs.locale === "zh")
     locale.set(snap.prefs.locale);
   if (typeof snap.prefs.openai_api_key === "string")
@@ -112,7 +110,6 @@ export async function hydrate(): Promise<void> {
   try {
     const snap = await api.loadCatalog();
     applySnapshot(snap);
-    await api.setQuality(get(quality)).catch(() => {});
   } catch (e) {
     console.error("catalog hydrate failed", e);
   }
@@ -175,8 +172,7 @@ export function initPersistence(): () => void {
   wireRecord(dustById, dust.save);
   wireRecord(metaById, meta.save);
 
-  let first = { q: true, loc: true, sf: true, gz: true, mod: true, aid: true, usv: true, ulc: true, oak: true, opj: true };
-  quality.subscribe((q) => { if (first.q) { first.q = false; return; } savePref("quality", q); });
+  let first = { loc: true, sf: true, gz: true, mod: true, aid: true, usv: true, ulc: true, oak: true, opj: true };
   locale.subscribe((l) => { if (first.loc) { first.loc = false; return; } savePref("locale", l); });
   openaiApiKey.subscribe((k) => { if (first.oak) { first.oak = false; return; } savePref("openai_api_key", k); });
   omitPreviewJpgs.subscribe((b) => { if (first.opj) { first.opj = false; return; } savePref("omit_preview_jpgs", String(b)); });
