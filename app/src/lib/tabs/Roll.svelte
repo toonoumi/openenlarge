@@ -1,11 +1,10 @@
 <!-- app/src/lib/tabs/Roll.svelte -->
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, onDestroy } from "svelte";
   import { get } from "svelte/store";
   import { t } from "$lib/i18n";
   import { developedFolderImages } from "$lib/export/eligible";
-  import { editsById, images } from "$lib/store";
-  import { setActive } from "$lib/store";
+  import { editsById, images, setActive } from "$lib/store";
   import { rollReferenceId, resetRollDraft, rollDraft } from "$lib/roll/draft";
   import RollAdjust from "$lib/roll/RollAdjust.svelte";
   import ConfirmOverwrite from "$lib/roll/ConfirmOverwrite.svelte";
@@ -32,6 +31,9 @@
 
   const editsEntry = (id: string) => get(editsById)[id] ?? defaultParams();
 
+  let destroyed = false;
+  onDestroy(() => { destroyed = true; });
+
   const scheduleLivePreview = debounce(async (draft: typeof $rollDraft) => {
     const token = ++previewToken;
     const frames = get(developedFolderImages);
@@ -50,7 +52,7 @@
       }),
     );
 
-    if (previewToken === token) {
+    if (previewToken === token && !destroyed) {
       previewMap = next;
     }
   }, 250);
@@ -60,12 +62,13 @@
 
   // --- Apply look to roll -----------------------------------------------------
   let showConfirm = false;
+  let confirmCount = 0;
+  let applyIds: string[] = [];
 
   function applyLook() {
-    const ids = $developedFolderImages.map((i) => i.id);
-    editsById.set(applyToneColorToAll(get(editsById), ids, $rollDraft.params));
+    editsById.set(applyToneColorToAll(get(editsById), applyIds, $rollDraft.params));
     // Write rendered draft thumbnails back into the images store and persist them.
-    for (const id of ids) {
+    for (const id of applyIds) {
       if (previewMap[id]) {
         const thumb = previewMap[id];
         images.update((xs) => xs.map((i) => i.id === id ? { ...i, thumbnail: thumb } : i));
@@ -76,9 +79,10 @@
   }
 
   function onApplyClick() {
-    const ids = $developedFolderImages.map((i) => i.id);
-    const conflicts = framesWithToneColor(get(editsById), ids);
+    applyIds = $developedFolderImages.map((i) => i.id);
+    const conflicts = framesWithToneColor(get(editsById), applyIds);
     if (conflicts.length > 0) {
+      confirmCount = conflicts.length;
       showConfirm = true;
     } else {
       applyLook();
@@ -115,7 +119,7 @@
 
 {#if showConfirm}
   <ConfirmOverwrite
-    count={framesWithToneColor(get(editsById), $developedFolderImages.map((i) => i.id)).length}
+    count={confirmCount}
     on:confirm={applyLook}
     on:cancel={() => { showConfirm = false; }}
   />
