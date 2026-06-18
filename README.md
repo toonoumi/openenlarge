@@ -137,6 +137,15 @@ We never send your **images, file names, file paths, or any personal information
 
 **Want to see the numbers?** In the spirit of an open project, the aggregate dashboard is available on request — Aptabase has no public-link option, so access is granted by invitation. [Request dashboard access](mailto:calen0909@hotmail.com?subject=OpenEnlarge%20analytics%20dashboard%20access&body=Hi%2C%20I%27d%20like%20access%20to%20the%20OpenEnlarge%20analytics%20dashboard.%0A%0AName%20%2F%20GitHub%3A%0AReason%3A%0AEmail%20to%20invite%20%28Aptabase%20account%29%3A%0A%0AThanks%21) and you'll be invited manually.
 
+## Roadmap
+
+OpenEnlarge is actively developed. Next up:
+
+- **Import Roll** — bring in a folder of scans as one roll that shares a single film-base calibration and density range across every frame.
+- **Improve HDR** — graduate HDR out of *experimental*: edit *into* the HDR headroom with the develop sliders, widen export beyond gain-map JPEG, and verify across more displays.
+
+See [`ROADMAP.md`](ROADMAP.md) for the full picture, and [open an issue](https://github.com/mohaelder/openenlarge/issues/new) to shape what's next.
+
 ## Contributing
 
 Issues and pull requests are welcome. Before opening a PR, run the same checks CI does:
