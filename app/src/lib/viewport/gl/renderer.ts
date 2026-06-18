@@ -2,6 +2,7 @@ import { VERT, FRAG, INVERT_FRAG } from "./shaders";
 import { type InversionUniforms } from "./invert";
 import type { FinishUniforms } from "./uniforms";
 import type { ColorGradeUniforms, ColorMixUniforms } from "../../develop/finish";
+import type { ClipUniforms } from "./clip";
 import { LUT_SIZE } from "../../develop/curve";
 
 /** True if the environment can create a WebGL2 context. */
@@ -81,6 +82,7 @@ export class FinishRenderer {
   private uniforms: FinishUniforms | null = null;
   private cg: ColorGradeUniforms | null = null;
   private cm: ColorMixUniforms | null = null;
+  private clip: ClipUniforms | null = null;
   private srcW = 0;
   private srcH = 0;
   private hasSource = false;
@@ -132,6 +134,7 @@ export class FinishRenderer {
     for (const u of [
       "u_cm_hue","u_cm_sat","u_cm_lum","u_pc_count","u_pc_hue","u_pc_sat","u_pc_lum",
       "u_pc_hue_shift","u_pc_sat_shift","u_pc_lum_shift","u_pc_variance","u_pc_range",
+      "u_clip_high","u_clip_low","u_clip_low_on",
     ]) this.loc[u] = gl.getUniformLocation(prog, u);
     gl.uniform1i(this.loc.u_src, 0);
     gl.uniform1i(this.loc.u_lut, 1);
@@ -203,6 +206,7 @@ export class FinishRenderer {
 
   setColorGrade(cg: ColorGradeUniforms) { this.cg = cg; }
   setColorMix(cm: ColorMixUniforms) { this.cm = cm; }
+  setClip(c: ClipUniforms) { this.clip = c; }
 
   private build(gl: WebGL2RenderingContext): WebGLProgram | null {
     const vs = this.compile(gl, gl.VERTEX_SHADER, VERT);
@@ -347,6 +351,10 @@ export class FinishRenderer {
       gl.uniform1fv(this.loc.u_pc_variance, cm.pc_variance);
       gl.uniform1fv(this.loc.u_pc_range, cm.pc_range);
     }
+    const clip = this.clip;
+    gl.uniform1f(this.loc.u_clip_high, clip ? clip.high : 0);
+    gl.uniform1f(this.loc.u_clip_low, clip ? clip.low : 0);
+    gl.uniform1f(this.loc.u_clip_low_on, clip ? clip.lowOn : 0);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
 
