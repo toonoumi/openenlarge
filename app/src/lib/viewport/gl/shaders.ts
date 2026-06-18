@@ -38,6 +38,13 @@ uniform float u_pc_lum_shift[8];
 uniform float u_pc_variance[8];
 uniform float u_pc_range[8];
 
+// Clipping-warning overlay. u_clip_high <= 0.0 disables the highlight overlay;
+// otherwise any channel >= u_clip_high paints red. u_clip_low_on > 0.5 enables the
+// shadow overlay (any channel <= u_clip_low paints blue).
+uniform float u_clip_high;
+uniform float u_clip_low;
+uniform float u_clip_low_on;
+
 float tone(float v) {
   v = clamp(v, 0.0, 1.0);
   v += u_whites * 0.20 * v * v * v;
@@ -168,9 +175,17 @@ vec3 finishAt(vec2 uv) {
   return pointColor(colorMixer(colorGrade(cu)));
 }
 
+vec3 applyClip(vec3 c) {
+  if (u_clip_high > 0.0 && (c.r >= u_clip_high || c.g >= u_clip_high || c.b >= u_clip_high))
+    return vec3(1.0, 0.15, 0.15);   // highlight clip → red
+  if (u_clip_low_on > 0.5 && (c.r <= u_clip_low || c.g <= u_clip_low || c.b <= u_clip_low))
+    return vec3(0.2, 0.45, 1.0);    // shadow clip → blue
+  return c;
+}
+
 void main() {
   vec3 c = finishAt(v_uv);
-  if (abs(u_texture) < 1e-5) { o = vec4(c, 1.0); return; }
+  if (abs(u_texture) < 1e-5) { o = vec4(applyClip(c), 1.0); return; }
   vec2 d = u_texel;
   vec3 b =
     finishAt(v_uv + vec2(-d.x, -d.y)) * 0.0625 +
@@ -183,7 +198,7 @@ void main() {
     finishAt(v_uv + vec2( 0.0,  d.y)) * 0.125  +
     finishAt(v_uv + vec2( d.x,  d.y)) * 0.0625;
   float k = 1.5 * u_texture;
-  o = vec4(clamp(c + k * (c - b), 0.0, 1.0), 1.0);
+  o = vec4(applyClip(clamp(c + k * (c - b), 0.0, 1.0)), 1.0);
 }`;
 
 // INVERT pass: samples the raw linear negative (RGBA16F), applies geometry
