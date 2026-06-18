@@ -8,7 +8,7 @@ use crate::gpu_upload::{
 };
 use crate::metadata::extract;
 use crate::session::{
-    CachedImage, Developed, ImageEntry, InvertParams, PreparedExport, Quality, Session,
+    CachedImage, Developed, ImageEntry, InvertParams, PreparedExport, Session,
 };
 use film_core::calibrate::auto_wb_gains;
 use film_core::decode::{decode_ldr, decode_raw, decode_tiff};
@@ -84,14 +84,10 @@ const THUMB_EDGE: u32 = 320;
 const AUTOWB_EDGE: u32 = 256;
 const PREVIEW_JPEG_QUALITY: u8 = 88;
 const CACHE_WORKING_CAP: u32 = 4096;
-
-/// True when a resident working buffer is large enough for `cap`. The buffer is
-/// adequate once its long edge reaches `min(native_edge, cap)` — Performance
-/// (cap 4096) is satisfied by any cached buffer; Quality (cap u32::MAX) needs the
-/// full-res decode unless the source is already smaller than the cache cap.
-fn working_satisfies(working_edge: u32, native_edge: u32, cap: u32) -> bool {
-    working_edge >= native_edge.min(cap)
-}
+/// Display-sized proxy cap (long edge) for the resident working buffer + fit-view GPU
+/// upload. Replaces the old Quality cap: crisp at fit on hi-DPI, small + fast to decode
+/// and upload. Deep zoom loads a higher-res source on demand (see `zoom_source`).
+const PROXY_EDGE: u32 = 2560;
 
 pub(crate) fn default_invert_params() -> InvertParams {
     InvertParams {
@@ -545,9 +541,9 @@ struct DevelopComputed {
 /// Pure CPU work: decode the RAW, build the quality-capped working image + auto-WB
 /// thumb, sample the base, and render the grid thumbnail. Owned in/owned out so it
 /// can run inside `spawn_blocking` (no `Session` borrow crosses the thread boundary).
-fn develop_compute(path: String, cap: u32) -> Result<DevelopComputed, String> {
+fn develop_compute(path: String) -> Result<DevelopComputed, String> {
     let full = decode_any(Path::new(&path))?;
-    let working = proxy(&full, cap);
+    let working = proxy(&full, PROXY_EDGE);
     let has_ir = working.ir.is_some();
     let thumb = proxy(&full, AUTOWB_EDGE);
     let (base, base_confidence) = auto_base(&working);
@@ -600,14 +596,13 @@ async fn develop_heavy(
     session: &Session,
     catalog: &crate::catalog::Catalog,
 ) -> Result<ImageEntry, String> {
-    let cap = session.quality.lock().unwrap().cap();
     let path = {
         let images = session.images.lock().unwrap();
         images.get(&id).ok_or("unknown image id")?.path.clone()
     };
     // The RAW decode + base/d_max analysis runs for seconds on large files; keep it
     // off the main thread (which the WKWebView shares on macOS) so the UI stays live.
-    let c = tauri::async_runtime::spawn_blocking(move || develop_compute(path, cap))
+    let c = tauri::async_runtime::spawn_blocking(move || develop_compute(path))
         .await
         .map_err(|e| e.to_string())??;
 
@@ -657,54 +652,37 @@ async fn develop_heavy(
     Ok(entry)
 }
 
-#[tauri::command]
-pub fn set_quality(quality: Quality, session: State<Session>) -> Result<(), String> {
-    *session.quality.lock().unwrap() = quality;
-    Ok(())
-}
-
-/// Idempotent, cache-aware develop. Loads the cached buffer if not resident, and
-/// re-decodes the RAW only when that buffer is too small for the current quality
-/// (Quality mode on a source larger than the cache cap). Performance switches and
-/// already-full-res buffers return without any decode.
+/// Idempotent, cache-aware develop. Loads the cached proxy buffer if not resident,
+/// otherwise decodes + develops once. A resident developed image is always adequate
+/// now that the working buffer is a fixed-size proxy.
 #[tauri::command]
 pub async fn ensure_developed(
     id: String,
     session: State<'_, Session>,
     catalog: State<'_, crate::catalog::Catalog>,
 ) -> Result<ImageEntry, String> {
-    let cap = session.quality.lock().unwrap().cap();
     // Best-effort cache rehydration; ignore "not developed" — we full-develop below.
     let _ = ensure_resident(&session, &id);
 
-    let adequate_entry = {
+    // A resident developed image is always adequate (proxy is a fixed cap, and old
+    // oversized caches are re-proxied on load in `ensure_resident`).
+    let resident_entry = {
         let images = session.images.lock().unwrap();
         let img = images.get(&id).ok_or("unknown image id")?;
-        match img.developed.as_ref() {
-            Some(dev) => {
-                let working_edge = dev.working.width.max(dev.working.height) as u32;
-                let native_edge = img.metadata.width.max(img.metadata.height);
-                if working_satisfies(working_edge, native_edge, cap) {
-                    Some(ImageEntry {
-                        id: id.clone(),
-                        path: img.path.clone(),
-                        file_name: img.file_name.clone(),
-                        thumbnail: img.thumbnail.clone(),
-                        metadata: img.metadata.clone(),
-                        developed: true,
-                        has_ir: dev.working.ir.is_some(),
-                        offline: false,
-                        positive: dev.positive,
-                    })
-                } else {
-                    None
-                }
-            }
-            None => None,
-        }
+        img.developed.as_ref().map(|dev| ImageEntry {
+            id: id.clone(),
+            path: img.path.clone(),
+            file_name: img.file_name.clone(),
+            thumbnail: img.thumbnail.clone(),
+            metadata: img.metadata.clone(),
+            developed: true,
+            has_ir: dev.working.ir.is_some(),
+            offline: false,
+            positive: dev.positive,
+        })
     };
 
-    if let Some(entry) = adequate_entry {
+    if let Some(entry) = resident_entry {
         return Ok(entry);
     }
     develop_heavy(id, &session, &catalog).await
@@ -806,6 +784,13 @@ fn ensure_resident(session: &Session, id: &str) -> Result<(), String> {
     }
     let (base, working, thumb) =
         crate::cache::read(&path).map_err(|e| format!("cache read: {e}"))?;
+    // Re-proxy old oversized caches (pre-redesign sidecars held up to 4096) down to
+    // the proxy cap so resident memory + fit-view upload stay consistent.
+    let working = if working.width.max(working.height) as u32 > PROXY_EDGE {
+        crate::convert::proxy(&working, PROXY_EDGE)
+    } else {
+        working
+    };
     let base_confidence = film_core::calibrate::detect_rebate_base(&working).confidence;
     let (positive, positive_confidence) = film_core::classify::classify_positive(&working);
     let d_max = film_core::calibrate::sample_dmax(&working, base, None);
@@ -2380,31 +2365,19 @@ mod tests {
 }
 
 #[cfg(test)]
-mod adequacy_tests {
-    use super::working_satisfies;
+mod proxy_tests {
+    use super::PROXY_EDGE;
 
     #[test]
-    fn performance_cache_buffer_is_always_adequate() {
-        // native 6000px, buffer capped at 4096 (cache tier), Performance cap 4096
-        assert!(working_satisfies(4096, 6000, 4096));
-    }
-
-    #[test]
-    fn quality_needs_full_res_when_native_exceeds_cache() {
-        // native 6000px, only 4096 resident, Quality cap = u32::MAX → inadequate
-        assert!(!working_satisfies(4096, 6000, u32::MAX));
-    }
-
-    #[test]
-    fn quality_satisfied_when_native_small() {
-        // native 3000px (< cache cap), buffer 3000, Quality cap = u32::MAX → adequate
-        assert!(working_satisfies(3000, 3000, u32::MAX));
-    }
-
-    #[test]
-    fn quality_satisfied_when_full_res_resident() {
-        // native 6000px, full-res 6000 resident, Quality → adequate
-        assert!(working_satisfies(6000, 6000, u32::MAX));
+    fn proxy_edge_caps_working_long_edge() {
+        // A 4000x3000 buffer must be capped to PROXY_EDGE on the long edge.
+        let img = film_core::Image::new(4000, 3000);
+        let p = crate::convert::proxy(&img, PROXY_EDGE);
+        assert_eq!(p.width.max(p.height) as u32, PROXY_EDGE);
+        // An already-small buffer is untouched.
+        let small = film_core::Image::new(1000, 800);
+        let q = crate::convert::proxy(&small, PROXY_EDGE);
+        assert_eq!((q.width, q.height), (1000, 800));
     }
 }
 

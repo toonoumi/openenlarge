@@ -7,31 +7,6 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-/// Preview render quality: caps the decoded working-image resolution.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Quality {
-    Performance,
-    Quality,
-}
-
-impl Quality {
-    /// Max long-edge (px) for the working image. Quality = no cap.
-    pub fn cap(self) -> u32 {
-        match self {
-            Quality::Performance => 4096,
-            Quality::Quality => u32::MAX,
-        }
-    }
-}
-
-#[allow(clippy::derivable_impls)]
-impl Default for Quality {
-    fn default() -> Self {
-        Quality::Performance
-    }
-}
-
 /// One Point Color sample: a picked target color + per-sample adjustments.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PointColorSample {
@@ -265,7 +240,6 @@ pub struct PendingUpscale {
 #[derive(Default)]
 pub struct Session {
     pub images: Mutex<HashMap<String, CachedImage>>,
-    pub quality: Mutex<Quality>,
     pub cache_dir: Mutex<std::path::PathBuf>,
     pub pending_export: Mutex<HashMap<String, PreparedExport>>,
     pub pending_upscale: Mutex<Option<PendingUpscale>>,
@@ -305,21 +279,6 @@ impl Session {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn quality_cap_values() {
-        assert_eq!(Quality::Performance.cap(), 4096);
-        assert_eq!(Quality::Quality.cap(), u32::MAX);
-        assert_eq!(Quality::default(), Quality::Performance);
-    }
-
-    #[test]
-    fn quality_deserializes_from_lowercase() {
-        let p: Quality = serde_json::from_str("\"performance\"").unwrap();
-        let q: Quality = serde_json::from_str("\"quality\"").unwrap();
-        assert_eq!(p, Quality::Performance);
-        assert_eq!(q, Quality::Quality);
-    }
 
     #[test]
     fn insert_reports_undeveloped() {
