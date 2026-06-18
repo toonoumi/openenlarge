@@ -9,7 +9,7 @@ import { type SelState, type Mods, noneSelected, allSelected, click } from "./se
 
 export const images = writable<ImageEntry[]>([]);
 export const activeId = writable<string | null>(null);
-export const module = writable<"library" | "develop">("library");
+export const module = writable<"library" | "roll" | "develop">("library");
 
 // Per-image edits: $params is the ACTIVE image's params; writes go to the active
 // image only. Every image uses the density inversion (Mode B); the per-channel

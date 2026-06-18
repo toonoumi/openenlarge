@@ -84,7 +84,7 @@ export function applySnapshot(snap: CatalogSnapshot): void {
     const z = Number(st.grid_zoom);
     if (Number.isFinite(z)) gridZoom.set(z);
   }
-  if (st.module === "library" || st.module === "develop") moduleStore.set(st.module);
+  if (st.module === "library" || st.module === "roll" || st.module === "develop") moduleStore.set(st.module);
   if (st.active_id && entries.some((e) => e.id === st.active_id)) activeId.set(st.active_id);
   else if (entries.length) activeId.set(entries[0].id);
   if (st.update_skip_version !== undefined) updateSkipVersion.set(st.update_skip_version);
