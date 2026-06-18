@@ -80,10 +80,14 @@
   $: zoomed = interactive && eff > fit + 1e-6;
   $: label = eff <= fit + 1e-6 ? $t("viewport.fit") : $t("viewport.zoomPercent", { percent: Math.round(eff * 100) });
 
-  function clampCenter() {
-    const halfW = avW / 2 / eff, halfH = avH / 2 / eff;
-    cx = imgW * eff <= avW ? imgW / 2 : Math.max(halfW, Math.min(imgW - halfW, cx));
-    cy = imgH * eff <= avH ? imgH / 2 : Math.max(halfH, Math.min(imgH - halfH, cy));
+  // `e` defaults to the current effective scale, but callers that have just
+  // reassigned `scale` must pass the new value: `eff` is a reactive derived
+  // value that hasn't recomputed yet within the same tick, so clamping against
+  // the stale `eff` (still fit) would wrongly re-center the view.
+  function clampCenter(e = eff) {
+    const halfW = avW / 2 / e, halfH = avH / 2 / e;
+    cx = imgW * e <= avW ? imgW / 2 : Math.max(halfW, Math.min(imgW - halfW, cx));
+    cy = imgH * e <= avH ? imgH / 2 : Math.max(halfH, Math.min(imgH - halfH, cy));
   }
 
   $: dispW = imgW * eff;
@@ -528,7 +532,7 @@
           const z = marqueeZoom(mqStartImg[0], mqStartImg[1], bx, by, avW, avH, fit, 8);
           startAnim();
           scale = z.scale; cx = z.cx; cy = z.cy;
-          clampCenter();
+          clampCenter(z.scale);
           dispatch("marqueedone");
         }
         mqActive = false;
