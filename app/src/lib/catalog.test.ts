@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { debounce, applySnapshot } from "./catalog";
+import { debounce, perKeySaver, applySnapshot } from "./catalog";
 import { get } from "svelte/store";
 import {
   images, editsById, cropById, dustById, metaById,
@@ -29,6 +29,35 @@ describe("debounce", () => {
     d.flush();
     expect(fn).toHaveBeenCalledTimes(1);
     expect(fn).toHaveBeenCalledWith("x");
+    vi.useRealTimers();
+  });
+});
+
+describe("perKeySaver", () => {
+  it("persists every distinct key (different keys don't clobber each other)", () => {
+    vi.useFakeTimers();
+    const apiSave = vi.fn(() => Promise.resolve());
+    const saver = perKeySaver(apiSave);
+    // module + active_id changing in the same tick — a shared debounce would drop one.
+    saver.save("module", "develop");
+    saver.save("active_id", "img-7");
+    vi.advanceTimersByTime(400);
+    expect(apiSave).toHaveBeenCalledTimes(2);
+    expect(apiSave).toHaveBeenCalledWith("module", "develop");
+    expect(apiSave).toHaveBeenCalledWith("active_id", "img-7");
+    vi.useRealTimers();
+  });
+
+  it("coalesces repeated writes to the SAME key (last value wins)", () => {
+    vi.useFakeTimers();
+    const apiSave = vi.fn(() => Promise.resolve());
+    const saver = perKeySaver(apiSave);
+    saver.save("active_id", "a");
+    saver.save("active_id", "b");
+    saver.save("active_id", "c");
+    vi.advanceTimersByTime(400);
+    expect(apiSave).toHaveBeenCalledTimes(1);
+    expect(apiSave).toHaveBeenCalledWith("active_id", "c");
     vi.useRealTimers();
   });
 });

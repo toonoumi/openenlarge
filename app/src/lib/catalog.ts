@@ -117,30 +117,36 @@ export async function hydrate(): Promise<void> {
 
 // --- Write-through (debounced) ---------------------------------------------
 
-// Each image id gets its own debounce instance per edit family, so a save for
-// image A is never dropped when image B is edited within the debounce window.
-function perIdSaver(
-  apiSave: (id: string, json: string) => Promise<void>,
-): { save: (id: string, json: string) => void; flushAll: () => void } {
+// Each key gets its OWN debounce instance, so a save for one key is never dropped
+// when a different key is written within the debounce window. A single shared
+// debounce keeps only the last call's args, so two keys changing together (e.g.
+// `module` + `active_id` when entering Develop) would clobber each other — only one
+// would persist. Used per image-id for edit families and per app_state/pref key.
+export function perKeySaver(
+  apiSave: (key: string, value: string) => Promise<void>,
+): { save: (key: string, value: string) => void; flushAll: () => void } {
   const timers = new Map<string, Debounced<[string, string]>>();
-  const save = (id: string, json: string) => {
-    let d = timers.get(id);
+  const save = (key: string, value: string) => {
+    let d = timers.get(key);
     if (!d) {
-      d = debounce((i: string, j: string) => { void apiSave(i, j); }, 400);
-      timers.set(id, d);
+      d = debounce((k: string, v: string) => { void apiSave(k, v); }, 400);
+      timers.set(key, d);
     }
-    d(id, json);
+    d(key, value);
   };
   const flushAll = () => timers.forEach((d) => d.flush());
   return { save, flushAll };
 }
 
-const edits = perIdSaver(api.saveEdits);
-const crop = perIdSaver(api.saveCrop);
-const dust = perIdSaver(api.saveDust);
-const meta = perIdSaver(api.saveMeta);
-const savePref = debounce((k: string, v: string) => { void api.savePref(k, v); }, 400);
-const saveState = debounce((k: string, v: string) => { void api.saveAppState(k, v); }, 400);
+const edits = perKeySaver(api.saveEdits);
+const crop = perKeySaver(api.saveCrop);
+const dust = perKeySaver(api.saveDust);
+const meta = perKeySaver(api.saveMeta);
+// Per-key (not a single shared debounce): app_state/pref keys often change in the
+// same tick (module + active_id on entering Develop), and a shared debounce would
+// keep only the last, silently dropping the others.
+const prefs = perKeySaver(api.savePref);
+const state = perKeySaver(api.saveAppState);
 
 /** Persist whichever entries changed (by reference) since the last snapshot. */
 function wireRecord<T>(
@@ -173,19 +179,19 @@ export function initPersistence(): () => void {
   wireRecord(metaById, meta.save);
 
   let first = { loc: true, sf: true, gz: true, mod: true, aid: true, usv: true, ulc: true, oak: true, opj: true };
-  locale.subscribe((l) => { if (first.loc) { first.loc = false; return; } savePref("locale", l); });
-  openaiApiKey.subscribe((k) => { if (first.oak) { first.oak = false; return; } savePref("openai_api_key", k); });
-  omitPreviewJpgs.subscribe((b) => { if (first.opj) { first.opj = false; return; } savePref("omit_preview_jpgs", String(b)); });
-  selectedFolder.subscribe((p) => { if (first.sf) { first.sf = false; return; } saveState("selected_folder", p ?? ""); });
-  gridZoom.subscribe((z) => { if (first.gz) { first.gz = false; return; } saveState("grid_zoom", String(z)); });
-  updateSkipVersion.subscribe((v) => { if (first.usv) { first.usv = false; return; } saveState("update_skip_version", v); });
-  updateLastCheck.subscribe((v) => { if (first.ulc) { first.ulc = false; return; } saveState("update_last_check", String(v)); });
-  moduleStore.subscribe((m) => { if (first.mod) { first.mod = false; return; } saveState("module", m); });
-  activeId.subscribe((a) => { if (first.aid) { first.aid = false; return; } saveState("active_id", a ?? ""); });
+  locale.subscribe((l) => { if (first.loc) { first.loc = false; return; } prefs.save("locale", l); });
+  openaiApiKey.subscribe((k) => { if (first.oak) { first.oak = false; return; } prefs.save("openai_api_key", k); });
+  omitPreviewJpgs.subscribe((b) => { if (first.opj) { first.opj = false; return; } prefs.save("omit_preview_jpgs", String(b)); });
+  selectedFolder.subscribe((p) => { if (first.sf) { first.sf = false; return; } state.save("selected_folder", p ?? ""); });
+  gridZoom.subscribe((z) => { if (first.gz) { first.gz = false; return; } state.save("grid_zoom", String(z)); });
+  updateSkipVersion.subscribe((v) => { if (first.usv) { first.usv = false; return; } state.save("update_skip_version", v); });
+  updateLastCheck.subscribe((v) => { if (first.ulc) { first.ulc = false; return; } state.save("update_last_check", String(v)); });
+  moduleStore.subscribe((m) => { if (first.mod) { first.mod = false; return; } state.save("module", m); });
+  activeId.subscribe((a) => { if (first.aid) { first.aid = false; return; } state.save("active_id", a ?? ""); });
 
   const flush = () => {
     edits.flushAll(); crop.flushAll(); dust.flushAll(); meta.flushAll();
-    savePref.flush(); saveState.flush();
+    prefs.flushAll(); state.flushAll();
   };
   if (typeof window !== "undefined")
     window.addEventListener("beforeunload", flush);
