@@ -2,7 +2,7 @@
   import { onMount, createEventDispatcher } from "svelte";
   import { api, type InvertParams } from "../api";
   import type { IrRemoval } from "../api";
-  import { previewSrc } from "../store";
+  import { previewSrc, previewById, cachePreview } from "../store";
   import { FinishRenderer, webgl2Available, float16RenderTargetSupported } from "./gl/renderer";
   import { finishUniforms } from "./gl/uniforms";
   import { toInversionUniforms } from "./gl/invert";
@@ -48,6 +48,9 @@
   export let clipHigh = false;
   export let clipLow = false;
   export let clipStrict = false;
+  /** Catalog thumbnail data-URL for the active image — shown as the switch-gap
+   *  overlay when this image has no cached fit-view preview yet (first view). */
+  export let fallbackThumb = "";
 
   const dispatch = createEventDispatcher<{ stroke: DustStroke; brush: number; pointpick: { r: number; g: number; b: number; u: number; v: number }; aierased: void; autodusted: void; zoomchange: boolean; marqueedone: void }>();
 
@@ -75,6 +78,12 @@
   // when strokes/geometry change (keyed by uploadKey); otherwise once per image.
   let uploadKey = "";
   let texW = 0, texH = 0;
+  // True once the NEW image's texture + inversion are uploaded and a correct frame
+  // has been drawn. Reset on image switch so the stale-frame draws (finishKey below,
+  // and geomKey/invKey via the texW===0 guard) are suppressed until that single
+  // correct draw — `preserveDrawingBuffer` keeps the prior frame visible meanwhile.
+  // Also gates hiding the per-image preview overlay.
+  let frameReady = false;
 
   $: ready = imgW > 0 && imgH > 0 && vpW > 0 && vpH > 0;
   $: pad = interactive ? PAD : 0;
@@ -137,7 +146,14 @@
     };
   });
 
-  $: if (id !== prevId) { prevId = id; scale = 0; cx = imgW / 2; cy = imgH / 2; }
+  $: if (id !== prevId) {
+    prevId = id; scale = 0; cx = imgW / 2; cy = imgH / 2;
+    // Invalidate GPU readiness synchronously so this flush's stale-texture redraws
+    // (geomKey/invKey/finishKey, fired by the new image's params) are blocked until
+    // uploadWorking binds the new texture and draws once. uploadKey reset forces the
+    // re-upload (its key includes id, but resetting is explicit).
+    texW = 0; texH = 0; uploadKey = ""; frameReady = false;
+  }
   $: if (interactive && scale === 0 && fit > 0) scale = fit;
 
   // Decode a JPEG data-URL to an <img> we can upload as a texture.
@@ -187,11 +203,19 @@
     renderer.setColorMix(colorMix(params));
     renderer.setClip(clipUniforms({ high: clipHigh, low: clipLow, strict: clipStrict }));
     renderer.draw();
-    // Publish a snapshot for the histogram (debounced; toDataURL is cheap-ish).
+    // Publish a snapshot for the histogram (debounced; toDataURL is cheap-ish). Also
+    // stash it as this image's fit-view preview so a later switch back shows it
+    // instantly (skip while zoomed — a zoomed crop is a poor switch-in preview).
     if (canvas) {
       if (histTimer) clearTimeout(histTimer);
       const cv = canvas;
-      histTimer = setTimeout(() => previewSrc.set(cv.toDataURL("image/jpeg", 0.8)), 120);
+      const capId = id;
+      const cache = gpuEligible && !zoomed;
+      histTimer = setTimeout(() => {
+        const url = cv.toDataURL("image/jpeg", 0.8);
+        previewSrc.set(url);
+        if (cache && capId) cachePreview(capId, url);
+      }, 120);
     }
   }
 
@@ -277,31 +301,39 @@
     const key = currentUploadKey();
     if (uploadKey === key) return; // already on the GPU for these inputs
     const k = key;
-    if (bakeMode) {
-      const spec = {
-        rot90, flip_h: flipH, flip_v: flipV, angle,
-        image_crop: imageCrop, dust, ir_removal: irRemoval,
-        migan: brushMigan && aiApplied,
-        skip_dust_heal: brushMigan && !aiApplied,
-        auto_dust: { enabled: autoDustEnabled, sensitivity: autoDustSensitivity },
-      };
-      const info = await api.workingBakedInfo(id, spec, hiTier);
-      const buf = await api.workingBakedPixels(id, spec, params, hiTier);
-      if (!renderer || currentUploadKey() !== k) return; // stale (params changed mid-fetch)
-      renderer.setSourceFloat(new Uint16Array(buf), info.w, info.h);
-      texW = info.w; texH = info.h;
-      if (spec.migan) dispatch("aierased"); // MI-GAN apply bake finished → clear the button spinner
-      if (spec.auto_dust.enabled) dispatch("autodusted"); // auto-dust heal bake finished → clear toggle spinner
-    } else {
-      const info = await api.workingInfo(id, hiTier);
-      const buf = await api.workingPixels(id, hiTier);
-      if (!renderer || currentUploadKey() !== k) return; // image changed mid-fetch
-      renderer.setSourceFloat(new Uint16Array(buf), info.w, info.h);
-      texW = info.w; texH = info.h;
+    try {
+      if (bakeMode) {
+        const spec = {
+          rot90, flip_h: flipH, flip_v: flipV, angle,
+          image_crop: imageCrop, dust, ir_removal: irRemoval,
+          migan: brushMigan && aiApplied,
+          skip_dust_heal: brushMigan && !aiApplied,
+          auto_dust: { enabled: autoDustEnabled, sensitivity: autoDustSensitivity },
+        };
+        const info = await api.workingBakedInfo(id, spec, hiTier);
+        const buf = await api.workingBakedPixels(id, spec, params, hiTier);
+        if (!renderer || currentUploadKey() !== k) return; // stale (params changed mid-fetch)
+        renderer.setSourceFloat(new Uint16Array(buf), info.w, info.h);
+        texW = info.w; texH = info.h;
+        if (spec.migan) dispatch("aierased"); // MI-GAN apply bake finished → clear the button spinner
+        if (spec.auto_dust.enabled) dispatch("autodusted"); // auto-dust heal bake finished → clear toggle spinner
+      } else {
+        const info = await api.workingInfo(id, hiTier);
+        const buf = await api.workingPixels(id, hiTier);
+        if (!renderer || currentUploadKey() !== k) return; // image changed mid-fetch
+        renderer.setSourceFloat(new Uint16Array(buf), info.w, info.h);
+        texW = info.w; texH = info.h;
+      }
+      uploadKey = k;
+      await refreshInversion();
+      applyGeometryAndDraw();
+    } catch (e) {
+      // Expected when the target image isn't developed/cached yet (matches render()'s
+      // CPU-path handling). Leave uploadKey unset so a later trigger (developRev bump,
+      // or any structural change) retries; frameReady stays false so the cached-preview
+      // / thumbnail overlay keeps covering the canvas instead of a stuck stale frame.
+      if (!(typeof e === "string" && e === "not developed")) console.error("uploadWorking failed", e);
     }
-    uploadKey = k;
-    await refreshInversion();
-    applyGeometryAndDraw();
   }
 
   // Resolve inversion params (+ sampled base) into GPU uniforms — no fetch of pixels.
@@ -323,6 +355,7 @@
         orient: [1, 0, 0, 1], raw, outW: texW, outH: texH,
       });
       drawGL();
+      frameReady = true; // correct frame for the current image is now on screen
       return;
     }
     // u_orient: oriented-UV → source-UV (undoes rot90/flip). Crop is in oriented UV.
@@ -340,6 +373,7 @@
       raw, outW, outH,
     });
     drawGL();
+    frameReady = true; // correct frame for the current image is now on screen
   }
 
   // Upload the working float texture. Re-fires when the image changes or, in bake
@@ -349,7 +383,9 @@
 
   // Inversion params now drive GPU uniforms (no backend pixel fetch) when eligible.
   $: invKey = `${params.mode}|${params.stock}|${params.exposure}|${params.temp}|${params.tint}|${params.black}|${params.gamma}|${params.positive}|${JSON.stringify(params.base_override)}`;
-  $: if (gpuEligible) { invKey; refreshInversion().then(applyGeometryAndDraw); }
+  $: if (gpuEligible) { invKey; refreshInversion().then(applyGeometryAndDraw).catch((e) => {
+    if (!(typeof e === "string" && e === "not developed")) console.error("refreshInversion failed", e);
+  }); }
 
   // Geometry also drives GPU uniforms (no fetch) when eligible.
   $: geomKey = `${imageCrop ? imageCrop.join(',') : 'full'}|${rot90}|${flipH}|${flipV}|${angle}`;
@@ -387,7 +423,10 @@
     JSON.stringify(params.pc_samples),
     clipHigh, clipLow, clipStrict,
   ].join("|");
-  $: if (useGL) { finishKey; if (renderer) drawGL(); }
+  // On the GPU develop path, suppress finishing redraws until the new image's frame
+  // is ready (else this fires synchronously on switch with the OLD texture bound —
+  // the worst flash). Raw/CPU-with-GL keeps its prior behavior (render() drives it).
+  $: if (useGL) { finishKey; if (renderer && (!gpuEligible || frameReady)) drawGL(); }
 
   function imgPoint(e: { clientX: number; clientY: number }): [number, number] {
     const rect = el.getBoundingClientRect();
@@ -401,6 +440,18 @@
   // and the badge stays hidden. Suppressed in eraser/point-pick modes (own overlays).
   let hoverRGB: [number, number, number] | null = null;
   $: readoutActive = interactive && useGL && !!id && !eraser && !pointPick;
+
+  // This image's cached fit-view preview, shown as an overlay during the switch gap
+  // (until frameReady) so the NEW image appears instantly instead of holding the old.
+  // Cached previews (prefetched render_view / viewed-canvas snapshots) are always
+  // oriented to the committed geometry, so they're safe to show as-is.
+  $: cachedPreview = useGL && id ? ($previewById[id] ?? "") : "";
+  // The raw catalog thumbnail is at the image's NATIVE orientation and is the FULL
+  // frame, so it only matches the developed view when there's no committed crop /
+  // rotation / flip / straighten. Otherwise showing it would flash a wrong-oriented
+  // or wrongly-framed image, so fall back to holding the previous frame instead.
+  $: thumbMatchesView = !imageCrop && rot90 === 0 && !flipH && !flipV && (angle ?? 0) === 0;
+  $: switchPreview = !frameReady ? (cachedPreview || (thumbMatchesView ? fallbackThumb : "")) : "";
   function sampleHover(e: { clientX: number; clientY: number }) {
     if (!readoutActive || !canvas) { hoverRGB = null; return; }
     const rect = canvas.getBoundingClientRect();
@@ -601,6 +652,12 @@
       bind:this={canvas} class:anim={animating}
       style="position:absolute; width:{dispW}px; height:{dispH}px; left:{left}px; top:{top}px;"
     ></canvas>
+    {#if switchPreview}
+      <img
+        class="preview-cache" src={switchPreview} alt="" draggable="false" aria-hidden="true"
+        style="position:absolute; width:{dispW}px; height:{dispH}px; left:{left}px; top:{top}px;"
+      />
+    {/if}
     {#if !id}<div class="hint">…</div>{/if}
   {:else if src}
     <img
@@ -649,11 +706,17 @@
   .vp.interactive { cursor: zoom-in; }
   .vp.zoomed { cursor: grab; }
   .vp.zoomed:active { cursor: grabbing; }
-  img, canvas { display: block; will-change: left, top, width, height; }
+  /* contain (not the default fill) so that during an image switch — when the canvas
+     box is already sized to the NEW image but its buffer still holds the previous
+     frame at a different aspect (e.g. a 90° rotation flips portrait↔landscape) — the
+     stale frame is letterboxed rather than stretched. Once the correct frame draws,
+     buffer and box share the same aspect, so contain fills exactly (a no-op). */
+  img, canvas { display: block; object-fit: contain; will-change: left, top, width, height; }
   img.anim, canvas.anim { transition: left 180ms cubic-bezier(0.22, 0.61, 0.36, 1),
     top 180ms cubic-bezier(0.22, 0.61, 0.36, 1),
     width 180ms cubic-bezier(0.22, 0.61, 0.36, 1),
     height 180ms cubic-bezier(0.22, 0.61, 0.36, 1); }
+  .preview-cache { object-fit: contain; pointer-events: none; z-index: 1; }
   .hdr-overlay { object-fit: contain; pointer-events: none; z-index: 1;
     /* Lift the HDR headroom clamp so the gain-map JPEG can exceed SDR white. */
     dynamic-range-limit: no-limit; transition: opacity 150ms; }

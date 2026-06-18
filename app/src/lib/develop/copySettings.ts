@@ -4,7 +4,7 @@
 
 import { get } from "svelte/store";
 import {
-  activeId, editsById, settingsClipboard, applySettingsTarget, deleteSelectionIds,
+  activeId, editsById, settingsClipboard, applySettingsTarget, deleteSelectionIds, invalidatePreview,
 } from "../store";
 import { defaultParams, type InvertParams } from "../api";
 import { commitActive } from "./historyStore";
@@ -65,6 +65,9 @@ export function applyClipboardTo(ids: string[]): void {
   // The active image gets a real undo step; background targets re-baseline the
   // pasted state the next time they're opened.
   if (active && ids.includes(active)) commitActive();
+  // Drop any cached previews for the pasted images so the new look isn't shown stale
+  // on the next click (the active image re-caches itself as the canvas redraws).
+  for (const id of ids) invalidatePreview(id);
   const n = ids.length;
   showToast(n === 1
     ? translate("toast.settingsApplied")

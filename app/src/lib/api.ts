@@ -196,6 +196,9 @@ export const api = {
   deleteImage: (id: string, deleteFile: boolean) => invoke<void>("delete_image", { id, deleteFile }),
   thumbnail: (id: string, params: InvertParams, view: ThumbView = {}) =>
     invoke<string>("thumbnail", { id, params, view: { ...view, dust: wireDust(view.dust) } }),
+  /** Persist the edited-look thumbnail data URL so it survives relaunch. */
+  saveThumbnail: (id: string, thumbnail: string) =>
+    invoke<void>("save_thumbnail", { id, thumbnail }),
   asShotWb: (
     id: string, params: InvertParams,
     crop: [number, number, number, number] | null = null,
@@ -256,6 +259,9 @@ export const api = {
     }),
   saveUpscaled: (outPath: string, format: ExportFormat, metaOverride: MetaOverride | null = null) =>
     invoke<void>("save_upscaled", { outPath, format, metaOverride }),
+  /** Save an AI-enhanced PNG (base64, no data-URL prefix) at its native resolution. */
+  saveEnhanced: (outPath: string, imageBase64: string, format: ExportFormat) =>
+    invoke<void>("save_enhanced", { outPath, imageBase64, format }),
   autodustStatus: () =>
     invoke<{ installed: boolean; downloadBytes: number }>("autodust_status"),
   downloadAutodust: () => invoke<void>("download_autodust"),

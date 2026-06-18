@@ -4,8 +4,11 @@
   import { cubicOut } from "svelte/easing";
   import { activeId, params, images, folderImages, tool, cropById, activeCrop, dustById, activeDust, deleteTarget, dustRev, developRev, folderBaseByPath, baseSampling, sampledBase, sampledDmax, selectAll, deleteSelectionIds, setActive, previewSrc, clipWarn } from "../store";
   import { get } from "svelte/store";
+  import { onMount } from "svelte";
+  import { createPreviewPrefetcher } from "../develop/previewPrefetch";
   import { imageDir } from "../library/folderScope";
   import { withEffectiveBase } from "../develop/base";
+  import { mergeEnsured } from "../workflow";
   import { api } from "../api";
   import Filmstrip from "../panels/Filmstrip.svelte";
   import ImageContextMenu from "../overlay/ImageContextMenu.svelte";
@@ -39,6 +42,14 @@
     if (img) { try { await revealItemInDir(img.path); } catch (e) { console.error("reveal failed", e); } }
   }
 
+  // Warm ~1080p previews for nearby developed images while idle, so a first click on a
+  // filmstrip thumbnail shows the developed look instantly (the Viewport switch overlay
+  // reads previewById). Cancels on any interaction; developed images only.
+  onMount(() => {
+    const prefetcher = createPreviewPrefetcher();
+    return () => prefetcher.stop();
+  });
+
   $: active = $images.find((i) => i.id === $activeId);
   $: origW = active?.metadata.width ?? 0;
   $: origH = active?.metadata.height ?? 0;
@@ -58,7 +69,10 @@
     try {
       const updated = await api.ensureDeveloped(id);
       if (get(activeId) !== id) return; // navigated away mid-decode
-      images.update((list) => list.map((i) => (i.id === id ? updated : i)));
+      // Keep the live (edited-look) thumbnail; ensureDeveloped returns the develop-time
+      // default-params render, which would otherwise flash the filmstrip back to the
+      // un-adjusted look for ~400ms (until refreshThumb) on every navigation.
+      images.update((list) => list.map((i) => (i.id === id ? mergeEnsured(i, updated) : i)));
       developRev.update((n) => n + 1);
     } catch (e) {
       console.error("ensureDeveloped failed", id, e);
@@ -224,6 +238,9 @@
   $: effW = committed ? Math.max(1, Math.round(committed.rect.w * coW)) : coW;
   $: effH = committed ? Math.max(1, Math.round(committed.rect.h * coH)) : coH;
   $: imageCrop = committed ? [committed.rect.x, committed.rect.y, committed.rect.w, committed.rect.h] as [number, number, number, number] : null;
+  // The raw catalog thumbnail is native-oriented + full-frame, so it only matches the
+  // developed view (and is safe as a placeholder) when no crop/rotation is committed.
+  $: thumbMatchesView = !committed || (cRot === 0 && !committed.flipH && !committed.flipV && !committed.angle && committed.rect.x === 0 && committed.rect.y === 0 && committed.rect.w === 1 && committed.rect.h === 1);
 
   let thumbTimer: ReturnType<typeof setTimeout> | null = null;
   function refreshThumb() {
@@ -241,6 +258,9 @@
       try {
         const t = await api.thumbnail(id, effParams, view);
         images.update((xs) => xs.map((i) => (i.id === id ? { ...i, thumbnail: t } : i)));
+        // Persist the edited-look thumbnail so the filmstrip keeps the user's edits
+        // across relaunch instead of reverting to the develop-time default render.
+        api.saveThumbnail(id, t).catch(() => { /* best-effort */ });
       } catch { /* ignore */ }
     }, 400);
   }
@@ -347,14 +367,14 @@
              first launch (`previewSrc` is empty until the first real frame is rendered).
              object-fit:contain matches the Viewport's fit, so the real frame paints over
              it seamlessly. -->
-        {#if active?.thumbnail && !$previewSrc}
+        {#if active?.thumbnail && !$previewSrc && thumbMatchesView}
           <img class="cold-thumb" src={active.thumbnail} alt="" draggable="false" />
         {/if}
         <!-- The Viewport stays mounted while the film-base picker is armed; BaseView
              overlays it. Unmounting the Viewport tears down its GPU context and forces
              a full working-buffer re-fetch + re-upload on dismiss (a multi-second blank),
              so we keep it alive and just cover it. -->
-        <Viewport bind:this={vp} id={$activeId} params={effParams} imgW={effW} imgH={effH} imageCrop={imageCrop}
+        <Viewport bind:this={vp} id={$activeId} params={effParams} imgW={effW} imgH={effH} imageCrop={imageCrop} fallbackThumb={active?.thumbnail ?? ""}
                   rot90={cRot} flipH={committed?.flipH ?? false} flipV={committed?.flipV ?? false} angle={committed?.angle ?? 0}
                   eraser={$tool === "eraser"} marquee={zoomMarquee} {brush} dust={dust.strokes} irRemoval={dust.irRemoval} dustRev={$dustRev} developRev={$developRev}
                   brushMigan={dust.brushMigan} aiApplied={dust.aiApplied}

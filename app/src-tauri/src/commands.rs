@@ -1151,6 +1151,22 @@ pub fn thumbnail(
     to_jpeg_b64(&fin, false, 82)
 }
 
+/// Persist an image's edited-look thumbnail (the data URL the frontend rendered via
+/// `thumbnail`) to the session and catalog, so the filmstrip shows the user's edits
+/// after relaunch instead of reverting to the develop-time default-params render.
+#[tauri::command]
+pub fn save_thumbnail(
+    id: String,
+    thumbnail: String,
+    session: State<Session>,
+    catalog: State<crate::catalog::Catalog>,
+) -> Result<(), String> {
+    if let Some(img) = session.images.lock().unwrap().get_mut(&id) {
+        img.thumbnail = thumbnail.clone();
+    }
+    catalog.update_thumbnail(&id, &thumbnail).map_err(|e| format!("{e}"))
+}
+
 /// Decode the full-res file, apply geometry + inversion + dust/IR + finishing, and
 /// return the finished image and its source metadata. Shared by `export_image` and
 /// the upscaler so both produce identical pixels.
@@ -2647,4 +2663,34 @@ pub async fn save_upscaled(
         eprintln!("[exif] embed failed for {out_path}: {e}");
     }
     Ok(())
+}
+
+/// Save an AI-enhanced result to `out_path` at its native (un-upscaled) resolution.
+/// `image_base64` is the enhanced PNG payload WITHOUT the `data:` URL prefix; it is
+/// decoded and re-encoded in the chosen format so the user can grab the enhanced image
+/// directly instead of routing it through the upscaler.
+#[tauri::command]
+pub fn save_enhanced(
+    out_path: String,
+    image_base64: String,
+    format: ExportFormat,
+) -> Result<(), String> {
+    use base64::Engine;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(image_base64.trim())
+        .map_err(|e| format!("decode base64: {e}"))?;
+    let img = image_from_encoded(&bytes)?;
+    let out = Path::new(&out_path);
+    match format.kind.as_str() {
+        "tiff" => {
+            if format.bit_depth == 16 {
+                film_core::export::write_tiff16(&img, out).map_err(|e| format!("{e}"))
+            } else {
+                write_tiff8(&img, out)
+            }
+        }
+        "png" => write_png(&img, out, format.bit_depth),
+        "jpeg" => write_jpeg(&img, out, format.quality, format.max_bytes),
+        other => Err(format!("unknown export format: {other}")),
+    }
 }

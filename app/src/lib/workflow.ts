@@ -1,5 +1,5 @@
 import { get } from "svelte/store";
-import { images, activeId, module, developProgress, editsById, cropById, dustById, folderImages } from "./store";
+import { images, activeId, module, developProgress, editsById, cropById, dustById, folderImages, invalidatePreview } from "./store";
 import { api, defaultParams, type ImageEntry } from "./api";
 import { dropHistory } from "./develop/historyStore";
 import { track } from "./telemetry";
@@ -7,6 +7,20 @@ import { track } from "./telemetry";
 /** Ids of images not yet developed, in order. Pure helper (testable). */
 export function undevelopedIds(list: ImageEntry[]): string[] {
   return list.filter((i) => !i.developed).map((i) => i.id);
+}
+
+/**
+ * Fold a freshly `ensure_developed`'d entry back into the existing one. Takes the
+ * refreshed status/metadata from `updated`, but KEEPS the frontend's live thumbnail.
+ *
+ * `ensure_developed` always returns the develop-time, DEFAULT-params thumbnail (the
+ * backend never sees the user's edits — `refreshThumb` re-renders the edited look on
+ * the frontend only). Letting it overwrite the live thumbnail made the filmstrip flash
+ * the un-adjusted "base" look for ~400ms on every navigation before refreshThumb caught
+ * up. The backend thumbnail is only a fallback for when the frontend has none yet.
+ */
+export function mergeEnsured(existing: ImageEntry, updated: ImageEntry): ImageEntry {
+  return { ...updated, thumbnail: existing.thumbnail || updated.thumbnail };
 }
 
 /** Extensions we accept on import (file dialog filter + drag-drop). */
@@ -133,6 +147,7 @@ export async function deleteImage(id: string, deleteFile: boolean): Promise<void
   cropById.update(drop);
   dustById.update(drop);
   dropHistory(id);
+  invalidatePreview(id);
 
   if (wasActive) activeId.set(neighbour ? neighbour.id : null);
   if (get(images).length === 0) module.set("library");
