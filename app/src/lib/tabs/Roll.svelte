@@ -84,62 +84,94 @@
   const editsEntry = (id: string) => get(editsById)[id] ?? defaultParams();
 
   let destroyed = false;
-  onDestroy(() => { destroyed = true; });
+  onDestroy(() => {
+    destroyed = true;
+    // Flush persist pass so a mid-drag leave still saves.
+    schedulePersist.flush();
+  });
 
-  const scheduleLiveApply = debounce(async (draft: typeof $rollDraft) => {
+  // --- Tiny concurrency pool: run `fns` with at most `concurrency` in-flight at once.
+  async function pooled<T>(fns: (() => Promise<T>)[], concurrency: number): Promise<T[]> {
+    const results: T[] = new Array(fns.length);
+    let next = 0;
+    async function worker() {
+      while (next < fns.length) {
+        const i = next++;
+        results[i] = await fns[i]();
+      }
+    }
+    const workers = Array.from({ length: Math.min(concurrency, fns.length) }, worker);
+    await Promise.all(workers);
+    return results;
+  }
+
+  // --- PASS 1: PREVIEW — cheap, frequent, display-only (120 ms debounce) --------
+  // Renders draft thumbnails into previewMap. Does NOT write editsById or saveThumbnail.
+  const schedulePreview = debounce(async (draft: typeof $rollDraft) => {
     const token = ++previewToken;
     const frames = get(developedFolderImages);
-    const ids = frames.map((f) => f.id);
     const view = draftThumbView(draft.crop);
-    const next: Record<string, string> = {};
 
-    await Promise.all(
-      frames.map(async (frame) => {
-        // Merge: tone/color from draft onto frame's own base/dmax, then also
-        // apply draft base_override and d_max_override if set (so re-picking base
-        // refreshes thumbnails immediately, even before R5 persistence).
-        const merged = livePreviewParams(draft.params, editsEntry(frame.id));
-        const params = withEffectiveBase(
-          {
-            ...merged,
-            ...(draft.params.base_override != null ? { base_override: draft.params.base_override } : {}),
-            ...(draft.params.d_max_override != null ? { d_max_override: draft.params.d_max_override } : {}),
-          },
-          imageDir(frame),
-        );
-        const dataUrl = await api.thumbnail(frame.id, params, view);
-        if (previewToken !== token) return; // stale — newer batch started
-        next[frame.id] = dataUrl;
-      }),
-    );
+    // Build render tasks in folder order so the first (visible) frames update first.
+    const tasks = frames.map((frame) => async () => {
+      const merged = livePreviewParams(draft.params, editsEntry(frame.id));
+      const params = withEffectiveBase(
+        {
+          ...merged,
+          ...(draft.params.base_override != null ? { base_override: draft.params.base_override } : {}),
+          ...(draft.params.d_max_override != null ? { d_max_override: draft.params.d_max_override } : {}),
+        },
+        imageDir(frame),
+      );
+      const dataUrl = await api.thumbnail(frame.id, params, view);
+      // Commit each result as it arrives if still fresh; avoids waiting for the whole batch.
+      if (previewToken === token && !destroyed) {
+        previewMap = { ...previewMap, [frame.id]: dataUrl };
+      }
+      return { id: frame.id, dataUrl };
+    });
 
-    if (previewToken !== token || destroyed) return;
+    // Limit to 5 concurrent backend renders.
+    await pooled(tasks, 5);
+  }, 120);
 
-    // Commit: update previewMap for the grid, write look into editsById, save thumbnails.
-    previewMap = next;
+  // --- PASS 2: PERSIST — heavy, deferred, fires once after drag settles (600 ms) --
+  // Writes editsById (triggers catalog write-through) + saveThumbnail for each frame.
+  // Reuses whatever is already in previewMap — does NOT re-render.
+  let persistToken = 0;
+  const schedulePersist = debounce(async (draft: typeof $rollDraft) => {
+    const token = ++persistToken;
+    if (destroyed) return;
+
+    const frames = get(developedFolderImages);
+    const ids = frames.map((f) => f.id);
 
     // Write tone/color look into every frame's edits (persisted automatically via write-through).
     let nextEdits = applyToneColorToAll(get(editsById), ids, draft.params);
-    // Also persist base/dmax overrides when set in the draft (no-ops until base/wp UI is added).
+    // Also persist base/dmax overrides when set in the draft (null-guarded).
     if (draft.params.base_override != null) nextEdits = applyBaseToAll(nextEdits, ids, draft.params.base_override);
     if (draft.params.d_max_override != null) nextEdits = applyWhitePointToAll(nextEdits, ids, draft.params.d_max_override);
     editsById.set(nextEdits);
 
-    // Persist crop to all frames when the draft has a crop set.
+    // Persist crop to all frames when the draft has a crop set (null-guarded).
     if (draft.crop != null) cropById.set(applyCropToAll(get(cropById), ids, draft.crop));
 
-    // Persist thumbnail for each frame.
+    if (persistToken !== token || destroyed) return;
+
+    // Persist thumbnail for each frame — reuse previewMap renders, no re-render.
+    const snap = previewMap;
     for (const id of ids) {
-      if (next[id]) {
-        images.update((xs) => xs.map((i) => i.id === id ? { ...i, thumbnail: next[id] } : i));
-        api.saveThumbnail(id, next[id]);
+      const url = snap[id];
+      if (url) {
+        images.update((xs) => xs.map((i) => i.id === id ? { ...i, thumbnail: url } : i));
+        api.saveThumbnail(id, url);
       }
     }
-  }, 250);
+  }, 600);
 
   // Mirror every rollDraft change (tone/color/base/dmax/crop) to all frames,
   // but only once mirroring has been enabled (after entry confirm or no conflicts).
-  $: if (mirrorEnabled) scheduleLiveApply($rollDraft);
+  $: if (mirrorEnabled) { schedulePreview($rollDraft); schedulePersist($rollDraft); }
 
   // --- Reference-edit mode (crop / base / wp) ----------------------------------
   type EditMode = "none" | "crop" | "base" | "wp";
