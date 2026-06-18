@@ -742,18 +742,44 @@ pub fn render_view(
     view: ViewSpec,
     session: State<Session>,
 ) -> Result<String, String> {
+    let _t_resident = std::time::Instant::now(); // [TIMEDBG]
     ensure_resident(&session, &id)?;
+    eprintln!("[TIMEDBG] render_view ensure_resident {:?}", _t_resident.elapsed()); // [TIMEDBG]
+    let _t = std::time::Instant::now(); // [TIMEDBG]
     let images = session.images.lock().unwrap();
+    eprintln!("[TIMEDBG] render_view lock {:?}", _t.elapsed()); // [TIMEDBG]
     let img = images.get(&id).ok_or("unknown image id")?;
     let dev = img.developed.as_ref().ok_or("not developed")?;
+    eprintln!(
+        "[TIMEDBG] render_view working={}x{} raw={} out={}x{}",
+        dev.working.width, dev.working.height, view.raw, view.out_w, view.out_h
+    ); // [TIMEDBG]
+    let _t_geom = std::time::Instant::now(); // [TIMEDBG]
 
     // Geometry: orient (lossless) → straighten → persistent crop, then the view crop.
-    let oriented = orient(&dev.working, view.rot90, view.flip_h, view.flip_v);
-    let straightened = rotate(&oriented, view.angle);
-    let base_img = match view.image_crop {
+    // Each stage borrows the previous buffer when it would be a no-op, so an
+    // identity/full-frame view (e.g. the film-base picker: no rot/flip/straighten/crop)
+    // skips cloning the whole working image — the dominant cost on large/Quality buffers.
+    let oriented_owned;
+    let oriented: &film_core::Image = if view.rot90 == 0 && !view.flip_h && !view.flip_v {
+        &dev.working
+    } else {
+        oriented_owned = orient(&dev.working, view.rot90, view.flip_h, view.flip_v);
+        &oriented_owned
+    };
+    let straightened_owned;
+    let straightened: &film_core::Image = if view.angle.abs() < 1e-4 {
+        oriented
+    } else {
+        straightened_owned = rotate(oriented, view.angle);
+        &straightened_owned
+    };
+    let base_img_owned;
+    let base_img: &film_core::Image = match view.image_crop {
         Some(nc) => {
             let (ix, iy, iw, ih) = crop_px(nc, straightened.width, straightened.height);
-            crop(&straightened, ix, iy, iw, ih)
+            base_img_owned = crop(straightened, ix, iy, iw, ih);
+            &base_img_owned
         }
         None => straightened,
     };
@@ -769,15 +795,28 @@ pub fn render_view(
     let cy = (view.crop[1] * s_scale).max(0.0).round() as usize;
     let cw = (view.crop[2] * s_scale).round().max(1.0) as usize;
     let ch = (view.crop[3] * s_scale).round().max(1.0) as usize;
-    let cropped = crop(&base_img, cx, cy, cw, ch);
+    // Whole-frame view crop (the common case — zoom/pan and pickers pass [0,0,w,h])
+    // borrows base_img instead of copying it.
+    let cropped_owned;
+    let cropped: &film_core::Image =
+        if cx == 0 && cy == 0 && cw >= base_img.width && ch >= base_img.height {
+            base_img
+        } else {
+            cropped_owned = crop(base_img, cx, cy, cw, ch);
+            &cropped_owned
+        };
     if cropped.pixels.is_empty() {
         return Err("empty crop".into());
     }
     let (cw_px, ch_px) = (cropped.width, cropped.height);
-    let scaled = resize_to(&cropped, view.out_w.max(1), view.out_h.max(1));
+    let scaled = resize_to(cropped, view.out_w.max(1), view.out_h.max(1));
+    eprintln!("[TIMEDBG] render_view geom+resize {:?}", _t_geom.elapsed()); // [TIMEDBG]
 
     if view.raw {
-        return to_jpeg_b64(&scaled, true, PREVIEW_JPEG_QUALITY);
+        let _t_jpeg = std::time::Instant::now(); // [TIMEDBG]
+        let r = to_jpeg_b64(&scaled, true, PREVIEW_JPEG_QUALITY);
+        eprintln!("[TIMEDBG] render_view raw jpeg {:?}", _t_jpeg.elapsed()); // [TIMEDBG]
+        return r;
     }
     let mut ip = resolve_params(&params, &dev.thumb, effective_base(&params, dev.base));
     ip.d_max = effective_dmax(&params, dev.d_max);
