@@ -180,8 +180,11 @@ mod tests {
     fn invert_image_is_per_pixel_and_order_preserving() {
         // A multi-pixel image must invert each pixel exactly as the scalar fn does,
         // in the same order — this guards the parallel collect() against reordering.
+        // Non-default print_exposure exercises the eff_d_max path so the parallel
+        // invert_image stays pinned to the scalar invert_d under the new semantics.
         let p = InversionParams {
             base: [0.8, 0.6, 0.4],
+            print_exposure: 2f32.powf(-1.5),
             ..Default::default()
         };
         let pixels = vec![
