@@ -13,6 +13,18 @@
   --radius: 14px;
 }
 * { box-sizing: border-box; }
+/* This is a desktop app, not a web page — disable text/element selection so the
+   UI chrome never shows blue selection highlights. Re-enabled below for real
+   text fields so values stay editable/copyable. */
+* {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+input, textarea, [contenteditable="true"] {
+  -webkit-user-select: text;
+  user-select: text;
+}
 html, body { height: 100%; margin: 0; }
 body {
   background: #111111;
