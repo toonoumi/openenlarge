@@ -5,7 +5,7 @@
   import { get } from "svelte/store";
   import { t } from "$lib/i18n";
   import { developedFolderImages } from "$lib/export/eligible";
-  import { editsById, cropById, images, activeId, setActive, rollOverwriteSkip, module } from "$lib/store";
+  import { editsById, cropById, images, activeId, setActive, rollOverwriteSkip, module, deleteTarget } from "$lib/store";
   import { rollReferenceId, resetRollDraft, rollDraft } from "$lib/roll/draft";
   import RollAdjust from "$lib/roll/RollAdjust.svelte";
   import { applyToneColorToAll, applyBaseToAll, applyWhitePointToAll, applyCropToAll, framesWithToneColor, framesWithCrop, framesWithBase, framesWithWhitePoint } from "$lib/roll/apply";
@@ -29,6 +29,7 @@
   import { emptyDust } from "$lib/develop/dust";
   import { developRev, dustById } from "$lib/store";
   import Icon from "$lib/icons/Icon.svelte";
+  import QualityMenu from "$lib/viewport/QualityMenu.svelte";
 
   // Entry gate: enabled after confirm (or if no conflicts / skip-pref set).
   let mirrorEnabled = false;
@@ -318,17 +319,6 @@
   }
   function onStraighten(v: number) { angle = Math.max(-45, Math.min(45, v)); }
 
-  // Reactively commit the draft crop on every change so the mirror picks it up live.
-  // NOTE: explicitly reference rect/rot90/flipH/flipV/angle/aspect/orientation so
-  // Svelte tracks them as dependencies of this block (Svelte does not look inside
-  // function bodies for dependencies, so draftCrop() alone would only re-run on
-  // cropInit changes — rotation and flip changes would never propagate to all frames).
-  $: if (cropInit) {
-    // Touch all crop variables so Svelte's dependency tracker picks them up.
-    void rect; void rot90; void flipH; void flipV; void angle; void aspect; void orientation;
-    rollDraft.update((d) => ({ ...d, crop: draftCrop() }));
-  }
-
   function enterCropMode() {
     const id = get(activeId) ?? $developedFolderImages[0]?.id ?? null;
     if (!id) return;
@@ -375,12 +365,24 @@
     exitEditMode();
   }
 
+  /** Apply the current crop draft to all frames, then leave crop mode. */
+  function applyCropAndExit() {
+    commitCropToDraft();
+    cropInit = false;
+    editMode = "none";
+    refId = null;
+  }
+
+  /** Leave crop mode WITHOUT committing — prior roll crop is preserved. */
+  function discardCropAndExit() {
+    cropInit = false;
+    editMode = "none";
+    refId = null;
+  }
+
   function exitEditMode() {
-    if (editMode === "crop") {
-      commitCropToDraft();
-      cropInit = false;
-    }
     // base / wp: draft writes already mirrored live — nothing extra to commit.
+    // NOTE: do NOT call this from crop mode — use applyCropAndExit or discardCropAndExit.
     editMode = "none";
     wpPicking = false;
     refId = null;
@@ -392,8 +394,46 @@
     // Re-seed crop with same draft (don't reset — the crop is roll-wide).
   }
 
+  /** True while a form control has focus (INPUT/TEXTAREA/SELECT), so typing in the
+   *  straighten field or edge-text input isn't hijacked by crop shortcuts. */
+  function formFocused(): boolean {
+    const a = document.activeElement;
+    const tag = a?.tagName;
+    return tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA";
+  }
+
+  /** Context menu state for the crop-mode right-click flip menu. */
+  let menu: { x: number; y: number } | null = null;
+
+  function onCropContextMenu(e: MouseEvent) {
+    e.preventDefault();
+    menu = { x: e.clientX, y: e.clientY };
+  }
+
   function onWindowKeydown(e: KeyboardEvent) {
-    if (e.key === "Escape" && editMode !== "none") {
+    if (editMode === "crop") {
+      const meta = e.metaKey || e.ctrlKey;
+      if (e.key === "Enter" && !formFocused()) {
+        e.preventDefault();
+        applyCropAndExit();
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        discardCropAndExit();
+        return;
+      }
+      if ((e.key === "x" || e.key === "X") && !formFocused() && !meta) {
+        e.preventDefault();
+        onSwap();
+        return;
+      }
+      if (meta && (e.key === "]" || e.key === "[")) {
+        e.preventDefault();
+        onRotate(e.key === "]" ? 1 : -1);
+        return;
+      }
+    } else if (e.key === "Escape" && editMode !== "none") {
       exitEditMode();
     }
   }
@@ -553,7 +593,7 @@
   <!-- ===== Reference-edit crop layout ===== -->
   <div class="ref-layout">
     <!-- Center: CropView on the reference frame -->
-    <div class="ref-center">
+    <div class="ref-center" on:contextmenu={onCropContextMenu}>
       {#if refFrame?.developed && refId}
         <CropView id={refId} params={refEffParams} imgW={oW} imgH={oH}
                   bind:rect {lockRatio} {rot90} {flipH} {flipV} {angle}
@@ -564,7 +604,7 @@
       {/if}
     </div>
 
-    <!-- Right panel: CropPanel + Done button -->
+    <!-- Right panel: CropPanel + Apply button -->
     <aside class="ref-panel">
       <div class="ref-panel-inner">
         <CropPanel bind:aspect bind:orientation bind:angle
@@ -573,8 +613,8 @@
                    on:reset={onReset}
                    on:rotate={(e) => onRotate(e.detail)}
                    on:flip={(e) => onFlip(e.detail)} />
-        <button class="done-btn" on:click={exitEditMode}>
-          {$t('roll.close')}
+        <button class="done-btn" on:click={applyCropAndExit}>
+          {$t('roll.crop.tool')}
         </button>
       </div>
     </aside>
@@ -674,6 +714,14 @@
 
 {#if showEntryConfirm}
   <ConfirmOverwrite count={entryConflictCount} on:confirm={onEntryConfirm} on:cancel={onEntryCancel} />
+{/if}
+
+{#if menu && editMode === "crop"}
+  <QualityMenu x={menu.x} y={menu.y} showFlip={true} showReveal={false}
+    on:flipH={() => { onFlip("h"); menu = null; }}
+    on:flipV={() => { onFlip("v"); menu = null; }}
+    on:delete={() => { if (refId) deleteTarget.set([refId]); menu = null; }}
+    on:close={() => (menu = null)} />
 {/if}
 
 <style>
