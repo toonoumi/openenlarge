@@ -254,9 +254,16 @@ pub fn auto_wb_gains_strength(img: &Image, strength: f32) -> [f32; 3] {
 /// so no channel clips past print white. Clamped to a sane `[1.0, 4.0]`. Sampling
 /// within `rect` lets the caller exclude borders (the image-area crop).
 pub fn sample_dmax(img: &Image, base: [f32; 3], rect: Option<Rect>) -> f32 {
-    const LOW_PCT: f32 = 0.01; // 1st percentile transmission
-    // Runs on a downscaled proxy (see SAMPLE_CAP) so cost is independent of source
-    // size — this is on the develop / image-switch / export hot paths.
+    sample_dmax_spread(img, base, rect).0
+}
+
+/// Like [`sample_dmax`] but also returns the crop's **density spread**: the max
+/// across channels of `log10(i_high / i_low)` (99th vs 1st percentile transmission).
+/// A flat crop (no real blacks — e.g. cropping into sky/highlights, the B3 trigger)
+/// yields a tiny spread; callers use it to reject a range-destroying d_max estimate.
+pub fn sample_dmax_spread(img: &Image, base: [f32; 3], rect: Option<Rect>) -> (f32, f32) {
+    const LOW_PCT: f32 = 0.01; // 1st percentile transmission (densest neg)
+    const HIGH_PCT: f32 = 0.99; // 99th percentile (brightest transmission = base-ish)
     let small = downscale_for_detect(img, SAMPLE_CAP);
     let r = scaled_rect(rect, img, &small);
     let mut chans: [Vec<f32>; 3] = [Vec::new(), Vec::new(), Vec::new()];
@@ -269,17 +276,19 @@ pub fn sample_dmax(img: &Image, base: [f32; 3], rect: Option<Rect>) -> f32 {
         }
     }
     let mut d_max = 1.0f32;
+    let mut spread = 0.0f32;
     for c in 0..3 {
         if chans[c].is_empty() || base[c] <= 1e-6 {
             continue;
         }
         chans[c].sort_by(|a, b| a.partial_cmp(b).unwrap());
-        let idx = ((chans[c].len() as f32) * LOW_PCT) as usize;
-        let i_low = chans[c][idx.min(chans[c].len() - 1)].max(1e-5);
-        let density = (base[c] / i_low).log10();
-        d_max = d_max.max(density);
+        let n = chans[c].len();
+        let lo = chans[c][((n as f32 * LOW_PCT) as usize).min(n - 1)].max(1e-5);
+        let hi = chans[c][((n as f32 * HIGH_PCT) as usize).min(n - 1)].max(1e-5);
+        d_max = d_max.max((base[c] / lo).log10());
+        spread = spread.max((hi / lo).log10());
     }
-    d_max.clamp(1.0, 4.0)
+    (d_max.clamp(1.0, 4.0), spread)
 }
 
 /// Cineon `D_max` from a **measured white-point**: the fully-exposed leader,
@@ -815,5 +824,20 @@ mod tests {
         let clearish = vec![[0.79f32, 0.79, 0.79]; 16];
         let img2 = Image { width: 4, height: 4, pixels: clearish, ir: None };
         assert_eq!(dmax_from_white_point(&img2, [0.8, 0.8, 0.8], None), 1.0);
+    }
+
+    #[test]
+    fn flat_crop_has_low_density_spread_ranged_has_high() {
+        let base = [1.0, 1.0, 1.0];
+        // No real blacks (the B3 trigger: crop into sky/highlights) → tiny spread.
+        let flat = Image { width: 8, height: 8, pixels: vec![[0.85, 0.85, 0.85]; 64], ir: None };
+        let (_d, spread) = sample_dmax_spread(&flat, base, None);
+        assert!(spread < 0.1, "flat crop spread should be tiny: {spread}");
+        // Spans blacks → brights → substantial density range.
+        let mut px = vec![[0.9, 0.9, 0.9]; 32];
+        px.extend(vec![[0.02, 0.02, 0.02]; 32]);
+        let ranged = Image { width: 8, height: 8, pixels: px, ir: None };
+        let (_d2, spread2) = sample_dmax_spread(&ranged, base, None);
+        assert!(spread2 > 0.5, "ranged crop spread should be substantial: {spread2}");
     }
 }
