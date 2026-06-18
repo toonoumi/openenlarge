@@ -2,7 +2,7 @@
   import { t } from "$lib/i18n";
   import { fade } from "svelte/transition";
   import { cubicOut } from "svelte/easing";
-  import { activeId, params, images, folderImages, tool, cropById, activeCrop, dustById, activeDust, deleteTarget, dustRev, developRev, folderBaseByPath, baseSampling, sampledBase, sampledDmax, selectAll, deleteSelectionIds, setActive, previewSrc } from "../store";
+  import { activeId, params, images, folderImages, tool, cropById, activeCrop, dustById, activeDust, deleteTarget, dustRev, developRev, folderBaseByPath, baseSampling, sampledBase, sampledDmax, selectAll, deleteSelectionIds, setActive, previewSrc, clipWarn } from "../store";
   import { get } from "svelte/store";
   import { imageDir } from "../library/folderScope";
   import { withEffectiveBase } from "../develop/base";
@@ -360,6 +360,7 @@
                   brushMigan={dust.brushMigan} aiApplied={dust.aiApplied}
                   autoDustEnabled={dust.autoDust.enabled} autoDustSensitivity={dust.autoDust.sensitivity}
                   pointPick={pickTarget !== ""}
+                  clipHigh={$clipWarn.high} clipLow={$clipWarn.low} clipStrict={$clipWarn.strict}
                   on:stroke={(e) => commitStroke(e.detail)} on:brush={(e) => (brush = e.detail)}
                   on:aierased={() => (aiBusy = false)}
                   on:autodusted={() => (autoBusy = false)}
