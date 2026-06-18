@@ -382,6 +382,9 @@ export const dict: Record<string, Record<string, string>> = {
     "eraser.zoomArea": "Zoom to area",
     "eraser.resetView": "Reset view",
     "eraser.marqueeHint": "Drag a rectangle on the image to zoom in.",
+    "histogram.clipHigh": "Highlight clipping (right-click: 253)",
+    "histogram.clipLow": "Shadow clipping (right-click: 253)",
+    "histogram.clipStrictHint": "Strict 253/2 threshold",
   },
   zh: {
     "app.brand": "OpenEnlarge",
@@ -764,5 +767,8 @@ export const dict: Record<string, Record<string, string>> = {
     "eraser.zoomArea": "缩放到区域",
     "eraser.resetView": "重置视图",
     "eraser.marqueeHint": "在图像上拖动矩形以放大。",
+    "histogram.clipHigh": "高光裁切（右键：253）",
+    "histogram.clipLow": "暗部裁切（右键：253）",
+    "histogram.clipStrictHint": "严格 253/2 阈值",
   },
 };
