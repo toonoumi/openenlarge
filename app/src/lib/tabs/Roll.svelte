@@ -100,24 +100,28 @@
     return result;
   })();
 
-  // Editable edge text state
-  let edgeEditing = false;
+  // Editable edge text state — only the tapped strip shows the input
+  let edgeEditingStrip: number | null = null;
   let edgeInputValue = "";
 
-  function startEdgeEdit() {
+  function startEdgeEdit(stripIndex: number) {
     edgeInputValue = $rollEdgeText;
-    edgeEditing = true;
+    edgeEditingStrip = stripIndex;
   }
 
   function commitEdgeEdit() {
     const trimmed = edgeInputValue.trim();
     if (trimmed) rollEdgeText.set(trimmed);
-    edgeEditing = false;
+    edgeEditingStrip = null;
+  }
+
+  function cancelEdgeEdit() {
+    edgeEditingStrip = null;
   }
 
   function onEdgeKeydown(e: KeyboardEvent) {
     if (e.key === "Enter") { e.preventDefault(); commitEdgeEdit(); }
-    else if (e.key === "Escape") { edgeEditing = false; }
+    else if (e.key === "Escape") { cancelEdgeEdit(); }
   }
 
   // --- Live apply -------------------------------------------------------------
@@ -438,7 +442,7 @@
         <div class="strips-container">
           {#if $rollFilmEdge}
             <!-- ===== FILM-EDGE ON: filmstrip with rebates ===== -->
-            {#each strips as strip}
+            {#each strips as strip, stripIndex}
               <div class="filmstrip-strip">
                 <!-- Top rebate -->
                 <div class="rebate rebate-top">
@@ -469,7 +473,7 @@
                 <div class="rebate rebate-bottom">
                   <div class="rebate-info-row">
                     <div class="barcode"></div>
-                    {#if edgeEditing}
+                    {#if edgeEditingStrip === stripIndex}
                       <input
                         class="edge-text-input"
                         type="text"
@@ -480,7 +484,7 @@
                         use:focusOnMount
                       />
                     {:else}
-                      <button class="edge-text" on:click|stopPropagation={startEdgeEdit}
+                      <button class="edge-text" on:click|stopPropagation={() => startEdgeEdit(stripIndex)}
                               aria-label="Edit film edge text">{$rollEdgeText}</button>
                     {/if}
                     <div style="flex:1"></div>
@@ -719,7 +723,8 @@
 
   .frames-row { display: flex; gap: 7px; background: #000; padding: 0 6px; }
   .frame-cell { flex: 1; position: relative; aspect-ratio: 41 / 49; background: #000;
-    overflow: hidden; padding: 0; border: none; cursor: pointer; display: block; }
+    overflow: hidden; padding: 0; border: none; cursor: pointer; display: block;
+    appearance: none; -webkit-appearance: none; }
   .frame-cell img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .frame-cell-pad { flex: 1; aspect-ratio: 41 / 49; background: transparent; cursor: default; }
 
@@ -748,7 +753,7 @@
   .proof-cell-pad { flex: 1; }
   .proof-frame { aspect-ratio: 41 / 49; background: #d8d3c4; padding: 3px; overflow: hidden;
     box-shadow: 0 1px 3px rgba(0,0,0,.5); border: none; cursor: pointer;
-    display: block; width: 100%; }
+    display: block; width: 100%; appearance: none; -webkit-appearance: none; }
   .proof-frame img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .proof-caption { text-align: center;
     font: 600 10px 'Spline Sans Mono', ui-monospace, 'SF Mono', Menlo, monospace;
