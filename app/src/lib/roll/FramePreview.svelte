@@ -17,7 +17,7 @@
   import { defaultFull, conform, constrainToRotated } from "$lib/crop/cropMath";
   import { presetNormAspect } from "$lib/crop/presets";
   import { rotateRectCW, rotateRectCCW, flipRectH, flipRectV, flipOrient } from "$lib/crop/transforms";
-  import { framesWithCrop, applyCropToAll, framesWithBase, applyBaseToAll } from "$lib/roll/apply";
+  import { framesWithCrop, applyCropToAll, framesWithBase, applyBaseToAll, framesWithWhitePoint, applyWhitePointToAll } from "$lib/roll/apply";
   import BaseView from "$lib/develop/BaseView.svelte";
   import { api } from "$lib/api";
 
@@ -48,7 +48,7 @@
   $: dustEdits = id ? ($dustById[id] ?? emptyDust()) : emptyDust();
 
   // ---- Mode toggle ----
-  type OverlayMode = "preview" | "crop" | "base";
+  type OverlayMode = "preview" | "crop" | "base" | "wpick";
   let mode: OverlayMode = "preview";
 
   // ---- Crop draft state (only while mode === "crop") ----
@@ -118,9 +118,9 @@
     mode = mode === "base" ? "preview" : "base";
   }
 
-  // ---- Apply crop / base to roll ----
+  // ---- Apply crop / base / wp to roll ----
   // pending tracks which apply action awaits confirmation.
-  let pending: "crop" | "base" | null = null;
+  let pending: "crop" | "base" | "wp" | null = null;
   let showConfirm = false;
   let confirmCount = 0;
   let applyIds: string[] = [];
@@ -134,6 +134,7 @@
   function onConfirm() {
     if (pending === "crop") applyCrop();
     else if (pending === "base") applyBase();
+    else if (pending === "wp") applyWp();
     showConfirm = false;
     pending = null;
   }
@@ -171,6 +172,43 @@
     }
   }
 
+  function applyWp() {
+    editsById.set(applyWhitePointToAll(get(editsById), applyIds, $rollDraft.params.d_max_override ?? null));
+    showConfirm = false;
+    pending = null;
+  }
+
+  function onApplyWpClick() {
+    applyIds = $developedFolderImages.map((i) => i.id);
+    const conflicts = framesWithWhitePoint(get(editsById), applyIds);
+    if (conflicts.length > 0) {
+      confirmCount = conflicts.length;
+      pending = "wp";
+      showConfirm = true;
+    } else {
+      pending = "wp";
+      applyWp();
+    }
+  }
+
+  function toggleWpMode() {
+    mode = mode === "wpick" ? "preview" : "wpick";
+  }
+
+  async function onPointPick(e: CustomEvent<{ r: number; g: number; b: number; u: number; v: number }>) {
+    if (!id || !frame) return;
+    const { u, v } = e.detail;
+    // Disarm pick immediately.
+    mode = "preview";
+    const P = 0.02;
+    const c01 = (n: number) => Math.max(0, Math.min(1, n));
+    const rect: [number, number, number, number] = [c01(u - P / 2), c01(v - P / 2), P, P];
+    try {
+      const { d_max } = await api.analyzeWhitePoint(id, withEffectiveBase($rollDraft.params, imageDir(frame)), rect);
+      rollDraft.update((d) => ({ ...d, params: { ...d.params, d_max_override: d_max } }));
+    } catch { /* not developed yet */ }
+  }
+
   async function onAutoBase() {
     if (!id) return;
     try {
@@ -186,6 +224,8 @@
       mode = "preview";
     } else if (mode === "base") {
       mode = "preview";
+    } else if (mode === "wpick") {
+      mode = "preview";
     }
     rollReferenceId.set(null);
   }
@@ -195,6 +235,7 @@
       if (showConfirm) { showConfirm = false; pending = null; return; }
       if (mode === "crop") { commitCrop(); mode = "preview"; return; }
       if (mode === "base") { mode = "preview"; return; }
+      if (mode === "wpick") { mode = "preview"; return; }
       close();
     }
     if (mode === "crop") {
@@ -231,10 +272,11 @@
           dustRev={0}
           developRev={$developRev}
           eraser={false}
-          pointPick={false}
+          pointPick={mode === "wpick"}
           clipHigh={false}
           clipLow={false}
           clipStrict={false}
+          on:pointpick={onPointPick}
         />
         {#if mode === "base"}
           <div class="base-overlay">
@@ -277,6 +319,14 @@
     {#if $rollDraft.params.base_override != null}
       <button class="apply-btn" on:click={onApplyBaseClick}>
         {$t('roll.base.apply')}
+      </button>
+    {/if}
+    <button class="tool-btn" class:active={mode === "wpick"} on:click={toggleWpMode}>
+      {$t('roll.wp.pick')}
+    </button>
+    {#if $rollDraft.params.d_max_override != null}
+      <button class="apply-btn" on:click={onApplyWpClick}>
+        {$t('roll.wp.apply')}
       </button>
     {/if}
     <button class="close-btn" on:click={close}>{$t('roll.close')}</button>
