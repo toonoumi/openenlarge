@@ -29,10 +29,6 @@
   import { developRev, dustById } from "$lib/store";
   import Icon from "$lib/icons/Icon.svelte";
 
-  // 8-bit swatch preview of a linear base (display gamma ~1/2.2). Copied from Basic.svelte.
-  const baseCss = (b: [number, number, number] | null) =>
-    b ? `rgb(${b.map((v) => Math.round(255 * Math.min(1, Math.max(0, v ** (1 / 2.2))))).join(",")})` : "transparent";
-
   // Entry gate: enabled after confirm (or if no conflicts / skip-pref set).
   let mirrorEnabled = false;
   let showEntryConfirm = false;
@@ -256,14 +252,6 @@
   $: refFrameParams = refId ? ($editsById[refId] ?? defaultParams()) : defaultParams();
   $: refEffParams = withEffectiveBase(refFrameParams, refDir);
 
-  // Effective base for the film-base swatch: roll draft override if set, else
-  // the first (reference) frame's effective base (folder base or per-image base_override).
-  $: firstFrame = $developedFolderImages[0] ?? null;
-  $: firstFrameDir = firstFrame ? imageDir(firstFrame) : "";
-  $: firstFrameParams = firstFrame ? ($editsById[firstFrame.id] ?? defaultParams()) : defaultParams();
-  $: firstFrameEffBase = withEffectiveBase(firstFrameParams, firstFrameDir).base_override ?? null;
-  $: swatchBase = ($rollDraft.params.base_override ?? firstFrameEffBase) as [number,number,number] | null;
-
   // Reference frame dust edits (view-only in crop mode).
   $: refDust = refId ? ($dustById[refId] ?? emptyDust()) : emptyDust();
 
@@ -422,8 +410,8 @@
 {#if editMode === "none"}
   <!-- ===== Default contact-sheet view ===== -->
   <div class="roll">
-    <div class="sheet">
-      <div class="sheet-header">
+    <div class="sheet-col">
+      <div class="sheet-toolbar">
         <!-- Film edge toggle (left of export button) -->
         <button class="film-edge-toggle" on:click={() => rollFilmEdge.update(b => !b)}
                 aria-label={$t('roll.filmEdge')} aria-pressed={$rollFilmEdge}>
@@ -436,6 +424,7 @@
           {$t('roll.export.button')}
         </button>
       </div>
+      <div class="sheet">
       {#if $developedFolderImages.length === 0}
         <div class="empty">{$t('roll.empty')}</div>
       {:else}
@@ -516,30 +505,38 @@
           {/if}
         </div>
       {/if}
+      </div>
     </div>
 
     <aside class="panel">
-      <RollAdjust />
-      <div class="panel-tools">
-        <button class="tool-entry-btn" on:click={enterCropMode} disabled={$developedFolderImages.length === 0}>
-          {$t('roll.crop.tool')}
-        </button>
-        <!-- Film base: Tune-identical swatch + pipette widget -->
-        <div class="panel-section-label">{$t('roll.base.heading')}</div>
-        <button class="baseswatch" class:on={(editMode as string) === "base"} disabled={$developedFolderImages.length === 0}
-                on:click={enterBaseMode} title={$t('roll.base.sample')} aria-label={$t('roll.base.sample')}>
-          <span class="cube big" style="background:{baseCss(swatchBase)}"></span>
-          <span class="pick"><Icon name="pipette" size={18} /></span>
-        </button>
-        <!-- White point: Tune-identical pipette button -->
-        <div class="wp-row">
-          <span class="panel-section-label">{$t('roll.wp.heading')}</span>
-          <button class="wbdrop" class:on={(editMode as string) === "wp"} disabled={$developedFolderImages.length === 0}
-                  on:click={enterWpMode} title={$t('roll.wp.pick')} aria-label={$t('roll.wp.pick')}>
-            <Icon name="pipette" size={14} />
-          </button>
+      <RollAdjust>
+        <!-- Change A+D: tool row rendered in slot between heading and sliders -->
+        <div class="tool-row">
+          <div class="tool">
+            <button class="tool-btn" on:click={enterCropMode} disabled={$developedFolderImages.length === 0}
+                    aria-label={$t('roll.crop.tool')}>
+              <Icon name="crop" size={20} />
+            </button>
+            <span class="tool-label">{$t('roll.crop.tool')}</span>
+          </div>
+          <div class="tool">
+            <button class="tool-btn" class:on={(editMode as string) === "base"}
+                    on:click={enterBaseMode} disabled={$developedFolderImages.length === 0}
+                    aria-label={$t('roll.base.heading')}>
+              <Icon name="droplet" size={20} />
+            </button>
+            <span class="tool-label">{$t('roll.base.heading')}</span>
+          </div>
+          <div class="tool">
+            <button class="tool-btn" class:on={(editMode as string) === "wp"}
+                    on:click={enterWpMode} disabled={$developedFolderImages.length === 0}
+                    aria-label={$t('roll.wp.heading')}>
+              <Icon name="pipette" size={20} />
+            </button>
+            <span class="tool-label">{$t('roll.wp.heading')}</span>
+          </div>
         </div>
-      </div>
+      </RollAdjust>
     </aside>
   </div>
 
@@ -682,9 +679,10 @@
 <style>
   /* ===== Contact-sheet layout ===== */
   .roll { height: 100%; min-height: 0; display: grid; grid-template-columns: 1fr 320px; }
-  .sheet { overflow-y: auto; padding: 0; background: #0d0d0f; display: flex; flex-direction: column; }
-  .sheet-header { display: flex; align-items: center; justify-content: flex-end; gap: 10px;
-    padding: 6px 8px; border-bottom: 1px solid #222; flex: none; }
+  .sheet-col { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+  .sheet-toolbar { display: flex; align-items: center; justify-content: flex-end; gap: 10px;
+    padding: 6px 8px; border-bottom: 1px solid #222; flex: none; background: transparent; }
+  .sheet { flex: 1; overflow-y: auto; padding: 0; background: #0d0d0f; display: flex; flex-direction: column; }
   .empty { color: var(--text-faint); padding: 16px; }
 
   /* ===== Film-edge toggle ===== */
@@ -695,7 +693,7 @@
     background: #34343a; transition: background 0.2s; flex: none; }
   .pill-on { background: #cf9152; }
   .knob { position: absolute; top: 2px; width: 17px; height: 17px; border-radius: 50%;
-    transition: left 0.2s, background 0.2s; }
+    transition: left 0.2s ease, background 0.2s ease; }
   .pill-on .knob { left: 19px; background: #fff; }
   .pill:not(.pill-on) .knob { left: 2px; background: #a6a6ab; }
 
@@ -760,17 +758,24 @@
     color: #6f6a5e; letter-spacing: .12em; }
   .panel { border-left: 1px solid var(--glass-brd); display: flex; flex-direction: column;
     gap: 8px; padding: 12px; overflow-y: auto; }
-  .panel-tools { display: flex; flex-direction: column; gap: 6px; }
-  .tool-entry-btn { padding: 8px 16px; border-radius: 9px; font-weight: 600; font-size: 12px;
-    background: var(--glass-hi); border: 1px solid var(--glass-brd); color: var(--text);
-    transition: background 0.15s, border-color 0.15s; cursor: pointer; text-align: left; }
-  .tool-entry-btn:hover:not(:disabled) { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.18); }
-  .tool-entry-btn:disabled { opacity: 0.45; cursor: default; }
   .export-btn { padding: 8px 16px; border-radius: 9px; font-weight: 600; font-size: 12px;
     background: var(--glass-hi); border: 1px solid var(--glass-brd); color: var(--text);
     transition: background 0.15s, border-color 0.15s; cursor: pointer; }
   .export-btn:hover:not(:disabled) { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.18); }
   .export-btn:disabled { opacity: 0.45; cursor: default; }
+
+  /* ===== Square icon tool buttons (Change D) ===== */
+  .tool-row { display: flex; flex-direction: row; gap: 6px; margin-bottom: 4px; }
+  .tool { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .tool-btn { width: 46px; height: 46px; border-radius: 10px; border: 1px solid var(--glass-brd);
+    background: var(--glass-hi); color: var(--text-dim); cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: background 0.15s, border-color 0.15s, box-shadow 0.15s; }
+  .tool-btn:hover:not(:disabled) { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.18); }
+  .tool-btn:disabled { opacity: 0.45; cursor: default; }
+  .tool-btn.on { background: rgba(244,157,78,0.14); box-shadow: inset 0 0 0 1px rgba(244,157,78,0.4);
+    border-color: rgba(244,157,78,0.4); color: var(--text); }
+  .tool-label { font-size: 11px; color: var(--text-dim); text-align: center; line-height: 1.2; }
 
   /* ===== Reference-edit (crop) layout ===== */
   .ref-layout {
@@ -853,34 +858,6 @@
   .strip-cell:hover { border-color: rgba(255,255,255,0.25); }
   .strip-cell.strip-active { border-color: rgba(255,255,255,0.7); }
 
-  /* Panel section labels and button rows (sheet mode) */
-  .panel-section-label { font-size: 10px; font-weight: 600; color: var(--text-dim, #888);
-    text-transform: uppercase; letter-spacing: 0.06em; padding: 4px 0 2px; }
   /* Mode hint inside ref-panel-inner (base / wp modes) */
   .panel-mode-hint { font-size: 11px; color: var(--text-dim, #888); padding: 4px 0; }
-
-  /* Film-base swatch widget — identical to Basic.svelte's .baseswatch/.cube/.pick */
-  .cube { width: 16px; height: 16px; border-radius: 4px; border: 1px solid var(--glass-brd);
-    flex: none; }
-  .cube.big { width: 100%; height: 30px; border-radius: 8px; box-sizing: border-box; }
-  .baseswatch { position: relative; display: flex; width: 100%; padding: 0; border: 0;
-    background: transparent; cursor: pointer; margin: 4px 0 2px; }
-  .baseswatch:disabled { opacity: 0.45; cursor: default; }
-  .baseswatch .pick { position: absolute; inset: 0; display: flex; align-items: center;
-    justify-content: center; color: #fff; background: rgba(0,0,0,0.4); border-radius: 8px;
-    opacity: 0; transition: opacity 120ms; }
-  .baseswatch:hover:not(:disabled) .pick, .baseswatch.on .pick { opacity: 1; }
-  .baseswatch.on .cube.big { box-shadow: 0 0 0 2px rgba(244,157,78,0.7); }
-
-  /* White-point row: label + pipette button side by side */
-  .wp-row { display: flex; align-items: center; justify-content: space-between;
-    gap: 6px; margin-top: 4px; }
-  .wp-row .panel-section-label { padding: 0; margin: 0; }
-
-  /* WB pipette button — identical to Basic.svelte's .wbdrop */
-  .wbdrop { display: inline-flex; align-items: center; justify-content: center;
-    background: transparent; border: 1px solid var(--glass-brd); color: var(--text-dim);
-    border-radius: 6px; padding: 2px 6px; cursor: pointer; }
-  .wbdrop.on { color: var(--text); border-color: var(--accent); }
-  .wbdrop:disabled { opacity: 0.45; cursor: default; }
 </style>

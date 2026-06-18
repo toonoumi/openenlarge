@@ -12,6 +12,7 @@
 
 <div class="adjust">
   <h3>{$t('roll.adjust.heading')}</h3>
+  <slot />
 
   <!-- These rows are copied VERBATIM from Basic.svelte (lines ~248-272), with only
        `$params` swapped for `$ps`. Same label keys / min / max / step / scale /
