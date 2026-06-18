@@ -109,7 +109,17 @@ fn read_f32_le(r: &mut impl Read) -> io::Result<f32> {
 
 /// Write a cache file at `path` encoding `(base, working, thumb)`.
 /// The working image's `has_ir` flag is stored uncompressed as the first byte.
+///
+/// The write is atomic: bytes are first written to a `.oecache.tmp` sibling in
+/// the same directory, then renamed into place.  A failed/partial write never
+/// leaves a corrupt `.oecache` file that would be mistaken for a developed image.
+/// The parent directory is created automatically if it does not yet exist.
 pub fn write(path: &Path, base: [f32; 3], working: &Image, thumb: &Image) -> io::Result<()> {
+    // Ensure the parent directory exists.
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
     let has_ir_byte: u8 = if working.ir.is_some() { 1 } else { 0 };
 
     // Build the payload to compress.
@@ -122,10 +132,21 @@ pub fn write(path: &Path, base: [f32; 3], working: &Image, thumb: &Image) -> io:
 
     let compressed = zstd::encode_all(payload.as_slice(), ZSTD_LEVEL).map_err(io::Error::other)?;
 
-    let mut file = std::fs::File::create(path)?;
-    file.write_all(&[has_ir_byte])?;
-    file.write_all(&compressed)?;
-    Ok(())
+    // Write atomically: temp file → rename.
+    let tmp = path.with_extension("oecache.tmp");
+    let result = (|| -> io::Result<()> {
+        let mut file = std::fs::File::create(&tmp)?;
+        file.write_all(&[has_ir_byte])?;
+        file.write_all(&compressed)?;
+        file.flush()?;
+        drop(file);
+        std::fs::rename(&tmp, path)?;
+        Ok(())
+    })();
+    if result.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    result
 }
 
 /// Read a cache file and return `(base, working, thumb)`.

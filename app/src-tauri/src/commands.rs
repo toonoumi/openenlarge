@@ -685,10 +685,14 @@ async fn develop_heavy(
     }
 
     // Write cache sidecar (best-effort; never fails the develop command).
-    if let Err(e) =
-        crate::cache::write(&session.cache_path(&id), c.base, &c.cache_working, &c.cache_thumb)
     {
-        eprintln!("[cache] write failed for {id}: {e}");
+        let cp = session.cache_path(&id);
+        if let Err(e) = crate::cache::write(&cp, c.base, &c.cache_working, &c.cache_thumb) {
+            eprintln!("[cache] write failed for {id}: {e}; retrying once");
+            if let Err(e2) = crate::cache::write(&cp, c.base, &c.cache_working, &c.cache_thumb) {
+                eprintln!("[cache] write RETRY also failed for {id}: {e2}");
+            }
+        }
     }
 
     Ok(entry)
