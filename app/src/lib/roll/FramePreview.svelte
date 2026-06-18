@@ -17,7 +17,9 @@
   import { defaultFull, conform, constrainToRotated } from "$lib/crop/cropMath";
   import { presetNormAspect } from "$lib/crop/presets";
   import { rotateRectCW, rotateRectCCW, flipRectH, flipRectV, flipOrient } from "$lib/crop/transforms";
-  import { framesWithCrop, applyCropToAll } from "$lib/roll/apply";
+  import { framesWithCrop, applyCropToAll, framesWithBase, applyBaseToAll } from "$lib/roll/apply";
+  import BaseView from "$lib/develop/BaseView.svelte";
+  import { api } from "$lib/api";
 
   // The frame being previewed.
   $: id = $rollReferenceId;
@@ -46,7 +48,7 @@
   $: dustEdits = id ? ($dustById[id] ?? emptyDust()) : emptyDust();
 
   // ---- Mode toggle ----
-  type OverlayMode = "preview" | "crop";
+  type OverlayMode = "preview" | "crop" | "base";
   let mode: OverlayMode = "preview";
 
   // ---- Crop draft state (only while mode === "crop") ----
@@ -112,9 +114,13 @@
     mode = mode === "crop" ? "preview" : "crop";
   }
 
-  // ---- Apply crop to roll ----
+  function toggleBaseMode() {
+    mode = mode === "base" ? "preview" : "base";
+  }
+
+  // ---- Apply crop / base to roll ----
   // pending tracks which apply action awaits confirmation.
-  let pending: "crop" | null = null;
+  let pending: "crop" | "base" | null = null;
   let showConfirm = false;
   let confirmCount = 0;
   let applyIds: string[] = [];
@@ -127,6 +133,7 @@
 
   function onConfirm() {
     if (pending === "crop") applyCrop();
+    else if (pending === "base") applyBase();
     showConfirm = false;
     pending = null;
   }
@@ -145,10 +152,39 @@
     }
   }
 
+  function applyBase() {
+    editsById.set(applyBaseToAll(get(editsById), applyIds, $rollDraft.params.base_override));
+    showConfirm = false;
+    pending = null;
+  }
+
+  function onApplyBaseClick() {
+    applyIds = $developedFolderImages.map((i) => i.id);
+    const conflicts = framesWithBase(get(editsById), applyIds);
+    if (conflicts.length > 0) {
+      confirmCount = conflicts.length;
+      pending = "base";
+      showConfirm = true;
+    } else {
+      pending = "base";
+      applyBase();
+    }
+  }
+
+  async function onAutoBase() {
+    if (!id) return;
+    try {
+      const result = await api.autoBaseInfo(id);
+      rollDraft.update((d) => ({ ...d, params: { ...d.params, base_override: result.base } }));
+    } catch { /* ignore */ }
+  }
+
   function close() {
     // Commit any in-progress crop before closing.
     if (mode === "crop") {
       commitCrop();
+      mode = "preview";
+    } else if (mode === "base") {
       mode = "preview";
     }
     rollReferenceId.set(null);
@@ -158,6 +194,7 @@
     if (e.key === "Escape") {
       if (showConfirm) { showConfirm = false; pending = null; return; }
       if (mode === "crop") { commitCrop(); mode = "preview"; return; }
+      if (mode === "base") { mode = "preview"; return; }
       close();
     }
     if (mode === "crop") {
@@ -199,6 +236,17 @@
           clipLow={false}
           clipStrict={false}
         />
+        {#if mode === "base"}
+          <div class="base-overlay">
+            <BaseView
+              {id}
+              params={effectiveParams}
+              imgW={origW}
+              imgH={origH}
+              on:sampled={(e) => rollDraft.update((d) => ({ ...d, params: { ...d.params, base_override: e.detail } }))}
+            />
+          </div>
+        {/if}
       {/if}
     {/if}
   </div>
@@ -218,6 +266,17 @@
     {#if $rollDraft.crop}
       <button class="apply-btn" on:click={onApplyCropClick}>
         {$t('roll.crop.apply')}
+      </button>
+    {/if}
+    <button class="tool-btn" class:active={mode === "base"} on:click={toggleBaseMode}>
+      {$t('roll.base.sample')}
+    </button>
+    <button class="tool-btn" on:click={onAutoBase}>
+      {$t('roll.base.auto')}
+    </button>
+    {#if $rollDraft.params.base_override != null}
+      <button class="apply-btn" on:click={onApplyBaseClick}>
+        {$t('roll.base.apply')}
       </button>
     {/if}
     <button class="close-btn" on:click={close}>{$t('roll.close')}</button>
@@ -247,6 +306,11 @@
     min-height: 0;
     display: grid;
     place-items: center;
+  }
+  .base-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 52;
   }
   .crop-panel-wrap {
     position: absolute;
