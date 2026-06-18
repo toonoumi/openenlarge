@@ -62,6 +62,31 @@ pub fn run() {
                     let _ = win.center();
                 }
                 let _ = win.show();
+                // macOS: sizing the window while it was still hidden leaves the
+                // WKWebView's event region stuck at the original (config) size, so
+                // part of the UI paints but silently ignores clicks — they fall
+                // through and defocus the app — until the window is resized. Once the
+                // window is realized, a programmatic shrink-then-restore forces the
+                // webview to resync its event region to the full window.
+                //
+                // Two details are load-bearing (verified empirically): the delta must
+                // be real — a 1px nudge gets coalesced and does nothing — and it must
+                // run after the window is realized, hence the deferral.
+                #[cfg(target_os = "macos")]
+                {
+                    let win = win.clone();
+                    std::thread::spawn(move || {
+                        std::thread::sleep(std::time::Duration::from_millis(400));
+                        if let Ok(sz) = win.inner_size() {
+                            let _ = win.set_size(tauri::PhysicalSize::new(
+                                sz.width.saturating_sub(80),
+                                sz.height,
+                            ));
+                            std::thread::sleep(std::time::Duration::from_millis(150));
+                            let _ = win.set_size(tauri::PhysicalSize::new(sz.width, sz.height));
+                        }
+                    });
+                }
             }
             let dir = app.path().app_data_dir().expect("app data dir");
             std::fs::create_dir_all(&dir).map_err(|e| format!("create app data dir: {e}"))?;
