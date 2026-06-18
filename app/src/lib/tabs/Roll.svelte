@@ -15,6 +15,7 @@
   import { debounce } from "$lib/catalog";
   import FramePreview from "$lib/roll/FramePreview.svelte";
   import ConfirmOverwrite from "$lib/roll/ConfirmOverwrite.svelte";
+  import BaseView from "$lib/develop/BaseView.svelte";
   import { exportContactSheet } from "$lib/roll/exportSheet";
   import Viewport from "$lib/viewport/Viewport.svelte";
   import CropView from "$lib/crop/CropView.svelte";
@@ -140,9 +141,11 @@
   // but only once mirroring has been enabled (after entry confirm or no conflicts).
   $: if (mirrorEnabled) scheduleLiveApply($rollDraft);
 
-  // --- Reference-edit mode (crop only for R5a) --------------------------------
-  type EditMode = "none" | "crop";
+  // --- Reference-edit mode (crop / base / wp) ----------------------------------
+  type EditMode = "none" | "crop" | "base" | "wp";
   let editMode: EditMode = "none";
+  // Whether a wp-pick click is currently being processed (disarm after one pick).
+  let wpPicking = false;
   let refId: string | null = null;
 
   // Reference frame metadata (for the crop state machine).
@@ -249,12 +252,63 @@
     startCrop();
   }
 
+  function enterBaseMode() {
+    const id = get(activeId) ?? $developedFolderImages[0]?.id ?? null;
+    if (!id) return;
+    refId = id;
+    setActive(id);
+    editMode = "base";
+  }
+
+  function enterWpMode() {
+    const id = get(activeId) ?? $developedFolderImages[0]?.id ?? null;
+    if (!id) return;
+    refId = id;
+    setActive(id);
+    editMode = "wp";
+    wpPicking = true;
+  }
+
+  async function onAutoBase() {
+    const id = get(activeId) ?? $developedFolderImages[0]?.id ?? null;
+    if (!id) return;
+    // Set refId so the reference panel is visible, but don't need to enter base mode.
+    refId = id;
+    setActive(id);
+    if (editMode === "none") editMode = "base";
+    try {
+      const r = await api.autoBaseInfo(id);
+      rollDraft.update((d) => ({ ...d, params: { ...d.params, base_override: r.base } }));
+    } catch { /* ignore */ }
+  }
+
+  function onBaseSampled(e: CustomEvent<[number, number, number]>) {
+    rollDraft.update((d) => ({ ...d, params: { ...d.params, base_override: e.detail } }));
+  }
+
+  async function onWpPick(e: CustomEvent<{ r: number; g: number; b: number; u: number; v: number }>) {
+    if (!refId) return;
+    wpPicking = false;
+    const { u, v } = e.detail;
+    const P = 0.02;
+    const c01 = (n: number) => (n < 0 ? 0 : n > 1 ? 1 : n);
+    const rect: [number, number, number, number] = [c01(u - P / 2), c01(v - P / 2), P, P];
+    try {
+      const { d_max } = await api.analyzeWhitePoint(refId, withEffectiveBase($rollDraft.params, refDir), rect);
+      rollDraft.update((d) => ({ ...d, params: { ...d.params, d_max_override: d_max } }));
+    } catch { /* ignore */ }
+    // Re-arm for another pick without leaving wp mode.
+    wpPicking = true;
+  }
+
   function exitEditMode() {
     if (editMode === "crop") {
       commitCropToDraft();
       cropInit = false;
     }
+    // base / wp: draft writes already mirrored live — nothing extra to commit.
     editMode = "none";
+    wpPicking = false;
     refId = null;
   }
 
@@ -288,6 +342,19 @@
         <button class="tool-entry-btn" on:click={enterCropMode} disabled={$developedFolderImages.length === 0}>
           {$t('roll.crop.tool')}
         </button>
+        <div class="panel-section-label">Film base</div>
+        <div class="panel-btn-row">
+          <button class="tool-entry-btn" on:click={enterBaseMode} disabled={$developedFolderImages.length === 0}>
+            {$t('roll.base.sample')}
+          </button>
+          <button class="tool-entry-btn" on:click={onAutoBase} disabled={$developedFolderImages.length === 0}>
+            {$t('roll.base.auto')}
+          </button>
+        </div>
+        <div class="panel-section-label">White point</div>
+        <button class="tool-entry-btn" on:click={enterWpMode} disabled={$developedFolderImages.length === 0}>
+          {$t('roll.wp.pick')}
+        </button>
       </div>
       <button class="export-btn" on:click={exportContactSheet} disabled={$developedFolderImages.length === 0}>
         {$t('roll.export.button')}
@@ -302,7 +369,7 @@
 {:else if editMode === "crop"}
   <!-- ===== Reference-edit crop layout ===== -->
   <div class="ref-layout">
-    <!-- Center: Viewport / CropView on the reference frame -->
+    <!-- Center: CropView on the reference frame -->
     <div class="ref-center">
       {#if refFrame?.developed && refId}
         <CropView id={refId} params={refEffParams} imgW={oW} imgH={oH}
@@ -330,6 +397,97 @@
     </aside>
 
     <!-- Bottom strip: contact-sheet thumbnails (short) -->
+    <div class="ref-strip">
+      {#each $developedFolderImages as img (img.id)}
+        <button class="strip-cell" class:strip-active={img.id === refId}
+                data-id={img.id} on:click={() => onStripClick(img.id)}>
+          <img src={previewMap[img.id] ?? img.thumbnail} alt={img.file_name} draggable="false" />
+        </button>
+      {/each}
+    </div>
+  </div>
+
+{:else if editMode === "base"}
+  <!-- ===== Reference-edit base layout ===== -->
+  <div class="ref-layout">
+    <!-- Center: BaseView fills the area — it owns all pointer events (no overlay, no z-index obstruction).
+         This is the fix for feedback #2: the previous approach layered BaseView on top of a Viewport
+         inside .base-overlay with position:absolute, risking z-index conflicts and click interception
+         by the Viewport's own interactive layer. Here BaseView IS the center content, unobstructed. -->
+    <div class="ref-center">
+      {#if refFrame?.developed && refId}
+        <BaseView id={refId} params={refEffParams} imgW={origW} imgH={origH}
+                  on:sampled={onBaseSampled} />
+      {:else}
+        <div class="ref-hint">{$t('develop.notDevelopedYet')}</div>
+      {/if}
+    </div>
+
+    <!-- Right panel: hint + Done button -->
+    <aside class="ref-panel">
+      <div class="ref-panel-inner">
+        <div class="panel-mode-hint">{$t('roll.base.sample')}</div>
+        <button class="done-btn" on:click={exitEditMode}>
+          {$t('roll.close')}
+        </button>
+      </div>
+    </aside>
+
+    <!-- Bottom strip -->
+    <div class="ref-strip">
+      {#each $developedFolderImages as img (img.id)}
+        <button class="strip-cell" class:strip-active={img.id === refId}
+                data-id={img.id} on:click={() => onStripClick(img.id)}>
+          <img src={previewMap[img.id] ?? img.thumbnail} alt={img.file_name} draggable="false" />
+        </button>
+      {/each}
+    </div>
+  </div>
+
+{:else if editMode === "wp"}
+  <!-- ===== Reference-edit white-point layout ===== -->
+  <div class="ref-layout">
+    <!-- Center: Viewport with pointPick armed on the reference frame -->
+    <div class="ref-center">
+      {#if refFrame?.developed && refId}
+        <Viewport
+          id={refId}
+          params={refEffParams}
+          imgW={effW}
+          imgH={effH}
+          imageCrop={imageCrop}
+          rot90={cRot}
+          flipH={refCommitted?.flipH ?? false}
+          flipV={refCommitted?.flipV ?? false}
+          angle={refCommitted?.angle ?? 0}
+          fallbackThumb={refFrame?.thumbnail ?? ""}
+          dust={refDust.strokes}
+          irRemoval={refDust.irRemoval}
+          dustRev={0}
+          developRev={$developRev}
+          eraser={false}
+          pointPick={wpPicking}
+          clipHigh={false}
+          clipLow={false}
+          clipStrict={false}
+          on:pointpick={onWpPick}
+        />
+      {:else}
+        <div class="ref-hint">{$t('develop.notDevelopedYet')}</div>
+      {/if}
+    </div>
+
+    <!-- Right panel: hint + Done button -->
+    <aside class="ref-panel">
+      <div class="ref-panel-inner">
+        <div class="panel-mode-hint">{$t('roll.wp.pick')}</div>
+        <button class="done-btn" on:click={exitEditMode}>
+          {$t('roll.close')}
+        </button>
+      </div>
+    </aside>
+
+    <!-- Bottom strip -->
     <div class="ref-strip">
       {#each $developedFolderImages as img (img.id)}
         <button class="strip-cell" class:strip-active={img.id === refId}
@@ -451,4 +609,13 @@
   }
   .strip-cell:hover { border-color: rgba(255,255,255,0.25); }
   .strip-cell.strip-active { border-color: rgba(255,255,255,0.7); }
+
+  /* Panel section labels and button rows (sheet mode) */
+  .panel-section-label { font-size: 10px; font-weight: 600; color: var(--text-dim, #888);
+    text-transform: uppercase; letter-spacing: 0.06em; padding: 4px 0 2px; }
+  .panel-btn-row { display: flex; gap: 4px; }
+  .panel-btn-row .tool-entry-btn { flex: 1; }
+
+  /* Mode hint inside ref-panel-inner (base / wp modes) */
+  .panel-mode-hint { font-size: 11px; color: var(--text-dim, #888); padding: 4px 0; }
 </style>
