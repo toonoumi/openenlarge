@@ -42,8 +42,11 @@ float tone(float v) {
   v = clamp(v, 0.0, 1.0);
   v += u_whites * 0.20 * v * v * v;
   v += u_blacks * 0.20 * pow(1.0 - v, 3.0);
-  v += u_shadows * 0.30 * (1.0 - v) * (1.0 - v) * v;
-  v += u_highlights * 0.30 * v * v * (1.0 - v);
+  // Shelf weights that peak AT the extremes (mirror finish.rs::tone_curve) so
+  // Highlights/Shadows actually reach clipped highlights/shadows; gain 0.18 keeps
+  // the curve monotonic even under opposing endpoint sliders.
+  v += u_highlights * 0.18 * smoothstep(0.5, 1.0, v);
+  v += u_shadows * 0.18 * (1.0 - smoothstep(0.0, 0.5, v));
   v = 0.5 + (v - 0.5) * (1.0 + u_contrast);
   return clamp(v, 0.0, 1.0);
 }
@@ -239,8 +242,13 @@ vec3 invert(vec3 rgbIn) {
     vec3 print_lin = max(
       vec3(u_print_exposure * (1.0 + u_paper_black)) - u_print_exposure * ten, vec3(0.0));
     vec3 outc = pow(print_lin * u_wb, vec3(u_paper_grade)); // WB as a linear gain; 0*wb=0 keeps black neutral
+    // Reciprocal (Reinhard) highlight rolloff: matches value+slope at the knee
+    // (look unchanged below soft_clip), longer tail than the old exponential so
+    // bright highlights keep separation instead of slamming to 1.0. Mirrors
+    // engine.rs::invert_d.
     float comp = max(1.0 - u_soft_clip, EPS);
-    vec3 over = u_soft_clip + (1.0 - exp(-(outc - vec3(u_soft_clip)) / comp)) * comp;
+    vec3 u = (outc - vec3(u_soft_clip)) / comp;
+    vec3 over = vec3(1.0) - comp / (1.0 + u);
     return mix(outc, over, step(vec3(u_soft_clip), outc));  // soft-clip where outc >= soft_clip
   }
   if (u_mode == 2) {           // Naive: 1 - clamp(I/base,0,1). Intentionally uses

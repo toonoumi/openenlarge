@@ -422,9 +422,13 @@ fn tone_curve(v: f32, p: &FinishParams) -> f32 {
     // Endpoints: strongest at the extremes.
     v += p.whites * 0.20 * v.powi(3);
     v += p.blacks * 0.20 * (1.0 - v).powi(3);
-    // Regions: lift/pull, zero at both ends.
-    v += p.shadows * 0.30 * (1.0 - v).powi(2) * v;
-    v += p.highlights * 0.30 * v.powi(2) * (1.0 - v);
+    // Regions: shelf weights that peak AT the extremes (smoothstep, C1 so skies
+    // stay smooth). The old v²(1−v) / (1−v)²v bumps vanished at v→1 / v→0, so the
+    // Highlights/Shadows sliders couldn't touch the brightest/darkest tones — the
+    // reason "lower contrast" never opened up clipped highlights/shadows. Gain is
+    // capped at 0.18 so even opposing endpoint+region sliders can't fold the curve.
+    v += p.highlights * 0.18 * smoothstep(0.5, 1.0, v);
+    v += p.shadows * 0.18 * (1.0 - smoothstep(0.0, 0.5, v));
     // Contrast: linear gain about 0.5.
     v = 0.5 + (v - 0.5) * (1.0 + p.contrast);
     v.clamp(0.0, 1.0)
@@ -597,6 +601,42 @@ mod tests {
             ..Default::default()
         };
         assert!(tone_curve(0.25, &p) - 0.25 > tone_curve(0.6, &p) - 0.6);
+    }
+
+    #[test]
+    fn negative_highlights_pull_down_near_white() {
+        // Highlights must actually reach the brightest (near-clipped) tones — the
+        // old v²(1−v) weight vanished at v→1, so the slider couldn't recover blown
+        // highlights. The shelf weight peaks at white.
+        let p = FinishParams { highlights: -1.0, ..Default::default() };
+        assert!(tone_curve(0.97, &p) < 0.90, "near-white pulled down: {}", tone_curve(0.97, &p));
+    }
+
+    #[test]
+    fn positive_shadows_lift_near_black() {
+        // Symmetric: shadows must reach near-black tones (old (1−v)²v vanished at v→0).
+        let p = FinishParams { shadows: 1.0, ..Default::default() };
+        assert!(tone_curve(0.03, &p) > 0.10, "near-black lifted: {}", tone_curve(0.03, &p));
+    }
+
+    #[test]
+    fn tone_curve_monotonic_under_extreme_sliders() {
+        // Even with opposing endpoint+region sliders maxed, the curve must not fold
+        // (a non-monotonic tone curve inverts tones — a visible artifact).
+        for combo in [
+            FinishParams { shadows: 1.0, blacks: 1.0, ..Default::default() },
+            FinishParams { highlights: -1.0, whites: -1.0, ..Default::default() },
+            FinishParams { highlights: 1.0, shadows: 1.0, whites: 1.0, blacks: 1.0, contrast: 1.0, ..Default::default() },
+        ] {
+            let mut prev = tone_curve(0.0, &combo);
+            let mut v = 0.0;
+            while v <= 1.0 {
+                let cur = tone_curve(v, &combo);
+                assert!(cur >= prev - 1e-4, "fold at v={v}: {cur} < {prev}");
+                prev = cur;
+                v += 1.0 / 256.0;
+            }
+        }
     }
 
     #[test]

@@ -122,8 +122,15 @@ pub fn invert_d(rgb: [f32; 3], p: &InversionParams) -> [f32; 3] {
                 out
             }
         } else if out > p.soft_clip {
+            // Reciprocal (Reinhard-style) highlight rolloff. Matches the lower
+            // branch's value AND slope at the knee, so nothing at or below
+            // soft_clip changes — but it has a far longer tail than the old
+            // exponential, so distinct bright highlights keep their separation
+            // instead of all slamming to ~1.0. That preserved separation is the
+            // latitude the Develop Highlights/Contrast sliders can then pull back.
             let comp = (1.0 - p.soft_clip).max(EPS);
-            p.soft_clip + (1.0 - (-(out - p.soft_clip) / comp).exp()) * comp
+            let u = (out - p.soft_clip) / comp;
+            1.0 - comp / (1.0 + u)
         } else {
             out
         }
@@ -282,6 +289,32 @@ mod tests {
         assert!(sdr[0] <= 1.0001, "SDR highlight caps ~1.0: {}", sdr[0]);
         assert!(hdr[0] > 1.05, "HDR highlight exceeds 1.0: {}", hdr[0]);
         assert!(hdr[0] <= 2.5001, "HDR highlight capped at headroom: {}", hdr[0]);
+    }
+
+    #[test]
+    fn highlight_rolloff_retains_separation() {
+        // Drive highlights well above the soft-clip knee (print_exposure 2.0). The
+        // SDR rolloff must keep bright highlights *below* white with a visible gap
+        // between distinct luminances, so the latitude survives into Develop
+        // (the old exponential rolloff slammed them to ~1.0, flattening detail).
+        let p = InversionParams { print_exposure: 2.0, ..Default::default() };
+        let bright = invert_d([0.1, 0.1, 0.1], &p)[0]; // denser neg → brighter pos
+        let dim = invert_d([0.3, 0.3, 0.3], &p)[0];
+        assert!(bright > dim, "monotonic: {bright} vs {dim}");
+        assert!(bright < 0.995, "brightest highlight keeps headroom: {bright}");
+        assert!(bright - dim > 0.01, "highlight separation retained: {}", bright - dim);
+        assert!(bright <= 1.0001, "still capped at white: {bright}");
+    }
+
+    #[test]
+    fn highlight_rolloff_unchanged_below_knee() {
+        // Nothing at or below the knee may shift — the look up to soft_clip is
+        // identical; only the above-knee tail is gentler.
+        let p = InversionParams::default();
+        let mid = invert_d([0.5, 0.5, 0.5], &p);
+        for c in 0..3 {
+            assert!(mid[c] <= 0.9 + 1e-4, "mid below knee: {}", mid[c]);
+        }
     }
 
     #[test]
