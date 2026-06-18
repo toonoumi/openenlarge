@@ -14,6 +14,7 @@
   import { imageDir } from "$lib/library/folderScope";
   import { api, defaultParams } from "$lib/api";
   import { debounce } from "$lib/catalog";
+  import FramePreview from "$lib/roll/FramePreview.svelte";
 
   // Fresh roll draft each time the section opens (seed from defaults per spec).
   onMount(() => { resetRollDraft(); });
@@ -114,7 +115,7 @@
 </div>
 
 {#if $rollReferenceId}
-  <!-- FramePreview added in Task 9; placeholder keeps the shell compilable. -->
+  <FramePreview />
 {/if}
 
 {#if showConfirm}
