@@ -15,7 +15,10 @@
         "title": "OpenEnlarge",
         "width": 800,
         "height": 600,
-        "visible": false
+        "visible": false,
+        "titleBarStyle": "Transparent",
+        "hiddenTitle": true,
+        "backgroundColor": "#111111"
       }
     ],
     "security": {

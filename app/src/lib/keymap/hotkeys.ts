@@ -44,7 +44,7 @@ export const hotkeyGroups: HotkeyGroup[] = [
 ];
 
 /** True when running on macOS, where the platform modifier is ⌘ rather than Ctrl. */
-function isMac(): boolean {
+export function isMac(): boolean {
   if (typeof navigator === "undefined") return false;
   const p = (navigator.platform || navigator.userAgent || "").toLowerCase();
   return p.includes("mac");

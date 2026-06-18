@@ -28,6 +28,13 @@
   import TelemetryPrompt from "$lib/settings/TelemetryPrompt.svelte";
   import { track } from "$lib/telemetry";
   import { t } from "$lib/i18n";
+  import { isMac } from "$lib/keymap/hotkeys";
+
+  // The macOS window uses a transparent native title bar (see tauri.conf.json)
+  // so its strip paints the app background colour. Offset our content below it
+  // so the toolbar sits under the traffic lights. Other platforms keep a normal
+  // title bar and need no offset.
+  const onMac = isMac();
 
   // Gate the first-run analytics prompt on hydration: only after the persisted
   // choice (if any) has loaded do we know whether it's actually undecided.
@@ -110,7 +117,7 @@
   on:change={() => commitActive()}
 />
 
-<div class="app">
+<div class="app" class:mac={onMac}>
   <header class="topbar">
     <button class="brand" on:click={() => (aboutOpen = true)} aria-label={$t('app.about.ariaLabel')}>
       <img class="logo" src="/favicon.png" alt="" />
@@ -166,6 +173,12 @@
 
 <style>
   .app { display: flex; flex-direction: column; height: 100vh; }
+  /* Clear the transparent macOS title bar so the toolbar sits below the traffic
+     lights. The topbar's own 10px top padding adds to this, so the logo starts
+     ~22px down — clearing the buttons, which bottom out at ~20px.
+     box-sizing:border-box (set globally) keeps total height at 100vh, and the
+     inset strip shows the body background to match the bar. */
+  .app.mac { padding-top: 12px; }
   .topbar { display: flex; align-items: center; gap: 18px; padding: 10px 16px;
     border-bottom: 1px solid var(--glass-brd); }
   .brand { font-weight: 600; letter-spacing: 0.3px; display: flex; align-items: center; gap: 8px;
@@ -180,8 +193,9 @@
   .tabs button.active:hover { background: rgba(244,157,78,0.20); }
   .tabs button:disabled { opacity: 0.35; cursor: not-allowed; }
   .badge { position: absolute; top: -7px; right: -8px; min-width: 18px; height: 18px; padding: 0 5px;
-    border-radius: 9px; background: var(--accent); color: #fff; font-size: 11px; font-weight: 700;
-    display: grid; place-items: center; box-shadow: 0 2px 8px rgba(244,157,78,0.6); }
+    border-radius: 9px; background: rgba(244,157,78,0.22); border: 1px solid rgba(244,157,78,0.45);
+    color: var(--text); font-size: 11px; font-weight: 600;
+    display: grid; place-items: center; }
   .spacer { flex: 1; }
   .gear { display: grid; place-items: center; width: 32px; height: 32px; padding: 0;
     background: transparent; border: 0; border-radius: 8px; color: var(--text-dim);
