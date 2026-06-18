@@ -12,6 +12,7 @@
   import { developAll, deleteImage } from "$lib/workflow";
   import Library from "$lib/tabs/Library.svelte";
   import Develop from "$lib/tabs/Develop.svelte";
+  import Roll from "$lib/tabs/Roll.svelte";
   import ProgressOverlay from "$lib/overlay/ProgressOverlay.svelte";
   import ConfirmDevelop from "$lib/overlay/ConfirmDevelop.svelte";
   import ConfirmDelete from "$lib/overlay/ConfirmDelete.svelte";
@@ -124,7 +125,7 @@
     </button>
     <nav class="tabs">
       <button class:active={$module === "library"} on:click={() => module.set("library")}>{$t('app.tab.library')}</button>
-      <button>{$t('app.tab.develop')}</button>
+      <button class:active={$module === "roll"} disabled={!$hasImages} on:click={() => module.set("roll")}>{$t('app.tab.develop')}</button>
       <button class:active={$module === "develop"} disabled={!$hasImages} on:click={gotoDevelop}>
         {$t('app.tab.tune')}
         {#if $undevelopedCount > 0}<span class="badge">{$undevelopedCount}</span>{/if}
@@ -139,7 +140,7 @@
   <main>
     {#key $module}
       <div class="page" in:fly={{ y: 10, duration: 220, easing: cubicOut }}>
-        {#if $module === "library"}<Library />{:else}<Develop />{/if}
+        {#if $module === "library"}<Library />{:else if $module === "roll"}<Roll />{:else}<Develop />{/if}
       </div>
     {/key}
   </main>
