@@ -121,6 +121,14 @@ export function selectFolder(path: string | null): void {
 /** Data-URL of the latest rendered develop preview; drives the histogram. */
 export const previewSrc = writable<string>("");
 
+// Clipping-warning overlay toggles (Develop viewport). `high`/`low` enable the
+// highlight (red) / shadow (blue) overlays; `strict` tightens the threshold from
+// pure clip (255/0) to near-clip (253/2). Shared by Histogram (corner triangles)
+// and Develop → Viewport.
+export const clipWarn = writable<{ high: boolean; low: boolean; strict: boolean }>(
+  { high: false, low: false, strict: false }
+);
+
 export type Tool = "edit" | "crop" | "eraser" | "enhance";
 export const tool = writable<Tool>("edit");
 
