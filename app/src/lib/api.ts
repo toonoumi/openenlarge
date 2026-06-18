@@ -118,6 +118,8 @@ export interface ThumbView {
   rot90?: number; flip_h?: boolean; flip_v?: boolean; angle?: number;
   dust?: DustStroke[];
   ir_removal?: IrRemoval;
+  /** Long-edge cap for the render; omit for the default 320px thumbnail. */
+  edge?: number;
 }
 
 export interface ExportFormat {

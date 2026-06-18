@@ -1143,6 +1143,10 @@ pub struct ThumbView {
     pub dust: Vec<DustStroke>,
     #[serde(default)]
     pub ir_removal: IrRemoval,
+    /// Long-edge cap for the rendered preview. Defaults to `THUMB_EDGE` (320);
+    /// the Library grid passes a larger value (e.g. 1080) when zoomed to big cells.
+    #[serde(default)]
+    pub edge: Option<u32>,
 }
 
 /// Render a small (~320px) inverted JPEG of the developed image at the given
@@ -1172,7 +1176,7 @@ pub fn thumbnail(
         }
         None => straightened,
     };
-    let small = proxy(&base_img, THUMB_EDGE);
+    let small = proxy(&base_img, view.edge.unwrap_or(THUMB_EDGE));
     let (ow, oh) = (small.width as u32, small.height as u32);
     let mut ip = resolve_params(&params, &dev.thumb, effective_base(&params, dev.base));
     ip.d_max = effective_dmax(&params, dev.d_max);

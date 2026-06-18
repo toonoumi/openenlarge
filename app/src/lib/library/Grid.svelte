@@ -1,6 +1,12 @@
 <script lang="ts">
   import { tick, onMount } from "svelte";
-  import { activeId, selectedFolder, gridZoom, folderImages, selection, selectClick } from "../store";
+  import { get } from "svelte/store";
+  import { activeId, selectedFolder, gridZoom, folderImages, selection, selectClick,
+    editsById, cropById, dustById } from "../store";
+  import { api, defaultParams, type ImageEntry } from "../api";
+  import { withEffectiveBase } from "../develop/base";
+  import { imageDir } from "./folderScope";
+  import { gridColumns, gridThumbView, GRID_HIRES_EDGE, GRID_HIRES_MAX_COLS } from "./gridHiRes";
   import { t } from "$lib/i18n";
 
   const mods = (e: MouseEvent) => ({ meta: e.metaKey || e.ctrlKey, shift: e.shiftKey });
@@ -9,16 +15,77 @@
   $: shown = $folderImages;
   const MIN = 130;
   const PADX = 16; // total horizontal padding of .scroll (8px each side)
+  const GAP = 12;  // .grid gap
   // 130px at zoom 0 → full container width at zoom 100 (1 image per row).
   $: maxCol = Math.max(MIN, containerW - PADX);
   $: minCol = MIN + ($gridZoom / 100) * (maxCol - MIN);
+  // Zoomed-in to ≤2 cells per row → boost the 320px thumbnail to a crisp 1080px render.
+  $: cols = gridColumns(containerW, minCol, PADX, GAP);
+  $: boost = cols <= GRID_HIRES_MAX_COLS;
+
+  // --- Hi-res thumbnails (only the developed, visible cells while zoomed in) ----
+  // id → { key, url }: `key` is the static thumbnail the render was made from, so a
+  // later edit (which re-renders img.thumbnail) auto-invalidates the cached hi-res.
+  let hiRes: Record<string, { key: string; url: string }> = {};
+  let io: IntersectionObserver | null = null;
+  const visible = new Set<string>();
+  const inFlight = new Set<string>();
+
+  // `cache`/`on` are passed in so Svelte tracks them as markup dependencies and
+  // re-renders the <img> when a hi-res render lands or the boost threshold flips.
+  function hiResSrc(img: ImageEntry, cache: typeof hiRes, on: boolean): string {
+    const h = cache[img.id];
+    return on && h && h.key === img.thumbnail ? h.url : img.thumbnail;
+  }
+
+  async function renderHiRes(img: ImageEntry) {
+    const id = img.id, key = img.thumbnail;
+    if (inFlight.has(id)) return;
+    inFlight.add(id);
+    try {
+      const params = withEffectiveBase(get(editsById)[id] ?? defaultParams(), imageDir(img));
+      const view = gridThumbView(get(cropById)[id], get(dustById)[id], GRID_HIRES_EDGE);
+      const url = await api.thumbnail(id, params, view);
+      hiRes = { ...hiRes, [id]: { key, url } };
+    } catch { /* not developed yet / decode failed → keep the static thumbnail */ }
+    finally { inFlight.delete(id); }
+  }
+
+  // Render hi-res for every visible developed cell that lacks an up-to-date one.
+  function ensureVisible() {
+    if (!boost) return;
+    for (const id of visible) {
+      const img = shown.find((i) => i.id === id);
+      if (img?.developed && hiRes[id]?.key !== img.thumbnail) renderHiRes(img);
+    }
+  }
+  $: boost, shown, ensureVisible(); // re-check when zoom crosses the threshold or list changes
+
+  // (Re)observe cells so we only render what's on screen; rootMargin pre-warms a little.
+  async function reobserve() {
+    if (!io || !scrollEl) return;
+    await tick();
+    io.disconnect();
+    visible.clear();
+    scrollEl.querySelectorAll(".cell").forEach((el) => io!.observe(el));
+  }
+  $: shown, reobserve();
 
   onMount(() => {
     const measure = () => { if (scrollEl) containerW = scrollEl.clientWidth; };
     measure();
     const ro = new ResizeObserver(measure);
     if (scrollEl) ro.observe(scrollEl);
-    return () => ro.disconnect();
+    io = new IntersectionObserver((entries) => {
+      for (const e of entries) {
+        const id = (e.target as HTMLElement).dataset.id;
+        if (!id) continue;
+        if (e.isIntersecting) visible.add(id); else visible.delete(id);
+      }
+      ensureVisible();
+    }, { root: scrollEl, rootMargin: "200px" });
+    reobserve();
+    return () => { ro.disconnect(); io?.disconnect(); };
   });
 
   // ctrl/cmd + scroll (and trackpad pinch) resize thumbnails; plain scroll scrolls.
@@ -51,7 +118,7 @@
         <button data-id={img.id} class="cell" class:sel={$activeId === img.id}
           class:multi={$selection.selected.has(img.id)}
           on:click={(e) => selectClick(img.id, mods(e))}>
-          <div class="ratio"><img src={img.thumbnail} alt={img.file_name} /></div>
+          <div class="ratio"><img src={hiResSrc(img, hiRes, boost)} alt={img.file_name} /></div>
         </button>
       {/each}
     </div>
