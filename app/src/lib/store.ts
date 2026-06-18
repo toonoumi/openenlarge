@@ -59,13 +59,24 @@ export const updateSkipVersion = writable<string>("");
  * app_state as `folder_base:{dir}`. A per-image base_override wins over this. */
 export const folderBaseByPath = writable<Record<string, [number, number, number]>>({});
 
+/** Ids of images that FAILED to develop (e.g. an undecodable/corrupt raw the
+ * decoder panics on). They can never become `developed`, so we exclude them from
+ * the "undeveloped" badge count instead of nagging forever. Re-tried on every
+ * develop-all (cleared on success). Persisted via app_state as `undevelopable_ids`. */
+export const undevelopableIds = writable<Set<string>>(new Set());
+
 /** The imported images that live in the selected folder (recursive on parents).
  * The grid, filmstrip, and Develop navigation/range all scope to this. */
 export const folderImages = derived(
   [images, selectedFolder],
   ([$i, $sel]) => scopeToFolder($i, $sel),
 );
-export const undevelopedCount = derived(folderImages, ($i) => $i.filter((x) => !x.developed).length);
+/** Count of frames still needing development — EXCLUDING ones known to be
+ * undevelopable (corrupt/undecodable), so one bad file can't pin the badge. */
+export const undevelopedCount = derived(
+  [folderImages, undevelopableIds],
+  ([$i, $undev]) => $i.filter((x) => !x.developed && !$undev.has(x.id)).length,
+);
 
 /** Multi-selection across the grid and filmstrips. `activeId` (the single image
  * Develop/Metadata render) stays coupled: a plain click collapses the selection

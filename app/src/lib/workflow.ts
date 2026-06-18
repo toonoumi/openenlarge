@@ -1,5 +1,5 @@
 import { get } from "svelte/store";
-import { images, activeId, module, developProgress, editsById, cropById, dustById, folderImages, invalidatePreview } from "./store";
+import { images, activeId, module, developProgress, editsById, cropById, dustById, folderImages, invalidatePreview, undevelopableIds } from "./store";
 import { api, defaultParams, type ImageEntry } from "./api";
 import { dropHistory } from "./develop/historyStore";
 import { track } from "./telemetry";
@@ -111,6 +111,7 @@ export async function developAll(target: "develop" | "roll" = "develop"): Promis
   const failures: string[] = [];
   const nameOf = (id: string) => get(images).find((i) => i.id === id)?.file_name ?? id;
   for (const id of ids) {
+    let ok = false;
     try {
       const updated = await api.developImage(id);
       images.update((list) => list.map((i) => (i.id === id ? updated : i)));
@@ -118,9 +119,11 @@ export async function developAll(target: "develop" | "roll" = "develop"): Promis
       // no stored edits yet, so re-develop / existing manual overrides are untouched.
       editsById.update((m) =>
         m[id] ? m : { ...m, [id]: { ...defaultParams(), positive: updated.positive } });
-      // Developed without throwing but still not flagged developed → a different bug
-      // (e.g. the backend couldn't write/confirm the cache). Surface it too.
-      if (!updated.developed) {
+      if (updated.developed) {
+        ok = true;
+      } else {
+        // Developed without throwing but still not flagged developed → a different bug
+        // (e.g. the backend couldn't write/confirm the cache). Surface it too.
         failures.push(`${nameOf(id)}: develop returned but not marked developed`);
         console.error("develop returned developed=false", id, nameOf(id));
       }
@@ -128,6 +131,14 @@ export async function developAll(target: "develop" | "roll" = "develop"): Promis
       failures.push(`${nameOf(id)}: ${e}`);
       console.error("develop failed", id, nameOf(id), e);
     }
+    // Track undevelopable frames so a corrupt/undecodable file stops pinning the
+    // badge: mark on failure, clear on success (so a fixed/replaced file recovers).
+    undevelopableIds.update((s) => {
+      const has = s.has(id);
+      if (ok && has) { const n = new Set(s); n.delete(id); return n; }
+      if (!ok && !has) { const n = new Set(s); n.add(id); return n; }
+      return s;
+    });
     developProgress.update((p) => ({ ...p, done: p.done + 1 }));
   }
   if (failures.length > 0) {

@@ -7,7 +7,7 @@ import {
   selectedFolder, gridZoom, module as moduleStore, activeId, folderBaseByPath,
   updateLastCheck, updateSkipVersion, openaiApiKey, omitPreviewJpgs,
   telemetryEnabled, telemetryDecided, rollOverwriteSkip,
-  rollFilmEdge, rollEdgeText,
+  rollFilmEdge, rollEdgeText, undevelopableIds,
 } from "./store";
 import { locale } from "./i18n";
 
@@ -110,6 +110,13 @@ export function applySnapshot(snap: CatalogSnapshot): void {
     }
   }
   folderBaseByPath.set(fb);
+
+  if (typeof st.undevelopable_ids === "string" && st.undevelopable_ids) {
+    try {
+      const arr = JSON.parse(st.undevelopable_ids);
+      if (Array.isArray(arr)) undevelopableIds.set(new Set(arr.filter((x) => typeof x === "string")));
+    } catch { /* skip malformed */ }
+  }
 }
 
 /** Load the catalog from the backend and populate the stores. Call once on mount. */
@@ -185,7 +192,7 @@ export function initPersistence(): () => void {
   wireRecord(dustById, dust.save);
   wireRecord(metaById, meta.save);
 
-  let first = { loc: true, sf: true, gz: true, mod: true, aid: true, usv: true, ulc: true, oak: true, opj: true, ros: true, rfe: true, ret: true };
+  let first = { loc: true, sf: true, gz: true, mod: true, aid: true, usv: true, ulc: true, oak: true, opj: true, ros: true, rfe: true, ret: true, uid: true };
   locale.subscribe((l) => { if (first.loc) { first.loc = false; return; } prefs.save("locale", l); });
   openaiApiKey.subscribe((k) => { if (first.oak) { first.oak = false; return; } prefs.save("openai_api_key", k); });
   omitPreviewJpgs.subscribe((b) => { if (first.opj) { first.opj = false; return; } prefs.save("omit_preview_jpgs", String(b)); });
@@ -198,6 +205,7 @@ export function initPersistence(): () => void {
   updateLastCheck.subscribe((v) => { if (first.ulc) { first.ulc = false; return; } state.save("update_last_check", String(v)); });
   moduleStore.subscribe((m) => { if (first.mod) { first.mod = false; return; } state.save("module", m); });
   activeId.subscribe((a) => { if (first.aid) { first.aid = false; return; } state.save("active_id", a ?? ""); });
+  undevelopableIds.subscribe((s) => { if (first.uid) { first.uid = false; return; } state.save("undevelopable_ids", JSON.stringify([...s])); });
 
   const flush = () => {
     edits.flushAll(); crop.flushAll(); dust.flushAll(); meta.flushAll();
