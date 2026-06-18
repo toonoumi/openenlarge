@@ -422,6 +422,13 @@
     scale = fit; cx = imgW / 2; cy = imgH / 2;
   }
 
+  /** Animate to 1:1 (100%), centered. Crosses the hi-res zoom threshold so
+   *  resolution-dependent effects (Texture) preview truthfully. Parent via bind:this. */
+  export function zoomTo100() {
+    startAnim();
+    scale = 1.0; cx = imgW / 2; cy = imgH / 2;
+  }
+
   function startAnim() {
     animating = true;
     if (animTimer) clearTimeout(animTimer);

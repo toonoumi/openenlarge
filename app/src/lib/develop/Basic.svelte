@@ -18,6 +18,10 @@
   // sampled pixel; this component only toggles it and reflects the active state.
   export let onWbPick: (() => void) | null = null;
   export let wbPicking = false;
+  /** Jump the viewport to 100% (1:1) so resolution-dependent effects (Texture)
+   *  preview truthfully — at fit the proxy can't show the real result. Wired by
+   *  Develop to the Viewport's zoomTo100(). */
+  export let onViewActual: (() => void) | null = null;
   // The persistent normalized image crop [x,y,w,h] (null = full frame). Analysis
   // (base / D_max / WB) runs against this so black scan borders don't skew it.
   export let imageCrop: [number, number, number, number] | null = null;
@@ -256,7 +260,13 @@
       <Slider label={$t('basic.blacks')} min={-100} max={100} bind:value={$params.blacks} def={0} format={signed} />
 
       <!-- Presence -->
-      <div class="sub">{$t('basic.presence')}</div>
+      <div class="wbhead">
+        <span>{$t('basic.presence')}</span>
+        <span class="wbbtns">
+          <button class="auto" title={$t('basic.textureHint')} on:click={() => onViewActual?.()}>{$t('basic.textureViewActual')}</button>
+          <HelpDot text={$t('basic.textureHint')} />
+        </span>
+      </div>
       <Slider label={$t('basic.texture')} min={-100} max={100} bind:value={$params.texture} def={0} format={signed} />
       <Slider label={$t('basic.vibrance')} min={-100} max={100} bind:value={$params.vibrance} def={0} gradient={SAT_GRADIENT} format={signed} />
       <Slider label={$t('basic.saturation')} min={-100} max={100} bind:value={$params.saturation} def={0} gradient={SAT_GRADIENT} format={signed} />

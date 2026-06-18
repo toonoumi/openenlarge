@@ -385,6 +385,7 @@
         <div class="toolpane" in:fade={{ duration: 160, easing: cubicOut }}>
           {#if $tool === "edit"}
             <Basic onWbPick={toggleWbPick} wbPicking={pickTarget === "wb"} imageCrop={imageCrop}
+                   onViewActual={() => vp?.zoomTo100()}
                    geom={{ rot90: cRot, flip_h: committed?.flipH ?? false, flip_v: committed?.flipV ?? false, angle: committed?.angle ?? 0 }} />
             <TonalCurve onWpPick={toggleWpPick} wpPicking={pickTarget === "wp"} />
             <ColorGrading />
