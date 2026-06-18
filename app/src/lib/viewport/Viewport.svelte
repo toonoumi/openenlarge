@@ -368,6 +368,19 @@
     return [(e.clientX - rect.left - left) / eff, (e.clientY - rect.top - top) / eff];
   }
 
+  // ---- RGB densitometer ----------------------------------------------------
+  // Read the displayed pixel under the cursor as sRGB 8-bit (0..255) — what the
+  // eye sees and what exports. GPU path only: readCanvasPixel needs the WebGL2
+  // backbuffer (preserveDrawingBuffer). On the CPU <img> fallback it returns null
+  // and the badge stays hidden. Suppressed in eraser/point-pick modes (own overlays).
+  let hoverRGB: [number, number, number] | null = null;
+  $: readoutActive = interactive && useGL && !!id && !eraser && !pointPick;
+  function sampleHover(e: { clientX: number; clientY: number }) {
+    if (!readoutActive || !canvas) { hoverRGB = null; return; }
+    const rect = canvas.getBoundingClientRect();
+    hoverRGB = readCanvasPixel(canvas, e.clientX - rect.left, e.clientY - rect.top);
+  }
+
   // Notify the parent whenever the zoom state flips so it can swap the toolbar button.
   let prevZoomed = false;
   $: if (zoomed !== prevZoomed) { prevZoomed = zoomed; dispatch("zoomchange", zoomed); }
@@ -442,7 +455,7 @@
     if (painting) pending = [...pending, normPoint(e)];
   }
   function onEnter() { if (eraser) hovering = true; }
-  function onLeave() { hovering = false; painting = false; pending = []; mqActive = false; }
+  function onLeave() { hovering = false; painting = false; pending = []; mqActive = false; hoverRGB = null; }
 
   function onDown(e: PointerEvent) {
     if (!interactive) return;
@@ -485,6 +498,7 @@
   }
   function onMove(e: PointerEvent) {
     if (!interactive) return;
+    sampleHover(e);
     if (eraser && marquee) {
       if (mqActive) {
         const rect = el.getBoundingClientRect();
@@ -583,6 +597,12 @@
     <div class="marquee" style="left:{Math.min(mqSX, mqCX)}px; top:{Math.min(mqSY, mqCY)}px; width:{Math.abs(mqCX - mqSX)}px; height:{Math.abs(mqCY - mqSY)}px;"></div>
   {/if}
   {#if id && interactive}<div class="zoom">{label}</div>{/if}
+  {#if readoutActive && hoverRGB}
+    <div class="readout" title={$t("viewport.rgbReadout")}>
+      <span class="sw" style="background:rgb({hoverRGB[0]},{hoverRGB[1]},{hoverRGB[2]})"></span>
+      <span>R {hoverRGB[0]}</span><span>G {hoverRGB[1]}</span><span>B {hoverRGB[2]}</span>
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -602,6 +622,12 @@
   .hint { color: var(--text-dim); position: absolute; inset: 0; display: grid; place-items: center; }
   .zoom { position: absolute; bottom: 8px; right: 10px; font-size: 11px; color: var(--text-dim);
     background: rgba(0,0,0,0.45); padding: 2px 8px; border-radius: 6px; z-index: 2; }
+  .readout { position: absolute; bottom: 32px; right: 10px; font-size: 11px; color: var(--text);
+    background: rgba(0,0,0,0.45); padding: 2px 8px; border-radius: 6px; z-index: 2;
+    display: flex; align-items: center; gap: 6px; pointer-events: none;
+    font-variant-numeric: tabular-nums; }
+  .readout .sw { width: 10px; height: 10px; border-radius: 2px; flex: none;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.35); }
   .vp.erasing { cursor: none; }
   .vp.picking { cursor: crosshair; }
   .maskov { position: absolute; pointer-events: none; z-index: 2; overflow: visible; }
