@@ -6,6 +6,7 @@
   import { FinishRenderer, webgl2Available, float16RenderTargetSupported } from "./gl/renderer";
   import { finishUniforms } from "./gl/uniforms";
   import { toInversionUniforms } from "./gl/invert";
+  import { clipUniforms } from "./gl/clip";
   import { toneLutBytes, colorGrade, colorMix } from "../develop/finish";
   import { screenRadius, type DustStroke } from "../develop/dust";
   import { marqueeZoom } from "./marquee";
@@ -43,6 +44,10 @@
   /** AI auto-dust: detector-driven defect heal, live on the main display. */
   export let autoDustEnabled = false;
   export let autoDustSensitivity = 50;
+  /** Clipping-warning overlay toggles (GPU path only). */
+  export let clipHigh = false;
+  export let clipLow = false;
+  export let clipStrict = false;
 
   const dispatch = createEventDispatcher<{ stroke: DustStroke; brush: number; pointpick: { r: number; g: number; b: number; u: number; v: number }; aierased: void; autodusted: void; zoomchange: boolean; marqueedone: void }>();
 
@@ -166,6 +171,7 @@
     renderer.setLut(toneLutBytes(params));
     renderer.setColorGrade(colorGrade(params));
     renderer.setColorMix(colorMix(params));
+    renderer.setClip(clipUniforms({ high: clipHigh, low: clipLow, strict: clipStrict }));
     renderer.draw();
     // Publish a snapshot for the histogram (debounced; toDataURL is cheap-ish).
     if (canvas) {
@@ -364,6 +370,7 @@
     params.cm_purple_hue, params.cm_purple_sat, params.cm_purple_lum,
     params.cm_magenta_hue, params.cm_magenta_sat, params.cm_magenta_lum,
     JSON.stringify(params.pc_samples),
+    clipHigh, clipLow, clipStrict,
   ].join("|");
   $: if (useGL) { finishKey; if (renderer) drawGL(); }
 
