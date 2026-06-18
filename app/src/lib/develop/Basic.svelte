@@ -156,10 +156,12 @@
   // ---- Crop-aware D_max analysis ----
   // Derive D_max from the image area (the persistent crop) and apply it to THIS
   // image, then reseed WB so the white point matches the new dynamic range.
-  async function reanalyze() {
+  async function reanalyze(pinnedAtStart?: boolean) {
     const id = get(activeId); if (!id) return;
     // Snapshot the pre-reanalyze state so this is always one-click revertible (B3).
-    preReanalyze.set({ id, d_max_override: get(params).d_max_override ?? null, pinned: isPinned(id) });
+    // `pinnedAtStart` lets a caller record the pin as it was BEFORE the caller
+    // mutated it (manualReanalyze unpins first); defaults to the live pin state.
+    preReanalyze.set({ id, d_max_override: get(params).d_max_override ?? null, pinned: pinnedAtStart ?? isPinned(id) });
     try {
       const { d_max } = await api.analyze(id, withEffectiveBase(get(params), dir), imageCrop, geom);
       params.update((p) => ({ ...p, d_max_override: d_max }));
@@ -179,8 +181,12 @@
     preReanalyze.set(null);
   }
   function manualReanalyze() {
-    const id = get(activeId); if (id) setPinned(id, false);
-    reanalyze();
+    const id = get(activeId);
+    // Capture the real pin state before unpinning, so revert restores the
+    // true pre-reanalyze state (B3) rather than the just-cleared pin.
+    const wasPinned = !!id && isPinned(id);
+    if (id) setPinned(id, false);
+    reanalyze(wasPinned);
   }
 
   // Re-derive D_max only when the crop CHANGES on the current image — not on image
