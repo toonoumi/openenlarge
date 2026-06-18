@@ -13,6 +13,7 @@
   import { imageDir } from "$lib/library/folderScope";
   import { api, defaultParams } from "$lib/api";
   import { debounce } from "$lib/catalog";
+  import { rollFilmEdge, rollEdgeText } from "$lib/store";
   import FramePreview from "$lib/roll/FramePreview.svelte";
   import ConfirmOverwrite from "$lib/roll/ConfirmOverwrite.svelte";
   import BaseView from "$lib/develop/BaseView.svelte";
@@ -78,6 +79,45 @@
   function openFrame(id: string) {
     setActive(id);
     rollReferenceId.set(id);
+  }
+
+  // --- Film-strip contact sheet helpers -------------------------------------
+  const STRIP_SIZE = 6;
+
+  // Chunk images into strips of STRIP_SIZE, computing flat sequential frame numbers.
+  $: strips = (() => {
+    const imgs = $developedFolderImages;
+    const result: { frames: { img: typeof imgs[0]; num: string; idx: number }[]; padCount: number }[] = [];
+    for (let i = 0; i < imgs.length; i += STRIP_SIZE) {
+      const slice = imgs.slice(i, i + STRIP_SIZE);
+      const frames = slice.map((img, j) => ({
+        img,
+        num: String(i + j + 1).padStart(2, "0"),
+        idx: i + j,
+      }));
+      result.push({ frames, padCount: STRIP_SIZE - frames.length });
+    }
+    return result;
+  })();
+
+  // Editable edge text state
+  let edgeEditing = false;
+  let edgeInputValue = "";
+
+  function startEdgeEdit() {
+    edgeInputValue = $rollEdgeText;
+    edgeEditing = true;
+  }
+
+  function commitEdgeEdit() {
+    const trimmed = edgeInputValue.trim();
+    if (trimmed) rollEdgeText.set(trimmed);
+    edgeEditing = false;
+  }
+
+  function onEdgeKeydown(e: KeyboardEvent) {
+    if (e.key === "Enter") { e.preventDefault(); commitEdgeEdit(); }
+    else if (e.key === "Escape") { edgeEditing = false; }
   }
 
   // --- Live apply -------------------------------------------------------------
@@ -364,6 +404,13 @@
       exitEditMode();
     }
   }
+
+  // Svelte action: focus an input element immediately on mount.
+  function focusOnMount(node: HTMLInputElement) {
+    node.focus();
+    node.select();
+    return {};
+  }
 </script>
 
 <svelte:window on:keydown={onWindowKeydown} />
@@ -373,6 +420,14 @@
   <div class="roll">
     <div class="sheet">
       <div class="sheet-header">
+        <!-- Film edge toggle (left of export button) -->
+        <button class="film-edge-toggle" on:click={() => rollFilmEdge.update(b => !b)}
+                aria-label={$t('roll.filmEdge')} aria-pressed={$rollFilmEdge}>
+          <span class="film-edge-label">{$t('roll.filmEdge')}</span>
+          <span class="pill" class:pill-on={$rollFilmEdge}>
+            <span class="knob"></span>
+          </span>
+        </button>
         <button class="export-btn" on:click={exportContactSheet} disabled={$developedFolderImages.length === 0}>
           {$t('roll.export.button')}
         </button>
@@ -380,12 +435,81 @@
       {#if $developedFolderImages.length === 0}
         <div class="empty">{$t('roll.empty')}</div>
       {:else}
-        <div class="grid">
-          {#each $developedFolderImages as img (img.id)}
-            <button class="cell" data-id={img.id} on:click={() => openFrame(img.id)}>
-              <div class="ratio"><img src={previewMap[img.id] ?? img.thumbnail} alt={img.file_name} draggable="false" /></div>
-            </button>
-          {/each}
+        <div class="strips-container">
+          {#if $rollFilmEdge}
+            <!-- ===== FILM-EDGE ON: filmstrip with rebates ===== -->
+            {#each strips as strip}
+              <div class="filmstrip-strip">
+                <!-- Top rebate -->
+                <div class="rebate rebate-top">
+                  <div class="sprocket-holes"></div>
+                  <div class="frame-numbers">
+                    {#each strip.frames as f}
+                      <div class="frame-num">{f.num}</div>
+                    {/each}
+                    {#each Array(strip.padCount) as _}
+                      <div class="frame-num frame-pad"></div>
+                    {/each}
+                  </div>
+                </div>
+                <!-- Frames row -->
+                <div class="frames-row">
+                  {#each strip.frames as f}
+                    <button class="frame-cell" data-id={f.img.id}
+                            on:click={() => openFrame(f.img.id)}>
+                      <img src={previewMap[f.img.id] ?? f.img.thumbnail}
+                           alt={f.img.file_name} draggable="false" />
+                    </button>
+                  {/each}
+                  {#each Array(strip.padCount) as _}
+                    <div class="frame-cell frame-cell-pad"></div>
+                  {/each}
+                </div>
+                <!-- Bottom rebate -->
+                <div class="rebate rebate-bottom">
+                  <div class="rebate-info-row">
+                    <div class="barcode"></div>
+                    {#if edgeEditing}
+                      <input
+                        class="edge-text-input"
+                        type="text"
+                        bind:value={edgeInputValue}
+                        on:blur={commitEdgeEdit}
+                        on:keydown={onEdgeKeydown}
+                        aria-label="Film edge text"
+                        use:focusOnMount
+                      />
+                    {:else}
+                      <button class="edge-text" on:click|stopPropagation={startEdgeEdit}
+                              aria-label="Edit film edge text">{$rollEdgeText}</button>
+                    {/if}
+                    <div style="flex:1"></div>
+                    <span class="edge-arrow">→</span>
+                  </div>
+                  <div class="sprocket-holes"></div>
+                </div>
+              </div>
+            {/each}
+          {:else}
+            <!-- ===== FILM-EDGE OFF: proof grid ===== -->
+            {#each strips as strip}
+              <div class="proof-strip">
+                {#each strip.frames as f}
+                  <div class="proof-cell">
+                    <button class="proof-frame" data-id={f.img.id}
+                            on:click={() => openFrame(f.img.id)}>
+                      <img src={previewMap[f.img.id] ?? f.img.thumbnail}
+                           alt={f.img.file_name} draggable="false" />
+                    </button>
+                    <div class="proof-caption">{f.num}</div>
+                  </div>
+                {/each}
+                {#each Array(strip.padCount) as _}
+                  <div class="proof-cell proof-cell-pad"></div>
+                {/each}
+              </div>
+            {/each}
+          {/if}
         </div>
       {/if}
     </div>
@@ -555,16 +679,80 @@
   /* ===== Contact-sheet layout ===== */
   .roll { height: 100%; min-height: 0; display: grid; grid-template-columns: 1fr 320px; }
   .sheet { overflow-y: auto; padding: 0; background: #0d0d0f; display: flex; flex-direction: column; }
-  .sheet-header { display: flex; justify-content: flex-end; padding: 6px 8px;
-    border-bottom: 1px solid #222; flex: none; }
-  .grid { display: grid; gap: 0; align-content: start;
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
-  .cell { display: block; padding: 0; border: 0; border-right: 1px solid #222; border-bottom: 1px solid #222;
-    border-radius: 0; overflow: hidden; background: #0d0d0f; cursor: pointer; transition: none; }
-  .cell:hover { box-shadow: none; }
-  .ratio { position: relative; width: 100%; height: 0; padding-bottom: 75%; }
-  .ratio img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: block; }
+  .sheet-header { display: flex; align-items: center; justify-content: flex-end; gap: 10px;
+    padding: 6px 8px; border-bottom: 1px solid #222; flex: none; }
   .empty { color: var(--text-faint); padding: 16px; }
+
+  /* ===== Film-edge toggle ===== */
+  .film-edge-toggle { display: flex; align-items: center; gap: 10px; cursor: pointer;
+    background: transparent; border: none; padding: 0; margin-right: auto; }
+  .film-edge-label { font-size: 13px; color: #b6b5b9; }
+  .pill { position: relative; width: 38px; height: 21px; border-radius: 11px;
+    background: #34343a; transition: background 0.2s; flex: none; }
+  .pill-on { background: #cf9152; }
+  .knob { position: absolute; top: 2px; width: 17px; height: 17px; border-radius: 50%;
+    transition: left 0.2s, background 0.2s; }
+  .pill-on .knob { left: 19px; background: #fff; }
+  .pill:not(.pill-on) .knob { left: 2px; background: #a6a6ab; }
+
+  /* ===== Strip container ===== */
+  .strips-container { padding: 24px 26px 30px; display: flex; flex-direction: column; }
+
+  /* ===== Filmstrip (film-edge ON) ===== */
+  .filmstrip-strip { margin-bottom: 16px; }
+
+  .rebate { background: #131210; }
+  .rebate-top { border-radius: 1px 1px 0 0; }
+  .rebate-bottom { border-radius: 0 0 1px 1px; }
+
+  .sprocket-holes { height: 8px;
+    background: repeating-linear-gradient(90deg,
+      rgba(216,207,184,0) 0 9px,
+      rgba(216,207,184,.16) 9px 15px,
+      rgba(216,207,184,0) 15px 20px); }
+
+  .frame-numbers { display: flex; height: 19px; align-items: center; }
+  .frame-num { flex: 1; text-align: center;
+    font: 600 10px 'Spline Sans Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+    color: #7e7868; letter-spacing: .12em; }
+  .frame-num.frame-pad { visibility: hidden; }
+
+  .frames-row { display: flex; gap: 7px; background: #000; padding: 0 6px; }
+  .frame-cell { flex: 1; position: relative; aspect-ratio: 41 / 49; background: #000;
+    overflow: hidden; padding: 0; border: none; cursor: pointer; display: block; }
+  .frame-cell img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .frame-cell-pad { flex: 1; aspect-ratio: 41 / 49; background: transparent; cursor: default; }
+
+  .rebate-info-row { display: flex; align-items: center; gap: 11px; height: 18px; padding: 0 10px; }
+  .barcode { width: 30px; height: 9px; flex: none;
+    background: repeating-linear-gradient(90deg,
+      #c9c3b0 0 1px, transparent 1px 3px,
+      #c9c3b0 3px 4px, transparent 4px 6px,
+      #c9c3b0 6px 8px, transparent 8px 11px,
+      #c9c3b0 11px 12px, transparent 12px 15px,
+      #c9c3b0 15px 17px, transparent 17px 19px); }
+  .edge-text { background: transparent; border: none; padding: 0; cursor: text;
+    font: 600 9px 'Spline Sans Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+    color: #857f6f; letter-spacing: .24em; white-space: nowrap; }
+  .edge-text-input { background: transparent; border: none; border-bottom: 1px solid #857f6f;
+    padding: 0; outline: none;
+    font: 600 9px 'Spline Sans Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+    color: #857f6f; letter-spacing: .24em; white-space: nowrap;
+    width: 220px; }
+  .edge-arrow { font: 600 9px 'Spline Sans Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+    color: #6c6657; letter-spacing: .24em; }
+
+  /* ===== Proof grid (film-edge OFF) ===== */
+  .proof-strip { display: flex; gap: 16px; padding: 0 0 16px; }
+  .proof-cell { flex: 1; display: flex; flex-direction: column; gap: 8px; }
+  .proof-cell-pad { flex: 1; }
+  .proof-frame { aspect-ratio: 41 / 49; background: #d8d3c4; padding: 3px; overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,.5); border: none; cursor: pointer;
+    display: block; width: 100%; }
+  .proof-frame img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .proof-caption { text-align: center;
+    font: 600 10px 'Spline Sans Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+    color: #6f6a5e; letter-spacing: .12em; }
   .panel { border-left: 1px solid var(--glass-brd); display: flex; flex-direction: column;
     gap: 8px; padding: 12px; overflow-y: auto; }
   .panel-tools { display: flex; flex-direction: column; gap: 6px; }

@@ -7,6 +7,7 @@ import {
   selectedFolder, gridZoom, module as moduleStore, activeId, folderBaseByPath,
   updateLastCheck, updateSkipVersion, openaiApiKey, omitPreviewJpgs,
   telemetryEnabled, telemetryDecided, rollOverwriteSkip,
+  rollFilmEdge, rollEdgeText,
 } from "./store";
 import { locale } from "./i18n";
 
@@ -74,6 +75,10 @@ export function applySnapshot(snap: CatalogSnapshot): void {
     omitPreviewJpgs.set(snap.prefs.omit_preview_jpgs !== "false");
   if (snap.prefs.roll_overwrite_skip !== undefined)
     rollOverwriteSkip.set(snap.prefs.roll_overwrite_skip === "true");
+  if (snap.prefs.roll_film_edge !== undefined)
+    rollFilmEdge.set(snap.prefs.roll_film_edge !== "false");
+  if (typeof snap.prefs.roll_edge_text === "string" && snap.prefs.roll_edge_text)
+    rollEdgeText.set(snap.prefs.roll_edge_text);
   // Analytics: "on"/"off" = a recorded choice; absent = undecided (the first-run
   // prompt shows and telemetryEnabled stays false until they answer).
   if (snap.prefs.telemetry === "on") { telemetryEnabled.set(true); telemetryDecided.set(true); }
@@ -180,11 +185,13 @@ export function initPersistence(): () => void {
   wireRecord(dustById, dust.save);
   wireRecord(metaById, meta.save);
 
-  let first = { loc: true, sf: true, gz: true, mod: true, aid: true, usv: true, ulc: true, oak: true, opj: true, ros: true };
+  let first = { loc: true, sf: true, gz: true, mod: true, aid: true, usv: true, ulc: true, oak: true, opj: true, ros: true, rfe: true, ret: true };
   locale.subscribe((l) => { if (first.loc) { first.loc = false; return; } prefs.save("locale", l); });
   openaiApiKey.subscribe((k) => { if (first.oak) { first.oak = false; return; } prefs.save("openai_api_key", k); });
   omitPreviewJpgs.subscribe((b) => { if (first.opj) { first.opj = false; return; } prefs.save("omit_preview_jpgs", String(b)); });
   rollOverwriteSkip.subscribe((b) => { if (first.ros) { first.ros = false; return; } prefs.save("roll_overwrite_skip", String(b)); });
+  rollFilmEdge.subscribe((b) => { if (first.rfe) { first.rfe = false; return; } prefs.save("roll_film_edge", String(b)); });
+  rollEdgeText.subscribe((v) => { if (first.ret) { first.ret = false; return; } prefs.save("roll_edge_text", v); });
   selectedFolder.subscribe((p) => { if (first.sf) { first.sf = false; return; } state.save("selected_folder", p ?? ""); });
   gridZoom.subscribe((z) => { if (first.gz) { first.gz = false; return; } state.save("grid_zoom", String(z)); });
   updateSkipVersion.subscribe((v) => { if (first.usv) { first.usv = false; return; } state.save("update_skip_version", v); });

@@ -185,6 +185,14 @@ export const telemetryDecided = writable<boolean>(false);
  * defaults on. */
 export const omitPreviewJpgs = writable<boolean>(true);
 
+/** When true, the roll contact sheet renders as a filmstrip with rebates.
+ * When false, renders as a plain proof grid. Persisted via prefs as `roll_film_edge`. */
+export const rollFilmEdge = writable<boolean>(true);
+
+/** Edge text shown on the filmstrip rebate (e.g. film stock name).
+ * Persisted via prefs as `roll_edge_text`. */
+export const rollEdgeText = writable<string>("KODAK 400TX · SAFETY FILM · 5063");
+
 /** When true, skip the "overwrite edits?" confirm when entering the Develop roll
  * section. Persisted via prefs as `roll_overwrite_skip`. */
 export const rollOverwriteSkip = writable<boolean>(false);
