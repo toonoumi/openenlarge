@@ -397,6 +397,8 @@ export const dict: Record<string, Record<string, string>> = {
     "histogram.clipHigh": "Highlight clipping (right-click: 253)",
     "histogram.clipLow": "Shadow clipping (right-click: 2)",
     "histogram.clipStrictHint": "Strict 253/2 threshold",
+    "roll.adjust.heading": "Roll look",
+    "roll.adjust.whitePoint": "White point",
   },
   zh: {
     "app.brand": "OpenEnlarge",
@@ -794,5 +796,7 @@ export const dict: Record<string, Record<string, string>> = {
     "histogram.clipHigh": "高光裁切（右键：253）",
     "histogram.clipLow": "暗部裁切（右键：2）",
     "histogram.clipStrictHint": "严格 253/2 阈值",
+    "roll.adjust.heading": "整卷色调",
+    "roll.adjust.whitePoint": "白点",
   },
 };
