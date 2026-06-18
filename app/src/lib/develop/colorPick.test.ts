@@ -1,5 +1,54 @@
 import { describe, it, expect } from "vitest";
-import { rgbToHslSample } from "./colorPick";
+import { rgbToHslSample, sampleCoords, pickPixel } from "./colorPick";
+
+describe("sampleCoords", () => {
+  // A canvas whose backbuffer is 2× its CSS size (HiDPI), origin handling.
+  const dims = { width: 200, height: 100, clientWidth: 100, clientHeight: 50 };
+
+  it("maps a CSS point to framebuffer coords with a bottom-left (y-flipped) origin", () => {
+    // Cursor at CSS (10, 5) → device (20, 10) from the top; GL y = H-1-10 = 89.
+    expect(sampleCoords(dims, 10, 5)).toEqual({ sx: 20, sy: 89 });
+  });
+
+  it("top-left CSS corner maps to the top row in GL space (sy = H-1)", () => {
+    expect(sampleCoords(dims, 0, 0)).toEqual({ sx: 0, sy: 99 });
+  });
+
+  it("bottom-right CSS corner clamps inside the backbuffer", () => {
+    expect(sampleCoords(dims, 100, 50)).toEqual({ sx: 199, sy: 0 });
+  });
+
+  it("returns null when the point is outside the element bounds", () => {
+    expect(sampleCoords(dims, -1, 10)).toBeNull();
+    expect(sampleCoords(dims, 10, -1)).toBeNull();
+    expect(sampleCoords(dims, 101, 10)).toBeNull();
+    expect(sampleCoords(dims, 10, 51)).toBeNull();
+  });
+});
+
+describe("pickPixel", () => {
+  const canvas = { width: 200, height: 100, clientWidth: 100, clientHeight: 50 } as HTMLCanvasElement;
+
+  it("reads the CLEAN image pixel via the renderer (no clip overlay) when one is present", () => {
+    const calls: Array<[number, number]> = [];
+    const renderer = {
+      readPixel(sx: number, sy: number): [number, number, number] | null {
+        calls.push([sx, sy]);
+        return [12, 34, 56];
+      },
+    };
+    // Cursor at CSS (10, 5) → device (20, 10) top → GL (20, 89).
+    expect(pickPixel(renderer, canvas, 10, 5)).toEqual([12, 34, 56]);
+    expect(calls).toEqual([[20, 89]]);
+  });
+
+  it("returns null without touching the renderer when out of bounds", () => {
+    let touched = false;
+    const renderer = { readPixel() { touched = true; return [0, 0, 0] as [number, number, number]; } };
+    expect(pickPixel(renderer, canvas, -5, 5)).toBeNull();
+    expect(touched).toBe(false);
+  });
+});
 
 describe("rgbToHslSample", () => {
   it("converts a mid red byte pixel to HSL fields", () => {

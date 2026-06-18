@@ -10,7 +10,7 @@
   import { toneLutBytes, colorGrade, colorMix } from "../develop/finish";
   import { screenRadius, type DustStroke } from "../develop/dust";
   import { marqueeZoom } from "./marquee";
-  import { readCanvasPixel } from "../develop/colorPick";
+  import { pickPixel } from "../develop/colorPick";
   import { orientUVMatrix, displayToSourceUV } from "../crop/transforms";
   import { t } from "$lib/i18n";
 
@@ -455,7 +455,8 @@
   function sampleHover(e: { clientX: number; clientY: number }) {
     if (!readoutActive || !canvas) { hoverRGB = null; return; }
     const rect = canvas.getBoundingClientRect();
-    hoverRGB = readCanvasPixel(canvas, e.clientX - rect.left, e.clientY - rect.top);
+    // Pick CLEAN image color via the renderer (no clip-warning overlay baked in).
+    hoverRGB = pickPixel(renderer, canvas, e.clientX - rect.left, e.clientY - rect.top);
   }
 
   // Notify the parent whenever the zoom state flips so it can swap the toolbar button.
@@ -560,7 +561,9 @@
         // Working-image UV of the click: the canvas is the crop window of the
         // oriented image, so map the normalized click back through crop+orient.
         const [u, v] = displayToSourceUV(px / rect.width, py / rect.height, imageCrop, rot90, flipH, flipV);
-        const rgb = readCanvasPixel(canvas, px, py);
+        // Clean image color (no clip overlay) so a point pick over a clipped
+        // region samples the real pixel, not the warning color (B2).
+        const rgb = pickPixel(renderer, canvas, px, py);
         if (rgb) dispatch("pointpick", { r: rgb[0], g: rgb[1], b: rgb[2], u, v });
       }
       return;

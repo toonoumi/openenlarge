@@ -92,6 +92,10 @@ export class FinishRenderer {
   private fbo: WebGLFramebuffer | null = null;
   private inv: InversionUniforms | null = null;
   private invLoc: Record<string, WebGLUniformLocation | null> = {};
+  private readFbo: WebGLFramebuffer | null = null;   // 1-px clean-readback target
+  private readTex: WebGLTexture | null = null;
+  private readW = 0;
+  private readH = 0;
   private geom = {
     crop_off: new Float32Array([0, 0]),
     crop_scale: new Float32Array([1, 1]),
@@ -188,7 +192,9 @@ export class FinishRenderer {
     gl.deleteTexture(this.lutTex);
     gl.deleteTexture(this.srcTexF);
     gl.deleteTexture(this.interTex);
+    gl.deleteTexture(this.readTex);
     gl.deleteFramebuffer(this.fbo);
+    gl.deleteFramebuffer(this.readFbo);
     gl.deleteProgram(this.prog);
     gl.deleteProgram(this.invProg);
     gl.deleteVertexArray(this.vao);
@@ -319,7 +325,7 @@ export class FinishRenderer {
    * WHATEVER framebuffer is currently bound (canvas for live, export FBO for
    * export) at viewport (vw, vh).
    */
-  private drawFinishPass(vw: number, vh: number) {
+  private drawFinishPass(vw: number, vh: number, clipOff = false) {
     const gl = this.gl; if (!gl) return;
     const p = this.prog, fu = this.uniforms;
     if (!p || !fu) return;
@@ -351,7 +357,10 @@ export class FinishRenderer {
       gl.uniform1fv(this.loc.u_pc_variance, cm.pc_variance);
       gl.uniform1fv(this.loc.u_pc_range, cm.pc_range);
     }
-    const clip = this.clip;
+    // clipOff zeroes the overlay sentinels so the finishing pass writes pure
+    // image color — used by readPixel() so the color picker is never corrupted
+    // by the clip-warning overlay (B2).
+    const clip = clipOff ? null : this.clip;
     gl.uniform1f(this.loc.u_clip_high, clip ? clip.high : 0);
     gl.uniform1f(this.loc.u_clip_low, clip ? clip.low : 0);
     gl.uniform1f(this.loc.u_clip_low_on, clip ? clip.lowOn : 0);
@@ -363,6 +372,49 @@ export class FinishRenderer {
     if (this.useFloat && this.invProg && this.inv) this.drawInvertPass();
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     this.drawFinishPass(this.srcW, this.srcH);
+  }
+
+  /**
+   * Read one pixel of CLEAN finished image color at framebuffer coords (sx, sy)
+   * — i.e. WITHOUT the clip-warning overlay baked in (B2: the color picker must
+   * be identical whether the overlay is on or off, even inside a clipped region).
+   *
+   * Re-runs only the finishing pass (the inverted `interTex` from the last draw()
+   * is reused) with the overlay forced off, into a scissored 1-px offscreen FBO,
+   * then reads that single pixel back. Returns null if not yet drawable.
+   */
+  readPixel(sx: number, sy: number): [number, number, number] | null {
+    const gl = this.gl; if (!gl || !this.hasSource || !this.prog) return null;
+    const w = this.srcW, h = this.srcH;
+    if (sx < 0 || sy < 0 || sx >= w || sy >= h) return null;
+
+    // (Re)allocate the readback target to match the current canvas size so (sx,sy)
+    // — computed against the canvas backbuffer — addresses the same pixel here.
+    if (!this.readFbo) this.readFbo = gl.createFramebuffer();
+    if (!this.readTex || this.readW !== w || this.readH !== h) {
+      if (this.readTex) gl.deleteTexture(this.readTex);
+      this.readTex = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, this.readTex);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+      this.readW = w; this.readH = h;
+    }
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.readFbo);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.readTex, 0);
+    if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      return null;
+    }
+    // Shade ONLY the target pixel (scissor) so a per-pixel pick stays cheap.
+    gl.enable(gl.SCISSOR_TEST);
+    gl.scissor(sx, sy, 1, 1);
+    this.drawFinishPass(w, h, /* clipOff */ true);
+    gl.disable(gl.SCISSOR_TEST);
+    const px = new Uint8Array(4);
+    gl.readPixels(sx, sy, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    return [px[0], px[1], px[2]];
   }
 
   /**
