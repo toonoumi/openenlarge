@@ -2,7 +2,7 @@
   import { t } from "$lib/i18n";
   import { fade } from "svelte/transition";
   import { cubicOut } from "svelte/easing";
-  import { activeId, params, images, folderImages, tool, cropById, activeCrop, dustById, activeDust, deleteTarget, dustRev, developRev, folderBaseByPath, baseSampling, sampledBase, sampledDmax, selectAll, deleteSelectionIds, setActive } from "../store";
+  import { activeId, params, images, folderImages, tool, cropById, activeCrop, dustById, activeDust, deleteTarget, dustRev, developRev, folderBaseByPath, baseSampling, sampledBase, sampledDmax, selectAll, deleteSelectionIds, setActive, previewSrc } from "../store";
   import { get } from "svelte/store";
   import { imageDir } from "../library/folderScope";
   import { withEffectiveBase } from "../develop/base";
@@ -336,6 +336,14 @@
                   bind:rect {lockRatio} {rot90} {flipH} {flipV} {angle}
                   on:custom={() => (aspect = "custom")} on:straighten={(e) => onStraighten(e.detail)} />
       {:else}
+        <!-- Cold-start placeholder: the in-memory catalog thumbnail fills the main view
+             instantly while the Viewport decodes the full working buffer from cache on
+             first launch (`previewSrc` is empty until the first real frame is rendered).
+             object-fit:contain matches the Viewport's fit, so the real frame paints over
+             it seamlessly. -->
+        {#if active?.thumbnail && !$previewSrc}
+          <img class="cold-thumb" src={active.thumbnail} alt="" draggable="false" />
+        {/if}
         <!-- The Viewport stays mounted while the film-base picker is armed; BaseView
              overlays it. Unmounting the Viewport tears down its GPU context and forces
              a full working-buffer re-fetch + re-upload on dismiss (a multi-second blank),
@@ -446,6 +454,10 @@
   /* Film-base picker overlay: covers the still-mounted Viewport (opaque so it doesn't
      bleed through) while keeping the Viewport's GPU texture alive for an instant dismiss. */
   .picker-overlay { position: absolute; inset: 0; z-index: 6; background: #111111; }
+  /* Cold-start thumbnail placeholder: sits behind the Viewport, fit to the same padded
+     box so the first real frame paints over it without a jump. */
+  .cold-thumb { position: absolute; inset: 60px; width: calc(100% - 120px); height: calc(100% - 120px);
+    object-fit: contain; z-index: 0; pointer-events: none; border-radius: 10px; }
   .hint { color: var(--text-dim); }
   .bottom { grid-area: bottom; min-width: 0; overflow: hidden; }
 </style>

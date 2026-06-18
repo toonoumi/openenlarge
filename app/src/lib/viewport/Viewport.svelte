@@ -102,7 +102,13 @@
     }
     const ro = new ResizeObserver(measure);
     if (el) ro.observe(el);
-    return () => ro.disconnect();
+    return () => {
+      ro.disconnect();
+      // Free the WebGL context on unmount — otherwise every remount leaks one and
+      // WebKit stalls the app once it caps out (~16 contexts).
+      renderer?.dispose();
+      renderer = null;
+    };
   });
 
   $: if (id !== prevId) { prevId = id; scale = 0; cx = imgW / 2; cy = imgH / 2; }

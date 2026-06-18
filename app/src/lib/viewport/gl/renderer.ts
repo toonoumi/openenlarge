@@ -174,6 +174,25 @@ export class FinishRenderer {
     this.available = true;
   }
 
+  /** Release every GL object and the context itself. MUST be called when the owning
+   *  Viewport unmounts: otherwise each remount leaks a WebGL context, and WebKit
+   *  forcibly reclaims them after ~16 — surfacing as "Context leak detected" plus
+   *  multi-second stalls (frozen image switching) until the old contexts are reaped. */
+  dispose() {
+    const gl = this.gl;
+    if (!gl) return;
+    gl.deleteTexture(this.tex);
+    gl.deleteTexture(this.lutTex);
+    gl.deleteTexture(this.srcTexF);
+    gl.deleteTexture(this.interTex);
+    gl.deleteFramebuffer(this.fbo);
+    gl.deleteProgram(this.prog);
+    gl.deleteProgram(this.invProg);
+    gl.deleteVertexArray(this.vao);
+    gl.getExtension("WEBGL_lose_context")?.loseContext();
+    this.gl = null; // further calls no-op (every method guards on `this.gl`)
+  }
+
   /** Upload a 256×1 RGBA8 tone LUT. */
   setLut(bytes: Uint8Array) {
     const gl = this.gl; if (!gl || !this.lutTex) return;
