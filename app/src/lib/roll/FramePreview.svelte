@@ -3,6 +3,7 @@
   import { rollReferenceId } from "$lib/roll/draft";
   import { images, editsById, cropById, developRev, dustById } from "$lib/store";
   import Viewport from "$lib/viewport/Viewport.svelte";
+  import Icon from "$lib/icons/Icon.svelte";
   import { withEffectiveBase } from "$lib/develop/base";
   import { imageDir } from "$lib/library/folderScope";
   import { defaultParams } from "$lib/api";
@@ -76,7 +77,7 @@
   </div>
 
   <div class="toolbar">
-    <button class="close-btn" on:click={close}>{$t('roll.close')}</button>
+    <button class="close-btn" on:click={close} aria-label={$t('roll.close')} title={$t('roll.close')}><Icon name="x" size={18} /></button>
   </div>
 </div>
 
@@ -106,16 +107,18 @@
     z-index: 51;
   }
   .close-btn {
-    padding: 8px 18px;
-    border-radius: 9px;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
     border: 0;
     background: rgba(0, 0, 0, 0.55);
     color: #fff;
-    font-size: 14px;
-    font-weight: 600;
+    display: grid;
+    place-items: center;
+    padding: 0;
     cursor: pointer;
   }
   .close-btn:hover {
-    background: rgba(255, 255, 255, 0.15);
+    background: rgba(255, 255, 255, 0.18);
   }
 </style>
