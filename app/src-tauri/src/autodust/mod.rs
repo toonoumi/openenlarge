@@ -9,8 +9,10 @@
 pub mod assets;
 pub mod engine;
 
-/// Tiling for the MI-GAN inpaint pass (256px tiles, 16px overlap).
-pub const TILE: usize = 256;
+/// Tiling for the MI-GAN inpaint pass. 512px tiles (vs 256) → ~4× fewer
+/// `session.run` calls over a full-frame heal (the dominant cost), with similar
+/// per-tile quality since MI-GAN resizes its hole-crop to 512 internally anyway.
+pub const TILE: usize = 512;
 pub const TILE_PAD: usize = 16;
 
 /// Short-side resolution the detector runs at (rounded to a multiple of 16, never
