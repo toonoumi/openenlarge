@@ -250,6 +250,9 @@
   let zoomMarquee = false; // eraser marquee-zoom armed
   let viewZoomed = false;  // eraser viewport currently magnified
   let vp: import("$lib/viewport/Viewport.svelte").default; // Viewport instance for resetZoom()
+  // Disarm the marquee when the eraser tool isn't active so it can't leak into
+  // another tool or persist across a Viewport remount.
+  $: if ($tool !== "eraser") zoomMarquee = false;
   $: dust = $activeDust;
 
   // Apply a reducer to the active image's dust edits and force a Viewport re-render.

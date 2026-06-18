@@ -386,8 +386,13 @@
   }
 
   // Notify the parent whenever the zoom state flips so it can swap the toolbar button.
-  let prevZoomed = false;
-  $: if (zoomed !== prevZoomed) { prevZoomed = zoomed; dispatch("zoomchange", zoomed); }
+  // Push the zoom state to the parent on every flip — and once the viewport is
+  // ready, even if it matches the initial `false`. A fresh Viewport instance
+  // (e.g. remounted after a trip through the crop tool, which swaps in CropView)
+  // starts un-zoomed; without this first emit the parent would keep a stale
+  // `viewZoomed = true` from the previous instance and the button would stick.
+  let prevZoomed: boolean | null = null;
+  $: if (ready && zoomed !== prevZoomed) { prevZoomed = zoomed; dispatch("zoomchange", zoomed); }
 
   /** Animate back to fit-to-view. Called by the parent via bind:this. */
   export function resetZoom() {
