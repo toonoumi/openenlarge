@@ -8,6 +8,8 @@
   import { draftParamsStore } from "./draftParams";
 
   const ps = draftParamsStore();
+
+  function markWbManual() { ps.update((p) => ({ ...p, wb_manual: true })); }
 </script>
 
 <div class="adjust">
@@ -17,9 +19,9 @@
        `$params` swapped for `$ps`. Same label keys / min / max / step / scale /
        gradient / format so the roll look matches per-image Tune exactly. -->
   <Slider label={$t('basic.temp')} min={2000} max={50000} step={0.5} scale="reciprocal" scrubStep={10}
-    bind:value={$ps.temp} def={5500} gradient={TEMP_GRADIENT} format={kelvin} />
+    bind:value={$ps.temp} def={5500} gradient={TEMP_GRADIENT} format={kelvin} on:input={markWbManual} />
   <Slider label={$t('basic.tint')} min={-150} max={150} step={1}
-    bind:value={$ps.tint} def={0} gradient={TINT_GRADIENT} format={signed} />
+    bind:value={$ps.tint} def={0} gradient={TINT_GRADIENT} format={signed} on:input={markWbManual} />
   <Slider label={$t('basic.exposure')} min={-5} max={5} step={0.01} bind:value={$ps.exposure} def={0} format={ev} />
   <Slider label={$t('basic.contrast')} min={-100} max={100} bind:value={$ps.contrast} def={0} format={signed} />
   <Slider label={$t('basic.highlights')} min={-100} max={100} bind:value={$ps.highlights} def={0} format={signed} />

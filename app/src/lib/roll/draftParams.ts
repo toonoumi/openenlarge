@@ -1,4 +1,4 @@
-import { derived, get } from "svelte/store";
+import { derived } from "svelte/store";
 import type { InvertParams } from "../api";
 import type { ParamsStore } from "../perImage";
 import { rollDraft } from "./draft";
@@ -10,6 +10,6 @@ export function draftParamsStore(): ParamsStore {
   return {
     subscribe: view.subscribe,
     set: (p: InvertParams) => rollDraft.update((d) => ({ ...d, params: { ...p } })),
-    update: (fn) => rollDraft.update((d) => ({ ...d, params: { ...fn(get(rollDraft).params) } })),
+    update: (fn) => rollDraft.update((d) => ({ ...d, params: { ...fn(d.params) } })),
   };
 }
