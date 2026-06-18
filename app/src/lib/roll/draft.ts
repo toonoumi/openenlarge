@@ -3,8 +3,8 @@ import { defaultParams, type InvertParams } from "../api";
 import type { CropRect } from "../crop/types";
 
 /** The roll-wide draft: one set of params (tone/color/wb + base_override +
- * d_max_override) plus a crop geometry, previewed live across the contact sheet
- * and bulk-written into every frame on "Apply to roll". Non-destructive until applied. */
+ * d_max_override) plus a crop geometry. Changes are live-mirrored to every frame
+ * as you edit — there is no "Apply" button; mirroring is continuous and immediate. */
 export interface RollDraft {
   params: InvertParams;
   crop: CropRect | null;

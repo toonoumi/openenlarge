@@ -342,7 +342,7 @@
         <button class="tool-entry-btn" on:click={enterCropMode} disabled={$developedFolderImages.length === 0}>
           {$t('roll.crop.tool')}
         </button>
-        <div class="panel-section-label">Film base</div>
+        <div class="panel-section-label">{$t('roll.base.heading')}</div>
         <div class="panel-btn-row">
           <button class="tool-entry-btn" on:click={enterBaseMode} disabled={$developedFolderImages.length === 0}>
             {$t('roll.base.sample')}
@@ -351,7 +351,7 @@
             {$t('roll.base.auto')}
           </button>
         </div>
-        <div class="panel-section-label">White point</div>
+        <div class="panel-section-label">{$t('roll.wp.heading')}</div>
         <button class="tool-entry-btn" on:click={enterWpMode} disabled={$developedFolderImages.length === 0}>
           {$t('roll.wp.pick')}
         </button>
