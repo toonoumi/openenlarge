@@ -111,7 +111,9 @@
 <style>
   .wrap { display: flex; flex-direction: column; height: 100%; }
   .ttl { font-size: 11px; text-transform: uppercase; letter-spacing: 0.7px; color: var(--text-faint); padding: 2px 6px 10px; }
-  .tree { flex: 1; overflow: auto; }
+  /* Scrolls both axes (horizontal reveals clipped folder names); scrollbar hidden. */
+  .tree { flex: 1; overflow: auto; scrollbar-width: none; -ms-overflow-style: none; }
+  .tree::-webkit-scrollbar { display: none; }
   .empty { color: var(--text-faint); padding: 8px; }
   .omit-row { position: relative; display: flex; align-items: center; gap: 6px; margin-top: 10px; }
   .omit { display: flex; align-items: center; gap: 7px; padding: 2px 4px;

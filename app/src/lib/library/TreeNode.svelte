@@ -30,11 +30,14 @@
 {/if}
 
 <style>
+  /* Rows grow to fit their full label (no ellipsis) and stay at least panel-wide, so the
+     tree can scroll horizontally to reveal clipped subfolder names while highlights still
+     span the full row. */
   .row { display: flex; align-items: center; gap: 7px; padding: 6px 8px; border-radius: 8px;
-    color: var(--text-dim); cursor: pointer; white-space: nowrap; }
+    color: var(--text-dim); cursor: pointer; white-space: nowrap; width: max-content; min-width: 100%; }
   .row:hover { background: rgba(255,255,255,0.04); }
   .row.sel { background: rgba(255,255,255,0.07); color: var(--text); }
   .chev { color: var(--text-faint); display: inline-flex; width: 12px; }
-  .lbl { overflow: hidden; text-overflow: ellipsis; }
+  .lbl { white-space: nowrap; }
   .ct { margin-left: auto; font-size: 11px; color: var(--text-faint); padding-left: 8px; }
 </style>

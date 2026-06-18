@@ -36,6 +36,32 @@
     return () => { disposed = true; unlisten(); };
   });
 
+  // Drag the divider between the folder panel and the grid to resize the left column.
+  // Width is clamped and persisted so it survives reloads.
+  const MIN_LEFT = 160, MAX_LEFT = 480, LEFT_KEY = "library.leftW";
+  let leftW = 232;
+  let resizing = false;
+  onMount(() => {
+    const saved = Number(localStorage.getItem(LEFT_KEY));
+    if (saved >= MIN_LEFT && saved <= MAX_LEFT) leftW = saved;
+  });
+  function startResize(e: PointerEvent) {
+    e.preventDefault();
+    resizing = true;
+    const startX = e.clientX, startW = leftW;
+    const onMove = (ev: PointerEvent) => {
+      leftW = Math.min(MAX_LEFT, Math.max(MIN_LEFT, startW + (ev.clientX - startX)));
+    };
+    const onUp = () => {
+      resizing = false;
+      localStorage.setItem(LEFT_KEY, String(Math.round(leftW)));
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  }
+
   // Skip nav while a form control (e.g. the thumb-size slider) is focused, so its
   // own arrow-key behaviour wins.
   function formFocused(): boolean {
@@ -96,8 +122,12 @@
 
 <svelte:window on:keydown={onKey} />
 
-<div class="layout" on:contextmenu={onContext}>
-  <aside class="left"><FolderNav /></aside>
+<div class="layout" class:resizing style="grid-template-columns: {leftW}px 1fr 268px" on:contextmenu={onContext}>
+  <aside class="left">
+    <FolderNav />
+    <div class="resizer" class:active={resizing} on:pointerdown={startResize}
+      role="separator" aria-label="Resize folder panel"></div>
+  </aside>
   <section class="center"><div class="pad"><Grid /></div></section>
   <aside class="right"><Metadata /></aside>
   <footer class="bottom"><Filmstrip /></footer>
@@ -124,8 +154,16 @@
   .layout { display: grid; height: 100%; gap: 14px;
     grid-template-columns: 232px 1fr 268px; grid-template-rows: 1fr 88px;
     grid-template-areas: "left center right" "bottom bottom bottom"; }
-  .left { grid-area: left; } .right { grid-area: right; }
+  .left { grid-area: left; position: relative; } .right { grid-area: right; }
   .left, .right { min-height: 0; }
+  .layout.resizing { cursor: ew-resize; user-select: none; }
+
+  /* Drag handle sitting in the gap on the right edge of the folder panel. */
+  .resizer { position: absolute; top: 0; right: -8px; width: 12px; height: 100%;
+    cursor: ew-resize; z-index: 10; touch-action: none; }
+  .resizer::after { content: ""; position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+    width: 2px; height: 100%; border-radius: 2px; background: transparent; transition: background 0.14s ease; }
+  .resizer:hover::after, .resizer.active::after { background: var(--accent); }
   .center { grid-area: center; min-height: 0; background: #111111; border: 1px solid var(--glass-brd);
     border-radius: 14px; }
   .pad { padding: 14px; height: 100%; }
