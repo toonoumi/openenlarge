@@ -8,6 +8,7 @@
   import { toInversionUniforms } from "./gl/invert";
   import { toneLutBytes, colorGrade, colorMix } from "../develop/finish";
   import { screenRadius, type DustStroke } from "../develop/dust";
+  import { marqueeZoom } from "./marquee";
   import { readCanvasPixel } from "../develop/colorPick";
   import { orientUVMatrix, displayToSourceUV } from "../crop/transforms";
   import { t } from "$lib/i18n";
@@ -24,6 +25,8 @@
   export let flipV = false;
   export let angle = 0;
   export let eraser = false;
+  /** Marquee-zoom armed: the next drag draws a zoom rectangle instead of painting. */
+  export let marquee = false;
   export let pointPick = false;
   /** Brush radius normalized to image width. */
   export let brush = 0.03;
@@ -41,7 +44,7 @@
   export let autoDustEnabled = false;
   export let autoDustSensitivity = 50;
 
-  const dispatch = createEventDispatcher<{ stroke: DustStroke; brush: number; pointpick: { r: number; g: number; b: number; u: number; v: number }; aierased: void; autodusted: void }>();
+  const dispatch = createEventDispatcher<{ stroke: DustStroke; brush: number; pointpick: { r: number; g: number; b: number; u: number; v: number }; aierased: void; autodusted: void; zoomchange: boolean; marqueedone: void }>();
 
   const CAP = 5000;
   const PAD = 60;
@@ -365,6 +368,16 @@
     return [(e.clientX - rect.left - left) / eff, (e.clientY - rect.top - top) / eff];
   }
 
+  // Notify the parent whenever the zoom state flips so it can swap the toolbar button.
+  let prevZoomed = false;
+  $: if (zoomed !== prevZoomed) { prevZoomed = zoomed; dispatch("zoomchange", zoomed); }
+
+  /** Animate back to fit-to-view. Called by the parent via bind:this. */
+  export function resetZoom() {
+    startAnim();
+    scale = fit; cx = imgW / 2; cy = imgH / 2;
+  }
+
   function startAnim() {
     animating = true;
     if (animTimer) clearTimeout(animTimer);
@@ -399,6 +412,12 @@
   let curX = -100, curY = -100, hovering = false;
   let painting = false;
   let pending: { x: number; y: number }[] = [];
+  // Marquee zoom: drag-in-progress flag, start corner in element coords (for drawing)
+  // and image coords (for the zoom math), and the live corner in element coords.
+  let mqActive = false;
+  let mqSX = 0, mqSY = 0;
+  let mqStartImg: [number, number] = [0, 0];
+  let mqCX = 0, mqCY = 0;
   $: cursorR = screenRadius(brush, imgW, eff);
 
   // SVG path for a stroke's polyline in display px (normalized → dispW/dispH).
@@ -423,7 +442,7 @@
     if (painting) pending = [...pending, normPoint(e)];
   }
   function onEnter() { if (eraser) hovering = true; }
-  function onLeave() { hovering = false; painting = false; pending = []; }
+  function onLeave() { hovering = false; painting = false; pending = []; mqActive = false; }
 
   function onDown(e: PointerEvent) {
     if (!interactive) return;
@@ -444,6 +463,15 @@
       }
       return;
     }
+    if (eraser && marquee) {
+      const rect = el.getBoundingClientRect();
+      mqActive = true;
+      mqSX = mqCX = e.clientX - rect.left;
+      mqSY = mqCY = e.clientY - rect.top;
+      mqStartImg = imgPoint(e);
+      (e.target as Element).setPointerCapture?.(e.pointerId);
+      return;
+    }
     if (eraser) {
       painting = true;
       pending = [normPoint(e)];
@@ -457,6 +485,14 @@
   }
   function onMove(e: PointerEvent) {
     if (!interactive) return;
+    if (eraser && marquee) {
+      if (mqActive) {
+        const rect = el.getBoundingClientRect();
+        mqCX = e.clientX - rect.left;
+        mqCY = e.clientY - rect.top;
+      }
+      return;
+    }
     if (eraser) { onEraserMove(e); return; }
     if (!(e.buttons & 1)) return;
     if (Math.abs(e.clientX - downX) > 3 || Math.abs(e.clientY - downY) > 3) moved = true;
@@ -470,6 +506,21 @@
   function onUp(e: PointerEvent) {
     if (e.button !== 0) return; // right/middle click never triggers tap-to-zoom
     if (pointPick) return;
+    if (eraser && marquee) {
+      if (mqActive) {
+        const dist = Math.hypot(mqCX - mqSX, mqCY - mqSY);
+        if (dist >= 8) {
+          const [bx, by] = imgPoint(e);
+          const z = marqueeZoom(mqStartImg[0], mqStartImg[1], bx, by, avW, avH, fit, 8);
+          startAnim();
+          scale = z.scale; cx = z.cx; cy = z.cy;
+          clampCenter();
+          dispatch("marqueedone");
+        }
+        mqActive = false;
+      }
+      return;
+    }
     if (eraser) {
       if (painting && pending.length > 0) dispatch("stroke", { points: pending, r: brush });
       painting = false; pending = [];
@@ -483,11 +534,11 @@
     }
     panning = false; moved = false;
   }
-  function onCancel() { painting = false; pending = []; panning = false; moved = false; }
+  function onCancel() { painting = false; pending = []; panning = false; moved = false; mqActive = false; }
 </script>
 
 <div
-  class="vp" class:interactive class:zoomed class:erasing={eraser} class:picking={pointPick}
+  class="vp" class:interactive class:zoomed class:erasing={eraser} class:picking={pointPick} class:marqueearm={eraser && marquee}
   bind:this={el}
   on:wheel={onWheel}
   on:pointerdown={onDown} on:pointermove={onMove} on:pointerup={onUp} on:pointercancel={onCancel}
@@ -525,8 +576,11 @@
       {/if}
     </svg>
   {/if}
-  {#if eraser && hovering}
+  {#if eraser && hovering && !marquee}
     <div class="brush" style="left:{curX}px; top:{curY}px; width:{cursorR * 2}px; height:{cursorR * 2}px;"></div>
+  {/if}
+  {#if eraser && marquee && mqActive}
+    <div class="marquee" style="left:{Math.min(mqSX, mqCX)}px; top:{Math.min(mqSY, mqCY)}px; width:{Math.abs(mqCX - mqSX)}px; height:{Math.abs(mqCY - mqSY)}px;"></div>
   {/if}
   {#if id && interactive}<div class="zoom">{label}</div>{/if}
 </div>
@@ -555,4 +609,8 @@
   .brush { position: absolute; border-radius: 50%; pointer-events: none; z-index: 3;
     transform: translate(-50%, -50%); border: 1.5px solid rgba(255,255,255,0.9);
     box-shadow: 0 0 0 1px rgba(0,0,0,0.5), inset 0 0 0 1px rgba(0,0,0,0.4); }
+  .vp.marqueearm { cursor: crosshair; }
+  .marquee { position: absolute; z-index: 5; pointer-events: none;
+    border: 1px solid #fff; background: rgba(244,157,78,0.15);
+    box-shadow: 0 0 0 1px rgba(0,0,0,0.4); }
 </style>
