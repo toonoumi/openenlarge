@@ -1,25 +1,13 @@
 <script lang="ts">
   import { t } from "$lib/i18n";
-  import { get } from "svelte/store";
-  import { rollReferenceId, rollDraft } from "$lib/roll/draft";
+  import { rollReferenceId } from "$lib/roll/draft";
   import { images, editsById, cropById, developRev, dustById } from "$lib/store";
-  import { developedFolderImages } from "$lib/export/eligible";
   import Viewport from "$lib/viewport/Viewport.svelte";
-  import CropView from "$lib/crop/CropView.svelte";
-  import CropPanel from "$lib/crop/CropPanel.svelte";
-  import ConfirmOverwrite from "$lib/roll/ConfirmOverwrite.svelte";
   import { withEffectiveBase } from "$lib/develop/base";
   import { imageDir } from "$lib/library/folderScope";
   import { defaultParams } from "$lib/api";
   import { orientDims } from "$lib/crop/transforms";
   import { emptyDust } from "$lib/develop/dust";
-  import type { Rect, CropRect } from "$lib/crop/types";
-  import { defaultFull, conform, constrainToRotated } from "$lib/crop/cropMath";
-  import { presetNormAspect } from "$lib/crop/presets";
-  import { rotateRectCW, rotateRectCCW, flipRectH, flipRectV, flipOrient } from "$lib/crop/transforms";
-  import { framesWithCrop, applyCropToAll, framesWithBase, applyBaseToAll, framesWithWhitePoint, applyWhitePointToAll } from "$lib/roll/apply";
-  import BaseView from "$lib/develop/BaseView.svelte";
-  import { api } from "$lib/api";
 
   // The frame being previewed.
   $: id = $rollReferenceId;
@@ -47,200 +35,12 @@
   // Frame's own dust edits (empty if none).
   $: dustEdits = id ? ($dustById[id] ?? emptyDust()) : emptyDust();
 
-  // ---- Mode toggle ----
-  type OverlayMode = "preview" | "crop" | "base" | "wpick";
-  let mode: OverlayMode = "preview";
-
-  // ---- Crop draft state (only while mode === "crop") ----
-  let rect: Rect = { x: 0, y: 0, w: 1, h: 1 };
-  let aspect = "original";
-  let orientation: "landscape" | "portrait" = "landscape";
-  let rot90 = 0, flipH = false, flipV = false, angle = 0;
-  let cropInit = false;
-
-  $: [oW, oH] = orientDims(origW, origH, rot90);
-  $: orientedRatio = oH > 0 ? oW / oH : 1;
-
-  function startCrop() {
-    // Seed from the roll draft crop (fall back to full frame).
-    const c = $rollDraft.crop;
-    if (c) {
-      rect = { ...c.rect }; aspect = c.aspect; orientation = c.orientation;
-      rot90 = c.rot90; flipH = c.flipH; flipV = c.flipV; angle = c.angle;
-    } else {
-      rect = defaultFull(); aspect = "original"; orientation = origW >= origH ? "landscape" : "portrait";
-      rot90 = 0; flipH = false; flipV = false; angle = 0;
-    }
-    cropInit = true;
-  }
-
-  function draftCrop(): CropRect {
-    return { rect, aspect, orientation, rot90: rot90 as 0 | 1 | 2 | 3, flipH, flipV, angle };
-  }
-
-  function commitCrop() {
-    if (!cropInit) return;
-    // Write the draft crop into the roll draft (not the frame's cropById).
-    rollDraft.update((d) => ({ ...d, crop: draftCrop() }));
-    cropInit = false;
-  }
-
-  function onPreset(id: string) { aspect = id; rect = conform(rect, presetNormAspect(id, orientedRatio, orientation)); }
-  function onSwap() { orientation = orientation === "landscape" ? "portrait" : "landscape"; rect = conform(rect, presetNormAspect(aspect, orientedRatio, orientation)); }
-  function onReset() { rect = defaultFull(); aspect = "original"; orientation = origW >= origH ? "landscape" : "portrait"; rot90 = 0; flipH = false; flipV = false; angle = 0; }
-  function onRotate(dir: number) {
-    if (dir > 0) { rot90 = (rot90 + 1) % 4; rect = rotateRectCW(rect); }
-    else { rot90 = (rot90 + 3) % 4; rect = rotateRectCCW(rect); }
-  }
-  function onFlip(axis: "h" | "v") {
-    ({ rot90, flipH, flipV } = flipOrient({ rot90, flipH, flipV }, axis));
-    rect = axis === "h" ? flipRectH(rect) : flipRectV(rect);
-    angle = -angle;
-  }
-  function onStraighten(v: number) { angle = Math.max(-45, Math.min(45, v)); }
-
-  $: lockRatio = presetNormAspect(aspect, orientedRatio, orientation);
-  // Keep the crop inside the rotated image (constrainToRotated is idempotent → no loop).
-  $: if (angle !== 0) rect = constrainToRotated(rect, angle, oW, oH);
-
-  let prevMode: OverlayMode = mode;
-  $: {
-    if (mode === "crop" && prevMode !== "crop") startCrop();
-    if (mode !== "crop" && prevMode === "crop") { commitCrop(); }
-    prevMode = mode;
-  }
-
-  function toggleCropMode() {
-    mode = mode === "crop" ? "preview" : "crop";
-  }
-
-  function toggleBaseMode() {
-    mode = mode === "base" ? "preview" : "base";
-  }
-
-  // ---- Apply crop / base / wp to roll ----
-  // pending tracks which apply action awaits confirmation.
-  let pending: "crop" | "base" | "wp" | null = null;
-  let showConfirm = false;
-  let confirmCount = 0;
-  let applyIds: string[] = [];
-
-  function applyCrop() {
-    cropById.set(applyCropToAll(get(cropById), applyIds, $rollDraft.crop));
-    showConfirm = false;
-    pending = null;
-  }
-
-  function onConfirm() {
-    if (pending === "crop") applyCrop();
-    else if (pending === "base") applyBase();
-    else if (pending === "wp") applyWp();
-    showConfirm = false;
-    pending = null;
-  }
-
-  function onApplyCropClick() {
-    // Snapshot count + ids at click time (do NOT call get() inside the template).
-    applyIds = $developedFolderImages.map((i) => i.id);
-    const conflicts = framesWithCrop($cropById, applyIds);
-    if (conflicts.length > 0) {
-      confirmCount = conflicts.length;
-      pending = "crop";
-      showConfirm = true;
-    } else {
-      pending = "crop";
-      applyCrop();
-    }
-  }
-
-  function applyBase() {
-    editsById.set(applyBaseToAll(get(editsById), applyIds, $rollDraft.params.base_override));
-    showConfirm = false;
-    pending = null;
-  }
-
-  function onApplyBaseClick() {
-    applyIds = $developedFolderImages.map((i) => i.id);
-    const conflicts = framesWithBase(get(editsById), applyIds);
-    if (conflicts.length > 0) {
-      confirmCount = conflicts.length;
-      pending = "base";
-      showConfirm = true;
-    } else {
-      pending = "base";
-      applyBase();
-    }
-  }
-
-  function applyWp() {
-    editsById.set(applyWhitePointToAll(get(editsById), applyIds, $rollDraft.params.d_max_override ?? null));
-    showConfirm = false;
-    pending = null;
-  }
-
-  function onApplyWpClick() {
-    applyIds = $developedFolderImages.map((i) => i.id);
-    const conflicts = framesWithWhitePoint(get(editsById), applyIds);
-    if (conflicts.length > 0) {
-      confirmCount = conflicts.length;
-      pending = "wp";
-      showConfirm = true;
-    } else {
-      pending = "wp";
-      applyWp();
-    }
-  }
-
-  function toggleWpMode() {
-    mode = mode === "wpick" ? "preview" : "wpick";
-  }
-
-  async function onPointPick(e: CustomEvent<{ r: number; g: number; b: number; u: number; v: number }>) {
-    if (!id || !frame) return;
-    const { u, v } = e.detail;
-    // Disarm pick immediately.
-    mode = "preview";
-    const P = 0.02;
-    const c01 = (n: number) => Math.max(0, Math.min(1, n));
-    const rect: [number, number, number, number] = [c01(u - P / 2), c01(v - P / 2), P, P];
-    try {
-      const { d_max } = await api.analyzeWhitePoint(id, withEffectiveBase($rollDraft.params, imageDir(frame)), rect);
-      rollDraft.update((d) => ({ ...d, params: { ...d.params, d_max_override: d_max } }));
-    } catch { /* not developed yet */ }
-  }
-
-  async function onAutoBase() {
-    if (!id) return;
-    try {
-      const result = await api.autoBaseInfo(id);
-      rollDraft.update((d) => ({ ...d, params: { ...d.params, base_override: result.base } }));
-    } catch { /* ignore */ }
-  }
-
   function close() {
-    // Commit any in-progress crop before closing.
-    if (mode === "crop") {
-      commitCrop();
-      mode = "preview";
-    } else if (mode === "base") {
-      mode = "preview";
-    } else if (mode === "wpick") {
-      mode = "preview";
-    }
     rollReferenceId.set(null);
   }
 
   function onKey(e: KeyboardEvent) {
-    if (e.key === "Escape") {
-      if (showConfirm) { showConfirm = false; pending = null; return; }
-      if (mode === "crop") { commitCrop(); mode = "preview"; return; }
-      if (mode === "base") { mode = "preview"; return; }
-      if (mode === "wpick") { mode = "preview"; return; }
-      close();
-    }
-    if (mode === "crop") {
-      if (e.key === "x" || e.key === "X") { onSwap(); }
-    }
+    if (e.key === "Escape") close();
   }
 </script>
 
@@ -251,95 +51,34 @@
 <div class="overlay" on:click|self={close} role="dialog" aria-modal="true">
   <div class="viewport-wrap">
     {#if frame?.developed && id}
-      {#if mode === "crop"}
-        <CropView {id} params={effectiveParams} imgW={oW} imgH={oH}
-                  bind:rect {lockRatio} {rot90} {flipH} {flipV} {angle}
-                  on:custom={() => (aspect = "custom")} on:straighten={(e) => onStraighten(e.detail)} />
-      {:else}
-        <Viewport
-          {id}
-          params={effectiveParams}
-          imgW={effW}
-          imgH={effH}
-          imageCrop={imageCrop}
-          rot90={cRot}
-          flipH={committed?.flipH ?? false}
-          flipV={committed?.flipV ?? false}
-          angle={committed?.angle ?? 0}
-          fallbackThumb={frame?.thumbnail ?? ""}
-          dust={dustEdits.strokes}
-          irRemoval={dustEdits.irRemoval}
-          dustRev={0}
-          developRev={$developRev}
-          eraser={false}
-          pointPick={mode === "wpick"}
-          clipHigh={false}
-          clipLow={false}
-          clipStrict={false}
-          on:pointpick={onPointPick}
-        />
-        {#if mode === "base"}
-          <div class="base-overlay">
-            <BaseView
-              {id}
-              params={effectiveParams}
-              imgW={origW}
-              imgH={origH}
-              on:sampled={(e) => rollDraft.update((d) => ({ ...d, params: { ...d.params, base_override: e.detail } }))}
-            />
-          </div>
-        {/if}
-      {/if}
+      <Viewport
+        {id}
+        params={effectiveParams}
+        imgW={effW}
+        imgH={effH}
+        imageCrop={imageCrop}
+        rot90={cRot}
+        flipH={committed?.flipH ?? false}
+        flipV={committed?.flipV ?? false}
+        angle={committed?.angle ?? 0}
+        fallbackThumb={frame?.thumbnail ?? ""}
+        dust={dustEdits.strokes}
+        irRemoval={dustEdits.irRemoval}
+        dustRev={0}
+        developRev={$developRev}
+        eraser={false}
+        pointPick={false}
+        clipHigh={false}
+        clipLow={false}
+        clipStrict={false}
+      />
     {/if}
   </div>
 
-  {#if mode === "crop"}
-    <div class="crop-panel-wrap">
-      <CropPanel bind:aspect bind:orientation bind:angle
-                 on:preset={(e) => onPreset(e.detail)} on:swap={onSwap} on:reset={onReset}
-                 on:rotate={(e) => onRotate(e.detail)} on:flip={(e) => onFlip(e.detail)} />
-    </div>
-  {/if}
-
   <div class="toolbar">
-    <button class="tool-btn" class:active={mode === "crop"} on:click={toggleCropMode}>
-      {$t('roll.crop.tool')}
-    </button>
-    {#if $rollDraft.crop}
-      <button class="apply-btn" on:click={onApplyCropClick}>
-        {$t('roll.crop.apply')}
-      </button>
-    {/if}
-    <button class="tool-btn" class:active={mode === "base"} on:click={toggleBaseMode}>
-      {$t('roll.base.sample')}
-    </button>
-    <button class="tool-btn" on:click={onAutoBase}>
-      {$t('roll.base.auto')}
-    </button>
-    {#if $rollDraft.params.base_override != null}
-      <button class="apply-btn" on:click={onApplyBaseClick}>
-        {$t('roll.base.apply')}
-      </button>
-    {/if}
-    <button class="tool-btn" class:active={mode === "wpick"} on:click={toggleWpMode}>
-      {$t('roll.wp.pick')}
-    </button>
-    {#if $rollDraft.params.d_max_override != null}
-      <button class="apply-btn" on:click={onApplyWpClick}>
-        {$t('roll.wp.apply')}
-      </button>
-    {/if}
     <button class="close-btn" on:click={close}>{$t('roll.close')}</button>
   </div>
 </div>
-
-{#if showConfirm}
-  <ConfirmOverwrite
-    count={confirmCount}
-    on:confirm={onConfirm}
-    on:cancel={() => { showConfirm = false; pending = null; }}
-  />
-{/if}
 
 <style>
   .overlay {
@@ -357,24 +96,6 @@
     display: grid;
     place-items: center;
   }
-  .base-overlay {
-    position: absolute;
-    inset: 0;
-    z-index: 52;
-  }
-  .crop-panel-wrap {
-    position: absolute;
-    right: 16px;
-    top: 60px;
-    width: 260px;
-    z-index: 52;
-    background: var(--glass-bg, rgba(20,20,25,0.92));
-    border: 1px solid var(--glass-brd, rgba(255,255,255,0.1));
-    border-radius: 12px;
-    padding: 4px 0;
-    overflow-y: auto;
-    max-height: calc(100vh - 120px);
-  }
   .toolbar {
     position: absolute;
     top: 16px;
@@ -383,36 +104,6 @@
     gap: 8px;
     align-items: center;
     z-index: 51;
-  }
-  .tool-btn {
-    padding: 8px 18px;
-    border-radius: 9px;
-    border: 1px solid rgba(255,255,255,0.25);
-    background: rgba(0, 0, 0, 0.55);
-    color: #fff;
-    font-size: 14px;
-    font-weight: 600;
-    cursor: pointer;
-  }
-  .tool-btn:hover {
-    background: rgba(255, 255, 255, 0.15);
-  }
-  .tool-btn.active {
-    background: var(--accent-grad, #4a90e2);
-    border-color: transparent;
-  }
-  .apply-btn {
-    padding: 8px 18px;
-    border-radius: 9px;
-    border: 0;
-    background: var(--accent-grad, #4a90e2);
-    color: #fff;
-    font-size: 14px;
-    font-weight: 600;
-    cursor: pointer;
-  }
-  .apply-btn:hover {
-    opacity: 0.85;
   }
   .close-btn {
     padding: 8px 18px;
