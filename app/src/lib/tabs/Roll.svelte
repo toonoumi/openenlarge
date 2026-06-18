@@ -7,8 +7,7 @@
   import { editsById, images, setActive } from "$lib/store";
   import { rollReferenceId, resetRollDraft, rollDraft } from "$lib/roll/draft";
   import RollAdjust from "$lib/roll/RollAdjust.svelte";
-  import ConfirmOverwrite from "$lib/roll/ConfirmOverwrite.svelte";
-  import { framesWithToneColor, applyToneColorToAll } from "$lib/roll/apply";
+  import { applyToneColorToAll } from "$lib/roll/apply";
   import { livePreviewParams, draftThumbView } from "$lib/roll/livePreview";
   import { withEffectiveBase } from "$lib/develop/base";
   import { imageDir } from "$lib/library/folderScope";
@@ -25,10 +24,10 @@
     rollReferenceId.set(id);
   }
 
-  // --- Live preview -----------------------------------------------------------
-  // Component-local map of id → data-URL for draft-look thumbnails.
+  // --- Live apply -------------------------------------------------------------
+  // Component-local map of id → data-URL for draft-look thumbnails (shown in the grid).
   let previewMap: Record<string, string> = {};
-  // Monotonically increasing token; used to discard stale async resolutions.
+  // Monotonically increasing token; used to discard stale async batches.
   let previewToken = 0;
 
   const editsEntry = (id: string) => get(editsById)[id] ?? defaultParams();
@@ -36,16 +35,25 @@
   let destroyed = false;
   onDestroy(() => { destroyed = true; });
 
-  const scheduleLivePreview = debounce(async (draft: typeof $rollDraft) => {
+  const scheduleLiveApply = debounce(async (draft: typeof $rollDraft) => {
     const token = ++previewToken;
     const frames = get(developedFolderImages);
+    const ids = frames.map((f) => f.id);
     const view = draftThumbView(draft.crop);
     const next: Record<string, string> = {};
 
     await Promise.all(
       frames.map(async (frame) => {
+        // Merge: tone/color from draft onto frame's own base/dmax, then also
+        // apply draft base_override and d_max_override if set (so re-picking base
+        // refreshes thumbnails immediately, even before R5 persistence).
+        const merged = livePreviewParams(draft.params, editsEntry(frame.id));
         const params = withEffectiveBase(
-          livePreviewParams(draft.params, editsEntry(frame.id)),
+          {
+            ...merged,
+            ...(draft.params.base_override != null ? { base_override: draft.params.base_override } : {}),
+            ...(draft.params.d_max_override != null ? { d_max_override: draft.params.d_max_override } : {}),
+          },
           imageDir(frame),
         );
         const dataUrl = await api.thumbnail(frame.id, params, view);
@@ -54,42 +62,25 @@
       }),
     );
 
-    if (previewToken === token && !destroyed) {
-      previewMap = next;
+    if (previewToken !== token || destroyed) return;
+
+    // Commit: update previewMap for the grid, write look into editsById, save thumbnails.
+    previewMap = next;
+
+    // Write tone/color look into every frame's edits (persisted automatically via write-through).
+    editsById.set(applyToneColorToAll(get(editsById), ids, draft.params));
+
+    // Persist thumbnail for each frame.
+    for (const id of ids) {
+      if (next[id]) {
+        images.update((xs) => xs.map((i) => i.id === id ? { ...i, thumbnail: next[id] } : i));
+        api.saveThumbnail(id, next[id]);
+      }
     }
   }, 250);
 
-  // Trigger live preview whenever rollDraft changes.
-  $: scheduleLivePreview($rollDraft);
-
-  // --- Apply look to roll -----------------------------------------------------
-  let showConfirm = false;
-  let confirmCount = 0;
-  let applyIds: string[] = [];
-
-  function applyLook() {
-    editsById.set(applyToneColorToAll(get(editsById), applyIds, $rollDraft.params));
-    // Write rendered draft thumbnails back into the images store and persist them.
-    for (const id of applyIds) {
-      if (previewMap[id]) {
-        const thumb = previewMap[id];
-        images.update((xs) => xs.map((i) => i.id === id ? { ...i, thumbnail: thumb } : i));
-        api.saveThumbnail(id, thumb);
-      }
-    }
-    showConfirm = false;
-  }
-
-  function onApplyClick() {
-    applyIds = $developedFolderImages.map((i) => i.id);
-    const conflicts = framesWithToneColor(get(editsById), applyIds);
-    if (conflicts.length > 0) {
-      confirmCount = conflicts.length;
-      showConfirm = true;
-    } else {
-      applyLook();
-    }
-  }
+  // Mirror every rollDraft change (tone/color/base/dmax/crop) to all frames.
+  $: scheduleLiveApply($rollDraft);
 </script>
 
 <div class="roll">
@@ -109,9 +100,6 @@
 
   <aside class="panel">
     <RollAdjust />
-    <button class="apply-btn" on:click={onApplyClick}>
-      {$t('roll.applyLook')}
-    </button>
     <button class="export-btn" on:click={exportContactSheet} disabled={$developedFolderImages.length === 0}>
       {$t('roll.export.button')}
     </button>
@@ -120,14 +108,6 @@
 
 {#if $rollReferenceId}
   <FramePreview />
-{/if}
-
-{#if showConfirm}
-  <ConfirmOverwrite
-    count={confirmCount}
-    on:confirm={applyLook}
-    on:cancel={() => { showConfirm = false; }}
-  />
 {/if}
 
 <style>
@@ -143,8 +123,6 @@
   .empty { color: var(--text-faint); padding: 16px; }
   .panel { border-left: 1px solid var(--glass-brd); display: flex; flex-direction: column;
     gap: 8px; padding: 12px; overflow-y: auto; }
-  .apply-btn { margin-top: auto; padding: 10px 16px; border-radius: 9px; border: 0;
-    background: var(--accent-grad); color: white; font-weight: 600; cursor: pointer; }
   .export-btn { padding: 8px 16px; border-radius: 9px; font-weight: 600; font-size: 12px;
     background: var(--glass-hi); border: 1px solid var(--glass-brd); color: var(--text);
     transition: background 0.15s, border-color 0.15s; cursor: pointer; }
