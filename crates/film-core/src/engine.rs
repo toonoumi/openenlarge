@@ -71,6 +71,12 @@ const HDR_KNEE: f32 = 0.8;
 /// HDR headroom ceiling (linear-ish display units, ~1.3 stops over SDR white).
 /// Tuned on real scans later; keep modest to avoid clipping.
 const HDR_HEADROOM: f32 = 2.5;
+/// Exposure → effective-d_max coupling. EV stops scale d_max by `2^(-K·EV)`:
+/// lower EV → larger eff_d_max → flatter highlight slope (blown highlights
+/// re-separate); EV=0 → identity. Mirrored verbatim in shaders.ts (INVERT_FRAG).
+const EXPO_DMAX_K: f32 = 0.5;
+const EFF_DMAX_LO: f32 = 0.5;
+const EFF_DMAX_HI: f32 = 6.0;
 
 /// Positive passthrough: the working buffer is linear, so display-encode it with
 /// `1/2.2` (matching the raw-scan view), after applying exposure + WB gain.
@@ -102,14 +108,22 @@ pub fn invert_d(rgb: [f32; 3], p: &InversionParams) -> [f32; 3] {
         return develop_positive_px(rgb, p);
     }
     const THRESHOLD: f32 = 2.328_306_4e-10; // negadoctor's -32 EV floor
+    // Exposure acts in the DENSITY domain, not as a linear print gain: EV stops
+    // modulate the effective d_max about the black pivot. Lowering EV raises
+    // eff_d_max → flatter highlight slope → blown highlights re-separate (I1);
+    // EV=0 (print_exposure=1) → eff_d_max==d_max → byte-identical to before.
+    let ev = p.print_exposure.max(EPS).log2();
+    let eff_d_max =
+        (p.d_max * 2f32.powf(-EXPO_DMAX_K * ev)).clamp(EFF_DMAX_LO, EFF_DMAX_HI);
     std::array::from_fn(|c| {
         let clamped = rgb[c].max(THRESHOLD);
         let dmin = p.base[c].max(EPS);
         let log_dens = (clamped / dmin).log10(); // = -log10(dmin/clamped)
-        let corrected = log_dens / p.d_max.max(EPS);
+        let corrected = log_dens / eff_d_max.max(EPS);
         let ten_to_x = 10f32.powf(corrected);
-        let print_lin =
-            (p.print_exposure * (1.0 + p.paper_black) - p.print_exposure * ten_to_x).max(0.0);
+        // Linear print_exposure gain is DROPPED (folded into eff_d_max above) so the
+        // white anchor stays put and exposure redistributes — not scales — highlights.
+        let print_lin = ((1.0 + p.paper_black) - ten_to_x).max(0.0);
         // WB as a linear gain on the print; keeps black neutral (0·wb = 0).
         let out = (print_lin * p.wb[c]).powf(p.paper_grade);
         if p.hdr {
@@ -293,10 +307,9 @@ mod tests {
 
     #[test]
     fn highlight_rolloff_retains_separation() {
-        // Drive highlights well above the soft-clip knee (print_exposure 2.0). The
-        // SDR rolloff must keep bright highlights *below* white with a visible gap
-        // between distinct luminances, so the latitude survives into Develop
-        // (the old exponential rolloff slammed them to ~1.0, flattening detail).
+        // Raise exposure (print_exposure 2.0): eff_d_max shrinks, so highlights move
+        // toward white but the SDR rolloff still keeps them *below* white with a
+        // visible gap between distinct luminances — latitude survives into Develop.
         let p = InversionParams { print_exposure: 2.0, ..Default::default() };
         let bright = invert_d([0.1, 0.1, 0.1], &p)[0]; // denser neg → brighter pos
         let dim = invert_d([0.3, 0.3, 0.3], &p)[0];
@@ -381,5 +394,54 @@ mod tests {
         let neg = invert_d(probe, &p);
         let p2 = InversionParams { positive: false, ..p.clone() };
         assert_eq!(neg, invert_d(probe, &p2));
+    }
+
+    #[test]
+    fn lower_exposure_reseparates_blown_highlights() {
+        // Heavily over-exposed Pro400H-style: two close, very dense (bright-scene)
+        // probes the default render collapses near white. Lowering exposure must
+        // pull them DOWN off white AND widen the gap between them (re-separate),
+        // not merely dim a collapsed cluster (the old linear-gain "brightness" feel).
+        let base = [1.0, 1.0, 1.0];
+        let hi_a = [3.2e-3, 3.2e-3, 3.2e-3];
+        let hi_b = [5.0e-3, 5.0e-3, 5.0e-3];
+        let at = |ev: f32, neg: [f32; 3]| {
+            let p = InversionParams {
+                base, d_max: 1.5, print_exposure: 2f32.powf(ev), ..Default::default()
+            };
+            invert_d(neg, &p)[0]
+        };
+        let gap0 = (at(0.0, hi_a) - at(0.0, hi_b)).abs();
+        let gap_dn = (at(-2.0, hi_a) - at(-2.0, hi_b)).abs();
+        eprintln!(
+            "OVER-EXPOSED HIGHLIGHT before/after: gap@EV0={gap0:.4} gap@EV-2={gap_dn:.4}  \
+             a:{:.4}->{:.4}  b:{:.4}->{:.4}",
+            at(0.0, hi_a), at(-2.0, hi_a), at(0.0, hi_b), at(-2.0, hi_b)
+        );
+        assert!(at(-2.0, hi_a) < at(0.0, hi_a), "lower EV must darken the highlight");
+        assert!(gap_dn > gap0 * 2.0, "separation must widen: {gap0} -> {gap_dn}");
+    }
+
+    #[test]
+    fn black_anchored_under_any_exposure() {
+        // A pixel AT the film base is the deepest shadow → must invert to ~black for
+        // ANY exposure, because eff_d_max only changes the slope about the black pivot.
+        let base = [0.7, 0.6, 0.5];
+        for ev in [-3.0f32, 0.0, 3.0] {
+            let p = InversionParams { base, print_exposure: 2f32.powf(ev), ..Default::default() };
+            let out = invert_d(base, &p);
+            for &v in &out { assert!(v.abs() < 1e-4, "base must be black at EV {ev}: {out:?}"); }
+        }
+    }
+
+    #[test]
+    fn eff_dmax_clamped_no_blowup() {
+        // Extreme exposure is bounded by the clamp band — finite, in-range, no NaN.
+        let base = [1.0, 1.0, 1.0];
+        for ev in [-20.0f32, 20.0] {
+            let p = InversionParams { base, print_exposure: 2f32.powf(ev), ..Default::default() };
+            let out = invert_d([0.01, 0.01, 0.01], &p);
+            for &v in &out { assert!(v.is_finite() && (0.0..=1.0001).contains(&v), "EV {ev}: {v}"); }
+        }
     }
 }
