@@ -36,7 +36,20 @@
   let hover: { sx: number; sy: number; nx: number; ny: number } | null = null;
 
   function measure() { if (el) { vpW = el.clientWidth; vpH = el.clientHeight; } }
-  onMount(() => { measure(); const ro = new ResizeObserver(measure); if (el) ro.observe(el); return () => ro.disconnect(); });
+  onMount(() => {
+    measure();
+    const ro = new ResizeObserver(measure); if (el) ro.observe(el);
+    // Non-standard WebKit pinch events aren't in Svelte's typed event map, so
+    // bind them imperatively (passive:false to allow preventDefault).
+    const opts = { passive: false } as AddEventListenerOptions;
+    el?.addEventListener("gesturestart", onGestureStart, opts);
+    el?.addEventListener("gesturechange", onGestureChange, opts);
+    return () => {
+      ro.disconnect();
+      el?.removeEventListener("gesturestart", onGestureStart);
+      el?.removeEventListener("gesturechange", onGestureChange);
+    };
+  });
 
   $: avW = Math.max(1, vpW - 2 * PAD);
   $: avH = Math.max(1, vpH - 2 * PAD);
@@ -106,17 +119,33 @@
     resampleTimer = setTimeout(() => { resampleTimer = null; sampleAt(nx, ny); }, 70);
   }
 
+  function resizePatch(next: number, at: { nx: number; ny: number } | null) {
+    next = Math.min(PATCH_MAX, Math.max(PATCH_MIN, next));
+    if (next === patch) return; // already at a clamp; nothing to do
+    patch = next;
+    if (at) { mark = { x: at.nx, y: at.ny }; scheduleResample(at.nx, at.ny); }
+  }
+
   // Scroll over the picker grows/shrinks the sample rect around the cursor and
   // re-samples the base there. Up = grow, down = shrink (clamped to min/max).
+  // preventDefault|stopPropagation so the picker — not the viewport/webview —
+  // owns the wheel (incl. ctrl/⌘+wheel page zoom).
   function onWheel(e: WheelEvent) {
     const p = locate(e) ?? hover;
     if (!p) return; // pointer not over the negative
-    const factor = e.deltaY < 0 ? PATCH_STEP : 1 / PATCH_STEP;
-    const next = Math.min(PATCH_MAX, Math.max(PATCH_MIN, patch * factor));
-    if (next === patch) return; // already at a clamp; nothing to do
-    patch = next;
-    mark = { x: p.nx, y: p.ny };
-    scheduleResample(p.nx, p.ny);
+    resizePatch(patch * (e.deltaY < 0 ? PATCH_STEP : 1 / PATCH_STEP), p);
+  }
+
+  // macOS WebKit delivers a trackpad PINCH as non-standard gesture* events (not
+  // ctrl+wheel), so onWheel never sees it and the webview would zoom the whole
+  // app. Capture it here and map the pinch to the same patch resize, keeping the
+  // picker in control of the zoom gesture while sampling.
+  let gesturePatch = patch;
+  function onGestureStart(e: Event) { e.preventDefault(); gesturePatch = patch; }
+  function onGestureChange(e: Event) {
+    e.preventDefault();
+    const scale = (e as unknown as { scale?: number }).scale ?? 1;
+    resizePatch(gesturePatch * scale, hover);
   }
 
   // ── Loupe placement & content ────────────────────────────────────────────
@@ -135,7 +164,8 @@
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
-<div class="basevp" bind:this={el} on:click={onClick} on:mousemove={onMove} on:mouseleave={onLeave} on:wheel|preventDefault={onWheel}>
+<div class="basevp" bind:this={el} on:click={onClick} on:mousemove={onMove} on:mouseleave={onLeave}
+  on:wheel|preventDefault|stopPropagation={onWheel}>
   {#if src}
     <img {src} alt="negative" draggable="false"
       style="position:absolute; left:{imgScreen.left}px; top:{imgScreen.top}px; width:{dispW}px; height:{dispH}px;" />
