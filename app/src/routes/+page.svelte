@@ -56,6 +56,7 @@
 
   let confirmCount = 0;
   let confirming = false;
+  let developTarget: "develop" | "roll" = "develop";
   let settingsOpen = false;
   let keymapOpen = false;
   let exporting = false;
@@ -63,9 +64,18 @@
 
   function gotoDevelop() {
     if (!$hasImages) return;
+    developTarget = "develop";
     // Develop is scoped to the selected folder: only its undeveloped images count.
     if ($undevelopedCount === 0) { module.set("develop"); return; }
     confirmCount = $undevelopedCount;
+    confirming = true;
+  }
+
+  function gotoRoll() {
+    if (!$hasImages) return;
+    if ($undevelopedCount === 0) { module.set("roll"); return; }
+    confirmCount = $undevelopedCount;
+    developTarget = "roll";
     confirming = true;
   }
 
@@ -125,7 +135,10 @@
     </button>
     <nav class="tabs">
       <button class:active={$module === "library"} on:click={() => module.set("library")}>{$t('app.tab.library')}</button>
-      <button class:active={$module === "roll"} disabled={!$hasImages} on:click={() => module.set("roll")}>{$t('app.tab.develop')}</button>
+      <button class:active={$module === "roll"} disabled={!$hasImages} on:click={gotoRoll}>
+        {$t('app.tab.develop')}
+        {#if $undevelopedCount > 0}<span class="badge">{$undevelopedCount}</span>{/if}
+      </button>
       <button class:active={$module === "develop"} disabled={!$hasImages} on:click={gotoDevelop}>
         {$t('app.tab.tune')}
         {#if $undevelopedCount > 0}<span class="badge">{$undevelopedCount}</span>{/if}
@@ -157,7 +170,7 @@
 {/if}
 {#if confirming}
   <ConfirmDevelop count={confirmCount}
-    on:confirm={() => { confirming = false; developAll(); }}
+    on:confirm={() => { confirming = false; developAll(developTarget); }}
     on:cancel={() => (confirming = false)} />
 {/if}
 {#if deleteCount > 0}

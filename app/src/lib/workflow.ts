@@ -97,10 +97,10 @@ function nextPaint(): Promise<void> {
 }
 
 /** Develop every not-yet-developed image IN THE SELECTED FOLDER sequentially,
- * updating progress, then switch to the Develop module. Resolves when done. */
-export async function developAll(): Promise<void> {
+ * updating progress, then switch to the target module. Resolves when done. */
+export async function developAll(target: "develop" | "roll" = "develop"): Promise<void> {
   const ids = undevelopedIds(get(folderImages));
-  if (ids.length === 0) { module.set("develop"); return; }
+  if (ids.length === 0) { module.set(target); return; }
   developProgress.set({ active: true, done: 0, total: ids.length });
   // Let the overlay paint (and fade in) before kicking off the first develop call.
   await nextPaint();
@@ -122,7 +122,7 @@ export async function developAll(): Promise<void> {
     if (first) activeId.set(first.id);
   }
   track("images_developed", { count: ids.length });
-  module.set("develop");
+  module.set(target);
   // Keep the overlay up while the (heavy) Develop view mounts, then fade it out on
   // a free main thread so the dismiss animates instead of snapping.
   await nextPaint();
