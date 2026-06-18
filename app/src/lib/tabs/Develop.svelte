@@ -375,7 +375,8 @@
       {#key $tool}
         <div class="toolpane" in:fade={{ duration: 160, easing: cubicOut }}>
           {#if $tool === "edit"}
-            <Basic onWbPick={toggleWbPick} wbPicking={pickTarget === "wb"} imageCrop={imageCrop} />
+            <Basic onWbPick={toggleWbPick} wbPicking={pickTarget === "wb"} imageCrop={imageCrop}
+                   geom={{ rot90: cRot, flip_h: committed?.flipH ?? false, flip_v: committed?.flipV ?? false, angle: committed?.angle ?? 0 }} />
             <TonalCurve onWpPick={toggleWpPick} wpPicking={pickTarget === "wp"} />
             <ColorGrading />
             <ColorMixer onPick={togglePcPick} picking={pickTarget === "pc"} />

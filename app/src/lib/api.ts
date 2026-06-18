@@ -198,10 +198,26 @@ export const api = {
   deleteImage: (id: string, deleteFile: boolean) => invoke<void>("delete_image", { id, deleteFile }),
   thumbnail: (id: string, params: InvertParams, view: ThumbView = {}) =>
     invoke<string>("thumbnail", { id, params, view: { ...view, dust: wireDust(view.dust) } }),
-  asShotWb: (id: string, params: InvertParams, crop: [number, number, number, number] | null = null) =>
-    invoke<AsShotWb>("as_shot_wb", { id, params, crop }),
-  analyze: (id: string, params: InvertParams, crop: [number, number, number, number] | null = null) =>
-    invoke<{ d_max: number }>("analyze", { id, params, crop }),
+  asShotWb: (
+    id: string, params: InvertParams,
+    crop: [number, number, number, number] | null = null,
+    geom: { rot90?: number; flip_h?: boolean; flip_v?: boolean; angle?: number } = {},
+  ) =>
+    invoke<AsShotWb>("as_shot_wb", {
+      id, params, crop,
+      rot90: geom.rot90 ?? 0, flipH: geom.flip_h ?? false,
+      flipV: geom.flip_v ?? false, angle: geom.angle ?? 0,
+    }),
+  analyze: (
+    id: string, params: InvertParams,
+    crop: [number, number, number, number] | null = null,
+    geom: { rot90?: number; flip_h?: boolean; flip_v?: boolean; angle?: number } = {},
+  ) =>
+    invoke<{ d_max: number }>("analyze", {
+      id, params, crop,
+      rot90: geom.rot90 ?? 0, flipH: geom.flip_h ?? false,
+      flipV: geom.flip_v ?? false, angle: geom.angle ?? 0,
+    }),
   analyzeWhitePoint: (id: string, params: InvertParams, rect: [number, number, number, number]) =>
     invoke<{ d_max: number }>("analyze_white_point", { id, params, rect }),
   grayPointWb: (params: InvertParams, rgb: [number, number, number]) =>

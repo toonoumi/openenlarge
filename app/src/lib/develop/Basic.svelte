@@ -21,6 +21,10 @@
   // The persistent normalized image crop [x,y,w,h] (null = full frame). Analysis
   // (base / D_max / WB) runs against this so black scan borders don't skew it.
   export let imageCrop: [number, number, number, number] | null = null;
+  // Orientation/straighten of the active image. The crop is expressed in oriented
+  // space, so analysis must apply the same geometry before sampling (a horizontal
+  // flip otherwise re-analyzes the wrong region and shifts brightness).
+  export let geom: { rot90?: number; flip_h?: boolean; flip_v?: boolean; angle?: number } = {};
 
   let open = true;
 
@@ -116,7 +120,7 @@
     const key = id ? `${id}:${stock}:${baseKey}` : null;
     if (!shouldSeed(key, force)) return;
     try {
-      const wb = await api.asShotWb(id!, withEffectiveBase(get(params), dir), imageCrop);
+      const wb = await api.asShotWb(id!, withEffectiveBase(get(params), dir), imageCrop, geom);
       params.update((p) => ({ ...p, temp: wb.temp, tint: wb.tint, wb_manual: false }));
       reseedActive();
     } catch { /* not developed yet */ }
@@ -131,7 +135,7 @@
   async function reanalyze() {
     const id = get(activeId); if (!id) return;
     try {
-      const { d_max } = await api.analyze(id, withEffectiveBase(get(params), dir), imageCrop);
+      const { d_max } = await api.analyze(id, withEffectiveBase(get(params), dir), imageCrop, geom);
       params.update((p) => ({ ...p, d_max_override: d_max }));
       commitActive();
       autoWb();
