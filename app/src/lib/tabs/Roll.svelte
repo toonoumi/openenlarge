@@ -322,19 +322,6 @@
     wpPicking = true;
   }
 
-  async function onAutoBase() {
-    const id = get(activeId) ?? $developedFolderImages[0]?.id ?? null;
-    if (!id) return;
-    // Set refId so the reference panel is visible, but don't need to enter base mode.
-    refId = id;
-    setActive(id);
-    if (editMode === "none") editMode = "base";
-    try {
-      const r = await api.autoBaseInfo(id);
-      rollDraft.update((d) => ({ ...d, params: { ...d.params, base_override: r.base } }));
-    } catch { /* ignore */ }
-  }
-
   function onBaseSampled(e: CustomEvent<[number, number, number]>) {
     rollDraft.update((d) => ({ ...d, params: { ...d.params, base_override: e.detail } }));
     exitEditMode();
@@ -404,6 +391,7 @@
     </div>
 
     <aside class="panel">
+      <RollAdjust />
       <div class="panel-tools">
         <button class="tool-entry-btn" on:click={enterCropMode} disabled={$developedFolderImages.length === 0}>
           {$t('roll.crop.tool')}
@@ -415,10 +403,6 @@
           <span class="cube big" style="background:{baseCss(swatchBase)}"></span>
           <span class="pick"><Icon name="pipette" size={18} /></span>
         </button>
-        <button class="auto-link" on:click={onAutoBase} disabled={$developedFolderImages.length === 0}>
-          {$t('roll.base.auto')}
-        </button>
-
         <!-- White point: Tune-identical pipette button -->
         <div class="wp-row">
           <span class="panel-section-label">{$t('roll.wp.heading')}</span>
@@ -428,7 +412,6 @@
           </button>
         </div>
       </div>
-      <RollAdjust />
     </aside>
   </div>
 
@@ -695,12 +678,6 @@
     opacity: 0; transition: opacity 120ms; }
   .baseswatch:hover:not(:disabled) .pick, .baseswatch.on .pick { opacity: 1; }
   .baseswatch.on .cube.big { box-shadow: 0 0 0 2px rgba(244,157,78,0.7); }
-
-  /* Small "auto" text link next to the swatch — secondary affordance only */
-  .auto-link { background: transparent; border: none; color: var(--text-dim, #888);
-    font-size: 11px; padding: 0 0 4px; cursor: pointer; text-align: left; }
-  .auto-link:hover:not(:disabled) { color: var(--text); }
-  .auto-link:disabled { opacity: 0.45; cursor: default; }
 
   /* White-point row: label + pipette button side by side */
   .wp-row { display: flex; align-items: center; justify-content: space-between;
