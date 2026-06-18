@@ -185,6 +185,10 @@ export const telemetryDecided = writable<boolean>(false);
  * defaults on. */
 export const omitPreviewJpgs = writable<boolean>(true);
 
+/** When true, skip the "overwrite edits?" confirm when entering the Develop roll
+ * section. Persisted via prefs as `roll_overwrite_skip`. */
+export const rollOverwriteSkip = writable<boolean>(false);
+
 /** Film-base recalibration: armed from the Basic panel's Film Base section. While
  * true the viewport shows the drag-to-sample overlay (the sidebar stays in edit
  * mode). `sampledBase` holds the most recently sampled linear base, or null. */

@@ -4,20 +4,61 @@
   import { get } from "svelte/store";
   import { t } from "$lib/i18n";
   import { developedFolderImages } from "$lib/export/eligible";
-  import { editsById, images, setActive } from "$lib/store";
+  import { editsById, cropById, images, setActive, rollOverwriteSkip, module } from "$lib/store";
   import { rollReferenceId, resetRollDraft, rollDraft } from "$lib/roll/draft";
   import RollAdjust from "$lib/roll/RollAdjust.svelte";
-  import { applyToneColorToAll } from "$lib/roll/apply";
+  import { applyToneColorToAll, framesWithToneColor, framesWithCrop, framesWithBase, framesWithWhitePoint } from "$lib/roll/apply";
   import { livePreviewParams, draftThumbView } from "$lib/roll/livePreview";
   import { withEffectiveBase } from "$lib/develop/base";
   import { imageDir } from "$lib/library/folderScope";
   import { api, defaultParams } from "$lib/api";
   import { debounce } from "$lib/catalog";
   import FramePreview from "$lib/roll/FramePreview.svelte";
+  import ConfirmOverwrite from "$lib/roll/ConfirmOverwrite.svelte";
   import { exportContactSheet } from "$lib/roll/exportSheet";
 
+  // Entry gate: enabled after confirm (or if no conflicts / skip-pref set).
+  let mirrorEnabled = false;
+  let showEntryConfirm = false;
+  let entryConflictCount = 0;
+
   // Fresh roll draft each time the section opens (seed from defaults per spec).
-  onMount(() => { resetRollDraft(); });
+  onMount(() => {
+    resetRollDraft();
+
+    // Compute conflicts: union of frames with any edits across the developed folder.
+    const frames = get(developedFolderImages);
+    const ids = frames.map((f) => f.id);
+    const edits = get(editsById);
+    const crops = get(cropById);
+
+    const conflictSet = new Set<string>([
+      ...framesWithToneColor(edits, ids),
+      ...framesWithCrop(crops, ids),
+      ...framesWithBase(edits, ids),
+      ...framesWithWhitePoint(edits, ids),
+    ]);
+    const count = conflictSet.size;
+
+    if (count > 0 && !get(rollOverwriteSkip)) {
+      entryConflictCount = count;
+      showEntryConfirm = true;
+      // Do NOT enable mirroring yet — wait for confirm.
+    } else {
+      mirrorEnabled = true;
+    }
+  });
+
+  function onEntryConfirm(e: CustomEvent<{ dontAsk: boolean }>) {
+    if (e.detail?.dontAsk) rollOverwriteSkip.set(true);
+    showEntryConfirm = false;
+    mirrorEnabled = true;
+  }
+
+  function onEntryCancel() {
+    showEntryConfirm = false;
+    module.set("library");
+  }
 
   function openFrame(id: string) {
     setActive(id);
@@ -79,8 +120,9 @@
     }
   }, 250);
 
-  // Mirror every rollDraft change (tone/color/base/dmax/crop) to all frames.
-  $: scheduleLiveApply($rollDraft);
+  // Mirror every rollDraft change (tone/color/base/dmax/crop) to all frames,
+  // but only once mirroring has been enabled (after entry confirm or no conflicts).
+  $: if (mirrorEnabled) scheduleLiveApply($rollDraft);
 </script>
 
 <div class="roll">
@@ -108,6 +150,10 @@
 
 {#if $rollReferenceId}
   <FramePreview />
+{/if}
+
+{#if showEntryConfirm}
+  <ConfirmOverwrite count={entryConflictCount} on:confirm={onEntryConfirm} on:cancel={onEntryCancel} />
 {/if}
 
 <style>

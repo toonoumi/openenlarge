@@ -416,3 +416,4 @@ confirmOverwrite.title,"Overwrite {count} edited frame{plural}?","覆盖 {count}
 confirmOverwrite.sub,"Some frames in this roll already have edits. Applying to the whole roll will replace them.","本卷中部分胶片已有编辑。应用到整卷将覆盖它们。","src/lib/roll/ConfirmOverwrite.svelte","paragraph"
 confirmOverwrite.cancel,"Cancel","取消","src/lib/roll/ConfirmOverwrite.svelte","button"
 confirmOverwrite.overwrite,"Overwrite all","全部覆盖","src/lib/roll/ConfirmOverwrite.svelte","button"
+confirmOverwrite.dontAsk,"Don't ask me again","不再询问","src/lib/roll/ConfirmOverwrite.svelte","checkbox"

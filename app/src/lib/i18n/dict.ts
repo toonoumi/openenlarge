@@ -419,6 +419,7 @@ export const dict: Record<string, Record<string, string>> = {
     "confirmOverwrite.sub": "Some frames in this roll already have edits. Applying to the whole roll will replace them.",
     "confirmOverwrite.cancel": "Cancel",
     "confirmOverwrite.overwrite": "Overwrite all",
+    "confirmOverwrite.dontAsk": "Don't ask me again",
   },
   zh: {
     "app.brand": "OpenEnlarge",
@@ -838,5 +839,6 @@ export const dict: Record<string, Record<string, string>> = {
     "confirmOverwrite.sub": "本卷中部分胶片已有编辑。应用到整卷将覆盖它们。",
     "confirmOverwrite.cancel": "取消",
     "confirmOverwrite.overwrite": "全部覆盖",
+    "confirmOverwrite.dontAsk": "不再询问",
   },
 };
