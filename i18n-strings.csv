@@ -375,3 +375,6 @@ settings.telemetry.off,"Off","关闭","src/lib/settings/SettingsMenu.svelte","bu
 settings.telemetry.hint,"Anonymous usage data only. No images or personal information are ever sent.","仅匿名使用数据。绝不发送任何图像或个人信息。","src/lib/settings/SettingsMenu.svelte","hint"
 settings.telemetry.requestAccess,"Request dashboard access","申请仪表板访问权限","src/lib/settings/SettingsMenu.svelte","link"
 basic.inverseBtn,"Inverse","反相","src/lib/develop/Basic.svelte","button"
+eraser.zoomArea,"Zoom to area","缩放到区域","src/lib/develop/EraserPanel.svelte","button"
+eraser.resetView,"Reset view","重置视图","src/lib/develop/EraserPanel.svelte","button"
+eraser.marqueeHint,"Drag a rectangle on the image to zoom in.","在图像上拖动矩形以放大。","src/lib/develop/EraserPanel.svelte","hint"

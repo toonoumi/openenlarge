@@ -378,6 +378,9 @@ export const dict: Record<string, Record<string, string>> = {
     "settings.telemetry.hint": "Anonymous usage data only. No images or personal information are ever sent.",
     "settings.telemetry.requestAccess": "Request dashboard access",
     "basic.inverseBtn": "Inverse",
+    "eraser.zoomArea": "Zoom to area",
+    "eraser.resetView": "Reset view",
+    "eraser.marqueeHint": "Drag a rectangle on the image to zoom in.",
   },
   zh: {
     "app.brand": "OpenEnlarge",
@@ -756,5 +759,8 @@ export const dict: Record<string, Record<string, string>> = {
     "settings.telemetry.hint": "仅匿名使用数据。绝不发送任何图像或个人信息。",
     "settings.telemetry.requestAccess": "申请仪表板访问权限",
     "basic.inverseBtn": "反相",
+    "eraser.zoomArea": "缩放到区域",
+    "eraser.resetView": "重置视图",
+    "eraser.marqueeHint": "在图像上拖动矩形以放大。",
   },
 };

@@ -247,6 +247,9 @@
   $: $params, $activeId, $activeCrop, $activeDust, $folderBaseByPath, refreshThumb();
 
   let brush = 0.03;            // normalized-to-width brush radius
+  let zoomMarquee = false; // eraser marquee-zoom armed
+  let viewZoomed = false;  // eraser viewport currently magnified
+  let vp: import("$lib/viewport/Viewport.svelte").default; // Viewport instance for resetZoom()
   $: dust = $activeDust;
 
   // Apply a reducer to the active image's dust edits and force a Viewport re-render.
@@ -348,15 +351,17 @@
              overlays it. Unmounting the Viewport tears down its GPU context and forces
              a full working-buffer re-fetch + re-upload on dismiss (a multi-second blank),
              so we keep it alive and just cover it. -->
-        <Viewport id={$activeId} params={effParams} imgW={effW} imgH={effH} imageCrop={imageCrop}
+        <Viewport bind:this={vp} id={$activeId} params={effParams} imgW={effW} imgH={effH} imageCrop={imageCrop}
                   rot90={cRot} flipH={committed?.flipH ?? false} flipV={committed?.flipV ?? false} angle={committed?.angle ?? 0}
-                  eraser={$tool === "eraser"} {brush} dust={dust.strokes} irRemoval={dust.irRemoval} dustRev={$dustRev} developRev={$developRev}
+                  eraser={$tool === "eraser"} marquee={zoomMarquee} {brush} dust={dust.strokes} irRemoval={dust.irRemoval} dustRev={$dustRev} developRev={$developRev}
                   brushMigan={dust.brushMigan} aiApplied={dust.aiApplied}
                   autoDustEnabled={dust.autoDust.enabled} autoDustSensitivity={dust.autoDust.sensitivity}
                   pointPick={pickTarget !== ""}
                   on:stroke={(e) => commitStroke(e.detail)} on:brush={(e) => (brush = e.detail)}
                   on:aierased={() => (aiBusy = false)}
                   on:autodusted={() => (autoBusy = false)}
+                  on:zoomchange={(e) => (viewZoomed = e.detail)}
+                  on:marqueedone={() => (zoomMarquee = false)}
                   on:pointpick={onPointPick} />
         {#if $baseSampling}
           <div class="picker-overlay">
@@ -385,7 +390,7 @@
                        on:preset={(e) => onPreset(e.detail)} on:swap={onSwap} on:reset={onReset}
                        on:rotate={(e) => onRotate(e.detail)} on:flip={(e) => onFlip(e.detail)} />
           {:else if $tool === "eraser"}
-            <EraserPanel bind:brush {hasIr}
+            <EraserPanel bind:brush {hasIr} zoomed={viewZoomed} marqueeArmed={zoomMarquee}
                          irEnabled={dust.irRemoval.enabled} irSensitivity={dust.irRemoval.sensitivity}
                          brushMigan={dust.brushMigan} aiApplied={dust.aiApplied}
                          strokeCount={dust.strokes.length} aiBusy={aiBusy}
@@ -393,7 +398,9 @@
                          on:irEnabled={(e) => setIrOn(e.detail)}
                          on:irSensitivity={(e) => setIrSens(e.detail)}
                          on:brushMigan={(e) => setBrushAi(e.detail)}
-                         on:aiErase={aiErase} />
+                         on:aiErase={aiErase}
+                         on:zoomArea={() => (zoomMarquee = true)}
+                         on:resetView={() => { vp?.resetZoom(); zoomMarquee = false; }} />
             <AutoDustPanel id={$activeId}
                            enabled={dust.autoDust.enabled}
                            busy={autoBusy}

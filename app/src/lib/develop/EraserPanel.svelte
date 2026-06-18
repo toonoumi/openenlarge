@@ -20,9 +20,14 @@
   export let strokeCount = 0;
   /** True while the MI-GAN erase bake is running. */
   export let aiBusy = false;
+  /** Whether the viewport is currently magnified (drives the button label). */
+  export let zoomed = false;
+  /** Whether marquee-zoom is armed (highlights the button). */
+  export let marqueeArmed = false;
 
   const dispatch = createEventDispatcher<{
     reset: void; irEnabled: boolean; irSensitivity: number; brushMigan: boolean; aiErase: void;
+    zoomArea: void; resetView: void;
   }>();
 </script>
 
@@ -55,6 +60,14 @@
     <input type="range" min="0.005" max="0.2" step="0.001" bind:value={brush} bind:this={brushEl} />
     <span class="val" use:scrubValue={{ input: brushEl }}>{(brush * 100).toFixed(1)}%</span>
   </div>
+
+  {#if zoomed}
+    <button class="row" on:click={() => dispatch("resetView")}>{$t('eraser.resetView')}</button>
+  {:else}
+    <button class="row zoombtn" class:active={marqueeArmed} aria-pressed={marqueeArmed}
+            on:click={() => dispatch("zoomArea")}>{$t('eraser.zoomArea')}</button>
+    {#if marqueeArmed}<div class="hint">{$t('eraser.marqueeHint')}</div>{/if}
+  {/if}
 
   <label class="check" title={$t('eraser.brushAiHelp')}>
     <input type="checkbox" checked={brushMigan}
@@ -106,5 +119,7 @@
   .row { width: 100%; display: flex; justify-content: space-between; align-items: center;
     padding: 7px 10px; margin: 6px 0; border-radius: 8px; border: 1px solid var(--glass-brd);
     background: transparent; color: var(--text); cursor: pointer; }
+  .zoombtn { justify-content: center; }
+  .zoombtn.active { background: rgba(244,157,78,0.18); border-color: rgba(244,157,78,0.5); }
   .hint { font-size: 11px; color: var(--text-dim); margin-top: 8px; line-height: 1.5; }
 </style>
