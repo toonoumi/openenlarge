@@ -1,12 +1,11 @@
 <script lang="ts">
   import { toast } from "$lib/toast";
-  import { fly, fade } from "svelte/transition";
-  import { cubicOut } from "svelte/easing";
+  import { fade } from "svelte/transition";
 </script>
 
 {#if $toast}
   {#key $toast.id}
-    <div class="toast" in:fly={{ y: 12, duration: 200, easing: cubicOut }} out:fade={{ duration: 160 }}>
+    <div class="toast" in:fade={{ duration: 200 }} out:fade={{ duration: 160 }}>
       {$toast.msg}
     </div>
   {/key}
