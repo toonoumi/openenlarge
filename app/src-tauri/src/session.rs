@@ -241,6 +241,10 @@ pub struct PendingUpscale {
 pub struct Session {
     pub images: Mutex<HashMap<String, CachedImage>>,
     pub cache_dir: Mutex<std::path::PathBuf>,
+    /// Single-slot high-res (≤ MAX_GPU_EDGE) decoded raw-negative for the currently
+    /// deep-zoomed image, pre-bake. Replaced when a different image zooms. Lets zoom
+    /// re-bake on param/dust tweaks without re-decoding. Bounded to ~1 buffer.
+    pub zoom_src: Mutex<Option<(String, Image)>>,
     pub pending_export: Mutex<HashMap<String, PreparedExport>>,
     pub pending_upscale: Mutex<Option<PendingUpscale>>,
     /// Cached AI-dust probability map per image id (`(w, h, w*h f32 in [0,1])`).

@@ -811,6 +811,37 @@ fn ensure_resident(session: &Session, id: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Ensure the single-slot high-res zoom source for `id` is cached, decoding from the
+/// source file (capped at `MAX_GPU_EDGE`) on a miss or id change. Callers then read
+/// dims under the lock, or clone it out for off-thread packing/baking. Heavy decode;
+/// call from an async command body (off the UI thread), not the main thread.
+fn ensure_zoom_src(session: &Session, id: &str) -> Result<(), String> {
+    {
+        let g = session.zoom_src.lock().unwrap();
+        if matches!(g.as_ref(), Some((cid, _)) if cid == id) {
+            return Ok(());
+        }
+    }
+    let path = {
+        let images = session.images.lock().unwrap();
+        images.get(id).ok_or("unknown image id")?.path.clone()
+    };
+    let full = decode_any(Path::new(&path))?;
+    let hi = proxy(&full, MAX_GPU_EDGE);
+    *session.zoom_src.lock().unwrap() = Some((id.to_string(), hi));
+    Ok(())
+}
+
+/// Clone the cached high-res zoom source for `id` (for off-thread packing/baking).
+fn zoom_src_clone(session: &Session, id: &str) -> Result<film_core::Image, String> {
+    ensure_zoom_src(session, id)?;
+    let g = session.zoom_src.lock().unwrap();
+    g.as_ref()
+        .filter(|(cid, _)| cid == id)
+        .map(|(_, img)| img.clone())
+        .ok_or_else(|| "no zoom source".to_string())
+}
+
 #[tauri::command]
 pub async fn render_view(
     id: String,
@@ -1621,8 +1652,23 @@ pub struct WorkingInfo {
 
 /// Dimensions of the GPU float texture for this image (after the MAX_GPU_EDGE cap).
 #[tauri::command]
-pub fn working_info(id: String, session: State<Session>) -> Result<WorkingInfo, String> {
+pub async fn working_info(
+    id: String,
+    hires: bool,
+    session: State<'_, Session>,
+) -> Result<WorkingInfo, String> {
     ensure_resident(&session, &id)?;
+    if hires {
+        ensure_zoom_src(&session, &id)?;
+        let g = session.zoom_src.lock().unwrap();
+        return match g.as_ref() {
+            Some((cid, img)) if cid == &id => {
+                let (w, h) = capped_dims(img, MAX_GPU_EDGE);
+                Ok(WorkingInfo { w, h })
+            }
+            _ => Err("no zoom source".into()),
+        };
+    }
     let images = session.images.lock().unwrap();
     let img = images.get(&id).ok_or("unknown image id")?;
     let dev = img.developed.as_ref().ok_or("not developed")?;
@@ -1635,10 +1681,14 @@ pub fn working_info(id: String, session: State<Session>) -> Result<WorkingInfo, 
 #[tauri::command]
 pub async fn working_pixels(
     id: String,
+    hires: bool,
     session: State<'_, Session>,
 ) -> Result<tauri::ipc::Response, String> {
     ensure_resident(&session, &id)?;
-    let working = {
+    // hires (deep zoom): pack the high-res decode; else the resident proxy.
+    let working = if hires {
+        zoom_src_clone(&session, &id)?
+    } else {
         let images = session.images.lock().unwrap();
         let img = images.get(&id).ok_or("unknown image id")?;
         img.developed.as_ref().ok_or("not developed")?.working.clone()
@@ -1656,13 +1706,16 @@ pub async fn working_pixels(
 
 /// Capped dims of the BAKED (geometry + heal) working texture.
 #[tauri::command]
-pub fn working_baked_info(
+pub async fn working_baked_info(
     id: String,
     spec: BakeSpec,
-    session: State<Session>,
+    hires: bool,
+    session: State<'_, Session>,
 ) -> Result<WorkingInfo, String> {
     ensure_resident(&session, &id)?;
-    let working = {
+    let working = if hires {
+        zoom_src_clone(&session, &id)?
+    } else {
         let images = session.images.lock().unwrap();
         let img = images.get(&id).ok_or("unknown image id")?;
         img.developed
@@ -1821,12 +1874,15 @@ pub async fn working_baked_pixels(
     id: String,
     params: InvertParams,
     spec: BakeSpec,
+    hires: bool,
     session: State<'_, Session>,
 ) -> Result<tauri::ipc::Response, String> {
     use tauri::Manager;
     let app_data = app.path().app_data_dir().map_err(|e| e.to_string())?;
     ensure_resident(&session, &id)?;
-    let (working, ip, mode, base) = {
+    // Inversion params/base come from the resident developed image; the pixel SOURCE
+    // is the resident proxy (fit) or the high-res decode (deep zoom).
+    let (ip, mode, base) = {
         let images = session.images.lock().unwrap();
         let img = images.get(&id).ok_or("unknown image id")?;
         let dev = img.developed.as_ref().ok_or("not developed")?;
@@ -1835,7 +1891,14 @@ pub async fn working_baked_pixels(
         let base = effective_base(&params, dev.base);
         let mut ip = resolve_params(&params, &dev.thumb, base);
         ip.d_max = effective_dmax(&params, dev.d_max);
-        (dev.working.clone(), ip, mode_from(&params.mode), base)
+        (ip, mode_from(&params.mode), base)
+    };
+    let working = if hires {
+        zoom_src_clone(&session, &id)?
+    } else {
+        let images = session.images.lock().unwrap();
+        let img = images.get(&id).ok_or("unknown image id")?;
+        img.developed.as_ref().ok_or("not developed")?.working.clone()
     };
     let cached = if spec.auto_dust.enabled {
         session.autodust_prob.lock().unwrap().get(&id).cloned()
@@ -2378,6 +2441,18 @@ mod proxy_tests {
         let small = film_core::Image::new(1000, 800);
         let q = crate::convert::proxy(&small, PROXY_EDGE);
         assert_eq!((q.width, q.height), (1000, 800));
+    }
+
+    #[test]
+    fn ensure_zoom_src_reuses_cached_same_id() {
+        let s = crate::session::Session::default();
+        *s.zoom_src.lock().unwrap() = Some(("abc".to_string(), film_core::Image::new(100, 80)));
+        // A cache hit for the same id is a no-op (no file decode → cannot fail).
+        assert!(super::ensure_zoom_src(&s, "abc").is_ok());
+        let g = s.zoom_src.lock().unwrap();
+        let (cid, cached) = g.as_ref().unwrap();
+        assert_eq!(cid, "abc");
+        assert_eq!((cached.width, cached.height), (100, 80));
     }
 }
 
