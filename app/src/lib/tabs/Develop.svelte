@@ -8,6 +8,7 @@
   import { createPreviewPrefetcher } from "../develop/previewPrefetch";
   import { imageDir } from "../library/folderScope";
   import { withEffectiveBase } from "../develop/base";
+  import { mergeEnsured } from "../workflow";
   import { api } from "../api";
   import Filmstrip from "../panels/Filmstrip.svelte";
   import ImageContextMenu from "../overlay/ImageContextMenu.svelte";
@@ -68,7 +69,10 @@
     try {
       const updated = await api.ensureDeveloped(id);
       if (get(activeId) !== id) return; // navigated away mid-decode
-      images.update((list) => list.map((i) => (i.id === id ? updated : i)));
+      // Keep the live (edited-look) thumbnail; ensureDeveloped returns the develop-time
+      // default-params render, which would otherwise flash the filmstrip back to the
+      // un-adjusted look for ~400ms (until refreshThumb) on every navigation.
+      images.update((list) => list.map((i) => (i.id === id ? mergeEnsured(i, updated) : i)));
       developRev.update((n) => n + 1);
     } catch (e) {
       console.error("ensureDeveloped failed", id, e);

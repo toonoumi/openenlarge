@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { undevelopedIds, omitPreviewSidecars } from "./workflow";
+import { undevelopedIds, omitPreviewSidecars, mergeEnsured } from "./workflow";
 import type { ImageEntry } from "./api";
 
 const mk = (id: string, developed: boolean): ImageEntry => ({
@@ -14,6 +14,29 @@ describe("undevelopedIds", () => {
   });
   it("returns empty when all developed", () => {
     expect(undevelopedIds([mk("a", true)])).toEqual([]);
+  });
+});
+
+describe("mergeEnsured", () => {
+  it("keeps the frontend's live (edited) thumbnail, not the backend default render", () => {
+    const existing = { ...mk("a", true), thumbnail: "edited-look" };
+    const updated = { ...mk("a", true), thumbnail: "default-look", has_ir: true };
+    const merged = mergeEnsured(existing, updated);
+    expect(merged.thumbnail).toBe("edited-look"); // not clobbered → no filmstrip flash
+  });
+
+  it("adopts refreshed status/metadata from the ensure result", () => {
+    const existing = { ...mk("a", true), thumbnail: "edited-look" };
+    const updated = { ...mk("a", true), thumbnail: "default-look", has_ir: true, positive: true };
+    const merged = mergeEnsured(existing, updated);
+    expect(merged.has_ir).toBe(true);
+    expect(merged.positive).toBe(true);
+  });
+
+  it("falls back to the backend thumbnail when the frontend has none", () => {
+    const existing = { ...mk("a", true), thumbnail: "" };
+    const updated = { ...mk("a", true), thumbnail: "default-look" };
+    expect(mergeEnsured(existing, updated).thumbnail).toBe("default-look");
   });
 });
 

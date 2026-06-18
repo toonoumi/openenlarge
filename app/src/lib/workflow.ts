@@ -9,6 +9,20 @@ export function undevelopedIds(list: ImageEntry[]): string[] {
   return list.filter((i) => !i.developed).map((i) => i.id);
 }
 
+/**
+ * Fold a freshly `ensure_developed`'d entry back into the existing one. Takes the
+ * refreshed status/metadata from `updated`, but KEEPS the frontend's live thumbnail.
+ *
+ * `ensure_developed` always returns the develop-time, DEFAULT-params thumbnail (the
+ * backend never sees the user's edits — `refreshThumb` re-renders the edited look on
+ * the frontend only). Letting it overwrite the live thumbnail made the filmstrip flash
+ * the un-adjusted "base" look for ~400ms on every navigation before refreshThumb caught
+ * up. The backend thumbnail is only a fallback for when the frontend has none yet.
+ */
+export function mergeEnsured(existing: ImageEntry, updated: ImageEntry): ImageEntry {
+  return { ...updated, thumbnail: existing.thumbnail || updated.thumbnail };
+}
+
 /** Extensions we accept on import (file dialog filter + drag-drop). */
 export const IMPORT_EXTENSIONS = [
   "jpg", "jpeg", "png", "dng", "tif", "tiff", "raf", "rw2", "nef", "arw", "cr3", "3fr", "raw",
