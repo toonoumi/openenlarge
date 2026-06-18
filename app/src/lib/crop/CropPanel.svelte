@@ -1,7 +1,7 @@
 <script lang="ts">
   import { createEventDispatcher } from "svelte";
   import { t } from "$lib/i18n";
-  import { PRESETS } from "./presets";
+  import { PRESET_GROUPS } from "./presets";
   import Icon from "../icons/Icon.svelte";
   import { scrubValue } from "$lib/actions/scrubValue";
 
@@ -18,7 +18,15 @@
   <div class="sub">{$t('crop.aspectRatio')}</div>
   <select value={aspect} on:change={(e) => dispatch("preset", (e.target as HTMLSelectElement).value)}>
     {#if aspect === "custom"}<option value="custom">{$t('crop.custom')}</option>{/if}
-    {#each PRESETS as p}<option value={p.id}>{$t(p.label)}</option>{/each}
+    {#each PRESET_GROUPS as g}
+      {#if g.label}
+        <optgroup label={$t(g.label)}>
+          {#each g.items as p}<option value={p.id}>{$t(p.label)}</option>{/each}
+        </optgroup>
+      {:else}
+        {#each g.items as p}<option value={p.id}>{$t(p.label)}</option>{/each}
+      {/if}
+    {/each}
   </select>
 
   <div class="sub">{$t('crop.orientation')}</div>

@@ -5,8 +5,12 @@ describe("presets", () => {
   it("includes Original first and the required ids", () => {
     expect(PRESETS[0].id).toBe("original");
     const ids = PRESETS.map((p) => p.id);
-    for (const id of ["1:1", "4:5", "8.5:11", "5:7", "2:3", "4:4", "16:9", "16:10"])
+    for (const id of ["36:24", "6:6", "6:9", "4:5", "8:10", "1:1", "8.5:11", "16:9", "16:10"])
       expect(ids).toContain(id);
+  });
+  it("groups every non-original preset under a film/screen group", () => {
+    for (const p of PRESETS.filter((x) => x.id !== "original"))
+      expect(p.group).toBeTruthy();
   });
   it("effectiveRatio: landscape >= 1, portrait <= 1", () => {
     expect(effectiveRatio("4:5", 1.5, "landscape")).toBeCloseTo(5 / 4);
