@@ -210,6 +210,15 @@ pub(crate) fn effective_dmax(p: &InvertParams, dev_dmax: f32) -> f32 {
     p.d_max_override.unwrap_or(dev_dmax)
 }
 
+/// Decide the d_max to apply after a crop re-analysis (B3): a crop that lacks real
+/// blacks (density `spread` below `MIN_SPREAD`) gives an unreliable, range-destroying
+/// estimate, so keep `prior`; otherwise take the fresh `estimate`. Tuned so normal
+/// frames clear the bar and a sky-/highlight-only crop does not.
+pub(crate) fn guard_dmax(estimate: f32, spread: f32, prior: f32) -> f32 {
+    const MIN_SPREAD: f32 = 0.35;
+    if spread < MIN_SPREAD { prior } else { estimate }
+}
+
 /// Pick the film base for a freshly-developed working image. Returns (base, confidence).
 ///
 /// 1. Confident edge-detected rebate → use it.
@@ -304,14 +313,14 @@ fn sample_dmax_oriented(
     flip_h: bool,
     flip_v: bool,
     angle: f32,
-) -> f32 {
-    use film_core::calibrate::{sample_dmax, Rect};
+) -> (f32, f32) {
+    use film_core::calibrate::{sample_dmax_spread, Rect};
     let geom = geom_base(working, rot90, flip_h, flip_v, angle);
     let rect = crop.map(|nc| {
         let (x, y, w, h) = crop_px(nc, geom.width, geom.height);
         Rect { x, y, w, h }
     });
-    sample_dmax(&geom, base, rect)
+    sample_dmax_spread(&geom, base, rect)
 }
 
 /// Map normalized strokes → `Stamp`s in OUTPUT pixel space.
@@ -2052,16 +2061,18 @@ pub fn analyze(
     // The crop is in oriented (post orient/straighten) space — match the render
     // pipeline's geometry before sampling so flipped/rotated frames analyze the
     // correct image area.
+    let prior = effective_dmax(&params, dev.d_max);
+    let (estimate, spread) = sample_dmax_oriented(
+        &dev.working,
+        base,
+        crop,
+        rot90.unwrap_or(0),
+        flip_h.unwrap_or(false),
+        flip_v.unwrap_or(false),
+        angle.unwrap_or(0.0),
+    );
     Ok(Analysis {
-        d_max: sample_dmax_oriented(
-            &dev.working,
-            base,
-            crop,
-            rot90.unwrap_or(0),
-            flip_h.unwrap_or(false),
-            flip_v.unwrap_or(false),
-            angle.unwrap_or(0.0),
-        ),
+        d_max: guard_dmax(estimate, spread, prior),
     })
 }
 
@@ -2119,6 +2130,14 @@ mod tests {
     }
 
     #[test]
+    fn guard_dmax_keeps_prior_when_crop_is_flat() {
+        // Flat crop (spread below MIN) → keep prior d_max, never destroy range (B3).
+        assert_eq!(guard_dmax(1.05, 0.05, 2.4), 2.4, "flat crop must keep prior");
+        // Real density range → accept the fresh estimate.
+        assert_eq!(guard_dmax(1.8, 1.20, 2.4), 1.8, "ranged crop applies estimate");
+    }
+
+    #[test]
     fn analyze_sampling_follows_orientation() {
         // Left half bright (transmission 1.0 → density 0), right half dark
         // (transmission 1e-3 → density 3.0). A crop of the *oriented* left half must
@@ -2136,10 +2155,10 @@ mod tests {
         let base = [1.0f32; 3];
         let left_half = Some([0.0, 0.0, 0.5, 1.0]);
 
-        let unflipped = sample_dmax_oriented(&img, base, left_half, 0, false, false, 0.0);
+        let unflipped = sample_dmax_oriented(&img, base, left_half, 0, false, false, 0.0).0;
         assert!(unflipped < 1.5, "un-flipped left crop should be bright: {unflipped}");
 
-        let flipped = sample_dmax_oriented(&img, base, left_half, 0, true, false, 0.0);
+        let flipped = sample_dmax_oriented(&img, base, left_half, 0, true, false, 0.0).0;
         assert!(flipped > 2.5, "flipped left crop should sample the dark region: {flipped}");
     }
 
