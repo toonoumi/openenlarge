@@ -1,38 +1,34 @@
 <script lang="ts">
   import { onMount, onDestroy, createEventDispatcher } from "svelte";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-  import { save } from "@tauri-apps/plugin-dialog";
-  import { t } from "$lib/i18n";
-  import { api, type InvertParams, type DustStroke, type IrRemoval, type ExportFormat } from "../api";
+  import { t, translate } from "$lib/i18n";
+  import { api } from "../api";
   import { autodustInstalled } from "../store";
   import { scrubValue } from "$lib/actions/scrubValue";
+  import { showToast } from "../toast";
 
   let sensitivityEl: HTMLInputElement;
 
-  /** Everything needed to finish the full-res positive image for detection. */
+  /** Image id — the toggle is disabled when nothing is loaded. */
   export let id: string | null;
-  export let params: InvertParams;
-  export let imageCrop: [number, number, number, number] | null = null;
-  export let geom: { rot90?: number; flip_h?: boolean; flip_v?: boolean; angle?: number } = {};
-  export let dust: DustStroke[] = [];
-  export let irRemoval: IrRemoval = { enabled: false, sensitivity: 50 };
+  /** Whether AI auto-dust is on (live heal on the main display). */
+  export let enabled = false;
+  /** True while the heal bake is running (detector + MI-GAN can take many seconds). */
+  export let busy = false;
   /** Persisted per-image sensitivity (0..100). */
   export let sensitivity = 50;
 
-  const dispatch = createEventDispatcher<{ sensitivity: number }>();
+  const dispatch = createEventDispatcher<{ sensitivity: number; toggle: boolean }>();
 
   let checking = true;
   let downloadBytes = 0;
   let downloading = false;
   let dlReceived = 0;
   let dlTotal = 0;
-
-  let busy = false;
   let error = "";
-  let result = ""; // preview data URL
-  let count: number | null = null;
 
   let unlistenDl: UnlistenFn | null = null;
+  let unlistenResult: UnlistenFn | null = null;
 
   $: mb = (downloadBytes / 1_000_000).toFixed(0);
   $: dlPct = Math.min(dlTotal ? (dlReceived / dlTotal) * 100 : 0, 100);
@@ -40,6 +36,11 @@
   onMount(async () => {
     unlistenDl = await listen<{ received: number; total: number }>(
       "autodust://download-progress", (e) => { dlReceived = e.payload.received; dlTotal = e.payload.total; });
+    // Completion toast: backend emits the distinct-spot count after each auto-dust heal.
+    unlistenResult = await listen<{ count: number }>("autodust://result", (e) => {
+      const n = e.payload.count;
+      showToast(n > 0 ? translate("toast.autoDustRemoved", { count: n }) : translate("toast.autoDustNone"));
+    });
     try {
       const s = await api.autodustStatus();
       $autodustInstalled = s.installed;
@@ -47,7 +48,7 @@
     } catch (e) { error = String(e); }
     checking = false;
   });
-  onDestroy(() => { unlistenDl?.(); });
+  onDestroy(() => { unlistenDl?.(); unlistenResult?.(); });
 
   async function download() {
     error = ""; downloading = true; dlReceived = 0; dlTotal = downloadBytes;
@@ -56,36 +57,14 @@
     finally { downloading = false; }
   }
 
-  async function detect() {
-    if (!id) return;
-    error = ""; busy = true;
-    try {
-      const r = await api.autodustDetect(id, params, imageCrop, geom, dust, irRemoval, sensitivity);
-      result = r.previewDataUrl; count = r.count;
-    } catch (e) { error = String(e); }
-    finally { busy = false; }
-  }
-
-  // Slider commits on `change` (not `input`): each run re-inpaints, so we debounce
-  // to pointer-release. Persist the value, then re-run if we already have a result.
+  // Slider commits on `change` (not `input`): each value re-bakes on the main
+  // display, so debounce to pointer-release. Persist + emit; the viewport re-heals.
   function onSensitivity(v: number) {
     sensitivity = v;
     dispatch("sensitivity", v);
-    if (result) detect();
   }
-
-  async function saveResult() {
-    const path = await save({
-      filters: [{ name: "PNG", extensions: ["png"] }, { name: "TIFF", extensions: ["tiff"] }, { name: "JPEG", extensions: ["jpg"] }],
-    });
-    if (!path) return;
-    const ext = path.split(".").pop()?.toLowerCase();
-    const format: ExportFormat =
-      ext === "tiff" || ext === "tif" ? { kind: "tiff", bitDepth: 16 }
-      : ext === "jpg" || ext === "jpeg" ? { kind: "jpeg", quality: 92 }
-      : { kind: "png", bitDepth: 16 };
-    try { await api.saveUpscaled(path, format); }
-    catch (e) { error = String(e); }
+  function toggle() {
+    dispatch("toggle", !enabled);
   }
 </script>
 
@@ -110,24 +89,16 @@
       <button type="button" class="help" aria-label={$t("eraser.autoSensitivityHelp")}>?<span class="tip">{$t("eraser.autoSensitivityHelp")}</span></button>
     </div>
     <div class="slrow">
-      <input type="range" min="0" max="100" step="1" value={sensitivity} disabled={busy}
+      <input type="range" min="0" max="100" step="1" value={sensitivity}
              bind:this={sensitivityEl}
              on:change={(e) => onSensitivity(+(e.target as HTMLInputElement).value)} />
       <span class="val" use:scrubValue={{ input: sensitivityEl }}>{Math.round(sensitivity)}</span>
     </div>
 
-    <button class="go" class:busy disabled={busy || !id} on:click={detect}>
+    <button class="go" class:active={enabled} class:busy disabled={!id || busy} on:click={toggle}>
       {#if busy}<span class="spinner" aria-hidden="true"></span>{/if}
-      <span>{busy ? $t("eraser.autoWorking") : $t("eraser.autoButton")}</span>
+      <span>{$t("eraser.autoButton")}</span>
     </button>
-
-    {#if result}
-      <div class="result">
-        <img src={result} alt={$t("eraser.autoTitle")} />
-        {#if count !== null}<div class="dims">{$t("eraser.autoCount", { n: String(count) })}</div>{/if}
-        <button class="row" on:click={saveResult}>{$t("eraser.autoSave")}</button>
-      </div>
-    {/if}
   {/if}
 
   {#if error}<div class="err">{error}</div>{/if}
@@ -154,6 +125,8 @@
     border: 1px solid rgba(244,157,78,0.5); background: rgba(244,157,78,0.18); color: #fff; cursor: pointer; font-size: 13px; }
   .go:not(:disabled):hover { background: rgba(244,157,78,0.30); border-color: rgba(244,157,78,0.75); }
   .go:disabled { opacity: 0.55; cursor: default; }
+  /* Active = auto-dust toggled on (heal showing on the main display). */
+  .go.active { background: rgba(244,157,78,0.34); border-color: rgba(244,157,78,0.85); }
   .spinner { width: 13px; height: 13px; flex: none; border-radius: 50%;
     border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff; animation: spin 0.7s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
@@ -167,10 +140,5 @@
   .val { font-size: 12px; color: var(--text); width: 44px; text-align: right;
     font-variant-numeric: tabular-nums; }
   .err { font-size: 11px; color: #ff9a9a; margin: 6px 0; line-height: 1.4; }
-  .result { margin-top: 8px; }
-  .result img { display: block; width: 100%; border: 1px solid var(--glass-brd); border-radius: 8px; }
-  .dims { font-size: 11px; color: var(--text-dim); margin: 6px 0; text-align: center; }
-  .row { width: 100%; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--glass-brd);
-    background: transparent; color: var(--text); cursor: pointer; }
   .hint { font-size: 11px; color: var(--text-dim); margin-top: 8px; line-height: 1.5; }
 </style>

@@ -63,8 +63,12 @@ fn init_runtime(app_data: &Path) {
     });
 }
 
-/// Build a session for the model, registering the platform GPU EP with CPU
-/// fallback (ort falls back to CPU automatically if a registered EP fails).
+/// Build a session for the model, registering CoreML on macOS. Windows runs on
+/// CPU: the shared `onnxruntime.dll` is a DirectML build, so requesting the
+/// DirectML EP actually engages D3D12/DirectML (it does NOT fall back to CPU as
+/// once assumed) and can crash the process with a native access violation that
+/// Rust's `Result` cannot catch (see `autodust::engine::make_session`). Until a
+/// verified GPU path exists, omit the Windows EP so ort defaults to CPU.
 fn make_session(app_data: &Path) -> Result<Session, String> {
     init_runtime(app_data);
     let builder = Session::builder()
@@ -77,13 +81,6 @@ fn make_session(app_data: &Path) -> Result<Session, String> {
         use ort::execution_providers::CoreMLExecutionProvider;
         builder
             .with_execution_providers([CoreMLExecutionProvider::default().build()])
-            .map_err(|e| e.to_string())?
-    };
-    #[cfg(target_os = "windows")]
-    let builder = {
-        use ort::execution_providers::DirectMLExecutionProvider;
-        builder
-            .with_execution_providers([DirectMLExecutionProvider::default().build()])
             .map_err(|e| e.to_string())?
     };
 

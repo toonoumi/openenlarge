@@ -2,7 +2,7 @@
   import { t } from "$lib/i18n";
   import { fade } from "svelte/transition";
   import { cubicOut } from "svelte/easing";
-  import { activeId, params, images, folderImages, tool, cropById, activeCrop, dustById, activeDust, deleteTarget, dustRev, developRev, folderBaseByPath, baseSampling, sampledBase, sampledDmax, selectAll, deleteSelectionIds, setActive } from "../store";
+  import { activeId, params, images, folderImages, tool, cropById, activeCrop, dustById, activeDust, deleteTarget, dustRev, developRev, folderBaseByPath, baseSampling, sampledBase, sampledDmax, selectAll, deleteSelectionIds, setActive, previewSrc } from "../store";
   import { get } from "svelte/store";
   import { imageDir } from "../library/folderScope";
   import { withEffectiveBase } from "../develop/base";
@@ -24,7 +24,7 @@
   import EraserPanel from "../develop/EraserPanel.svelte";
   import AutoDustPanel from "../develop/AutoDustPanel.svelte";
   import AiEnhancePanel from "../develop/AiEnhancePanel.svelte";
-  import { addStroke, resetDust, emptyDust, setIrEnabled, setIrSensitivity, setAutoDustSensitivity, setBrushMigan, setAiApplied, type DustStroke, type DustEdits } from "../develop/dust";
+  import { addStroke, resetDust, emptyDust, setIrEnabled, setIrSensitivity, setAutoDustEnabled, setAutoDustSensitivity, setBrushMigan, setAiApplied, type DustStroke, type DustEdits } from "../develop/dust";
   import type { Rect, CropRect } from "../crop/types";
   import { defaultFull, conform, constrainToRotated } from "../crop/cropMath";
   import { presetNormAspect } from "../crop/presets";
@@ -259,9 +259,13 @@
   const resetDustEdits = () => updateDust((d) => resetDust(d));
   function setIrOn(on: boolean) { updateDust((d) => setIrEnabled(d, on)); }
   function setIrSens(v: number) { updateDust((d) => setIrSensitivity(d, v)); }
-  function setAutoSens(v: number) { updateDust((d) => setAutoDustSensitivity(d, v)); }
+  function setAutoSens(v: number) { if (dust.autoDust.enabled) autoBusy = true; updateDust((d) => setAutoDustSensitivity(d, v)); }
+  function setAutoOn(on: boolean) { autoBusy = on; updateDust((d) => setAutoDustEnabled(d, on)); }
   function setBrushAi(on: boolean) { updateDust((d) => setBrushMigan(d, on)); }
   let aiBusy = false;
+  // Spinner for the AI auto-dust toggle: set the instant the user taps (proves the
+  // tap registered), cleared when the Viewport's bake completes (`autodusted`).
+  let autoBusy = false;
   function aiErase() { aiBusy = true; updateDust((d) => setAiApplied(d, true)); }
   // Never let the erase spinner outlive the active image.
   $: { $activeId; aiBusy = false; }
@@ -331,18 +335,35 @@
         <CropView id={$activeId} params={effParams} imgW={oW} imgH={oH}
                   bind:rect {lockRatio} {rot90} {flipH} {flipV} {angle}
                   on:custom={() => (aspect = "custom")} on:straighten={(e) => onStraighten(e.detail)} />
-      {:else if $baseSampling}
-        <BaseView id={$activeId} params={effParams} imgW={origW} imgH={origH}
-                  on:sampled={(e) => sampledBase.set(e.detail)} />
       {:else}
+        <!-- Cold-start placeholder: the in-memory catalog thumbnail fills the main view
+             instantly while the Viewport decodes the full working buffer from cache on
+             first launch (`previewSrc` is empty until the first real frame is rendered).
+             object-fit:contain matches the Viewport's fit, so the real frame paints over
+             it seamlessly. -->
+        {#if active?.thumbnail && !$previewSrc}
+          <img class="cold-thumb" src={active.thumbnail} alt="" draggable="false" />
+        {/if}
+        <!-- The Viewport stays mounted while the film-base picker is armed; BaseView
+             overlays it. Unmounting the Viewport tears down its GPU context and forces
+             a full working-buffer re-fetch + re-upload on dismiss (a multi-second blank),
+             so we keep it alive and just cover it. -->
         <Viewport id={$activeId} params={effParams} imgW={effW} imgH={effH} imageCrop={imageCrop}
                   rot90={cRot} flipH={committed?.flipH ?? false} flipV={committed?.flipV ?? false} angle={committed?.angle ?? 0}
                   eraser={$tool === "eraser"} {brush} dust={dust.strokes} irRemoval={dust.irRemoval} dustRev={$dustRev} developRev={$developRev}
                   brushMigan={dust.brushMigan} aiApplied={dust.aiApplied}
+                  autoDustEnabled={dust.autoDust.enabled} autoDustSensitivity={dust.autoDust.sensitivity}
                   pointPick={pickTarget !== ""}
                   on:stroke={(e) => commitStroke(e.detail)} on:brush={(e) => (brush = e.detail)}
                   on:aierased={() => (aiBusy = false)}
+                  on:autodusted={() => (autoBusy = false)}
                   on:pointpick={onPointPick} />
+        {#if $baseSampling}
+          <div class="picker-overlay">
+            <BaseView id={$activeId} params={effParams} imgW={origW} imgH={origH}
+                      on:sampled={(e) => sampledBase.set(e.detail)} />
+          </div>
+        {/if}
       {/if}
     {:else}<div class="hint">{$t('develop.notDevelopedYet')}</div>{/if}
   </section>
@@ -372,10 +393,11 @@
                          on:irSensitivity={(e) => setIrSens(e.detail)}
                          on:brushMigan={(e) => setBrushAi(e.detail)}
                          on:aiErase={aiErase} />
-            <AutoDustPanel id={$activeId} params={effParams} imageCrop={imageCrop}
-                           geom={{ rot90: cRot, flip_h: committed?.flipH ?? false, flip_v: committed?.flipV ?? false, angle: committed?.angle ?? 0 }}
-                           dust={dust.strokes} irRemoval={dust.irRemoval}
+            <AutoDustPanel id={$activeId}
+                           enabled={dust.autoDust.enabled}
+                           busy={autoBusy}
                            sensitivity={dust.autoDust.sensitivity}
+                           on:toggle={(e) => setAutoOn(e.detail)}
                            on:sensitivity={(e) => setAutoSens(e.detail)} />
           {:else if $tool === "enhance"}
             <AiEnhancePanel effParams={effParams} imageCrop={imageCrop}
@@ -428,7 +450,14 @@
     background: linear-gradient(to bottom, rgba(0,0,0,0.55), rgba(0,0,0,0)); }
   .edge-fade.bottom { bottom: 1px; border-radius: 0 0 var(--radius) var(--radius);
     background: linear-gradient(to top, rgba(0,0,0,0.55), rgba(0,0,0,0)); }
-  .center { grid-area: center; min-height: 0; display: grid; place-items: center; }
+  .center { grid-area: center; min-height: 0; display: grid; place-items: center; position: relative; }
+  /* Film-base picker overlay: covers the still-mounted Viewport (opaque so it doesn't
+     bleed through) while keeping the Viewport's GPU texture alive for an instant dismiss. */
+  .picker-overlay { position: absolute; inset: 0; z-index: 6; background: #111111; }
+  /* Cold-start thumbnail placeholder: sits behind the Viewport, fit to the same padded
+     box so the first real frame paints over it without a jump. */
+  .cold-thumb { position: absolute; inset: 60px; width: calc(100% - 120px); height: calc(100% - 120px);
+    object-fit: contain; z-index: 0; pointer-events: none; border-radius: 10px; }
   .hint { color: var(--text-dim); }
   .bottom { grid-area: bottom; min-width: 0; overflow: hidden; }
 </style>

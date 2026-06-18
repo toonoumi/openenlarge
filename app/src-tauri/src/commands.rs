@@ -656,9 +656,10 @@ pub struct IrRemoval {
     pub sensitivity: f32,
 }
 
-/// AI (learned-model) auto dust/hair removal settings from the UI. Carried on the
-/// wire for forward-compatibility; the heal itself runs via the explicit
-/// `autodust_detect` command (the model is too slow for the per-render path).
+/// AI (learned-model) auto dust/hair removal settings from the UI. When
+/// `enabled`, the bake path inverts the working buffer, runs the cached detector,
+/// thresholds at `sensitivity`, and MI-GAN-heals the defect mask (unioned with
+/// brush strokes) — see `working_baked_pixels` / `bake_for_view_from_baked`.
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct AutoDust {
     pub enabled: bool,
@@ -741,18 +742,44 @@ pub fn render_view(
     view: ViewSpec,
     session: State<Session>,
 ) -> Result<String, String> {
+    let _t_resident = std::time::Instant::now(); // [TIMEDBG]
     ensure_resident(&session, &id)?;
+    eprintln!("[TIMEDBG] render_view ensure_resident {:?}", _t_resident.elapsed()); // [TIMEDBG]
+    let _t = std::time::Instant::now(); // [TIMEDBG]
     let images = session.images.lock().unwrap();
+    eprintln!("[TIMEDBG] render_view lock {:?}", _t.elapsed()); // [TIMEDBG]
     let img = images.get(&id).ok_or("unknown image id")?;
     let dev = img.developed.as_ref().ok_or("not developed")?;
+    eprintln!(
+        "[TIMEDBG] render_view working={}x{} raw={} out={}x{}",
+        dev.working.width, dev.working.height, view.raw, view.out_w, view.out_h
+    ); // [TIMEDBG]
+    let _t_geom = std::time::Instant::now(); // [TIMEDBG]
 
     // Geometry: orient (lossless) → straighten → persistent crop, then the view crop.
-    let oriented = orient(&dev.working, view.rot90, view.flip_h, view.flip_v);
-    let straightened = rotate(&oriented, view.angle);
-    let base_img = match view.image_crop {
+    // Each stage borrows the previous buffer when it would be a no-op, so an
+    // identity/full-frame view (e.g. the film-base picker: no rot/flip/straighten/crop)
+    // skips cloning the whole working image — the dominant cost on large/Quality buffers.
+    let oriented_owned;
+    let oriented: &film_core::Image = if view.rot90 == 0 && !view.flip_h && !view.flip_v {
+        &dev.working
+    } else {
+        oriented_owned = orient(&dev.working, view.rot90, view.flip_h, view.flip_v);
+        &oriented_owned
+    };
+    let straightened_owned;
+    let straightened: &film_core::Image = if view.angle.abs() < 1e-4 {
+        oriented
+    } else {
+        straightened_owned = rotate(oriented, view.angle);
+        &straightened_owned
+    };
+    let base_img_owned;
+    let base_img: &film_core::Image = match view.image_crop {
         Some(nc) => {
             let (ix, iy, iw, ih) = crop_px(nc, straightened.width, straightened.height);
-            crop(&straightened, ix, iy, iw, ih)
+            base_img_owned = crop(straightened, ix, iy, iw, ih);
+            &base_img_owned
         }
         None => straightened,
     };
@@ -768,15 +795,28 @@ pub fn render_view(
     let cy = (view.crop[1] * s_scale).max(0.0).round() as usize;
     let cw = (view.crop[2] * s_scale).round().max(1.0) as usize;
     let ch = (view.crop[3] * s_scale).round().max(1.0) as usize;
-    let cropped = crop(&base_img, cx, cy, cw, ch);
+    // Whole-frame view crop (the common case — zoom/pan and pickers pass [0,0,w,h])
+    // borrows base_img instead of copying it.
+    let cropped_owned;
+    let cropped: &film_core::Image =
+        if cx == 0 && cy == 0 && cw >= base_img.width && ch >= base_img.height {
+            base_img
+        } else {
+            cropped_owned = crop(base_img, cx, cy, cw, ch);
+            &cropped_owned
+        };
     if cropped.pixels.is_empty() {
         return Err("empty crop".into());
     }
     let (cw_px, ch_px) = (cropped.width, cropped.height);
-    let scaled = resize_to(&cropped, view.out_w.max(1), view.out_h.max(1));
+    let scaled = resize_to(cropped, view.out_w.max(1), view.out_h.max(1));
+    eprintln!("[TIMEDBG] render_view geom+resize {:?}", _t_geom.elapsed()); // [TIMEDBG]
 
     if view.raw {
-        return to_jpeg_b64(&scaled, true, PREVIEW_JPEG_QUALITY);
+        let _t_jpeg = std::time::Instant::now(); // [TIMEDBG]
+        let r = to_jpeg_b64(&scaled, true, PREVIEW_JPEG_QUALITY);
+        eprintln!("[TIMEDBG] render_view raw jpeg {:?}", _t_jpeg.elapsed()); // [TIMEDBG]
+        return r;
     }
     let mut ip = resolve_params(&params, &dev.thumb, effective_base(&params, dev.base));
     ip.d_max = effective_dmax(&params, dev.d_max);
@@ -1504,21 +1544,114 @@ fn full_mask_from_stamps(w: usize, h: usize, stamps: &[Stamp]) -> film_core::dus
     film_core::dust::Mask { x0: 0, y0: 0, w, h, bits }
 }
 
-/// Bake the GPU working buffer: geometry, then heal dust strokes per the spec's
-/// mode (classic Telea, MI-GAN, or skipped for the AI-mask overlay), then IR. The
-/// MI-GAN branch needs `app_data` for the model; falls back to Telea if missing.
-fn bake_for_view(app_data: &Path, working: &film_core::Image, spec: &BakeSpec) -> film_core::Image {
-    let mut img = bake_geometry(working, spec);
-    if !spec.skip_dust_heal {
-        let stamps = export_stamps(&spec.dust, img.width, img.height);
-        if spec.migan && crate::autodust::assets::installed(app_data) {
-            let mask = full_mask_from_stamps(img.width, img.height, &stamps);
-            if mask.bits.iter().any(|&b| b) {
-                let _ = crate::autodust::engine::inpaint(app_data, &mut img, &mask);
-            }
-        } else {
-            film_core::dust::apply(&mut img, &stamps);
+/// Build the auto-dust defect mask for a baked NEGATIVE working image: invert to
+/// a positive, run the detector (reusing `cached` prob if its dims match, else
+/// run once), and threshold at `sensitivity`. Returns the whole-frame mask plus
+/// the prob map to cache when freshly computed. Detector failure → empty mask.
+fn auto_dust_mask(
+    app_data: &Path,
+    baked: &film_core::Image,
+    ip: &InversionParams,
+    mode: Mode,
+    sensitivity: f32,
+    cached: Option<(usize, usize, Vec<f32>)>,
+) -> (film_core::dust::Mask, Option<(usize, usize, Vec<f32>)>) {
+    let (w, h) = (baked.width, baked.height);
+    let empty = film_core::dust::Mask { x0: 0, y0: 0, w: 0, h: 0, bits: Vec::new() };
+    // Positive image the detector expects (no finishing layer needed).
+    let positive = invert_image(baked, ip, mode);
+    let (prob, fresh) = match cached {
+        Some((cw, ch, p)) if (cw, ch) == (w, h) && p.len() == w * h => (p, None),
+        _ => match crate::autodust::engine::detect(app_data, &positive) {
+            Ok(p) => (p.clone(), Some((w, h, p))),
+            Err(_) => return (empty, None),
+        },
+    };
+    let max_blob = (crate::autodust::MAX_BLOB * w.max(h) / 2000).max(1);
+    let mask = film_core::dust::prob_defect_mask(w, h, &prob, sensitivity, max_blob);
+    (mask, fresh)
+}
+
+/// OR two whole-frame masks (`x0=y0=0`, same `w,h`). An empty side (`w==0`)
+/// yields the other; used to merge the auto-dust defect mask with brush strokes.
+fn union_mask(mut a: film_core::dust::Mask, b: &film_core::dust::Mask) -> film_core::dust::Mask {
+    if a.w == 0 || a.h == 0 {
+        return b.clone();
+    }
+    if b.w == 0 || b.h == 0 || a.bits.len() != b.bits.len() {
+        return a;
+    }
+    for (av, bv) in a.bits.iter_mut().zip(b.bits.iter()) {
+        *av = *av || *bv;
+    }
+    a
+}
+
+/// Count connected components (4-neighbour) of set pixels in a whole-frame mask —
+/// i.e. the number of distinct dust/defect spots, for the "N dust spots removed"
+/// toast. Empty mask → 0.
+fn count_blobs(mask: &film_core::dust::Mask) -> u32 {
+    let (w, h) = (mask.w, mask.h);
+    if w == 0 || h == 0 {
+        return 0;
+    }
+    let mut seen = vec![false; w * h];
+    let mut stack: Vec<usize> = Vec::new();
+    let mut blobs = 0u32;
+    for start in 0..w * h {
+        if !mask.bits[start] || seen[start] {
+            continue;
         }
+        blobs += 1;
+        seen[start] = true;
+        stack.push(start);
+        while let Some(p) = stack.pop() {
+            let (x, y) = (p % w, p / w);
+            let mut push = |q: usize, seen: &mut Vec<bool>, stack: &mut Vec<usize>| {
+                if mask.bits[q] && !seen[q] {
+                    seen[q] = true;
+                    stack.push(q);
+                }
+            };
+            if x > 0 { push(p - 1, &mut seen, &mut stack); }
+            if x + 1 < w { push(p + 1, &mut seen, &mut stack); }
+            if y > 0 { push(p - w, &mut seen, &mut stack); }
+            if y + 1 < h { push(p + w, &mut seen, &mut stack); }
+        }
+    }
+    blobs
+}
+
+/// Heal an already-geometry-baked working buffer: dust strokes per the spec's
+/// mode (classic Telea, MI-GAN, or skipped for the AI-mask overlay), unioned with
+/// the optional auto-dust defect `auto_mask`, then IR. When `auto_mask` is present
+/// (or `spec.migan`) and the model is installed, the combined mask is MI-GAN
+/// healed; otherwise strokes fall back to the classic Telea fill.
+fn bake_for_view_from_baked(
+    app_data: &Path,
+    mut img: film_core::Image,
+    spec: &BakeSpec,
+    auto_mask: Option<&film_core::dust::Mask>,
+) -> film_core::Image {
+    let stamps = export_stamps(&spec.dust, img.width, img.height);
+    let want_migan =
+        (spec.migan || auto_mask.is_some()) && crate::autodust::assets::installed(app_data);
+    if want_migan {
+        // Brush strokes (unless in mask-overlay mode) ∪ the auto-dust defect mask.
+        let stroke_mask = if spec.skip_dust_heal {
+            film_core::dust::Mask { x0: 0, y0: 0, w: 0, h: 0, bits: Vec::new() }
+        } else {
+            full_mask_from_stamps(img.width, img.height, &stamps)
+        };
+        let mut mask = stroke_mask;
+        if let Some(am) = auto_mask {
+            mask = union_mask(mask, am);
+        }
+        if mask.bits.iter().any(|&b| b) {
+            let _ = crate::autodust::engine::inpaint(app_data, &mut img, &mask);
+        }
+    } else if !spec.skip_dust_heal {
+        film_core::dust::apply(&mut img, &stamps);
     }
     if spec.ir_removal.enabled {
         if let Some(ir) = img.ir.clone() {
@@ -1535,30 +1668,54 @@ fn bake_for_view(app_data: &Path, working: &film_core::Image, spec: &BakeSpec) -
 pub async fn working_baked_pixels(
     app: tauri::AppHandle,
     id: String,
+    params: InvertParams,
     spec: BakeSpec,
     session: State<'_, Session>,
 ) -> Result<tauri::ipc::Response, String> {
     use tauri::Manager;
     let app_data = app.path().app_data_dir().map_err(|e| e.to_string())?;
     ensure_resident(&session, &id)?;
-    let working = {
+    let (working, ip, mode) = {
         let images = session.images.lock().unwrap();
         let img = images.get(&id).ok_or("unknown image id")?;
-        img.developed
-            .as_ref()
-            .ok_or("not developed")?
-            .working
-            .clone()
+        let dev = img.developed.as_ref().ok_or("not developed")?;
+        let mut ip = resolve_params(&params, &dev.thumb, effective_base(&params, dev.base));
+        ip.d_max = effective_dmax(&params, dev.d_max);
+        (dev.working.clone(), ip, mode_from(&params.mode))
     };
-    // The heal can run MI-GAN (seconds) — do it off the main thread so the UI
-    // (and the WKWebView, which shares the main thread on macOS) stays responsive.
-    let bytes = tauri::async_runtime::spawn_blocking(move || {
-        let baked = bake_for_view(&app_data, &working, &spec);
-        let (_, _, bytes) = pack_rgba16f(&baked, MAX_GPU_EDGE);
-        bytes
+    let cached = if spec.auto_dust.enabled {
+        session.autodust_prob.lock().unwrap().get(&id).cloned()
+    } else {
+        None
+    };
+    let do_auto = spec.auto_dust.enabled;
+    let sens = spec.auto_dust.sensitivity;
+    // The heal can run the detector + MI-GAN (seconds) — keep it off the main
+    // thread so the UI (and the WKWebView, which shares the main thread on macOS)
+    // stays responsive. Returns any freshly computed prob map to cache.
+    let (bytes, fresh, blobs) = tauri::async_runtime::spawn_blocking(move || {
+        let baked = bake_geometry(&working, &spec);
+        let (auto_mask, fresh) = if do_auto && crate::autodust::assets::installed(&app_data) {
+            let (m, fr) = auto_dust_mask(&app_data, &baked, &ip, mode, sens, cached);
+            (Some(m), fr)
+        } else {
+            (None, None)
+        };
+        // Distinct dust spots removed (for the completion toast) — only when auto-dust ran.
+        let blobs = auto_mask.as_ref().map(count_blobs);
+        let healed = bake_for_view_from_baked(&app_data, baked, &spec, auto_mask.as_ref());
+        let (_, _, bytes) = pack_rgba16f(&healed, MAX_GPU_EDGE);
+        (bytes, fresh, blobs)
     })
     .await
     .map_err(|e| e.to_string())?;
+    if let Some(p) = fresh {
+        session.autodust_prob.lock().unwrap().insert(id, p);
+    }
+    if let Some(n) = blobs {
+        use tauri::Emitter;
+        let _ = app.emit("autodust://result", serde_json::json!({ "count": n }));
+    }
     Ok(tauri::ipc::Response::new(bytes))
 }
 
@@ -1677,6 +1834,23 @@ pub fn analyze_white_point(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn union_mask_ors_full_frame_bits() {
+        use film_core::dust::Mask;
+        let a = Mask { x0: 0, y0: 0, w: 2, h: 1, bits: vec![true, false] };
+        let b = Mask { x0: 0, y0: 0, w: 2, h: 1, bits: vec![false, true] };
+        let u = super::union_mask(a, &b);
+        assert_eq!(u.bits, vec![true, true]);
+    }
+
+    #[test]
+    fn union_mask_with_empty_returns_other() {
+        use film_core::dust::Mask;
+        let a = Mask { x0: 0, y0: 0, w: 0, h: 0, bits: Vec::new() };
+        let b = Mask { x0: 0, y0: 0, w: 2, h: 1, bits: vec![true, false] };
+        assert_eq!(super::union_mask(a, &b).bits, vec![true, false]);
+    }
 
     #[test]
     fn white_point_dmax_matches_engine() {
@@ -2078,70 +2252,6 @@ pub async fn download_autodust(app: tauri::AppHandle) -> Result<(), String> {
     use tauri::Manager;
     let app_data = app.path().app_data_dir().map_err(|e| e.to_string())?;
     crate::autodust::assets::download(&app, &app_data).await
-}
-
-/// One-click AI dust/hair removal on the current developed image. Finishes the
-/// full-res positive, runs the detector once (cached in the Session so the
-/// sensitivity slider only re-thresholds + refills), builds the defect mask at
-/// `sensitivity`, MI-GAN-inpaints it, stashes the healed full-res result for
-/// `save_upscaled`, and returns a preview + the number of pixels removed.
-#[allow(clippy::too_many_arguments)]
-#[tauri::command]
-pub async fn autodust_detect(
-    app: tauri::AppHandle,
-    id: String,
-    params: InvertParams,
-    image_crop: Option<[f64; 4]>,
-    rot90: u8,
-    flip_h: bool,
-    flip_v: bool,
-    angle: f32,
-    dust: Vec<DustStroke>,
-    ir_removal: IrRemoval,
-    sensitivity: f32,
-    session: State<'_, Session>,
-) -> Result<crate::autodust::AutoDustResult, String> {
-    use tauri::Manager;
-    let app_data = app.path().app_data_dir().map_err(|e| e.to_string())?;
-    if !crate::autodust::assets::installed(&app_data) {
-        return Err("AI dust models are not installed".into());
-    }
-    // Finished positive full-res image (same pipeline as upscale/export).
-    let (fin, metadata) = finish_full_res(
-        &id, &params, image_crop, rot90, flip_h, flip_v, angle, &dust, &ir_removal, &session,
-    )?;
-
-    // Detector runs once per image; cache the probability map keyed by id+dims.
-    let dims = (fin.width, fin.height);
-    let prob = {
-        let mut cache = session.autodust_prob.lock().unwrap();
-        match cache.get(&id) {
-            Some((w, h, p)) if (*w, *h) == dims => p.clone(),
-            _ => {
-                let p = crate::autodust::engine::detect(&app_data, &fin)?;
-                cache.insert(id.clone(), (dims.0, dims.1, p.clone()));
-                p
-            }
-        }
-    };
-
-    // max_blob scales with image area so the size-gate is resolution-independent.
-    let max_blob = (crate::autodust::MAX_BLOB * fin.width.max(fin.height) / 2000).max(1);
-    let mask = film_core::dust::prob_defect_mask(fin.width, fin.height, &prob, sensitivity, max_blob);
-    let count = mask.bits.iter().filter(|&&b| b).count() as u32;
-
-    let mut healed = fin.clone();
-    crate::autodust::engine::inpaint(&app_data, &mut healed, &mask)?;
-
-    let preview = crate::convert::proxy(&healed, 1600);
-    let jpeg = crate::encode::encode_jpeg_bytes(&preview, 85)?;
-    use base64::Engine;
-    let b64 = base64::engine::general_purpose::STANDARD.encode(&jpeg);
-    let preview_data_url = format!("data:image/jpeg;base64,{b64}");
-
-    *session.pending_upscale.lock().unwrap() =
-        Some(crate::session::PendingUpscale { image: healed, metadata });
-    Ok(crate::autodust::AutoDustResult { preview_data_url, count })
 }
 
 /// Whether the upscaler runtime+model are installed, and the download size.

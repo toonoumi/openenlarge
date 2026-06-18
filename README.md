@@ -36,12 +36,19 @@ Most tools treat a negative scan as a generic image and fit tone curves to flip 
 - **Cineon density inversion** — physically-based Beer-Lambert engine (Kodak Cineon / `negadoctor`), one consistent path for every frame — not a flipped curve
 - **Automatic film-base detection** — finds the orange-mask rebate and samples it as a single coherent clear-film color; auto-derives the roll's density range (`D_max`)
 - **Crop-aware analysis** — base and density range are measured *inside* your crop, so the black surround and rebate of a camera scan never wash the image out
+- **Automatic negative/positive detection** — every frame is classified on develop; negatives are inverted, positives pass through untouched (with a one-click override either way)
+- **Measured white-point picker** — pin `D_max` precisely from a clear-leader patch by clicking it in the live viewport (also in the CLI via `--white-rect`)
 - **Decodes RAW, TIFF, JPEG & PNG** — Fuji RAF, Panasonic RW2, Nikon NEF, Sony ARW, Canon CR3, Hasselblad 3FR and DNG, plus 16-bit TIFF, JPEG and PNG → linear RGB
 - **Tethered shooting** — watch a folder and auto-import + develop new scans as they land, so finished positives appear as you shoot ("shoot & see")
 - **Per-roll base calibration** — the film base is locked once per roll; recalibrate by dragging over a clear-film area, or pick a neutral with the gray-point tool
-- **Full develop controls** — tonal curve, color grading, color wheels, exposure/black/gamma
+- **Full develop controls** — tonal curve, color grading, color wheels, exposure/black/gamma — with copy/paste of tone & color settings between frames (`Cmd/Ctrl+C` / `Cmd/Ctrl+V`)
+- **Tone Matching** — match the toning of a frame to any reference image, with adjustable strength
+- **AI Enhance** — one-click enhancement via OpenAI (`gpt-image-2`); bring your own API key in Settings
+- **Local upscaling** — on-device 4K/8K upscaling with a tiled ONNX engine; models download on demand, no cloud round-trip
+- **AI Dust & Hair Removal** — automatic defect detection (BOPBTL) plus MI-GAN inpainting, also available as an AI-fill eraser: paint a mask and apply a single, undoable AI erase
 - **Crop, rotate, straighten, flip** with a live viewport and histogram
 - **Batch export** to 16-bit TIFF / PNG / JPEG — with an optional batch crop applied across the whole selection in one pass
+- **Library** — import a folder (optionally omitting preview JPGs) and remove folders from a right-click menu
 - **HDR preview & export** *(experimental)* — toggle any frame into true HDR; highlights glow beyond SDR white on HDR-capable displays, and the frame exports as a gain-map HDR JPEG that matches the preview
 - **In-app updates** — checks on launch or on demand from Settings and installs the new version in place
 - **Headless CLI** (`film-cli`) for scripting and batch inversion
