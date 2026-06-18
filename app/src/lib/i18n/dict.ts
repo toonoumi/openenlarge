@@ -399,6 +399,10 @@ export const dict: Record<string, Record<string, string>> = {
     "histogram.clipStrictHint": "Strict 253/2 threshold",
     "roll.adjust.heading": "Roll look",
     "roll.adjust.whitePoint": "White point",
+    "confirmOverwrite.title": "Overwrite {count} edited frame{plural}?",
+    "confirmOverwrite.sub": "Some frames in this roll already have edits. Applying to the whole roll will replace them.",
+    "confirmOverwrite.cancel": "Cancel",
+    "confirmOverwrite.overwrite": "Overwrite all",
   },
   zh: {
     "app.brand": "OpenEnlarge",
@@ -798,5 +802,9 @@ export const dict: Record<string, Record<string, string>> = {
     "histogram.clipStrictHint": "严格 253/2 阈值",
     "roll.adjust.heading": "整卷色调",
     "roll.adjust.whitePoint": "白点",
+    "confirmOverwrite.title": "覆盖 {count} 张已编辑的胶片？",
+    "confirmOverwrite.sub": "本卷中部分胶片已有编辑。应用到整卷将覆盖它们。",
+    "confirmOverwrite.cancel": "取消",
+    "confirmOverwrite.overwrite": "全部覆盖",
   },
 };
