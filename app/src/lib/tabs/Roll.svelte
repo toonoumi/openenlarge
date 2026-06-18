@@ -1,6 +1,7 @@
 <!-- app/src/lib/tabs/Roll.svelte -->
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
+  import { fade } from "svelte/transition";
   import { get } from "svelte/store";
   import { t } from "$lib/i18n";
   import { developedFolderImages } from "$lib/export/eligible";
@@ -370,8 +371,8 @@
       const { d_max } = await api.analyzeWhitePoint(refId, withEffectiveBase($rollDraft.params, refDir), rect);
       rollDraft.update((d) => ({ ...d, params: { ...d.params, d_max_override: d_max } }));
     } catch { /* ignore */ }
-    // Re-arm for another pick without leaving wp mode.
-    wpPicking = true;
+    // Auto-dismiss: exit wp mode after one successful pick (mirrors film-base behaviour).
+    exitEditMode();
   }
 
   function exitEditMode() {
@@ -428,82 +429,86 @@
       {#if $developedFolderImages.length === 0}
         <div class="empty">{$t('roll.empty')}</div>
       {:else}
-        <div class="strips-container">
-          {#if $rollFilmEdge}
-            <!-- ===== FILM-EDGE ON: filmstrip with rebates ===== -->
-            {#each strips as strip, stripIndex}
-              <div class="filmstrip-strip">
-                <!-- Top rebate -->
-                <div class="rebate rebate-top">
-                  <div class="sprocket-holes"></div>
-                  <div class="frame-numbers">
+        {#key $rollFilmEdge}
+          <div class="sheet-anim" in:fade={{ duration: 180 }}>
+            <div class="strips-container">
+              {#if $rollFilmEdge}
+                <!-- ===== FILM-EDGE ON: filmstrip with rebates ===== -->
+                {#each strips as strip, stripIndex}
+                  <div class="filmstrip-strip">
+                    <!-- Top rebate -->
+                    <div class="rebate rebate-top">
+                      <div class="sprocket-holes"></div>
+                      <div class="frame-numbers">
+                        {#each strip.frames as f}
+                          <div class="frame-num">{f.num}</div>
+                        {/each}
+                        {#each Array(strip.padCount) as _}
+                          <div class="frame-num frame-pad"></div>
+                        {/each}
+                      </div>
+                    </div>
+                    <!-- Frames row -->
+                    <div class="frames-row">
+                      {#each strip.frames as f}
+                        <button class="frame-cell" data-id={f.img.id}
+                                on:click={() => openFrame(f.img.id)}>
+                          <img src={previewMap[f.img.id] ?? f.img.thumbnail}
+                               alt={f.img.file_name} draggable="false" />
+                        </button>
+                      {/each}
+                      {#each Array(strip.padCount) as _}
+                        <div class="frame-cell frame-cell-pad"></div>
+                      {/each}
+                    </div>
+                    <!-- Bottom rebate -->
+                    <div class="rebate rebate-bottom">
+                      <div class="rebate-info-row">
+                        <div class="barcode"></div>
+                        {#if edgeEditingStrip === stripIndex}
+                          <input
+                            class="edge-text-input"
+                            type="text"
+                            bind:value={edgeInputValue}
+                            on:blur={commitEdgeEdit}
+                            on:keydown={onEdgeKeydown}
+                            aria-label="Film edge text"
+                            use:focusOnMount
+                          />
+                        {:else}
+                          <button class="edge-text" on:click|stopPropagation={() => startEdgeEdit(stripIndex)}
+                                  aria-label="Edit film edge text">{$rollEdgeText}</button>
+                        {/if}
+                        <div style="flex:1"></div>
+                        <span class="edge-arrow">→</span>
+                      </div>
+                      <div class="sprocket-holes"></div>
+                    </div>
+                  </div>
+                {/each}
+              {:else}
+                <!-- ===== FILM-EDGE OFF: proof grid ===== -->
+                {#each strips as strip}
+                  <div class="proof-strip">
                     {#each strip.frames as f}
-                      <div class="frame-num">{f.num}</div>
+                      <div class="proof-cell">
+                        <button class="proof-frame" data-id={f.img.id}
+                                on:click={() => openFrame(f.img.id)}>
+                          <img src={previewMap[f.img.id] ?? f.img.thumbnail}
+                               alt={f.img.file_name} draggable="false" />
+                        </button>
+                        <div class="proof-caption">{f.num}</div>
+                      </div>
                     {/each}
                     {#each Array(strip.padCount) as _}
-                      <div class="frame-num frame-pad"></div>
+                      <div class="proof-cell proof-cell-pad"></div>
                     {/each}
                   </div>
-                </div>
-                <!-- Frames row -->
-                <div class="frames-row">
-                  {#each strip.frames as f}
-                    <button class="frame-cell" data-id={f.img.id}
-                            on:click={() => openFrame(f.img.id)}>
-                      <img src={previewMap[f.img.id] ?? f.img.thumbnail}
-                           alt={f.img.file_name} draggable="false" />
-                    </button>
-                  {/each}
-                  {#each Array(strip.padCount) as _}
-                    <div class="frame-cell frame-cell-pad"></div>
-                  {/each}
-                </div>
-                <!-- Bottom rebate -->
-                <div class="rebate rebate-bottom">
-                  <div class="rebate-info-row">
-                    <div class="barcode"></div>
-                    {#if edgeEditingStrip === stripIndex}
-                      <input
-                        class="edge-text-input"
-                        type="text"
-                        bind:value={edgeInputValue}
-                        on:blur={commitEdgeEdit}
-                        on:keydown={onEdgeKeydown}
-                        aria-label="Film edge text"
-                        use:focusOnMount
-                      />
-                    {:else}
-                      <button class="edge-text" on:click|stopPropagation={() => startEdgeEdit(stripIndex)}
-                              aria-label="Edit film edge text">{$rollEdgeText}</button>
-                    {/if}
-                    <div style="flex:1"></div>
-                    <span class="edge-arrow">→</span>
-                  </div>
-                  <div class="sprocket-holes"></div>
-                </div>
-              </div>
-            {/each}
-          {:else}
-            <!-- ===== FILM-EDGE OFF: proof grid ===== -->
-            {#each strips as strip}
-              <div class="proof-strip">
-                {#each strip.frames as f}
-                  <div class="proof-cell">
-                    <button class="proof-frame" data-id={f.img.id}
-                            on:click={() => openFrame(f.img.id)}>
-                      <img src={previewMap[f.img.id] ?? f.img.thumbnail}
-                           alt={f.img.file_name} draggable="false" />
-                    </button>
-                    <div class="proof-caption">{f.num}</div>
-                  </div>
                 {/each}
-                {#each Array(strip.padCount) as _}
-                  <div class="proof-cell proof-cell-pad"></div>
-                {/each}
-              </div>
-            {/each}
-          {/if}
-        </div>
+              {/if}
+            </div>
+          </div>
+        {/key}
       {/if}
       </div>
     </div>
@@ -650,14 +655,9 @@
       {/if}
     </div>
 
-    <!-- Right panel: hint + Done button -->
+    <!-- Right panel: empty (picking auto-closes; press Escape to cancel) -->
     <aside class="ref-panel">
-      <div class="ref-panel-inner">
-        <div class="panel-mode-hint">{$t('roll.wp.pick')}</div>
-        <button class="done-btn" on:click={exitEditMode}>
-          {$t('roll.close')}
-        </button>
-      </div>
+      <div class="ref-panel-inner"></div>
     </aside>
 
     <!-- Bottom strip -->
@@ -765,7 +765,7 @@
   .export-btn:disabled { opacity: 0.45; cursor: default; }
 
   /* ===== Square icon tool buttons (Change D) ===== */
-  .tool-row { display: flex; flex-direction: row; gap: 6px; margin-bottom: 4px; }
+  .tool-row { display: flex; flex-direction: row; gap: 6px; margin: 10px 0; }
   .tool { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; }
   .tool-btn { width: 46px; height: 46px; border-radius: 10px; border: 1px solid var(--glass-brd);
     background: var(--glass-hi); color: var(--text-dim); cursor: pointer;
@@ -858,6 +858,4 @@
   .strip-cell:hover { border-color: rgba(255,255,255,0.25); }
   .strip-cell.strip-active { border-color: rgba(255,255,255,0.7); }
 
-  /* Mode hint inside ref-panel-inner (base / wp modes) */
-  .panel-mode-hint { font-size: 11px; color: var(--text-dim, #888); padding: 4px 0; }
 </style>
