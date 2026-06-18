@@ -119,6 +119,40 @@ export function selectFolder(path: string | null): void {
 /** Data-URL of the latest rendered develop preview; drives the histogram. */
 export const previewSrc = writable<string>("");
 
+/** Per-image data-URL of the last *fit-view* developed frame. Shown instantly as a
+ *  display overlay when switching images, so the canvas doesn't flash through the
+ *  old/raw/unadjusted states while the GPU re-develops the new image. Display-only —
+ *  the export pipeline re-decodes full-res independently and never reads this.
+ *  LRU-capped so a large roll can't grow it without bound. */
+export const previewById = writable<Record<string, string>>({});
+// Holds both viewed-image fit snapshots and idle-prefetched filmstrip previews, so the
+// cap is generous enough to keep a navigation neighbourhood warm (small JPEGs).
+const PREVIEW_CACHE_CAP = 96;
+/** Drop `id`'s cached preview so a later view/prefetch regenerates it. Call when an
+ *  image's develop inputs change while it is NOT the active image (the active image
+ *  self-refreshes its cache as the canvas redraws), or when it's deleted. */
+export function invalidatePreview(id: string): void {
+  previewById.update((m) => {
+    if (!(id in m)) return m;
+    const next = { ...m };
+    delete next[id];
+    return next;
+  });
+}
+
+/** Store `url` as `id`'s fit-view preview (most-recent), evicting the oldest beyond the cap. */
+export function cachePreview(id: string, url: string): void {
+  previewById.update((m) => {
+    if (m[id] === url) return m;
+    const next: Record<string, string> = {};
+    for (const k of Object.keys(m)) if (k !== id) next[k] = m[k]; // drop old slot…
+    next[id] = url; // …re-insert as most-recent
+    const keys = Object.keys(next);
+    while (keys.length > PREVIEW_CACHE_CAP) delete next[keys.shift()!];
+    return next;
+  });
+}
+
 // Clipping-warning overlay toggles (Develop viewport). `high`/`low` enable the
 // highlight (red) / shadow (blue) overlays; `strict` tightens the threshold from
 // pure clip (255/0) to near-clip (253/2). Shared by Histogram (corner triangles)
