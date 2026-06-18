@@ -3,6 +3,8 @@ import { images, activeId, module, developProgress, editsById, cropById, dustByI
 import { api, defaultParams, type ImageEntry } from "./api";
 import { dropHistory } from "./develop/historyStore";
 import { track } from "./telemetry";
+import { showToast } from "./toast";
+import { translate } from "./i18n";
 
 /** Ids of images not yet developed, in order. Pure helper (testable). */
 export function undevelopedIds(list: ImageEntry[]): string[] {
@@ -104,6 +106,10 @@ export async function developAll(target: "develop" | "roll" = "develop"): Promis
   developProgress.set({ active: true, done: 0, total: ids.length });
   // Let the overlay paint (and fade in) before kicking off the first develop call.
   await nextPaint();
+  // Collect per-image failures so a stuck "undeveloped" frame (which otherwise just
+  // leaves a permanent badge with no feedback) surfaces to the user.
+  const failures: string[] = [];
+  const nameOf = (id: string) => get(images).find((i) => i.id === id)?.file_name ?? id;
   for (const id of ids) {
     try {
       const updated = await api.developImage(id);
@@ -112,10 +118,20 @@ export async function developAll(target: "develop" | "roll" = "develop"): Promis
       // no stored edits yet, so re-develop / existing manual overrides are untouched.
       editsById.update((m) =>
         m[id] ? m : { ...m, [id]: { ...defaultParams(), positive: updated.positive } });
+      // Developed without throwing but still not flagged developed → a different bug
+      // (e.g. the backend couldn't write/confirm the cache). Surface it too.
+      if (!updated.developed) {
+        failures.push(`${nameOf(id)}: develop returned but not marked developed`);
+        console.error("develop returned developed=false", id, nameOf(id));
+      }
     } catch (e) {
-      console.error("develop failed", id, e);
+      failures.push(`${nameOf(id)}: ${e}`);
+      console.error("develop failed", id, nameOf(id), e);
     }
     developProgress.update((p) => ({ ...p, done: p.done + 1 }));
+  }
+  if (failures.length > 0) {
+    showToast(translate("toast.developFailed", { count: failures.length, detail: failures[0] }), 8000);
   }
   if (!get(activeId)) {
     const first = get(folderImages)[0];

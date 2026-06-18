@@ -419,6 +419,7 @@ export const dict: Record<string, Record<string, string>> = {
     "confirmOverwrite.cancel": "Cancel",
     "confirmOverwrite.overwrite": "Overwrite all",
     "confirmOverwrite.dontAsk": "Don't ask me again",
+    "toast.developFailed": "Develop failed for {count} image(s) — {detail}",
   },
   zh: {
     "app.brand": "OpenEnlarge",
@@ -838,5 +839,6 @@ export const dict: Record<string, Record<string, string>> = {
     "confirmOverwrite.cancel": "取消",
     "confirmOverwrite.overwrite": "全部覆盖",
     "confirmOverwrite.dontAsk": "不再询问",
+    "toast.developFailed": "显影失败 {count} 张 — {detail}",
   },
 };
