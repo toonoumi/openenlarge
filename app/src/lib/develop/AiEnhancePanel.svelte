@@ -3,8 +3,8 @@
   import { t } from "$lib/i18n";
   import { previewSrc, openaiApiKey, activeId, params } from "../store";
   import { commitActive } from "./historyStore";
-  import { api, type MatchedParams } from "../api";
-  import { open } from "@tauri-apps/plugin-dialog";
+  import { api, type MatchedParams, type ExportFormat } from "../api";
+  import { open, save } from "@tauri-apps/plugin-dialog";
   import UpscaleControls from "./UpscaleControls.svelte";
   import { scrubValue } from "$lib/actions/scrubValue";
 
@@ -17,6 +17,7 @@
 
   let busy = false;
   let error = "";
+  let saving = false;
   /** Enhanced result as a PNG data URL, or "" when none yet. */
   let result = "";
   /** The source preview captured at enhance time, for the before/after toggle. */
@@ -108,6 +109,25 @@
     return api.upscaleEnhanced(comma >= 0 ? result.slice(comma + 1) : result, targetLong);
   }
 
+  /** Save the enhanced result to disk at its native resolution (no upscaling). */
+  async function saveEnhanced() {
+    if (!result) return;
+    const path = await save({
+      filters: [{ name: "PNG", extensions: ["png"] }, { name: "TIFF", extensions: ["tiff"] }, { name: "JPEG", extensions: ["jpg"] }],
+    });
+    if (!path) return;
+    const ext = path.split(".").pop()?.toLowerCase();
+    const format: ExportFormat =
+      ext === "tiff" || ext === "tif" ? { kind: "tiff", bitDepth: 16 }
+      : ext === "jpg" || ext === "jpeg" ? { kind: "jpeg", quality: 92 }
+      : { kind: "png", bitDepth: 16 };
+    const comma = result.indexOf(",");
+    error = ""; saving = true;
+    try { await api.saveEnhanced(path, comma >= 0 ? result.slice(comma + 1) : result, format); }
+    catch (e) { error = String(e); }
+    finally { saving = false; }
+  }
+
   async function enhance() {
     error = "";
     result = "";
@@ -157,6 +177,10 @@
       <button class="toggle" on:mousedown={() => (showBefore = true)}
               on:mouseup={() => (showBefore = false)} on:mouseleave={() => (showBefore = false)}>
         {$t("aiEnhance.holdBefore")}
+      </button>
+      <button class="save" class:busy={saving} disabled={saving} on:click={saveEnhanced}>
+        {#if saving}<span class="spinner" aria-hidden="true"></span>{/if}
+        <span>{saving ? $t("aiEnhance.saving") : $t("aiEnhance.save")}</span>
       </button>
     </div>
     <div class="up-section">
@@ -260,6 +284,12 @@
     border: 1px solid var(--glass-brd); background: transparent; color: var(--text);
     cursor: pointer; font-size: 12px; }
   .toggle:hover { background: var(--glass-hi); }
+  .save { width: 100%; margin-top: 6px; padding: 7px 10px; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    border: 1px solid rgba(244,157,78,0.5); background: rgba(244,157,78,0.18);
+    color: #fff; cursor: pointer; font-size: 12px; }
+  .save:not(:disabled):hover { background: rgba(244,157,78,0.30); border-color: rgba(244,157,78,0.75); }
+  .save:disabled { cursor: default; opacity: 0.7; }
   .lightbox { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center;
     background: rgba(0,0,0,0.8); cursor: zoom-out; }
   .lightbox img { max-width: 92vw; max-height: 92vh; border-radius: 8px; }

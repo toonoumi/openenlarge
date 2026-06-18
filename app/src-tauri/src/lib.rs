@@ -144,6 +144,7 @@ pub fn run() {
             commands::upscale_image,
             commands::upscale_enhanced,
             commands::save_upscaled,
+            commands::save_enhanced,
             commands::color_match_params,
             commands::reference_thumb,
             commands::autodust_status,

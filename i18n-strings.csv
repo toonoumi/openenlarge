@@ -340,6 +340,8 @@ aiEnhance.noImage,"No preview to enhance yet.","暂无可增强的预览。","sr
 aiEnhance.holdBefore,"Hold to compare original","按住对比原图","src/lib/develop/AiEnhancePanel.svelte","button"
 aiEnhance.enlarge,"Click to enlarge","点击放大","src/lib/develop/AiEnhancePanel.svelte","title"
 aiEnhance.hint,"Re-imagines the preview to reduce noise, dust and scratches. Result is a creative interpretation, not a faithful restoration, and is preview-only.","重新生成预览以减少噪点、灰尘和划痕。结果为创意性再生成，并非忠实修复，且仅用于预览。","src/lib/develop/AiEnhancePanel.svelte","hint"
+aiEnhance.save,"Download enhanced image…","下载增强后的图像…","src/lib/develop/AiEnhancePanel.svelte","button"
+aiEnhance.saving,"Saving…","保存中…","src/lib/develop/AiEnhancePanel.svelte","button"
 colorMatch.title,"Tone Matching","色调匹配","src/lib/develop/AiEnhancePanel.svelte","heading"
 colorMatch.import,"Import reference image","导入参考图像","src/lib/develop/AiEnhancePanel.svelte","button"
 colorMatch.match,"Match","匹配","src/lib/develop/AiEnhancePanel.svelte","button"
