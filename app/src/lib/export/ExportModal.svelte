@@ -181,9 +181,12 @@
     if (chosen.length === 0) return;
     const folder = await open({ directory: true });
     if (!folder || typeof folder !== "string") return;
+    // Narrowed copy: the `exportOne` closure below doesn't inherit `folder`'s
+    // string-narrowing from this guard, so capture it as a typed const.
+    const dir: string = folder;
 
     running = true; done = 0; total = chosen.length; finished = false;
-    failedCount = 0; exportedPaths = []; lastFolder = folder;
+    failedCount = 0; exportedPaths = []; lastFolder = dir;
     const written: string[] = [];
     const failures: string[] = [];
 
@@ -211,7 +214,7 @@
           : {};
         const d = $dustById[img.id] ?? emptyDust();
         const metaOverride = $metaById[img.id] ?? null;
-        const outPath = await join(folder, outName(img.file_name, kind));
+        const outPath = await join(dir, outName(img.file_name, kind));
 
         if (wantsHdrExport(kind, p)) {
           // HDR gain-map JPEG: backend CPU dual-render. Skips the GPU/SDR path.
