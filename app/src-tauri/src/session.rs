@@ -5,6 +5,7 @@ use crate::metadata::Metadata;
 use film_core::Image;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 
 /// One Point Color sample: a picked target color + per-sample adjustments.
@@ -219,6 +220,9 @@ pub struct CachedImage {
     pub metadata: Metadata,
     pub thumbnail: String,
     pub developed: Option<Developed>,
+    /// Monotonic LRU tick of the last access (stamped via `Session::touch`); 0 = never
+    /// touched. Drives `evict_lru` when the resident `developed` count exceeds the cap.
+    pub last_access: u64,
 }
 
 /// A full-res baked (geometry + pre-invert heal) raw-negative buffer awaiting GPU
@@ -250,12 +254,64 @@ pub struct Session {
     /// Cached AI-dust probability map per image id (`(w, h, w*h f32 in [0,1])`).
     /// The detector runs once; the sensitivity slider only re-thresholds + refills.
     pub autodust_prob: Mutex<HashMap<String, (usize, usize, Vec<f32>)>>,
+    /// Monotonic counter for LRU access ticks (see `CachedImage::last_access`).
+    pub access_tick: AtomicU64,
 }
+
+/// Max resident decoded `developed` buffers (LRU-evicted beyond this). Proxies are
+/// ≤2560 (~17 MB), so ~24 ≈ ~400 MB worst case. The lightweight `CachedImage` record
+/// (path/metadata/thumbnail) is never evicted; evicted buffers re-hydrate from cache.
+const MAX_RESIDENT_DEVELOPED: usize = 24;
 
 impl Session {
     /// Return the path for a given image id's cache sidecar file.
     pub fn cache_path(&self, id: &str) -> std::path::PathBuf {
         self.cache_dir.lock().unwrap().join(format!("{id}.oecache"))
+    }
+
+    /// Next monotonic LRU tick. Stamp it into `CachedImage::last_access` while holding
+    /// the `images` lock (this method itself takes no lock — safe to call under it).
+    pub fn next_tick(&self) -> u64 {
+        self.access_tick.fetch_add(1, Ordering::Relaxed) + 1
+    }
+
+    /// LRU-evict resident `developed` buffers beyond `MAX_RESIDENT_DEVELOPED`, never
+    /// evicting `keep_id` (the just-inserted/just-touched image). Drops each evicted
+    /// image's `developed` and its `autodust_prob` map. Returns the evicted ids.
+    /// Call only after a new `developed` is inserted (the resident set just grew).
+    pub fn evict_lru(&self, keep_id: &str) -> Vec<String> {
+        let evicted: Vec<String> = {
+            let mut images = self.images.lock().unwrap();
+            let mut resident: Vec<(String, u64)> = images
+                .iter()
+                .filter(|(_, c)| c.developed.is_some())
+                .map(|(id, c)| (id.clone(), c.last_access))
+                .collect();
+            if resident.len() <= MAX_RESIDENT_DEVELOPED {
+                return Vec::new();
+            }
+            resident.sort_by_key(|(_, tick)| *tick); // oldest first
+            let overflow = resident.len() - MAX_RESIDENT_DEVELOPED;
+            let ids: Vec<String> = resident
+                .into_iter()
+                .filter(|(id, _)| id != keep_id)
+                .take(overflow)
+                .map(|(id, _)| id)
+                .collect();
+            for id in &ids {
+                if let Some(c) = images.get_mut(id) {
+                    c.developed = None;
+                }
+            }
+            ids
+        }; // images lock released here
+        if !evicted.is_empty() {
+            let mut probs = self.autodust_prob.lock().unwrap();
+            for id in &evicted {
+                probs.remove(id);
+            }
+        }
+        evicted
     }
 
     /// Insert a cached image under an explicit (catalog-assigned) id.
@@ -285,6 +341,50 @@ mod tests {
     use super::*;
 
     #[test]
+    fn evict_lru_drops_oldest_beyond_cap() {
+        let s = Session::default();
+        let dummy = || Developed {
+            working: Image::new(1, 1),
+            thumb: Image::new(1, 1),
+            base: [0.0; 3],
+            base_confidence: 0.0,
+            d_max: 0.0,
+            positive: false,
+            positive_confidence: 0.0,
+        };
+        let total = MAX_RESIDENT_DEVELOPED + 3;
+        {
+            let mut images = s.images.lock().unwrap();
+            for i in 0..total {
+                images.insert(
+                    format!("img{i}"),
+                    CachedImage {
+                        path: format!("/x/{i}"),
+                        file_name: format!("{i}"),
+                        metadata: Metadata::default(),
+                        thumbnail: "data:,".into(),
+                        developed: Some(dummy()),
+                        last_access: i as u64, // ascending: img0 oldest … last newest
+                    },
+                );
+            }
+        }
+        let keep = format!("img{}", total - 1); // newest
+        let evicted = s.evict_lru(&keep);
+        assert_eq!(evicted.len(), 3);
+        for i in 0..3 {
+            assert!(evicted.contains(&format!("img{i}")), "img{i} should be evicted");
+        }
+        let images = s.images.lock().unwrap();
+        let resident = images.values().filter(|c| c.developed.is_some()).count();
+        assert_eq!(resident, MAX_RESIDENT_DEVELOPED);
+        assert!(images.get(&keep).unwrap().developed.is_some(), "keep_id survives");
+        assert!(images.get("img0").unwrap().developed.is_none(), "oldest evicted");
+        // The evicted record itself remains (only `developed` was dropped).
+        assert!(images.contains_key("img0"));
+    }
+
+    #[test]
     fn insert_reports_undeveloped() {
         let s = Session::default();
         let img = CachedImage {
@@ -293,6 +393,7 @@ mod tests {
             metadata: Metadata::default(),
             thumbnail: "data:,".into(),
             developed: None,
+            last_access: 0,
         };
         let e = s.insert_with_id("abc".into(), img);
         assert_eq!(e.id, "abc");
@@ -309,6 +410,7 @@ mod tests {
             metadata: Metadata::default(),
             thumbnail: "data:,".into(),
             developed: None,
+            last_access: 0,
         };
         let e = s.insert_with_id("xyz".into(), img);
         assert!(!e.has_ir);

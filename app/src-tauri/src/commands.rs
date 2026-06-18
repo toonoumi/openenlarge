@@ -504,6 +504,7 @@ pub fn import_image(
         metadata,
         thumbnail,
         developed: None,
+        last_access: 0,
     };
     Ok(session.insert_with_id(id, cached))
 }
@@ -623,6 +624,7 @@ async fn develop_heavy(
             positive: c.positive,
             positive_confidence: c.positive_confidence,
         });
+        img.last_access = session.next_tick();
         let metadata_json = metadata_to_json(&img.metadata)?;
         let entry = ImageEntry {
             id: id.clone(),
@@ -637,6 +639,7 @@ async fn develop_heavy(
         };
         (entry, metadata_json)
     }; // lock released here
+    session.evict_lru(&id); // a freshly developed buffer just became resident
 
     if let Err(e) = catalog.update_image_render(&id, &entry.thumbnail, &metadata_json) {
         eprintln!("[catalog] update_image_render failed for {id}: {e}");
@@ -771,9 +774,13 @@ pub struct ViewSpec {
 /// but a cache file exists, load it. Drops the lock during file IO.
 fn ensure_resident(session: &Session, id: &str) -> Result<(), String> {
     {
-        let images = session.images.lock().unwrap();
-        match images.get(id) {
-            Some(c) if c.developed.is_some() => return Ok(()),
+        let mut images = session.images.lock().unwrap();
+        match images.get_mut(id) {
+            // Already resident: stamp LRU access and we're done.
+            Some(c) if c.developed.is_some() => {
+                c.last_access = session.next_tick();
+                return Ok(());
+            }
             Some(_) => {}
             None => return Err("unknown image id".into()),
         }
@@ -794,20 +801,24 @@ fn ensure_resident(session: &Session, id: &str) -> Result<(), String> {
     let base_confidence = film_core::calibrate::detect_rebate_base(&working).confidence;
     let (positive, positive_confidence) = film_core::classify::classify_positive(&working);
     let d_max = film_core::calibrate::sample_dmax(&working, base, None);
-    let mut images = session.images.lock().unwrap();
-    if let Some(c) = images.get_mut(id) {
-        if c.developed.is_none() {
-            c.developed = Some(Developed {
-                working,
-                thumb,
-                base,
-                base_confidence,
-                d_max,
-                positive,
-                positive_confidence,
-            });
+    {
+        let mut images = session.images.lock().unwrap();
+        if let Some(c) = images.get_mut(id) {
+            if c.developed.is_none() {
+                c.developed = Some(Developed {
+                    working,
+                    thumb,
+                    base,
+                    base_confidence,
+                    d_max,
+                    positive,
+                    positive_confidence,
+                });
+                c.last_access = session.next_tick();
+            }
         }
-    }
+    } // images lock released before evict (which re-locks)
+    session.evict_lru(id); // a new buffer just became resident
     Ok(())
 }
 
@@ -1573,6 +1584,7 @@ pub fn load_catalog(
                 metadata,
                 thumbnail: ci.thumbnail.clone(),
                 developed: None, // lazy: ensure_resident loads on first view
+                last_access: 0,
             },
         );
     }
