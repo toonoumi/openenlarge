@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { undevelopedIds, omitPreviewSidecars, mergeEnsured } from "./workflow";
+import { undevelopedIds, omitPreviewSidecars, mergeEnsured, selectImportPaths } from "./workflow";
 import type { ImageEntry } from "./api";
 
 const mk = (id: string, developed: boolean): ImageEntry => ({
@@ -74,5 +74,22 @@ describe("omitPreviewSidecars", () => {
   it("handles Windows backslash paths and multi-dot names", () => {
     expect(omitPreviewSidecars(["C:\\p\\a.1.arw", "C:\\p\\a.1.jpg"]))
       .toEqual(["C:\\p\\a.1.arw"]);
+  });
+});
+
+describe("selectImportPaths", () => {
+  it("drops non-importable files (e.g. .txt, .xmp) from a folder listing", () => {
+    const files = ["/r/img1.raf", "/r/readme.txt", "/r/img1.xmp", "/r/img2.nef"];
+    expect(selectImportPaths(files, false)).toEqual(["/r/img1.raf", "/r/img2.nef"]);
+  });
+
+  it("omits preview sidecars when the flag is on", () => {
+    const files = ["/r/img1.raf", "/r/img1.jpg", "/r/loose.jpg"];
+    expect(selectImportPaths(files, true)).toEqual(["/r/img1.raf", "/r/loose.jpg"]);
+  });
+
+  it("keeps preview sidecars when the flag is off", () => {
+    const files = ["/r/img1.raf", "/r/img1.jpg"];
+    expect(selectImportPaths(files, false)).toEqual(["/r/img1.raf", "/r/img1.jpg"]);
   });
 });

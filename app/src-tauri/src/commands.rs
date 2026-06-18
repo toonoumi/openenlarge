@@ -518,6 +518,36 @@ pub fn import_image(
     Ok(session.insert_with_id(id, cached))
 }
 
+/// List the absolute paths of regular files under `dir`, recursing into every
+/// subfolder. Extension filtering is left to the frontend so `IMPORT_EXTENSIONS`
+/// stays the single source of truth. Used by the "Import Folder…" picker.
+#[tauri::command]
+pub fn list_dir_files(dir: String) -> Result<Vec<String>, String> {
+    let mut paths = Vec::new();
+    collect_files(Path::new(&dir), &mut paths).map_err(|e| format!("{e}"))?;
+    paths.sort();
+    Ok(paths)
+}
+
+/// Depth-first walk: push every regular file's path, descending into subdirectories.
+/// Unreadable subdirectories are skipped rather than aborting the whole scan.
+fn collect_files(dir: &Path, out: &mut Vec<String>) -> std::io::Result<()> {
+    for entry in std::fs::read_dir(dir)?.flatten() {
+        let ty = match entry.file_type() {
+            Ok(t) => t,
+            Err(_) => continue,
+        };
+        if ty.is_dir() {
+            let _ = collect_files(&entry.path(), out); // skip folders we can't read
+        } else if ty.is_file() {
+            if let Some(p) = entry.path().to_str() {
+                out.push(p.to_string());
+            }
+        }
+    }
+    Ok(())
+}
+
 /// HEAVY step: decode the file, build the working image at the quality cap, a
 /// small auto-WB thumb, and sample the base. Drops full_res. Returns the updated
 /// entry (real dimensions + developed=true).
@@ -833,9 +863,11 @@ fn ensure_resident(session: &Session, id: &str) -> Result<(), String> {
 
 /// Ensure the single-slot high-res zoom source for `id` is cached, decoding from the
 /// source file (capped at `MAX_GPU_EDGE`) on a miss or id change. Callers then read
-/// dims under the lock, or clone it out for off-thread packing/baking. Heavy decode;
-/// call from an async command body (off the UI thread), not the main thread.
-fn ensure_zoom_src(session: &Session, id: &str) -> Result<(), String> {
+/// dims under the lock, or clone it out for off-thread packing/baking. The heavy
+/// `decode_any` + `proxy` runs on `spawn_blocking` so it never stalls the Tauri async
+/// runtime worker (which on macOS shares fate with UI-serving IPC); only the brief
+/// lock/path lookups touch the calling thread. `async` — callers must `.await`.
+async fn ensure_zoom_src(session: &Session, id: &str) -> Result<(), String> {
     {
         let g = session.zoom_src.lock().unwrap();
         if matches!(g.as_ref(), Some((cid, _)) if cid == id) {
@@ -846,15 +878,21 @@ fn ensure_zoom_src(session: &Session, id: &str) -> Result<(), String> {
         let images = session.images.lock().unwrap();
         images.get(id).ok_or("unknown image id")?.path.clone()
     };
-    let full = decode_any(Path::new(&path))?;
-    let hi = proxy(&full, MAX_GPU_EDGE);
+    // Decode + downscale off-thread: a RAW/TIFF decode is 100s ms–s and would
+    // otherwise block the runtime worker for the whole gesture.
+    let hi = tauri::async_runtime::spawn_blocking(move || -> Result<film_core::Image, String> {
+        let full = decode_any(Path::new(&path))?;
+        Ok(proxy(&full, MAX_GPU_EDGE))
+    })
+    .await
+    .map_err(|e| e.to_string())??;
     *session.zoom_src.lock().unwrap() = Some((id.to_string(), hi));
     Ok(())
 }
 
 /// Clone the cached high-res zoom source for `id` (for off-thread packing/baking).
-fn zoom_src_clone(session: &Session, id: &str) -> Result<film_core::Image, String> {
-    ensure_zoom_src(session, id)?;
+async fn zoom_src_clone(session: &Session, id: &str) -> Result<film_core::Image, String> {
+    ensure_zoom_src(session, id).await?;
     let g = session.zoom_src.lock().unwrap();
     g.as_ref()
         .filter(|(cid, _)| cid == id)
@@ -1696,7 +1734,7 @@ pub async fn working_info(
 ) -> Result<WorkingInfo, String> {
     ensure_resident(&session, &id)?;
     if hires {
-        ensure_zoom_src(&session, &id)?;
+        ensure_zoom_src(&session, &id).await?;
         let g = session.zoom_src.lock().unwrap();
         return match g.as_ref() {
             Some((cid, img)) if cid == &id => {
@@ -1724,7 +1762,7 @@ pub async fn working_pixels(
     ensure_resident(&session, &id)?;
     // hires (deep zoom): pack the high-res decode; else the resident proxy.
     let working = if hires {
-        zoom_src_clone(&session, &id)?
+        zoom_src_clone(&session, &id).await?
     } else {
         let images = session.images.lock().unwrap();
         let img = images.get(&id).ok_or("unknown image id")?;
@@ -1751,7 +1789,7 @@ pub async fn working_baked_info(
 ) -> Result<WorkingInfo, String> {
     ensure_resident(&session, &id)?;
     let working = if hires {
-        zoom_src_clone(&session, &id)?
+        zoom_src_clone(&session, &id).await?
     } else {
         let images = session.images.lock().unwrap();
         let img = images.get(&id).ok_or("unknown image id")?;
@@ -1931,7 +1969,7 @@ pub async fn working_baked_pixels(
         (ip, mode_from(&params.mode), base)
     };
     let working = if hires {
-        zoom_src_clone(&session, &id)?
+        zoom_src_clone(&session, &id).await?
     } else {
         let images = session.images.lock().unwrap();
         let img = images.get(&id).ok_or("unknown image id")?;
@@ -2495,7 +2533,7 @@ mod proxy_tests {
         let s = crate::session::Session::default();
         *s.zoom_src.lock().unwrap() = Some(("abc".to_string(), film_core::Image::new(100, 80)));
         // A cache hit for the same id is a no-op (no file decode → cannot fail).
-        assert!(super::ensure_zoom_src(&s, "abc").is_ok());
+        assert!(tauri::async_runtime::block_on(super::ensure_zoom_src(&s, "abc")).is_ok());
         let g = s.zoom_src.lock().unwrap();
         let (cid, cached) = g.as_ref().unwrap();
         assert_eq!(cid, "abc");

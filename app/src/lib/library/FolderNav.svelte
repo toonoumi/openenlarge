@@ -1,7 +1,8 @@
 <script lang="ts">
   import { open as openDialog } from "@tauri-apps/plugin-dialog";
   import { images, selectedFolder, selectFolder, omitPreviewJpgs } from "../store";
-  import { importPaths, deleteImage, IMPORT_EXTENSIONS, omitPreviewSidecars } from "../workflow";
+  import { importPaths, deleteImage, IMPORT_EXTENSIONS, omitPreviewSidecars, selectImportPaths } from "../workflow";
+  import { api } from "../api";
   import { buildTree, countImages, type FolderNode } from "./folderTree";
   import { scopeToFolder } from "./folderScope";
   import TreeNode from "./TreeNode.svelte";
@@ -11,8 +12,10 @@
   import GlassPanel from "../glass/GlassPanel.svelte";
   import TetherPanel from "../tether/TetherPanel.svelte";
   import { t } from "$lib/i18n";
+  import { scale } from "svelte/transition";
 
   let importing = false;
+  let menuOpen = false;
   $: filterFilmScans = $t("folderNav.filterFilmScans");
   $: tree = buildTree($images);
   $: if (!$selectedFolder && $images.length) {
@@ -21,13 +24,28 @@
     selectFolder(dir);
   }
 
-  async function pickAndImport() {
+  async function pickFilesAndImport() {
+    menuOpen = false;
     const sel = await openDialog({ multiple: true, filters: [{ name: filterFilmScans, extensions: IMPORT_EXTENSIONS }] });
     if (!sel) return;
     let paths = (Array.isArray(sel) ? sel : [sel]) as string[];
     if ($omitPreviewJpgs) paths = omitPreviewSidecars(paths);
     importing = true;
     await importPaths(paths);
+    importing = false;
+  }
+
+  async function pickFolderAndImport() {
+    menuOpen = false;
+    const dir = await openDialog({ directory: true });
+    if (!dir || Array.isArray(dir)) return;
+    importing = true;
+    try {
+      const files = await api.listDirFiles(dir);
+      await importPaths(selectImportPaths(files, $omitPreviewJpgs));
+    } catch (e) {
+      console.error("folder import failed", dir, e);
+    }
     importing = false;
   }
 
@@ -61,9 +79,19 @@
       </label>
       <button type="button" class="help" aria-label={$t('folderNav.omitPreviewJpgsHelp')}>?<span class="tip">{$t('folderNav.omitPreviewJpgsHelp')}</span></button>
     </div>
-    <button class="import" on:click={pickAndImport} disabled={importing}>
-      <Icon name="plus" /> {importing ? $t('folderNav.importing') : $t('folderNav.import')}
-    </button>
+    <div class="import-wrap">
+      <button class="import" on:click={() => (menuOpen = !menuOpen)} disabled={importing} aria-haspopup="menu" aria-expanded={menuOpen}>
+        <Icon name="plus" /> {importing ? $t('folderNav.importing') : $t('folderNav.import')}
+        <span class="caret">▾</span>
+      </button>
+      {#if menuOpen && !importing}
+        <button type="button" class="menu-backdrop" aria-label="close" on:click={() => (menuOpen = false)}></button>
+        <div class="import-menu" role="menu" transition:scale={{ duration: 130, start: 0.94, opacity: 0 }}>
+          <button type="button" role="menuitem" on:click={pickFilesAndImport}>{$t('folderNav.importFiles')}</button>
+          <button type="button" role="menuitem" on:click={pickFolderAndImport}>{$t('folderNav.importFolder')}</button>
+        </div>
+      {/if}
+    </div>
     <TetherPanel />
   </div>
 </GlassPanel>
@@ -102,6 +130,20 @@
     color: var(--text-dim); font-size: 11px; font-weight: 400; line-height: 1.5;
     opacity: 0; visibility: hidden; transition: opacity 0.14s ease; pointer-events: none; }
   .help:hover .tip, .help:focus-visible .tip { opacity: 1; visibility: visible; }
+  .import-wrap { position: relative; }
+  .caret { font-size: 10px; opacity: 0.85; margin-left: -2px;
+    transition: transform 0.14s ease; }
+  .import[aria-expanded="true"] .caret { transform: rotate(180deg); }
+  .menu-backdrop { position: fixed; inset: 0; z-index: 39; background: transparent;
+    border: 0; padding: 0; cursor: default; }
+  .import-menu { position: absolute; left: 0; right: 0; bottom: calc(100% + 6px); z-index: 40;
+    transform-origin: bottom center;
+    display: flex; flex-direction: column; padding: 4px;
+    border-radius: 9px; background: var(--bg-1); border: 1px solid var(--glass-brd);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5); }
+  .import-menu button { text-align: left; padding: 8px 10px; border: 0; border-radius: 6px;
+    background: transparent; color: var(--text); font: inherit; cursor: pointer; }
+  .import-menu button:hover { background: rgba(244,157,78,0.18); }
   .import { margin-top: 8px; width: 100%; padding: 10px; border-radius: 9px;
     border: 1px solid rgba(244,157,78,0.5);
     background: rgba(244,157,78,0.18); color: #fff; font: inherit; font-weight: 600; cursor: pointer;

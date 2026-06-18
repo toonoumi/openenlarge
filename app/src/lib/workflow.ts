@@ -66,6 +66,14 @@ export function omitPreviewSidecars(paths: string[]): string[] {
   return paths.filter((p) => !(PREVIEW_EXTENSIONS.has(extOf(p)) && masters.has(dirStemKey(p))));
 }
 
+/** Reduce a raw list of folder file paths to the ones we'll actually import:
+ * keep importable extensions, then optionally drop camera preview sidecars.
+ * Pure + order-preserving — shared by the folder picker (and testable). */
+export function selectImportPaths(paths: string[], omitPreviews: boolean): string[] {
+  const importable = filterImportable(paths);
+  return omitPreviews ? omitPreviewSidecars(importable) : importable;
+}
+
 /** Import each path into the catalog, upserting into `images` and making the
  * first import active if nothing is. Shared by the file dialog and drag-drop. */
 export async function importPaths(paths: string[]): Promise<void> {

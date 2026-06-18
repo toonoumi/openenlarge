@@ -109,6 +109,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::import_image,
+            commands::list_dir_files,
             commands::develop_image,
             commands::ensure_developed,
             commands::delete_image,

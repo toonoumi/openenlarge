@@ -10,6 +10,7 @@
   import { toneLutBytes, colorGrade, colorMix } from "../develop/finish";
   import { screenRadius, type DustStroke } from "../develop/dust";
   import { marqueeZoom } from "./marquee";
+  import { hiTierAction } from "./hiTier";
   import { pickPixel } from "../develop/colorPick";
   import { orientUVMatrix, displayToSourceUV } from "../crop/transforms";
   import { t } from "$lib/i18n";
@@ -98,15 +99,42 @@
   // native pixels AND the source has more resolution to offer, request the high-res
   // texture. Hysteresis (enter > PROXY_EDGE, leave < 0.9×) avoids thrash at the edge.
   const PROXY_EDGE = 2560;
+  // Settle delay before a hi-res upgrade actually fires. The hi-res decode+upload is
+  // heavy, so we never kick it off mid-gesture — only once zoom/pan has been quiet
+  // for this long. Restarted by every wheel/pan event (see armHiTier).
+  const HI_SETTLE_MS = 220;
+  // `wantHi` is the *desired* tier from the live zoom math; `hiTier` is the *committed*
+  // tier that actually drives the upload (currentUploadKey / uploadWorking). Splitting
+  // them lets us defer the expensive upgrade until the gesture settles while the current
+  // proxy frame keeps showing (frameReady stays true → no drop to thumbnail).
+  let wantHi = false;
   let hiTier = false;
+  let hiTimer: ReturnType<typeof setTimeout> | null = null;
   $: {
     const srcLong = Math.max(imgW, imgH);
     const dpr = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
     const dispDevice = eff * srcLong * dpr;
-    if (srcLong <= PROXY_EDGE) hiTier = false; // nothing sharper than the proxy to fetch
-    else if (!hiTier && dispDevice > PROXY_EDGE) hiTier = true;
-    else if (hiTier && dispDevice < PROXY_EDGE * 0.9) hiTier = false;
+    if (srcLong <= PROXY_EDGE) wantHi = false; // nothing sharper than the proxy to fetch
+    else if (!wantHi && dispDevice > PROXY_EDGE) wantHi = true;
+    else if (wantHi && dispDevice < PROXY_EDGE * 0.9) wantHi = false;
   }
+
+  // Commit `wantHi` → `hiTier` only after the gesture settles. Upgrades to hi-res are
+  // deferred behind a restartable timer (each wheel/pan event re-arms it, so a held or
+  // continuous gesture never triggers the decode until it stops). Downgrades to the
+  // proxy apply immediately — the proxy is always resident, so it's instant and any
+  // pending upgrade is cancelled.
+  function armHiTier() {
+    if (hiTimer) { clearTimeout(hiTimer); hiTimer = null; }
+    switch (hiTierAction(wantHi, hiTier)) {
+      case "downgrade": hiTier = false; return; // proxy resident → instant; drop pending upgrade
+      case "noop": return;                       // already at hi-res
+      case "arm": hiTimer = setTimeout(() => { hiTimer = null; hiTier = true; }, HI_SETTLE_MS); return;
+    }
+  }
+  // Re-arm whenever the desired tier changes (e.g. a tap-to-100% animation crosses the
+  // threshold). Gesture handlers (onWheel/onMove) also re-arm to keep deferring.
+  $: { wantHi; armHiTier(); }
 
   // `e` defaults to the current effective scale, but callers that have just
   // reassigned `scale` must pass the new value: `eff` is a reactive derived
@@ -139,6 +167,7 @@
     if (el) ro.observe(el);
     return () => {
       ro.disconnect();
+      if (hiTimer) { clearTimeout(hiTimer); hiTimer = null; }
       // Free the WebGL context on unmount — otherwise every remount leaks one and
       // WebKit stalls the app once it caps out (~16 contexts).
       renderer?.dispose();
@@ -507,6 +536,10 @@
     cx = ix + (cx - ix) * (eff / ns);
     cy = iy + (cy - iy) * (eff / ns);
     scale = ns;
+    // Each wheel tick restarts the settle countdown so a continuous zoom never fires
+    // the hi-res decode until the wheel stops (the wantHi reactive only re-arms on a
+    // tier *flip*, not on every same-tier tick).
+    armHiTier();
   }
 
   let lastX = 0, lastY = 0, downX = 0, downY = 0, moved = false, panning = false;
@@ -606,6 +639,9 @@
       cx -= (e.clientX - lastX) / eff;
       cy -= (e.clientY - lastY) / eff;
       clampCenter();
+      // Defer a not-yet-committed hi-res upgrade until panning stops, so dragging
+      // never kicks off the heavy decode/upload mid-gesture.
+      if (!hiTier && wantHi) armHiTier();
     }
     lastX = e.clientX; lastY = e.clientY;
   }

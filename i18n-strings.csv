@@ -142,6 +142,8 @@ folderNav.imported,"Imported","已导入","src/lib/library/FolderNav.svelte","he
 folderNav.noImages,"No images yet","还没有照片","src/lib/library/FolderNav.svelte","emptyState"
 folderNav.importing,"Importing…","导入中…","src/lib/library/FolderNav.svelte","button"
 folderNav.import,"Import","导入","src/lib/library/FolderNav.svelte","button"
+folderNav.importFiles,"Import Files…","导入文件…","src/lib/library/FolderNav.svelte","menuItem"
+folderNav.importFolder,"Import Folder…","导入文件夹…","src/lib/library/FolderNav.svelte","menuItem"
 folderNav.filterFilmScans,"Film scans","胶片扫描","src/lib/library/FolderNav.svelte","label"
 folderNav.omitPreviewJpgs,"Omit preview JPGs","忽略预览 JPG","src/lib/library/FolderNav.svelte","checkbox"
 folderNav.omitPreviewJpgsHelp,"Skips JPGs that sit beside a raw file of the same name (camera or scanner previews), so only the master file is imported.","忽略与同名 raw 文件并存的 JPG（相机或扫描仪预览），只导入主文件。","src/lib/library/FolderNav.svelte","tooltip"

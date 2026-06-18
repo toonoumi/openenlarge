@@ -156,6 +156,7 @@ const wireDust = (dust?: DustStroke[]) =>
 
 export const api = {
   importImage: (path: string) => invoke<ImageEntry>("import_image", { path }),
+  listDirFiles: (dir: string) => invoke<string[]>("list_dir_files", { dir }),
   renderView: (id: string, params: InvertParams, view: ViewSpec) =>
     invoke<string>("render_view", { id, params, view: { ...view, dust: wireDust(view.dust) } }),
   encodeHdr: (id: string, params: InvertParams, view: ViewSpec) =>
