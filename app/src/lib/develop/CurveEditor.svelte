@@ -43,6 +43,29 @@
   const sx = (x: number) => x * S;
   const sy = (y: number) => (1 - y) * S;
 
+  // --- Stable reference aids (I4) ---------------------------------------------
+  // The live histogram moves as the preview changes, which reads as a shifting
+  // "reference curve" and makes it hard to judge where a clip point actually sits.
+  // These three additions give a fixed anchor without touching the curve math.
+  //  1. histMode: freeze/hide the moving histogram.   "live" → follows the preview,
+  //     "frozen" → keeps the last decode, "off" → hidden entirely.
+  //  2. fixed eighth-value tics (in the template) the curve is read against.
+  //  3. a numeric in→out readout of the hovered/dragged point.
+  type HistMode = "live" | "frozen" | "off";
+  const HIST_ORDER: HistMode[] = ["live", "frozen", "off"];
+  let histMode: HistMode = "live";
+  function cycleHist() {
+    histMode = HIST_ORDER[(HIST_ORDER.indexOf(histMode) + 1) % HIST_ORDER.length];
+  }
+
+  // Numeric readout of the point under the cursor (or the one being dragged):
+  // input value → curve output, both in [0,1]. null when the pointer is away.
+  let readIn: number | null = null;
+  let readOut: number | null = null;
+  const fmt2 = (v: number) => v.toFixed(2);
+  function setReadout(x: number, y: number) { readIn = x; readOut = y; }
+  function clearReadout() { if (!downPt) { readIn = null; readOut = null; } }
+
   $: curveD = (() => {
     let d = "";
     const N = 72;
@@ -74,7 +97,10 @@
     };
     img.src = src;
   }
-  $: { const s = $previewSrc; if (htimer) clearTimeout(htimer); htimer = setTimeout(() => computeHist(s), 140); }
+  // Only follow the live preview in "live" mode. In "frozen"/"off" we keep the
+  // last decoded paths untouched so the background stops shifting under the curve.
+  // Switching back to "live" re-runs this block (it reads histMode) and recomputes.
+  $: if (histMode === "live") { const s = $previewSrc; if (htimer) clearTimeout(htimer); htimer = setTimeout(() => computeHist(s), 140); }
 
   function toLocal(e: PointerEvent): CurvePoint {
     const r = svgEl.getBoundingClientRect();
@@ -123,7 +149,13 @@
     svgEl.setPointerCapture(e.pointerId);
   }
   function onMove(e: PointerEvent) {
-    if (!downPt) return;
+    if (!downPt) {
+      // Hover (no press): report the curve's output at the pointer's input x, so
+      // the user can read where any input value currently maps before committing.
+      const [hx] = toLocal(e);
+      setReadout(hx, sampleCurve(pts, hx));
+      return;
+    }
     if (!moved) {
       if (Math.hypot(e.clientX - downClientX, e.clientY - downClientY) < DRAG_PX) return;
       moved = true; active = true;
@@ -149,6 +181,10 @@
       pts[segR] = [pts[segR][0], clamp01(startYR + dy * segT)];
     }
     pts = pts; // trigger reactivity
+    // Readout follows what's being dragged: the moved point's exact in→out, or the
+    // pointer's input→output when sliding a whole segment.
+    if (dragMode === "point") setReadout(pts[dragIdx][0], pts[dragIdx][1]);
+    else setReadout(cx, sampleCurve(pts, cx));
     commit();
   }
   function onUp(e: PointerEvent) {
@@ -193,6 +229,7 @@
 <svg
   bind:this={svgEl} class="curve" viewBox="0 0 {S} {S}" preserveAspectRatio="none"
   on:pointerdown={onDown} on:pointermove={onMove} on:pointerup={onUp} on:pointercancel={onUp}
+  on:pointerleave={clearReadout}
   on:dblclick={onDbl}
   role="application" aria-label={$t('curve.editorAriaLabel')}
 >
@@ -201,11 +238,21 @@
     <line x1={g * S} y1="0" x2={g * S} y2={S} class="grid" />
     <line x1="0" y1={g * S} x2={S} y2={g * S} class="grid" />
   {/each}
+  <!-- fixed eighth-value tics: a stationary input/output ruler to read clip
+       positions against, independent of the curve or the histogram. -->
+  {#each [0.125, 0.375, 0.625, 0.875] as e}
+    <line x1={e * S} y1={S} x2={e * S} y2={S - 6} class="tic" />
+    <line x1={e * S} y1="0" x2={e * S} y2="6" class="tic" />
+    <line x1="0" y1={e * S} x2="6" y2={e * S} class="tic" />
+    <line x1={S} y1={e * S} x2={S - 6} y2={e * S} class="tic" />
+  {/each}
   <line x1="0" y1={S} x2={S} y2="0" class="diag" />
-  <!-- histogram -->
-  {#if hist.includes("r")}<polyline points={rPath} class="hr" />{/if}
-  {#if hist.includes("g")}<polyline points={gPath} class="hg" />{/if}
-  {#if hist.includes("b")}<polyline points={bPath} class="hb" />{/if}
+  <!-- histogram (live, frozen, or hidden — see histMode) -->
+  {#if histMode !== "off"}
+    {#if hist.includes("r")}<polyline points={rPath} class="hr" />{/if}
+    {#if hist.includes("g")}<polyline points={gPath} class="hg" />{/if}
+    {#if hist.includes("b")}<polyline points={bPath} class="hb" />{/if}
+  {/if}
   <!-- curve -->
   <path d={curveD} class="line" style="stroke:{color}" />
   {#each pts as p, i}
@@ -214,14 +261,43 @@
   {/each}
 </svg>
 
+<div class="curvebar">
+  <!-- in→out readout of the hovered/dragged point; fixed-width so it never reflows -->
+  <span class="readout" class:dim={readIn === null}>
+    {#if readIn !== null && readOut !== null}
+      {$t('curve.readIn')} {fmt2(readIn)} → {$t('curve.readOut')} {fmt2(readOut)}
+    {:else}
+      {$t('curve.readIn')} —.—— → {$t('curve.readOut')} —.——
+    {/if}
+  </span>
+  <!-- cycle the background histogram between live / frozen / off -->
+  <button
+    class="histtoggle" class:frozen={histMode === "frozen"} class:off={histMode === "off"}
+    on:click={cycleHist} aria-label={$t('curve.histToggleAria')}
+  >
+    {$t('curve.histLabel')}: {histMode === "live" ? $t('curve.histLive') : histMode === "frozen" ? $t('curve.histFrozen') : $t('curve.histOff')}
+  </button>
+</div>
+
 <style>
   .curve { width: 100%; aspect-ratio: 1 / 1; display: block; border-radius: 8px;
     background: rgba(0, 0, 0, 0.35); touch-action: none; cursor: crosshair; }
   .grid { stroke: rgba(255, 255, 255, 0.08); stroke-width: 1; }
+  .tic { stroke: rgba(255, 255, 255, 0.18); stroke-width: 1; }
   .diag { stroke: rgba(255, 255, 255, 0.14); stroke-width: 1; }
   .line { fill: none; stroke-width: 2; }
   polyline { fill: none; stroke-width: 1; mix-blend-mode: screen; opacity: 0.5; }
   .hr { stroke: #ff5a5a; } .hg { stroke: #5aff7a; } .hb { stroke: #5a9cff; }
   .pt { stroke: rgba(0, 0, 0, 0.5); stroke-width: 1; cursor: grab; }
   .pt:active { cursor: grabbing; }
+  .curvebar { display: flex; align-items: center; justify-content: space-between;
+    gap: 8px; margin-top: 6px; }
+  .readout { font-size: 11px; font-variant-numeric: tabular-nums;
+    color: var(--text-dim); letter-spacing: 0.02em; }
+  .readout.dim { opacity: 0.55; }
+  .histtoggle { background: transparent; border: 1px solid var(--glass-brd);
+    color: var(--text-dim); border-radius: 6px; padding: 2px 8px; font-size: 11px;
+    cursor: pointer; white-space: nowrap; }
+  .histtoggle.frozen { color: var(--text); border-color: var(--accent); }
+  .histtoggle.off { opacity: 0.6; }
 </style>
