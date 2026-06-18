@@ -321,6 +321,10 @@ uniform mat2 u_orient;        // oriented-UV → source-UV (undoes rot90/flip)
 
 const float EPS = 1e-5;
 const float LOG10 = 0.30102999566; // 1/log2(10): log10(x) = log2(x)*LOG10
+// Exposure → eff_d_max coupling — MUST equal engine.rs EXPO_DMAX_K/EFF_DMAX_LO/HI.
+const float EXPO_DMAX_K = 0.5;
+const float EFF_DMAX_LO = 0.5;
+const float EFF_DMAX_HI = 6.0;
 
 float tone(float v, float gain) {
   v = max(v * u_exposure * gain - u_black, 0.0);
@@ -342,10 +346,14 @@ vec3 invert(vec3 rgbIn) {
     vec3 clamped = max(rgbIn, vec3(THRESH));
     vec3 dmin = max(u_base, vec3(EPS));
     vec3 log_dens = log2(clamped / dmin) * LOG10;          // log10(clamped/dmin)
-    vec3 corrected = log_dens / max(u_d_max, EPS);
+    // Exposure acts in the density domain: EV stops modulate eff_d_max about the
+    // black pivot (mirrors engine.rs invert_d). EV=0 → eff_d_max==u_d_max.
+    float ev = log2(max(u_print_exposure, EPS));
+    float eff_d_max = clamp(u_d_max * exp2(-EXPO_DMAX_K * ev), EFF_DMAX_LO, EFF_DMAX_HI);
+    vec3 corrected = log_dens / max(eff_d_max, EPS);
     vec3 ten = exp2(corrected / LOG10);                    // 10^corrected
-    vec3 print_lin = max(
-      vec3(u_print_exposure * (1.0 + u_paper_black)) - u_print_exposure * ten, vec3(0.0));
+    // Linear print_exposure gain DROPPED (folded into eff_d_max); white anchor fixed.
+    vec3 print_lin = max(vec3(1.0 + u_paper_black) - ten, vec3(0.0));
     vec3 outc = pow(print_lin * u_wb, vec3(u_paper_grade)); // WB as a linear gain; 0*wb=0 keeps black neutral
     // Reciprocal (Reinhard) highlight rolloff: matches value+slope at the knee
     // (look unchanged below soft_clip), longer tail than the old exponential so
