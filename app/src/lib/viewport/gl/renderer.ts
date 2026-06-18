@@ -1,4 +1,4 @@
-import { VERT, FRAG, INVERT_FRAG } from "./shaders";
+import { VERT, FRAG, INVERT_FRAG, USM_FRAG, TEXTURE_SIGMA_FRAC } from "./shaders";
 import { type InversionUniforms } from "./invert";
 import type { FinishUniforms } from "./uniforms";
 import type { ColorGradeUniforms, ColorMixUniforms } from "../../develop/finish";
@@ -89,6 +89,13 @@ export class FinishRenderer {
   private invProg: WebGLProgram | null = null;
   private srcTexF: WebGLTexture | null = null;   // RGBA16F raw negative
   private interTex: WebGLTexture | null = null;   // RGBA16F inverted intermediate
+  // Texture (USM) pass: cached plain finished color + a blur scratch + the
+  // separable-blur program. A dedicated scratch (not interTex) keeps the inverted
+  // positive in interTex intact for readPixel()'s clean color-pick re-render.
+  private finishTex: WebGLTexture | null = null;  // RGBA16F finished color (no clip/USM)
+  private blurTmpTex: WebGLTexture | null = null; // RGBA16F horizontal-blur scratch
+  private usmProg: WebGLProgram | null = null;
+  private usmLoc: Record<string, WebGLUniformLocation | null> = {};
   private fbo: WebGLFramebuffer | null = null;
   private inv: InversionUniforms | null = null;
   private invLoc: Record<string, WebGLUniformLocation | null> = {};
@@ -138,7 +145,7 @@ export class FinishRenderer {
     for (const u of [
       "u_cm_hue","u_cm_sat","u_cm_lum","u_pc_count","u_pc_hue","u_pc_sat","u_pc_lum",
       "u_pc_hue_shift","u_pc_sat_shift","u_pc_lum_shift","u_pc_variance","u_pc_range",
-      "u_clip_high","u_clip_low","u_clip_low_on",
+      "u_clip_high_on","u_clip_low_on","u_clip_strict","u_soft_clip","u_finish_mode",
     ]) this.loc[u] = gl.getUniformLocation(prog, u);
     gl.uniform1i(this.loc.u_src, 0);
     gl.uniform1i(this.loc.u_lut, 1);
@@ -178,6 +185,35 @@ export class FinishRenderer {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     this.fbo = gl.createFramebuffer();
 
+    // RGBA16F finished-color cache + blur scratch for the texture (USM) pass.
+    for (const t of ["finishTex", "blurTmpTex"] as const) {
+      const tex = gl.createTexture();
+      this[t] = tex;
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    }
+
+    // USM (texture) program: separable Gaussian blur + unsharp composite.
+    const uvs = this.compile(gl, gl.VERTEX_SHADER, VERT);
+    const ufs = this.compile(gl, gl.FRAGMENT_SHADER, USM_FRAG);
+    if (!uvs || !ufs) { this.available = false; return; }
+    const usm = gl.createProgram()!;
+    gl.attachShader(usm, uvs); gl.attachShader(usm, ufs); gl.linkProgram(usm);
+    if (!gl.getProgramParameter(usm, gl.LINK_STATUS)) {
+      console.error("usm link:", gl.getProgramInfoLog(usm)); this.available = false; return;
+    }
+    this.usmProg = usm;
+    for (const n of [
+      "u_blur","u_center","u_texel","u_mode","u_sigma","u_texture",
+      "u_clip_high_on","u_clip_low_on",
+    ]) this.usmLoc[n] = gl.getUniformLocation(usm, n);
+    gl.useProgram(usm);
+    gl.uniform1i(this.usmLoc.u_blur, 0);
+    gl.uniform1i(this.usmLoc.u_center, 2);
+
     this.available = true;
   }
 
@@ -192,11 +228,14 @@ export class FinishRenderer {
     gl.deleteTexture(this.lutTex);
     gl.deleteTexture(this.srcTexF);
     gl.deleteTexture(this.interTex);
+    gl.deleteTexture(this.finishTex);
+    gl.deleteTexture(this.blurTmpTex);
     gl.deleteTexture(this.readTex);
     gl.deleteFramebuffer(this.fbo);
     gl.deleteFramebuffer(this.readFbo);
     gl.deleteProgram(this.prog);
     gl.deleteProgram(this.invProg);
+    gl.deleteProgram(this.usmProg);
     gl.deleteVertexArray(this.vao);
     gl.getExtension("WEBGL_lose_context")?.loseContext();
     this.gl = null; // further calls no-op (every method guards on `this.gl`)
@@ -243,6 +282,9 @@ export class FinishRenderer {
     gl.bindTexture(gl.TEXTURE_2D, this.tex);
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+    // Size the finished-color / blur-scratch FBOs so the texture (USM) pass works
+    // on the 8-bit CPU-fallback path too (no invert pass runs here).
+    this.allocInter(w, h);
     this.hasSource = true;
   }
 
@@ -260,11 +302,13 @@ export class FinishRenderer {
     this.hasSource = true;
   }
 
-  /** Size the intermediate FBO texture (output dims = post-geometry canvas). */
+  /** Size the intermediate + finished-color FBO textures (output dims = canvas). */
   private allocInter(w: number, h: number) {
-    const gl = this.gl; if (!gl || !this.interTex) return;
-    gl.bindTexture(gl.TEXTURE_2D, this.interTex);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, w, h, 0, gl.RGBA, gl.HALF_FLOAT, null);
+    const gl = this.gl; if (!gl || !this.interTex || !this.finishTex || !this.blurTmpTex) return;
+    for (const tex of [this.interTex, this.finishTex, this.blurTmpTex]) {
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, w, h, 0, gl.RGBA, gl.HALF_FLOAT, null);
+    }
   }
 
   setInversion(u: InversionUniforms) { this.inv = u; }
@@ -325,7 +369,7 @@ export class FinishRenderer {
    * WHATEVER framebuffer is currently bound (canvas for live, export FBO for
    * export) at viewport (vw, vh).
    */
-  private drawFinishPass(vw: number, vh: number, clipOff = false) {
+  private drawFinishPass(vw: number, vh: number, clipOff = false, finishMode = 0) {
     const gl = this.gl; if (!gl) return;
     const p = this.prog, fu = this.uniforms;
     if (!p || !fu) return;
@@ -335,6 +379,7 @@ export class FinishRenderer {
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.useFloat ? this.interTex : this.tex);
     gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, this.lutTex);
+    gl.uniform1i(this.loc.u_finish_mode, finishMode);
     gl.uniform2f(this.loc.u_texel, 1 / vw, 1 / vh);
     for (const n of UNIFORM_NAMES) gl.uniform1f(this.loc[`u_${n}`], (fu as unknown as Record<string, number>)[n]);
     const cg = this.cg;
@@ -357,21 +402,78 @@ export class FinishRenderer {
       gl.uniform1fv(this.loc.u_pc_variance, cm.pc_variance);
       gl.uniform1fv(this.loc.u_pc_range, cm.pc_range);
     }
-    // clipOff zeroes the overlay sentinels so the finishing pass writes pure
-    // image color — used by readPixel() so the color picker is never corrupted
-    // by the clip-warning overlay (B2).
+    // clipOff zeroes the overlay ENABLES so the finishing pass writes pure image
+    // color — used by readPixel() so the color picker is never corrupted by the
+    // clip-warning overlay (B2). The detail-loss thresholds (strict + soft_clip)
+    // stay set regardless, so finish_mode==1 still bakes the correct code into
+    // alpha for the USM pass even when the live overlay is off (B1).
     const clip = clipOff ? null : this.clip;
-    gl.uniform1f(this.loc.u_clip_high, clip ? clip.high : 0);
-    gl.uniform1f(this.loc.u_clip_low, clip ? clip.low : 0);
+    gl.uniform1f(this.loc.u_clip_high_on, clip ? clip.highOn : 0);
     gl.uniform1f(this.loc.u_clip_low_on, clip ? clip.lowOn : 0);
+    gl.uniform1f(this.loc.u_clip_strict, this.clip ? this.clip.strict : 0);
+    gl.uniform1f(this.loc.u_soft_clip, this.inv ? this.inv.soft_clip : 0.9);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+  }
+
+  /**
+   * Finishing + (when the texture slider is non-zero) the unsharp/clarity pass,
+   * rendered into `dstFbo` (null = canvas). The fast path draws finishing
+   * straight to the target. When texture is active it caches the plain finished
+   * color in finishTex, runs a separable Gaussian (H → interTex scratch, V +
+   * unsharp composite → dstFbo). Mirrors finish.rs::apply_texture.
+   */
+  private drawFinishAndTexture(vw: number, vh: number, dstFbo: WebGLFramebuffer | null, clipOff = false) {
+    const gl = this.gl; if (!gl) return;
+    const amount = this.uniforms ? this.uniforms.texture : 0;
+    if (Math.abs(amount) < 1e-5) {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, dstFbo);
+      this.drawFinishPass(vw, vh, clipOff, /* finishMode present */ 0);
+      return;
+    }
+    // 1) finishing → finishTex (plain color, no clip, no USM).
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.finishTex, 0);
+    this.drawFinishPass(vw, vh, /* clipOff */ true, /* finishMode plain */ 1);
+    // 2) horizontal blur finishTex → blurTmpTex.
+    this.drawUsmPass(vw, vh, 0, this.fbo, this.blurTmpTex, this.finishTex, null, clipOff);
+    // 3) vertical blur + unsharp composite (blurTmpTex + finishTex center) → dstFbo.
+    this.drawUsmPass(vw, vh, 1, dstFbo, null, this.blurTmpTex, this.finishTex, clipOff);
+  }
+
+  /**
+   * One pass of the USM program. mode 0 = horizontal blur of `blurSrc` into
+   * `attach` (attached to `targetFbo`); mode 1 = vertical blur of `blurSrc` plus
+   * unsharp composite against `center`, drawn into the bound `targetFbo` (null =
+   * canvas; its color attachment is left intact). `center` is bound only in mode 1.
+   */
+  private drawUsmPass(
+    vw: number, vh: number, mode: number,
+    targetFbo: WebGLFramebuffer | null, attach: WebGLTexture | null,
+    blurSrc: WebGLTexture | null, center: WebGLTexture | null, clipOff: boolean,
+  ) {
+    const gl = this.gl, up = this.usmProg; if (!gl || !up) return;
+    gl.useProgram(up);
+    gl.bindVertexArray(this.vao);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, targetFbo);
+    if (attach) gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, attach, 0);
+    gl.viewport(0, 0, vw, vh);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, blurSrc);
+    if (center) { gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, center); }
+    gl.uniform1i(this.usmLoc.u_mode, mode);
+    gl.uniform2f(this.usmLoc.u_texel, 1 / vw, 1 / vh);
+    // Floor at 0.5 to match finish.rs::texture_blur (so radius = ceil(3σ) ≥ 2).
+    gl.uniform1f(this.usmLoc.u_sigma, Math.max(0.5, TEXTURE_SIGMA_FRAC * Math.min(vw, vh)));
+    gl.uniform1f(this.usmLoc.u_texture, this.uniforms ? this.uniforms.texture : 0);
+    const clip = clipOff ? null : this.clip;
+    gl.uniform1f(this.usmLoc.u_clip_high_on, clip ? clip.highOn : 0);
+    gl.uniform1f(this.usmLoc.u_clip_low_on, clip ? clip.lowOn : 0);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
 
   draw() {
     const gl = this.gl; if (!gl || !this.hasSource) return;
     if (this.useFloat && this.invProg && this.inv) this.drawInvertPass();
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    this.drawFinishPass(this.srcW, this.srcH);
+    this.drawFinishAndTexture(this.srcW, this.srcH, null);
   }
 
   /**
@@ -451,7 +553,7 @@ export class FinishRenderer {
 
     // PASS 1: invert → interTex.
     this.drawInvertPass();
-    // PASS 2: finish interTex → outTex.
+    // PASS 2: finish (+ texture USM) interTex → outTex.
     gl.bindFramebuffer(gl.FRAMEBUFFER, outFbo);
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, outTex, 0);
     // Bail (→ CPU fallback) if this output format isn't renderable on the device
@@ -461,7 +563,7 @@ export class FinishRenderer {
       gl.deleteFramebuffer(outFbo); gl.deleteTexture(outTex);
       return null;
     }
-    this.drawFinishPass(w, h);
+    this.drawFinishAndTexture(w, h, outFbo);
 
     // Read back. readPixels returns rows bottom-to-top (GL origin = bottom-left),
     // but the Rust readback (image_from_rgba8/_f32) treats row 0 as the top, so

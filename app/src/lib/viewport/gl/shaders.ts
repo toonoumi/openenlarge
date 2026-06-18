@@ -7,9 +7,12 @@ void main() {
   gl_Position = vec4(uv * 2.0 - 1.0, 0.0, 1.0);
 }`;
 
-// Fragment shader: ports finish.rs. tone_curve + saturation per pixel; texture
-// (unsharp) computed by re-evaluating finish() on a 3x3 (outer-product 0.25/0.5/
-// 0.25) neighbourhood — numerically equal to blur(finish_pixel) then unsharp.
+// Fragment shader: ports finish.rs. tone_curve + saturation + curve + grade per
+// pixel. The texture (unsharp/clarity) effect is NOT done here — it needs a wide
+// separable Gaussian, which would be far too costly to re-evaluate finish() for
+// per tap. Instead this pass writes the finished color to an FBO (u_finish_mode
+// == 1) and the separate USM_FRAG program blurs + unsharps it. When presenting
+// directly (u_finish_mode == 0) it applies the clip-warning overlay.
 export const FRAG = `#version 300 es
 precision highp float;
 in vec2 v_uv;
@@ -38,12 +41,17 @@ uniform float u_pc_lum_shift[8];
 uniform float u_pc_variance[8];
 uniform float u_pc_range[8];
 
-// Clipping-warning overlay. u_clip_high <= 0.0 disables the highlight overlay;
-// otherwise any channel >= u_clip_high paints red. u_clip_low_on > 0.5 enables the
-// shadow overlay (any channel <= u_clip_low paints blue).
-uniform float u_clip_high;
-uniform float u_clip_low;
-uniform float u_clip_low_on;
+// Clipping-warning overlay (B1: OUTPUT detail-loss semantics). Enables only;
+// the thresholds are derived from the engine soft-clip knee, not hard-coded
+// display values — see clipCode().
+uniform float u_clip_high_on;  // > 0.5 → paint blown highlights red
+uniform float u_clip_low_on;   // > 0.5 → paint crushed shadows blue
+uniform float u_clip_strict;   // > 0.5 → flag the ONSET of loss, not just true loss
+uniform float u_soft_clip;     // engine highlight soft-clip knee (InversionParams.soft_clip)
+
+// 0 = present to the bound framebuffer (apply clip overlay); 1 = write the plain
+// finished color to an FBO for the texture (USM) pass to consume.
+uniform int u_finish_mode;
 
 float tone(float v) {
   v = clamp(v, 0.0, 1.0);
@@ -175,30 +183,112 @@ vec3 finishAt(vec2 uv) {
   return pointColor(colorMixer(colorGrade(cu)));
 }
 
-vec3 applyClip(vec3 c) {
-  if (u_clip_high > 0.0 && (c.r >= u_clip_high || c.g >= u_clip_high || c.b >= u_clip_high))
-    return vec3(1.0, 0.15, 0.15);   // highlight clip → red
-  if (u_clip_low_on > 0.5 && (c.r <= u_clip_low || c.g <= u_clip_low || c.b <= u_clip_low))
-    return vec3(0.2, 0.45, 1.0);    // shadow clip → blue
-  return c;
+// B1 — output detail-loss detection. The warning must answer "is this highlight
+// gone or recoverable on the CURRENT render", which is a property of the engine's
+// output, NOT the post-rolloff display value: invert_d's Reinhard highlight
+// soft-clip asymptotes toward (never reaching) 1.0, so a blown highlight rolls off
+// to ~0.99 and a naive (value >= 1.0) test on the displayed pixel never fires (bug).
+//
+// 'src' is the inverted positive — post-engine, PRE-finish (texture(u_src)). A
+// highlight at/above the soft-clip knee is being compressed; once it is well into
+// the rolloff (>= halfway from the knee to white) the detail is effectively lost.
+// Shadows clamped toward black (invert_d's max(print_lin, 0)) lose detail
+// symmetrically. Strict mode flags the onset (any compression / near-black).
+// Returns a 2-bit code: bit1 (=2) highlight loss, bit0 (=1) shadow loss.
+const float CLIP_LO = 2.0 / 255.0;
+const float CLIP_LO_STRICT = 8.0 / 255.0;
+int clipCode(vec3 src) {
+  float hiT = u_clip_strict > 0.5 ? u_soft_clip : 0.5 * (1.0 + u_soft_clip);
+  float loT = u_clip_strict > 0.5 ? CLIP_LO_STRICT : CLIP_LO;
+  int code = 0;
+  if (src.r >= hiT || src.g >= hiT || src.b >= hiT) code += 2;
+  if (src.r <= loT || src.g <= loT || src.b <= loT) code += 1;
+  return code;
+}
+
+vec3 clipOverlay(vec3 disp, int code) {
+  if (u_clip_high_on > 0.5 && (code & 2) != 0) return vec3(1.0, 0.15, 0.15); // highlight → red
+  if (u_clip_low_on  > 0.5 && (code & 1) != 0) return vec3(0.2, 0.45, 1.0);  // shadow → blue
+  return disp;
 }
 
 void main() {
   vec3 c = finishAt(v_uv);
-  if (abs(u_texture) < 1e-5) { o = vec4(applyClip(c), 1.0); return; }
-  vec2 d = u_texel;
-  vec3 b =
-    finishAt(v_uv + vec2(-d.x, -d.y)) * 0.0625 +
-    finishAt(v_uv + vec2( 0.0, -d.y)) * 0.125  +
-    finishAt(v_uv + vec2( d.x, -d.y)) * 0.0625 +
-    finishAt(v_uv + vec2(-d.x,  0.0)) * 0.125  +
-    c * 0.25 +
-    finishAt(v_uv + vec2( d.x,  0.0)) * 0.125  +
-    finishAt(v_uv + vec2(-d.x,  d.y)) * 0.0625 +
-    finishAt(v_uv + vec2( 0.0,  d.y)) * 0.125  +
-    finishAt(v_uv + vec2( d.x,  d.y)) * 0.0625;
-  float k = 1.5 * u_texture;
-  o = vec4(applyClip(clamp(c + k * (c - b), 0.0, 1.0)), 1.0);
+  int code = clipCode(texture(u_src, v_uv).rgb);
+  // mode 1: hand the plain finished color to the USM pass, carrying the detail-loss
+  // code in alpha (the USM pass can't see the inverted positive). No clip overlay.
+  if (u_finish_mode == 1) { o = vec4(c, float(code)); return; }
+  o = vec4(clipOverlay(c, code), 1.0);
+}`;
+
+// Texture (unsharp/clarity) blur sigma as a fraction of the smaller viewport
+// dimension. MUST equal TEXTURE_SIGMA_FRAC in finish.rs so a CPU full-res export
+// and a GPU (proxy) preview blur the same fraction of the frame. The renderer
+// passes sigma = TEXTURE_SIGMA_FRAC * min(vw, vh) as u_sigma.
+export const TEXTURE_SIGMA_FRAC = 0.0025;
+
+// USM pass: separable Gaussian blur + unsharp composite of the finished color
+// produced by FRAG (u_finish_mode == 1). Runs twice: u_mode 0 = horizontal blur
+// (finishTex → scratch), u_mode 1 = vertical blur (→ full 2-D Gaussian) then
+// out = clamp(center + k·(center − blur)) with the clip overlay. Mirrors
+// finish.rs::apply_texture (same sigma, gain, clamp, edge-clamp). MAXR / POS_GAIN
+// / NEG_GAIN MUST match TEXTURE_MAX_RADIUS / USM_POS_GAIN / USM_NEG_GAIN there.
+export const USM_FRAG = `#version 300 es
+precision highp float;
+in vec2 v_uv;
+out vec4 o;
+uniform sampler2D u_blur;     // unit 0: texture to blur (finishTex, or h-blurred)
+uniform sampler2D u_center;   // unit 2: finished color (center), used in mode 1
+uniform vec2 u_texel;         // 1/vw, 1/vh of the finishing viewport
+uniform int u_mode;           // 0 = horizontal blur, 1 = vertical blur + composite
+uniform float u_sigma;        // gaussian sigma in pixels
+uniform float u_texture;      // slider amount, -1..1
+// B1 clip overlay: enables only. The detail-loss decision was computed by FRAG
+// (which can see the inverted positive + soft-clip knee) and handed to us in the
+// alpha of the finished-color texture (u_center) as a 2-bit code.
+uniform float u_clip_high_on, u_clip_low_on;
+
+const int MAXR = 64;          // == TEXTURE_MAX_RADIUS
+const float POS_GAIN = 2.5;   // == USM_POS_GAIN
+const float NEG_GAIN = 1.0;   // == USM_NEG_GAIN
+
+vec3 clipOverlay(vec3 c, int code) {
+  if (u_clip_high_on > 0.5 && (code & 2) != 0) return vec3(1.0, 0.15, 0.15);
+  if (u_clip_low_on  > 0.5 && (code & 1) != 0) return vec3(0.2, 0.45, 1.0);
+  return c;
+}
+
+// 1-D normalised Gaussian along 'step' (one texel in x or y). Radius = ceil(3σ),
+// capped at MAXR; the loop runs to the constant MAXR (GLSL needs a constant
+// bound) and skips taps beyond the radius. CLAMP_TO_EDGE on the sampler matches
+// finish.rs's clamped indices.
+vec3 gauss(vec2 step) {
+  float sigma = max(u_sigma, 1e-3);
+  int R = int(min(ceil(3.0 * sigma), float(MAXR)));
+  float inv = 1.0 / (2.0 * sigma * sigma);
+  vec3 acc = vec3(0.0);
+  float wsum = 0.0;
+  for (int i = -MAXR; i <= MAXR; i++) {
+    if (i < -R || i > R) continue;
+    float w = exp(-float(i * i) * inv);
+    acc += w * texture(u_blur, v_uv + step * float(i)).rgb;
+    wsum += w;
+  }
+  return acc / wsum;
+}
+
+void main() {
+  if (u_mode == 0) {                              // horizontal blur only
+    o = vec4(gauss(vec2(u_texel.x, 0.0)), 1.0);
+    return;
+  }
+  vec3 blur = gauss(vec2(0.0, u_texel.y));        // → full 2-D gaussian
+  vec4 ctr = texture(u_center, v_uv);             // .rgb = finished color, .a = clip code
+  vec3 center = ctr.rgb;
+  int code = int(ctr.a + 0.5);
+  float k = u_texture >= 0.0 ? u_texture * POS_GAIN : u_texture * NEG_GAIN;
+  vec3 outc = clamp(center + k * (center - blur), 0.0, 1.0);
+  o = vec4(clipOverlay(outc, code), 1.0);
 }`;
 
 // INVERT pass: samples the raw linear negative (RGBA16F), applies geometry
