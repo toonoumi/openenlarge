@@ -2,8 +2,6 @@
   import { t } from "$lib/i18n";
   import Slider from "$lib/develop/Slider.svelte";
   import TonalCurve from "$lib/develop/TonalCurve.svelte";
-  import ColorGrading from "$lib/develop/ColorGrading.svelte";
-  import ColorMixer from "$lib/develop/ColorMixer.svelte";
   import { signed, ev, kelvin, TEMP_GRADIENT, TINT_GRADIENT, SAT_GRADIENT } from "$lib/develop/gradients";
   import { draftParamsStore } from "./draftParams";
 
@@ -33,8 +31,6 @@
   <Slider label={$t('basic.saturation')} min={-100} max={100} bind:value={$ps.saturation} def={0} gradient={SAT_GRADIENT} format={signed} />
 
   <TonalCurve paramsStore={ps} onWpPick={null} wpPicking={false} />
-  <ColorGrading paramsStore={ps} />
-  <ColorMixer paramsStore={ps} showPointColor={false} onPick={null} picking={false} />
 </div>
 
 <style>

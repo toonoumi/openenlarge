@@ -337,6 +337,7 @@
 
   function onBaseSampled(e: CustomEvent<[number, number, number]>) {
     rollDraft.update((d) => ({ ...d, params: { ...d.params, base_override: e.detail } }));
+    exitEditMode();
   }
 
   async function onWpPick(e: CustomEvent<{ r: number; g: number; b: number; u: number; v: number }>) {
@@ -370,12 +371,25 @@
     setActive(id);
     // Re-seed crop with same draft (don't reset — the crop is roll-wide).
   }
+
+  function onWindowKeydown(e: KeyboardEvent) {
+    if (e.key === "Escape" && editMode !== "none") {
+      exitEditMode();
+    }
+  }
 </script>
+
+<svelte:window on:keydown={onWindowKeydown} />
 
 {#if editMode === "none"}
   <!-- ===== Default contact-sheet view ===== -->
   <div class="roll">
     <div class="sheet">
+      <div class="sheet-header">
+        <button class="export-btn" on:click={exportContactSheet} disabled={$developedFolderImages.length === 0}>
+          {$t('roll.export.button')}
+        </button>
+      </div>
       {#if $developedFolderImages.length === 0}
         <div class="empty">{$t('roll.empty')}</div>
       {:else}
@@ -390,7 +404,6 @@
     </div>
 
     <aside class="panel">
-      <RollAdjust />
       <div class="panel-tools">
         <button class="tool-entry-btn" on:click={enterCropMode} disabled={$developedFolderImages.length === 0}>
           {$t('roll.crop.tool')}
@@ -415,9 +428,7 @@
           </button>
         </div>
       </div>
-      <button class="export-btn" on:click={exportContactSheet} disabled={$developedFolderImages.length === 0}>
-        {$t('roll.export.button')}
-      </button>
+      <RollAdjust />
     </aside>
   </div>
 
@@ -482,14 +493,9 @@
       {/if}
     </div>
 
-    <!-- Right panel: hint + Done button -->
+    <!-- Right panel: empty (picking auto-closes; press Escape to cancel) -->
     <aside class="ref-panel">
-      <div class="ref-panel-inner">
-        <div class="panel-mode-hint">{$t('roll.base.sample')}</div>
-        <button class="done-btn" on:click={exitEditMode}>
-          {$t('roll.close')}
-        </button>
-      </div>
+      <div class="ref-panel-inner"></div>
     </aside>
 
     <!-- Bottom strip -->
@@ -565,7 +571,9 @@
 <style>
   /* ===== Contact-sheet layout ===== */
   .roll { height: 100%; min-height: 0; display: grid; grid-template-columns: 1fr 320px; }
-  .sheet { overflow-y: auto; padding: 0; background: #0d0d0f; }
+  .sheet { overflow-y: auto; padding: 0; background: #0d0d0f; display: flex; flex-direction: column; }
+  .sheet-header { display: flex; justify-content: flex-end; padding: 6px 8px;
+    border-bottom: 1px solid #222; flex: none; }
   .grid { display: grid; gap: 0; align-content: start;
     grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
   .cell { display: block; padding: 0; border: 0; border-right: 1px solid #222; border-bottom: 1px solid #222;
