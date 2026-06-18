@@ -4,14 +4,21 @@
   import TonalCurve from "$lib/develop/TonalCurve.svelte";
   import { signed, ev, kelvin, TEMP_GRADIENT, TINT_GRADIENT, SAT_GRADIENT } from "$lib/develop/gradients";
   import { draftParamsStore } from "./draftParams";
+  import { defaultParams } from "$lib/api";
 
   const ps = draftParamsStore();
 
   function markWbManual() { ps.update((p) => ({ ...p, wb_manual: true })); }
+  function resetLook() {
+    ps.update((p) => ({ ...defaultParams(), base_override: p.base_override, d_max_override: p.d_max_override }));
+  }
 </script>
 
 <div class="adjust">
-  <h3>{$t('roll.adjust.heading')}</h3>
+  <div class="head">
+    <h3>{$t('roll.adjust.heading')}</h3>
+    <button class="reset" on:click={resetLook}>{$t('basic.reset')}</button>
+  </div>
   <slot />
 
   <!-- These rows are copied VERBATIM from Basic.svelte (lines ~248-272), with only
@@ -36,5 +43,9 @@
 
 <style>
   .adjust { display: flex; flex-direction: column; gap: 8px; }
+  .head { display: flex; align-items: center; justify-content: space-between; }
   h3 { margin: 0 0 4px; font-size: 13px; color: var(--text); }
+  .reset { background: transparent; border: 1px solid var(--glass-brd); color: var(--text-dim);
+    border-radius: 6px; padding: 2px 8px; font-size: 11px; cursor: pointer; }
+  .reset:hover { color: var(--text); }
 </style>
