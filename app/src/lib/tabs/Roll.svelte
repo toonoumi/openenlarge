@@ -39,6 +39,7 @@
   // Fresh roll draft each time the section opens (seed from defaults per spec).
   onMount(() => {
     resetRollDraft();
+    wpManual = false;
 
     // Compute conflicts: union of frames with any edits across the developed folder.
     const frames = get(developedFolderImages);
@@ -304,6 +305,9 @@
   // Whether a wp-pick click is currently being processed (disarm after one pick).
   let wpPicking = false;
   let refId: string | null = null;
+  // Sticky flag: once the user manually picks a white point, auto re-analysis from
+  // crop changes is suppressed for the remainder of this roll session.
+  let wpManual = false;
 
   // Reference frame metadata (for the crop state machine).
   $: refFrame = refId ? $images.find((i) => i.id === refId) ?? null : null;
@@ -439,17 +443,36 @@
       const { d_max } = await api.analyzeWhitePoint(refId, withEffectiveBase($rollDraft.params, refDir), rect);
       rollDraft.update((d) => ({ ...d, params: { ...d.params, d_max_override: d_max } }));
       rollDraftTouched.set(true);
+      wpManual = true;
     } catch { /* ignore */ }
     // Auto-dismiss: exit wp mode after one successful pick (mirrors film-base behaviour).
     exitEditMode();
   }
 
-  /** Apply the current crop draft to all frames, then leave crop mode. */
-  function applyCropAndExit() {
+  /** Apply the current crop draft to all frames, then leave crop mode.
+   *  If no manual WP pick has been made, re-derives D-max from the reference
+   *  frame's new crop and applies that one value roll-wide. */
+  async function applyCropAndExit() {
     commitCropToDraft();
+    // Capture ref info before clearing refId.
+    const id = refId;
+    const crop = get(rollDraft).crop;
+    const frame = id ? get(images).find((i) => i.id === id) : null;
+    const dir = frame ? imageDir(frame) : "";
+    // Exit crop mode immediately so the UI returns to the sheet.
     cropInit = false;
     editMode = "none";
     refId = null;
+    // Re-analyze D-max from the new crop unless the user has manually picked a WP.
+    if (id && crop && !wpManual) {
+      try {
+        const imageCrop: [number, number, number, number] = [crop.rect.x, crop.rect.y, crop.rect.w, crop.rect.h];
+        const geom = { rot90: crop.rot90, flip_h: crop.flipH, flip_v: crop.flipV, angle: crop.angle };
+        const { d_max } = await api.analyze(id, withEffectiveBase(get(rollDraft).params, dir), imageCrop, geom);
+        rollDraft.update((d) => ({ ...d, params: { ...d.params, d_max_override: d_max } }));
+        rollDraftTouched.set(true);
+      } catch { /* not developed / analyze failed — leave d_max as-is */ }
+    }
   }
 
   /** Leave crop mode WITHOUT committing — prior roll crop is preserved. */
