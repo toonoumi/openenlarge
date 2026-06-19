@@ -351,8 +351,11 @@
   $: if (angle !== 0) rect = constrainToRotated(rect, angle, oW, oH);
 
   function startCrop() {
-    // Seed from rollDraft crop (fall back to full frame).
-    const c = $rollDraft.crop;
+    // Seed from the draft crop if a roll crop is already in progress, else from the
+    // reference frame's COMMITTED crop (so orientation/flip/rotation + the crop box
+    // persist when re-entering crop), else full frame. (refCommitted is stale here
+    // because enterCropMode sets refId synchronously just before calling this.)
+    const c = $rollDraft.crop ?? (refId ? get(cropById)[refId] ?? null : null);
     if (c) {
       rect = { ...c.rect }; aspect = c.aspect; orientation = c.orientation;
       rot90 = c.rot90; flipH = c.flipH; flipV = c.flipV; angle = c.angle;
