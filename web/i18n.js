@@ -22,7 +22,7 @@ window.OE = (function () {
       "hero.star": "★ Star on GitHub",
       "hero.metaLine": "Free · MIT licensed · macOS, Windows & Linux",
 
-      "featured.label": "As featured on",
+      "featured.label": "Appeared on",
 
       "quote.1": "“OpenEnlarge has the best designed film base color picker UI”",
       "quote.2": "“The color is really really legit.”",
@@ -81,7 +81,6 @@ window.OE = (function () {
 
       "road.kicker": "Get involved",
       "road.h2": "Be part of what's next.",
-      "road.lead": "This is a living roadmap — what you ask for shapes what gets built. Right now we're working to graduate HDR out of experimental: editing into the HDR headroom with the develop sliders, widening export beyond gain-map JPEG, and verifying across more displays.",
       "road.sub": "Jump into Discord to swap scans and steer the build, open an issue with what you need, or read where it's all headed.",
       "road.discord": "Join Discord",
       "road.issue": "Open an issue",
@@ -116,7 +115,7 @@ window.OE = (function () {
       "hero.star": "★ 在 GitHub 加星",
       "hero.metaLine": "免费 · MIT 许可 · macOS、Windows 和 Linux",
 
-      "featured.label": "媒体报道",
+      "featured.label": "出现于",
 
       "quote.1": "“OpenEnlarge 的片基取色界面是设计得最好的。”",
       "quote.2": "“颜色真的非常地道。”",
@@ -171,11 +170,10 @@ window.OE = (function () {
       "how.3.p": "在忠实的基础上进行创意修饰——曲线、色彩、曝光。",
 
       "gallery.kicker": "作品",
-      "gallery.h2": "用 OpenEnlarge 创作。",
+      "gallery.h2": "由 OpenEnlarge 创作。",
 
       "road.kicker": "参与进来",
       "road.h2": "一起塑造下一步。",
-      "road.lead": "这是一份持续更新的路线图——你的需求决定我们构建什么。目前我们正努力让 HDR 走出实验阶段：用显影滑块编辑到 HDR 高光余量，扩展超出增益图 JPEG 的导出格式，并在更多显示器上验证。",
       "road.sub": "加入 Discord 交流扫描件、引导开发方向，提交 issue 说出你的需求，或了解一切将走向何方。",
       "road.discord": "加入 Discord",
       "road.issue": "提交 issue",

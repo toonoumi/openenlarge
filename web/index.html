@@ -37,7 +37,7 @@
   nav{position:sticky;top:14px;z-index:10;margin-top:14px;}
   .navbar{display:flex;align-items:center;gap:14px;padding:10px 16px;border-radius:14px;}
   .brand{display:flex;align-items:center;gap:9px;font-weight:600;letter-spacing:-.01em;text-decoration:none;color:inherit;}
-  .brand .mark{width:26px;height:26px;border-radius:7px;background:var(--accent-grad);display:block;}
+  .brand .mark{width:26px;height:26px;border-radius:7px;object-fit:cover;display:block;}
   .navlinks{margin-left:auto;display:flex;gap:22px;color:var(--text-dim);font-size:13.5px;}
   .navlinks a{text-decoration:none;color:inherit;}
   .navlinks a:hover{color:var(--text);}
@@ -166,7 +166,7 @@
 
   <nav><div class="navbar glass">
     <a class="brand" href="#top">
-      <span class="mark"></span>
+      <img class="mark" src="img/app-logo.jpg" alt="OpenEnlarge logo">
       OpenEnlarge
     </a>
     <div class="navlinks">
@@ -195,7 +195,7 @@
   </section>
 
   <section style="padding:34px 0 10px;">
-    <div class="featured-label" data-i18n="featured.label">As featured on</div>
+    <div class="featured-label" data-i18n="featured.label">Appeared on</div>
     <div class="marquee">
       <div class="logo-track">
         <img src="https://cdn.simpleicons.org/github/9a9aa2" alt="GitHub">
@@ -444,7 +444,6 @@
     <div class="kicker" data-i18n="road.kicker">Get involved</div>
     <h2 data-i18n="road.h2">Be part of what's next.</h2>
     <div class="community">
-      <p class="lead" data-i18n="road.lead">This is a living roadmap — what you ask for shapes what gets built. Right now we're working to graduate HDR out of experimental: editing into the HDR headroom with the develop sliders, widening export beyond gain-map JPEG, and verifying across more displays.</p>
       <p class="sub" data-i18n="road.sub">Jump into Discord to swap scans and steer the build, open an issue with what you need, or read where it's all headed.</p>
       <div class="links">
         <a class="btn-discord" href="https://discord.gg/KmQaEJfsrq"><img src="https://cdn.simpleicons.org/discord/1a1206" alt="Discord"><span data-i18n="road.discord">Join Discord</span></a>
