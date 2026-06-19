@@ -839,9 +839,8 @@
   .sheet-col { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
   .sheet-toolbar { display: flex; align-items: center; justify-content: flex-end;
     padding: 6px 8px; flex: none; background: transparent; }
-  /* Bottom stroke spans only the toggle+export group, with a gap before the panel. */
-  .toolbar-actions { display: flex; align-items: center; gap: 10px;
-    padding-bottom: 6px; border-bottom: 1px solid #222; margin-right: 12px; }
+  /* Toggle + export grouped at the right, with a gap before the panel. */
+  .toolbar-actions { display: flex; align-items: center; gap: 10px; margin-right: 12px; }
   .sheet { flex: 1; overflow-y: auto; padding: 0; background: #111111; display: flex; flex-direction: column; }
   .empty { color: var(--text-faint); padding: 16px; }
 
