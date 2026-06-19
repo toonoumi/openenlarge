@@ -10,8 +10,7 @@ import { draftThumbView } from "./livePreview";
 
 // ─── Layout constants (match on-screen filmstrip) ────────────────────────────
 const STRIP_SIZE = 6;     // frames per strip row
-const FRAME_W = 260;      // portrait frame width
-const FRAME_H = Math.round(FRAME_W * 49 / 41); // ≈310 — 41:49 portrait aspect
+const FRAME_W = 260;      // frame width in pixels
 
 // Filmstrip rebate/spacing (pixels, scaled to frame size)
 const SPROCKET_H = 8;
@@ -29,25 +28,19 @@ const PROOF_SHADOW_SIZE = 3;
 const PROOF_PADDING = 3;
 const PROOF_CAPTION_H = 8 + 12; // 8px gap + 12px text line
 
-// ─── Helper: draw image with object-fit:cover semantics ─────────────────────
-function drawCover(
-  ctx: CanvasRenderingContext2D,
-  img: HTMLImageElement,
-  x: number, y: number, w: number, h: number,
-) {
-  const scaleX = w / img.naturalWidth;
-  const scaleY = h / img.naturalHeight;
-  const scale = Math.max(scaleX, scaleY);
-  const drawW = img.naturalWidth * scale;
-  const drawH = img.naturalHeight * scale;
-  const drawX = x + (w - drawW) / 2;
-  const drawY = y + (h - drawH) / 2;
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(x, y, w, h);
-  ctx.clip();
-  ctx.drawImage(img, drawX, drawY, drawW, drawH);
-  ctx.restore();
+// Fallback aspect when naturalWidth is unavailable (41:49 portrait)
+const FALLBACK_FRAME_H = Math.round(FRAME_W * 49 / 41);
+
+// ─── Per-image true height at FRAME_W ───────────────────────────────────────
+function frameH(img: HTMLImageElement): number {
+  if (!img.naturalWidth) return FALLBACK_FRAME_H;
+  return Math.round(FRAME_W * img.naturalHeight / img.naturalWidth);
+}
+
+// ─── Max frame height across a strip's images (= row height) ─────────────────
+function stripRowH(imgs: HTMLImageElement[]): number {
+  if (imgs.length === 0) return FALLBACK_FRAME_H;
+  return Math.max(...imgs.map(frameH));
 }
 
 // ─── Helper: draw sprocket holes (faint vertical ticks) ─────────────────────
@@ -143,6 +136,10 @@ export async function exportContactSheet(): Promise<void> {
     strips.push({ imgs: slice, nums, padCount: STRIP_SIZE - slice.length });
   }
 
+  // ── Pre-compute per-strip row heights (depends on loaded images) ──────────
+  // rowH[i] = max frame height across strip i's images
+  const rowHs = strips.map((s) => stripRowH(s.imgs));
+
   // ── Compute canvas geometry ───────────────────────────────────────────────
   // Strip width: 6 frames + gaps + padding on both sides
   const stripContentW = STRIP_SIZE * FRAME_W + (STRIP_SIZE - 1) * FRAME_GAP + 2 * FRAME_PAD;
@@ -151,16 +148,19 @@ export async function exportContactSheet(): Promise<void> {
   let canvasH: number;
 
   if (filmEdge) {
-    // Each strip: rebate-top + frames-row + rebate-bottom
-    const stripH = REBATE_TOP_H + FRAME_H + REBATE_BOT_H;
-    const totalStripsH = strips.length * stripH + Math.max(0, strips.length - 1) * STRIP_GAP;
+    // Each strip: rebate-top + frames-row (rowH) + rebate-bottom
+    const totalStripsH = rowHs.reduce(
+      (sum, rh) => sum + REBATE_TOP_H + rh + REBATE_BOT_H,
+      0,
+    ) + Math.max(0, strips.length - 1) * STRIP_GAP;
     canvasW = 2 * OUTER_MARGIN + stripContentW;
     canvasH = 2 * OUTER_MARGIN + totalStripsH;
   } else {
-    // Each proof strip: frame + caption; strips separated by STRIP_GAP
-    const proofFrameH = PROOF_PADDING * 2 + FRAME_H;
-    const proofStripH = proofFrameH + PROOF_CAPTION_H;
-    const totalStripsH = strips.length * proofStripH + Math.max(0, strips.length - 1) * STRIP_GAP;
+    // Each proof strip: proof-frame (PROOF_PADDING*2 + rowH) + caption
+    const totalStripsH = rowHs.reduce(
+      (sum, rh) => sum + PROOF_PADDING * 2 + rh + PROOF_CAPTION_H,
+      0,
+    ) + Math.max(0, strips.length - 1) * STRIP_GAP;
     canvasW = 2 * OUTER_MARGIN + stripContentW;
     canvasH = 2 * OUTER_MARGIN + totalStripsH;
   }
@@ -180,10 +180,14 @@ export async function exportContactSheet(): Promise<void> {
   let cursorY = OUTER_MARGIN;
   const leftX = OUTER_MARGIN;
 
-  for (const strip of strips) {
+  for (let si = 0; si < strips.length; si++) {
+    const strip = strips[si];
+    const rowH = rowHs[si];
+
     if (filmEdge) {
       // ── FILMSTRIP mode ──────────────────────────────────────────────────
       const stripW = stripContentW;
+      const stripH = REBATE_TOP_H + rowH + REBATE_BOT_H;
 
       // TOP REBATE (background #131210)
       ctx.fillStyle = "#131210";
@@ -208,17 +212,20 @@ export async function exportContactSheet(): Promise<void> {
 
       cursorY += REBATE_TOP_H;
 
-      // FRAMES ROW (black background)
+      // FRAMES ROW (black background) — height = rowH for this strip
       ctx.fillStyle = "#000";
-      ctx.fillRect(leftX, cursorY, stripW, FRAME_H);
+      ctx.fillRect(leftX, cursorY, stripW, rowH);
 
-      // Draw each frame image (cover semantics)
+      // Draw each frame image at its TRUE aspect, top-aligned
       for (let fi = 0; fi < strip.imgs.length; fi++) {
+        const img = strip.imgs[fi];
+        const fh = frameH(img);
         const frameLeft = leftX + FRAME_PAD + fi * (FRAME_W + FRAME_GAP);
-        drawCover(ctx, strip.imgs[fi], frameLeft, cursorY, FRAME_W, FRAME_H);
+        // Plain drawImage: cell exactly matches image aspect → no crop, no letterbox
+        ctx.drawImage(img, frameLeft, cursorY, FRAME_W, fh);
       }
 
-      cursorY += FRAME_H;
+      cursorY += rowH;
 
       // BOTTOM REBATE (background #131210)
       ctx.fillStyle = "#131210";
@@ -256,14 +263,17 @@ export async function exportContactSheet(): Promise<void> {
 
     } else {
       // ── PROOF GRID mode ─────────────────────────────────────────────────
-      // Each cell: proof-frame (shadow + #d8d3c4 bg + 3px padding + image) + caption below
+      // Each cell: proof-frame (shadow + #d8d3c4 bg + 3px padding + image at true aspect) + caption below
       const proofCellW = FRAME_W;
-      const proofFrameH = PROOF_PADDING * 2 + FRAME_H;
+      const proofFrameH = PROOF_PADDING * 2 + rowH;
 
       for (let fi = 0; fi < STRIP_SIZE; fi++) {
         const cellLeft = leftX + fi * (proofCellW + FRAME_GAP);
 
         if (fi < strip.imgs.length) {
+          const img = strip.imgs[fi];
+          const fh = frameH(img);
+
           // Shadow (dark rect behind)
           ctx.fillStyle = "rgba(0,0,0,0.5)";
           ctx.fillRect(cellLeft + 2, cursorY + 2, proofCellW, proofFrameH);
@@ -272,13 +282,13 @@ export async function exportContactSheet(): Promise<void> {
           ctx.fillStyle = "#d8d3c4";
           ctx.fillRect(cellLeft, cursorY, proofCellW, proofFrameH);
 
-          // Image inside padding (cover)
-          drawCover(
-            ctx, strip.imgs[fi],
+          // Image inside padding at true aspect, top-aligned
+          ctx.drawImage(
+            img,
             cellLeft + PROOF_PADDING,
             cursorY + PROOF_PADDING,
             proofCellW - PROOF_PADDING * 2,
-            FRAME_H,
+            fh,
           );
 
           // Caption below frame
