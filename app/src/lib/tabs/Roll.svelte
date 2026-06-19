@@ -558,17 +558,21 @@
   <div class="roll">
     <div class="sheet-col">
       <div class="sheet-toolbar">
-        <!-- Film edge toggle (left of export button) -->
-        <button class="film-edge-toggle" on:click={() => rollFilmEdge.update(b => !b)}
-                aria-label={$t('roll.filmEdge')} aria-pressed={$rollFilmEdge}>
-          <span class="film-edge-label">{$t('roll.filmEdge')}</span>
-          <span class="pill" class:pill-on={$rollFilmEdge}>
-            <span class="knob"></span>
-          </span>
-        </button>
-        <button class="export-btn" on:click={exportContactSheet} disabled={$developedFolderImages.length === 0}>
-          {$t('roll.export.button')}
-        </button>
+        <!-- Toggle + export grouped: the bottom stroke spans only this group (to
+             the end of the export button), with a gap before the right panel. -->
+        <div class="toolbar-actions">
+          <!-- Film edge toggle (left of export button) -->
+          <button class="film-edge-toggle" on:click={() => rollFilmEdge.update(b => !b)}
+                  aria-label={$t('roll.filmEdge')} aria-pressed={$rollFilmEdge}>
+            <span class="film-edge-label">{$t('roll.filmEdge')}</span>
+            <span class="pill" class:pill-on={$rollFilmEdge}>
+              <span class="knob"></span>
+            </span>
+          </button>
+          <button class="export-btn" on:click={exportContactSheet} disabled={$developedFolderImages.length === 0}>
+            {$t('roll.export.button')}
+          </button>
+        </div>
       </div>
       <div class="sheet">
       {#if $developedFolderImages.length === 0}
@@ -833,8 +837,11 @@
   /* ===== Contact-sheet layout ===== */
   .roll { height: 100%; min-height: 0; display: grid; grid-template-columns: 1fr 320px; }
   .sheet-col { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
-  .sheet-toolbar { display: flex; align-items: center; justify-content: flex-end; gap: 10px;
-    padding: 6px 8px; border-bottom: 1px solid #222; flex: none; background: transparent; }
+  .sheet-toolbar { display: flex; align-items: center; justify-content: flex-end;
+    padding: 6px 8px; flex: none; background: transparent; }
+  /* Bottom stroke spans only the toggle+export group, with a gap before the panel. */
+  .toolbar-actions { display: flex; align-items: center; gap: 10px;
+    padding-bottom: 6px; border-bottom: 1px solid #222; margin-right: 12px; }
   .sheet { flex: 1; overflow-y: auto; padding: 0; background: #111111; display: flex; flex-direction: column; }
   .empty { color: var(--text-faint); padding: 16px; }
 
