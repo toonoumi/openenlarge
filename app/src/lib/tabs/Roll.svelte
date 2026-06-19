@@ -835,7 +835,7 @@
   .sheet-col { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
   .sheet-toolbar { display: flex; align-items: center; justify-content: flex-end; gap: 10px;
     padding: 6px 8px; border-bottom: 1px solid #222; flex: none; background: transparent; }
-  .sheet { flex: 1; overflow-y: auto; padding: 0; background: #0d0d0f; display: flex; flex-direction: column; }
+  .sheet { flex: 1; overflow-y: auto; padding: 0; background: #111111; display: flex; flex-direction: column; }
   .empty { color: var(--text-faint); padding: 16px; }
 
   /* ===== Film-edge toggle ===== */
