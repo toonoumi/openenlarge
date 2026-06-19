@@ -1,0 +1,8 @@
+{
+  "tag": "v0.5.0",
+  "assets": {
+    "macos": "https://download.aako.world/v0.5.0/OpenEnlarge_0.5.0_aarch64.dmg",
+    "windows": "https://download.aako.world/v0.5.0/OpenEnlarge_0.5.0_x64_en-US.msi",
+    "linux": "https://download.aako.world/v0.5.0/OpenEnlarge_0.5.0_amd64.AppImage"
+  }
+}

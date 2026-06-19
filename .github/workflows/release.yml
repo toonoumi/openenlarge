@@ -136,3 +136,60 @@ jobs:
             echo "Uploading $name -> s3://$R2_BUCKET/$TAG/$name"
             aws s3 cp "$f" "s3://$R2_BUCKET/$TAG/$name" --endpoint-url "$R2_ENDPOINT"
           done
+
+  # After all platforms build + mirror to R2, generate the same-origin
+  # web/releases.json the landing page reads (no api.github.com at runtime),
+  # pointing the download buttons at the R2 mirror (download.aako.world), then
+  # commit it and redeploy the Pages site so the live page picks it up.
+  publish-manifest:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build web/releases.json from the release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          DL_BASE: https://download.aako.world
+        run: |
+          set -euo pipefail
+          names=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')
+          pick() { echo "$names" | grep -iE "$1" | head -1 || true; }
+          mac=$(pick '\.dmg$')
+          win=$(pick '_x64_en-US\.msi$'); [ -n "$win" ] || win=$(pick '\.msi$'); [ -n "$win" ] || win=$(pick '\.exe$')
+          lin=$(pick '\.AppImage$')
+          url() { [ -n "$1" ] && printf '%s/%s/%s' "$DL_BASE" "$TAG" "$1" || printf ''; }
+          jq -n --arg tag "$TAG" \
+                --arg mac "$(url "$mac")" --arg win "$(url "$win")" --arg lin "$(url "$lin")" '
+            { tag: $tag, assets: (
+                {}
+                + (if $mac != "" then {macos: $mac} else {} end)
+                + (if $win != "" then {windows: $win} else {} end)
+                + (if $lin != "" then {linux: $lin} else {} end)
+            )}' > web/releases.json
+          echo "Generated web/releases.json:"; cat web/releases.json
+
+      - name: Commit releases.json
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- web/releases.json; then echo "releases.json unchanged"; exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add web/releases.json
+          git commit -m "chore(web): release manifest for ${{ github.ref_name }}"
+          git push origin HEAD:main
+
+      # Deploy directly (a push made with GITHUB_TOKEN does not trigger
+      # deploy-web.yml), so the live site updates regardless.
+      - name: Deploy site with fresh manifest
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: 82bb48d5a10bdf3b7d37cce26744d511
+          command: pages deploy web --project-name=openenlarge --branch=main --commit-dirty=true

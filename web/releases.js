@@ -1,9 +1,12 @@
 // Detect the visitor's OS and point the download buttons at the matching
-// installer from the latest GitHub release. Falls back to /releases/latest.
+// installer, read from a static, same-origin releases.json (generated at release
+// time — see .github/workflows/release.yml). No api.github.com call at runtime,
+// so the download buttons populate even behind the Great Firewall. Installers are
+// served from Cloudflare R2 via download.aako.world.
 // Labels are localized via window.OE (see i18n.js) and re-applied on language change.
 (function () {
-  var REPO = "mohaelder/openenlarge";
-  var LATEST = "https://github.com/" + REPO + "/releases/latest";
+  // Error fallback only (e.g. releases.json failed to load) — not the normal path.
+  var LATEST = "https://github.com/mohaelder/openenlarge/releases/latest";
 
   function detectOS() {
     var ua = (navigator.userAgent || "") + " " + (navigator.platform || "");
@@ -16,27 +19,6 @@
 
   function t(key, fallback) {
     return (window.OE && window.OE.t) ? window.OE.t(key) : fallback;
-  }
-
-  // Pick the best asset for an OS from a release's asset list.
-  function pickAsset(assets, os) {
-    var isArm = /arm|aarch64/i.test(navigator.userAgent + navigator.platform);
-    var rank = {
-      macos: function (n) {
-        if (!/\.dmg$/i.test(n)) return -1;
-        var arm = /aarch64|arm64/i.test(n);
-        return isArm === arm ? 2 : 1;
-      },
-      windows: function (n) { return /\.msi$/i.test(n) ? 2 : /\.exe$/i.test(n) ? 1 : -1; },
-      linux: function (n) { return /\.AppImage$/i.test(n) ? 2 : /\.deb$/i.test(n) ? 1 : -1; }
-    }[os];
-    if (!rank) return null;
-    var best = null, bestScore = 0;
-    assets.forEach(function (a) {
-      var s = rank(a.name);
-      if (s > bestScore) { bestScore = s; best = a; }
-    });
-    return best;
   }
 
   var os = detectOS();
@@ -54,7 +36,7 @@
     if (dlBtn) dlBtn.textContent = label;
   }
 
-  // Append the release tag to the localized meta line, e.g. "... · v0.1.0".
+  // Append the release tag to the localized meta line, e.g. "... · v0.5.0".
   function applyMeta() {
     if (meta && lastTag) meta.textContent = t("hero.metaLine", meta.textContent) + " · " + lastTag;
   }
@@ -67,27 +49,27 @@
     applyMeta();
   });
 
-  fetch("https://api.github.com/repos/" + REPO + "/releases/latest", {
-    headers: { Accept: "application/vnd.github+json" }
-  })
+  // releases.json shape: { "tag": "vX.Y.Z", "assets": { "macos": url, "windows": url, "linux": url } }
+  fetch("./releases.json", { cache: "no-cache" })
     .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
     .then(function (rel) {
-      var assets = rel.assets || [];
-      var asset = os ? pickAsset(assets, os) : null;
-      var url = asset ? asset.browser_download_url : LATEST;
+      var assets = rel.assets || {};
+      var url = (os && assets[os]) ? assets[os] : LATEST;
       [heroBtn, dlBtn, navBtn].forEach(function (b) { if (b) b.href = url; });
 
-      if (rel.tag_name) { lastTag = rel.tag_name; applyMeta(); }
+      if (rel.tag) { lastTag = rel.tag; applyMeta(); }
 
-      // Wire the per-OS quick links to their best asset, if present.
+      // Wire the per-OS quick links to their installer, if present.
       var row = document.getElementById("os-row");
       if (row) {
         ["macos", "windows", "linux"].forEach(function (o) {
-          var a = pickAsset(assets, o);
           var link = row.querySelector('[data-os="' + o + '"]');
-          if (a && link) link.href = a.browser_download_url;
+          if (assets[o] && link) link.href = assets[o];
         });
       }
     })
-    .catch(function () { /* no release yet / offline: links already point at /releases/latest */ });
+    .catch(function () {
+      // releases.json missing/unreadable: fall back to the GitHub releases page.
+      [heroBtn, dlBtn, navBtn].forEach(function (b) { if (b) b.href = LATEST; });
+    });
 })();
