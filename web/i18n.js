@@ -13,7 +13,14 @@ window.OE = (function () {
       "nav.how": "How it works",
       "nav.roadmap": "Roadmap",
       "nav.download": "Download",
+      "nav.blog": "Blog",
       "nav.cta": "Download",
+
+      "blog.metaTitle": "Blog — OpenEnlarge",
+      "blog.metaDesc": "Guides, technique, and updates on inverting film scans with OpenEnlarge.",
+      "blog.eyebrow": "◆ Blog",
+      "blog.h1": "From the darkroom.",
+      "blog.lede": "Guides, technique, and updates on inverting film scans with OpenEnlarge.",
 
       "hero.eyebrow": "◆ Open source · density-domain",
       "hero.h1": "Open-source<br><span class=\"grad\">film scan editor.</span>",
@@ -106,7 +113,14 @@ window.OE = (function () {
       "nav.how": "原理",
       "nav.roadmap": "路线图",
       "nav.download": "下载",
+      "nav.blog": "博客",
       "nav.cta": "下载",
+
+      "blog.metaTitle": "博客 — OpenEnlarge",
+      "blog.metaDesc": "关于使用 OpenEnlarge 反转胶片扫描件的指南、技巧与更新。",
+      "blog.eyebrow": "◆ 博客",
+      "blog.h1": "来自暗房。",
+      "blog.lede": "关于使用 OpenEnlarge 反转胶片扫描件的指南、技巧与更新。",
 
       "hero.eyebrow": "◆ 开源 · 密度域反转",
       "hero.h1": "开源<br><span class=\"grad\">胶片扫描编辑</span>",
@@ -210,9 +224,11 @@ window.OE = (function () {
 
   function apply() {
     document.documentElement.lang = locale === "zh" ? "zh-Hans" : "en";
-    document.title = t("meta.title");
+    // Per-page override: <html data-i18n-title="..." data-i18n-desc="...">; defaults to the home page keys.
+    var ds = document.documentElement.dataset;
+    document.title = t(ds.i18nTitle || "meta.title");
     var desc = document.querySelector('meta[name="description"]');
-    if (desc) desc.setAttribute("content", t("meta.desc"));
+    if (desc) desc.setAttribute("content", t(ds.i18nDesc || "meta.desc"));
 
     document.querySelectorAll("[data-i18n]").forEach(function (el) {
       el.textContent = t(el.getAttribute("data-i18n"));
