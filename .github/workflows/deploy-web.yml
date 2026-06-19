@@ -1,0 +1,23 @@
+name: Deploy web to Cloudflare Pages
+
+# Auto-deploys the static landing page (/web) to the Cloudflare Pages project
+# "openenlarge" on every push to main that touches it. Direct upload — does NOT
+# run a repo build, so the missing repo-root package.json can't break it.
+
+on:
+  push:
+    branches: [main]
+    paths: ['web/**', '.github/workflows/deploy-web.yml']
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: 82bb48d5a10bdf3b7d37cce26744d511
+          command: pages deploy web --project-name=openenlarge --branch=main --commit-dirty=true

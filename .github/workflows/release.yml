@@ -30,6 +30,10 @@ jobs:
     env:
       WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
       WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+      # Promoted to job level so the R2 upload step's `if` guard can see it
+      # (step-level env is not visible to that step's own `if`).
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
     steps:
       - uses: actions/checkout@v4
 
@@ -88,6 +92,7 @@ jobs:
           fi
 
       - uses: tauri-apps/tauri-action@v0
+        id: tauri
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # macOS signing + notarization (absent => unsigned build, no failure)
@@ -108,3 +113,26 @@ jobs:
           releaseDraft: true
           prerelease: false
           args: ${{ env.TAURI_ARGS }}
+
+      # Mirror the freshly built installers to Cloudflare R2 (bucket "public-files")
+      # so China users can download without hitting throttled github.com. Skipped
+      # automatically when the R2 secrets are absent, so the release still succeeds.
+      - name: Upload installers to Cloudflare R2
+        if: env.R2_ACCESS_KEY_ID != ''
+        shell: bash
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_ENDPOINT: https://82bb48d5a10bdf3b7d37cce26744d511.r2.cloudflarestorage.com
+          R2_BUCKET: public-files
+          ARTIFACTS: ${{ steps.tauri.outputs.artifactPaths }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          echo "$ARTIFACTS" | jq -r '.[]' | while read -r f; do
+            [ -f "$f" ] || { echo "skip (not a file): $f"; continue; }
+            name="$(basename "$f")"
+            echo "Uploading $name -> s3://$R2_BUCKET/$TAG/$name"
+            aws s3 cp "$f" "s3://$R2_BUCKET/$TAG/$name" --endpoint-url "$R2_ENDPOINT"
+          done
