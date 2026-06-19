@@ -12,6 +12,12 @@ export interface RollDraft {
 
 export const rollDraft: Writable<RollDraft> = writable({ params: defaultParams(), crop: null });
 
+/** True once the user has actually touched a control (slider, crop, base, wp).
+ * False on fresh entry / after resetRollDraft(). The preview + persist passes
+ * are inert while this is false, so re-entering Develop never reverts the
+ * per-frame look or crop. */
+export const rollDraftTouched: Writable<boolean> = writable(false);
+
 /** Id of the frame open in the full-screen overlay (reference frame / preview).
  * null = the contact-sheet grid is showing. */
 export const rollReferenceId: Writable<string | null> = writable<string | null>(null);
@@ -19,4 +25,5 @@ export const rollReferenceId: Writable<string | null> = writable<string | null>(
 /** Reset the draft to a fresh default look (called on entering Develop). */
 export function resetRollDraft(): void {
   rollDraft.set({ params: defaultParams(), crop: null });
+  rollDraftTouched.set(false);
 }

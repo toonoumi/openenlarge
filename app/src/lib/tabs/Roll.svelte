@@ -6,7 +6,7 @@
   import { t } from "$lib/i18n";
   import { developedFolderImages } from "$lib/export/eligible";
   import { editsById, cropById, images, activeId, setActive, rollOverwriteSkip, module, deleteTarget } from "$lib/store";
-  import { rollReferenceId, resetRollDraft, rollDraft } from "$lib/roll/draft";
+  import { rollReferenceId, resetRollDraft, rollDraft, rollDraftTouched } from "$lib/roll/draft";
   import RollAdjust from "$lib/roll/RollAdjust.svelte";
   import { applyToneColorToAll, applyBaseToAll, applyWhitePointToAll, applyCropToAll, framesWithToneColor, framesWithCrop, framesWithBase, framesWithWhitePoint } from "$lib/roll/apply";
   import { livePreviewParams, draftThumbView } from "$lib/roll/livePreview";
@@ -169,7 +169,8 @@
     try {
       const token = ++previewToken;
       const frames = get(developedFolderImages);
-      const view = draftThumbView(draft.crop);
+      // Read touched flag once at batch start — consistent across all frames in this batch.
+      const touched = get(rollDraftTouched);
 
       // Accumulator: start from current previewMap so unrendered frames keep their old preview.
       const acc: Record<string, string> = { ...previewMap };
@@ -195,15 +196,24 @@
 
       // Build render tasks in folder order so the first (visible) frames update first.
       const tasks = frames.map((frame) => async () => {
-        const merged = livePreviewParams(draft.params, editsEntry(frame.id));
-        const params = withEffectiveBase(
-          {
-            ...merged,
-            ...(draft.params.base_override != null ? { base_override: draft.params.base_override } : {}),
-            ...(draft.params.d_max_override != null ? { d_max_override: draft.params.d_max_override } : {}),
-          },
-          imageDir(frame),
-        );
+        const own = editsEntry(frame.id);
+        // When untouched: render each frame with its own stored edits + its own stored crop
+        // (the roll as-is — no revert, no reset). When touched: apply the draft look to all,
+        // and use the draft crop if set (else fall back to each frame's own crop).
+        const baseParams = touched
+          ? {
+              ...livePreviewParams(draft.params, own),
+              ...(draft.params.base_override != null ? { base_override: draft.params.base_override } : {}),
+              ...(draft.params.d_max_override != null ? { d_max_override: draft.params.d_max_override } : {}),
+            }
+          : own;
+        const params = withEffectiveBase(baseParams, imageDir(frame));
+        // When touched: use the draft crop if set, else fall back to the frame's own crop.
+        // When untouched: always use the frame's own stored crop (no draft applied).
+        const frameCrop = touched
+          ? (draft.crop != null ? draft.crop : (get(cropById)[frame.id] ?? null))
+          : (get(cropById)[frame.id] ?? null);
+        const view = draftThumbView(frameCrop);
         const dataUrl = await api.thumbnail(frame.id, params, view);
         // Write into accumulator (plain property set — no Svelte reactivity triggered here).
         if (previewToken === token && !destroyed) {
@@ -251,6 +261,9 @@
   const schedulePersist = debounce(async (draft: typeof $rollDraft) => {
     const token = ++persistToken;
     if (destroyed) return;
+    // Guard: if the user hasn't touched any control yet (fresh/re-entry), don't write
+    // anything — prevents resetting each frame's look/crop on every Develop tab visit.
+    if (!get(rollDraftTouched)) return;
 
     const frames = get(developedFolderImages);
     const ids = frames.map((f) => f.id);
@@ -354,6 +367,7 @@
   function commitCropToDraft() {
     if (!cropInit) return;
     rollDraft.update((d) => ({ ...d, crop: draftCrop() }));
+    rollDraftTouched.set(true);
     // The live-apply mirror ($: if mirrorEnabled) will pick this up and call
     // applyCropToAll on the next scheduleLiveApply tick.
   }
@@ -410,6 +424,7 @@
 
   function onBaseSampled(e: CustomEvent<[number, number, number]>) {
     rollDraft.update((d) => ({ ...d, params: { ...d.params, base_override: e.detail } }));
+    rollDraftTouched.set(true);
     exitEditMode();
   }
 
@@ -423,6 +438,7 @@
     try {
       const { d_max } = await api.analyzeWhitePoint(refId, withEffectiveBase($rollDraft.params, refDir), rect);
       rollDraft.update((d) => ({ ...d, params: { ...d.params, d_max_override: d_max } }));
+      rollDraftTouched.set(true);
     } catch { /* ignore */ }
     // Auto-dismiss: exit wp mode after one successful pick (mirrors film-base behaviour).
     exitEditMode();
