@@ -157,6 +157,10 @@ cargo test --workspace
 cd app && npm run check && npm run test:unit
 ```
 
+## Acknowledgments
+
+Huge thanks to [**toonoumi**](https://github.com/toonoumi) — his project [**FreeCCR**](https://github.com/toonoumi/FreeCCR) was a great help in building OpenEnlarge.
+
 ## License
 
 [MIT](LICENSE) © 2026 mohaelder
