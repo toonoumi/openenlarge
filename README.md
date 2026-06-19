@@ -10,8 +10,9 @@
 [![Release](https://img.shields.io/github/v/release/mohaelder/openenlarge?color=f49d4e)](https://github.com/mohaelder/openenlarge/releases/latest)
 ![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Windows%20%7C%20Linux-555)
 [![CI](https://github.com/mohaelder/openenlarge/actions/workflows/ci.yml/badge.svg)](https://github.com/mohaelder/openenlarge/actions/workflows/ci.yml)
+[![Discord](https://img.shields.io/badge/Discord-join-5865F2?logo=discord&logoColor=white)](https://discord.gg/KmQaEJfsrq)
 
-[Download](https://github.com/mohaelder/openenlarge/releases/latest) · [Website](https://mohaelder.github.io/openenlarge) · [How it works](#how-it-works)
+[Download](https://github.com/mohaelder/openenlarge/releases/latest) · [Website](https://mohaelder.github.io/openenlarge) · [Discord](https://discord.gg/KmQaEJfsrq) · [How it works](#how-it-works)
 
 </div>
 
