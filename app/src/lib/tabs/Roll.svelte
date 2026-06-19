@@ -846,12 +846,12 @@
     color: #7e7868; letter-spacing: .12em; }
   .frame-num.frame-pad { visibility: hidden; }
 
-  .frames-row { display: flex; gap: 7px; background: #000; padding: 0 6px; }
-  .frame-cell { flex: 1; position: relative; aspect-ratio: 41 / 49; background: #000;
+  .frames-row { display: flex; gap: 7px; background: #000; padding: 0 6px; align-items: flex-start; }
+  .frame-cell { flex: 1; position: relative; background: #000;
     overflow: hidden; padding: 0; border: none; cursor: pointer; display: block;
     appearance: none; -webkit-appearance: none; }
-  .frame-cell img { width: 100%; height: 100%; object-fit: contain; object-position: center; display: block; }
-  .frame-cell-pad { flex: 1; aspect-ratio: 41 / 49; background: transparent; cursor: default; }
+  .frame-cell img { width: 100%; height: auto; display: block; }
+  .frame-cell-pad { flex: 1; background: transparent; cursor: default; }
 
   .rebate-info-row { display: flex; align-items: center; gap: 11px; height: 18px; padding: 0 10px; }
   .barcode { width: 30px; height: 9px; flex: none;
@@ -873,13 +873,13 @@
     color: #6c6657; letter-spacing: .24em; }
 
   /* ===== Proof grid (film-edge OFF) ===== */
-  .proof-strip { display: flex; gap: 16px; padding: 0 0 16px; }
+  .proof-strip { display: flex; gap: 16px; padding: 0 0 16px; align-items: flex-start; }
   .proof-cell { flex: 1; display: flex; flex-direction: column; gap: 8px; }
   .proof-cell-pad { flex: 1; }
-  .proof-frame { aspect-ratio: 41 / 49; background: #d8d3c4; padding: 3px; overflow: hidden;
+  .proof-frame { background: #d8d3c4; padding: 3px; overflow: hidden;
     box-shadow: 0 1px 3px rgba(0,0,0,.5); border: none; cursor: pointer;
     display: block; width: 100%; appearance: none; -webkit-appearance: none; }
-  .proof-frame img { width: 100%; height: 100%; object-fit: contain; object-position: center; display: block; }
+  .proof-frame img { width: 100%; height: auto; display: block; }
   .proof-caption { text-align: center;
     font: 600 10px 'Spline Sans Mono', ui-monospace, 'SF Mono', Menlo, monospace;
     color: #6f6a5e; letter-spacing: .12em; }
