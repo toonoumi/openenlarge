@@ -12,7 +12,7 @@
 [![CI](https://github.com/mohaelder/openenlarge/actions/workflows/ci.yml/badge.svg)](https://github.com/mohaelder/openenlarge/actions/workflows/ci.yml)
 [![Discord](https://img.shields.io/badge/Discord-join-5865F2?logo=discord&logoColor=white)](https://discord.gg/KmQaEJfsrq)
 
-[Download](https://github.com/mohaelder/openenlarge/releases/latest) · [Website](https://mohaelder.github.io/openenlarge) · [Discord](https://discord.gg/KmQaEJfsrq) · [How it works](#how-it-works)
+[Download](https://openenlarge.io/) · [Website](https://openenlarge.io/) · [Discord](https://discord.gg/KmQaEJfsrq) · [How it works](#how-it-works)
 
 </div>
 
@@ -67,7 +67,7 @@ Most tools treat a negative scan as a generic image and fit tone curves to flip 
 
 ## Download
 
-Grab the latest installer for your OS from the [**Releases page**](https://github.com/mohaelder/openenlarge/releases/latest):
+Grab the latest installer for your OS from [**openenlarge.io**](https://openenlarge.io/) (or the [GitHub Releases page](https://github.com/mohaelder/openenlarge/releases/latest)):
 
 - **macOS** — `.dmg` (Apple Silicon)
 - **Windows** — `.msi` or `.exe`
