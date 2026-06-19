@@ -1,0 +1,8 @@
+# Cloudflare Pages headers. Keep the release manifest + its loader on a short TTL
+# so a new release (or a fix to releases.js) propagates quickly instead of being
+# pinned by a long edge cache. Other static assets keep their default caching.
+/releases.json
+  Cache-Control: public, max-age=60
+
+/releases.js
+  Cache-Control: public, max-age=60
