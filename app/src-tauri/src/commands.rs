@@ -3,12 +3,12 @@
 use crate::convert::{crop, orient, orient_dims, proxy, resize_to, rotate};
 use crate::encode::{to_jpeg_b64, to_png_b64, write_jpeg, write_png, write_tiff8};
 use crate::gpu_upload::{
-    bake_geometry, bake_working, capped_dims, image_from_rgba8, image_from_rgba_f32, pack_rgba16f,
-    resolve_to_uniforms, BakeSpec, ResolvedInversion, MAX_GPU_EDGE,
+    bake_geometry, bake_working, capped_dims, image_from_rgba8, image_from_rgba_f32_le,
+    pack_rgba16f, resolve_to_uniforms, BakeSpec, ResolvedInversion, MAX_GPU_EDGE,
 };
 use crate::metadata::extract;
 use crate::session::{
-    CachedImage, Developed, ImageEntry, InvertParams, PreparedExport, Session,
+    CachedImage, DecodeCacheEntry, Developed, ImageEntry, InvertParams, PreparedExport, Session,
 };
 use film_core::calibrate::auto_wb_gains;
 use film_core::decode::{decode_ldr, decode_raw, decode_tiff};
@@ -19,6 +19,7 @@ use film_core::wb::{gains_to_cct, wb_from_kelvin};
 use base64::Engine;
 use serde::Deserialize;
 use std::path::Path;
+use std::sync::{Arc, Mutex};
 use tauri::State;
 
 fn default_bits() -> u8 {
@@ -182,6 +183,38 @@ fn decode_any(path: &Path) -> Result<film_core::Image, String> {
         "jpg" | "jpeg" | "png" => decode_ldr(path).map_err(|e| format!("{e}")),
         _ => decode_raw(path).map_err(|e| format!("{e}")),
     }
+}
+
+/// `decode_any` with a single-slot, mtime-validated cache (see `Session::decode_cache`).
+/// All three export paths re-decode the full-res original (the resident buffer is only
+/// a proxy); this returns a shared `Arc` so a repeat export of the same frame — or the
+/// GPU→CPU fallback decoding the same file a second time — reuses one decode instead of
+/// re-running the (often multi-second) RAW demosaic. A changed file (new mtime) misses
+/// and re-decodes, so an edited source is never served stale. The decode itself runs
+/// WITHOUT the lock held, so concurrent workers decoding different frames don't serialize.
+fn decode_cached(
+    cache: &Mutex<Option<DecodeCacheEntry>>,
+    path: &Path,
+) -> Result<Arc<film_core::Image>, String> {
+    let mtime = std::fs::metadata(path).and_then(|m| m.modified()).ok();
+    if let Some(mt) = mtime {
+        let guard = cache.lock().unwrap();
+        if let Some(e) = guard.as_ref() {
+            if e.path == path && e.mtime == mt {
+                return Ok(e.image.clone());
+            }
+        }
+    }
+    // Miss (or unknown mtime): decode off-lock, then publish to the slot.
+    let img = Arc::new(decode_any(path)?);
+    if let Some(mt) = mtime {
+        *cache.lock().unwrap() = Some(DecodeCacheEntry {
+            path: path.to_path_buf(),
+            mtime: mt,
+            image: img.clone(),
+        });
+    }
+    Ok(img)
 }
 
 pub(crate) fn mode_from(_s: &str) -> Mode {
@@ -1310,7 +1343,7 @@ pub(crate) fn finish_full_res(
             dev.d_max,
         )
     };
-    let full = decode_any(Path::new(&path))?;
+    let full = decode_cached(&session.decode_cache, Path::new(&path))?;
     let full = orient(&full, rot90, flip_h, flip_v);
     let full = rotate(&full, angle);
     let full = match image_crop {
@@ -1433,7 +1466,7 @@ pub async fn export_image_hdr(
             dev.d_max,
         )
     };
-    let full = decode_any(Path::new(&path))?;
+    let full = decode_cached(&session.decode_cache, Path::new(&path))?;
     let full = orient(&full, rot90, flip_h, flip_v);
     let full = rotate(&full, angle);
     let full = match image_crop {
@@ -1501,8 +1534,9 @@ pub async fn export_begin(
     // with other images' GPU render + encode. When the baked image exceeds the GPU
     // texture cap, skip the (large) f16 pack and stash nothing: the frontend falls
     // back to CPU export and re-decodes, so there's no buffer to leak in the map.
+    let cache = session.decode_cache.clone();
     let (w, h, bytes) = tauri::async_runtime::spawn_blocking(move || {
-        let full = decode_any(Path::new(&path))?;
+        let full = decode_cached(&cache, Path::new(&path))?;
         let baked = bake_working(&full, &spec); // geometry + pre-invert heal, full-res
         if baked.width.max(baked.height) as u32 > max_edge {
             return Ok::<(u32, u32, Option<Vec<u8>>), String>((
@@ -1603,14 +1637,26 @@ pub async fn export_finish(
         images.get(&id).map(|i| i.metadata.clone())
     };
     tauri::async_runtime::spawn_blocking(move || {
+        let n = (readback.w as usize) * (readback.h as usize);
         let img = if readback.bit16 {
-            // data is little-endian f32 RGBA
-            let floats: Vec<f32> = data
-                .chunks_exact(4)
-                .map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]]))
-                .collect();
-            image_from_rgba_f32(readback.w, readback.h, &floats)
+            // data is little-endian f32 RGBA (16 B/px). Reconstruct the Image in ONE
+            // parallel pass straight from the bytes — no intermediate Vec<f32> collect.
+            if data.len() < n * 16 {
+                return Err(format!(
+                    "export_finish: truncated f32 readback ({} < {} bytes)",
+                    data.len(),
+                    n * 16
+                ));
+            }
+            image_from_rgba_f32_le(readback.w, readback.h, &data)
         } else {
+            if data.len() < n * 4 {
+                return Err(format!(
+                    "export_finish: truncated rgba8 readback ({} < {} bytes)",
+                    data.len(),
+                    n * 4
+                ));
+            }
             image_from_rgba8(readback.w, readback.h, &data)
         };
         let img = downscale_long_edge(img, format.resize_long_edge);
@@ -1640,6 +1686,42 @@ pub async fn export_finish(
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+/// For each output path, whether a file already exists there. The export dialog
+/// calls this up front to warn before any image overwrites an existing file.
+#[tauri::command]
+pub fn paths_exist(paths: Vec<String>) -> Vec<bool> {
+    paths.iter().map(|p| Path::new(p).exists()).collect()
+}
+
+/// Return an output path that does not collide with an existing file: the input
+/// unchanged if it is free, otherwise the first free `"<stem> (n).<ext>"` (n = 1, 2, …).
+/// Backs the export dialog's "Keep both" choice. Falls back to the original path if no
+/// free name is found within a sane bound.
+#[tauri::command]
+pub fn unique_path(path: String) -> String {
+    let p = Path::new(&path);
+    if !p.exists() {
+        return path;
+    }
+    let parent = p.parent();
+    let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+    let ext = p.extension().and_then(|s| s.to_str());
+    for n in 1..=9999u32 {
+        let name = match ext {
+            Some(e) => format!("{stem} ({n}).{e}"),
+            None => format!("{stem} ({n})"),
+        };
+        let cand = match parent {
+            Some(par) => par.join(name),
+            None => std::path::PathBuf::from(name),
+        };
+        if !cand.exists() {
+            return cand.to_string_lossy().into_owned();
+        }
+    }
+    path
 }
 
 /// Estimated as-shot white point for the developed image, as (Kelvin, tint).
@@ -2542,6 +2624,40 @@ mod tests {
         assert_eq!(c.len(), 1);
         assert!((c[0][0] - 2.5 / 4.0).abs() < 1e-6, "cx {}", c[0][0]);
         assert!((c[0][1] - 0.5 / 4.0).abs() < 1e-6, "cy {}", c[0][1]);
+    }
+
+    #[test]
+    fn decode_cached_reuses_one_decode_then_evicts_single_slot() {
+        // Write two distinct TIFFs.
+        let dir = std::env::temp_dir();
+        let pa = dir.join(format!("oe-decode-cache-a-{}.tiff", std::process::id()));
+        let pb = dir.join(format!("oe-decode-cache-b-{}.tiff", std::process::id()));
+        let mut a = film_core::Image::new(3, 2);
+        a.pixels[0] = [0.25, 0.5, 0.75];
+        let b = film_core::Image::new(5, 4); // different dims → distinguishable
+        film_core::export::write_tiff16(&a, &pa).unwrap();
+        film_core::export::write_tiff16(&b, &pb).unwrap();
+
+        let cache: Mutex<Option<DecodeCacheEntry>> = Mutex::new(None);
+
+        // Same path twice in a row → second call is a cache HIT (same Arc allocation).
+        let arc1 = decode_cached(&cache, &pa).unwrap();
+        let arc2 = decode_cached(&cache, &pa).unwrap();
+        assert!(Arc::ptr_eq(&arc1, &arc2), "repeat decode of same file must hit the cache");
+        assert_eq!((arc1.width, arc1.height), (3, 2));
+
+        // A different path replaces the single slot (and decodes fresh).
+        let arc3 = decode_cached(&cache, &pb).unwrap();
+        assert!(!Arc::ptr_eq(&arc1, &arc3));
+        assert_eq!((arc3.width, arc3.height), (5, 4));
+
+        // Back to A: the slot now holds B, so A misses and re-decodes (single-slot).
+        let arc4 = decode_cached(&cache, &pa).unwrap();
+        assert!(!Arc::ptr_eq(&arc1, &arc4), "single-slot cache evicts the prior entry");
+        assert_eq!((arc4.width, arc4.height), (3, 2));
+
+        let _ = std::fs::remove_file(&pa);
+        let _ = std::fs::remove_file(&pb);
     }
 
     #[test]

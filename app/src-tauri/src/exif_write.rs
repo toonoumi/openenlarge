@@ -17,8 +17,19 @@ pub fn write_exif(path: &Path, meta: &Metadata) -> Result<(), String> {
     // Start from the file's existing EXIF when present. This matters for TIFF,
     // whose EXIF IFD is the image's own IFD: little_exif requires its structural
     // tags (ImageWidth, …) to already be there. JPEG/PNG we just wrote have no
-    // EXIF yet, so fall back to a fresh block.
-    let mut exif = ExifMetadata::new_from_path(path).unwrap_or_else(|_| ExifMetadata::new());
+    // EXIF yet, so start from a fresh block and SKIP new_from_path entirely —
+    // that call reads the whole file back (a 16-bit PNG can be hundreds of MB)
+    // only to find no EXIF, a pure waste on the export critical path.
+    let is_tiff = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.eq_ignore_ascii_case("tif") || e.eq_ignore_ascii_case("tiff"))
+        .unwrap_or(false);
+    let mut exif = if is_tiff {
+        ExifMetadata::new_from_path(path).unwrap_or_else(|_| ExifMetadata::new())
+    } else {
+        ExifMetadata::new()
+    };
 
     if let Some(camera) = nonempty(&meta.camera) {
         exif.set_tag(ExifTag::Model(camera.to_string()));

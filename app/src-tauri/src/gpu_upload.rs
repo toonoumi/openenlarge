@@ -7,6 +7,7 @@ use crate::convert::proxy;
 use crate::convert::{crop, orient, rotate};
 use film_core::Image;
 use half::f16;
+use rayon::prelude::*;
 
 /// Geometry + dust/IR for baking a heal-ready working buffer (raw negative).
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -85,30 +86,46 @@ pub fn capped_dims(img: &Image, cap: u32) -> (u32, u32) {
 /// pixels as little-endian half-float RGBA (alpha = 1.0). Returns the (possibly
 /// reduced) dimensions and the byte buffer ready for `texImage2D(RGBA16F)`.
 pub fn pack_rgba16f(img: &Image, cap: u32) -> (u32, u32, Vec<u8>) {
-    let capped = proxy(img, cap); // no-op if already within cap
+    // Only allocate a downscaled copy when the long edge actually exceeds `cap`.
+    // For export (cap == u32::MAX) nothing is downscaled, so packing the source in
+    // place avoids `proxy`'s full-res `img.clone()` (a wasted ~12 B/px memcpy).
+    let long = img.width.max(img.height) as u32;
+    let downscaled;
+    let src: &Image = if long > cap {
+        downscaled = proxy(img, cap);
+        &downscaled
+    } else {
+        img
+    };
     let one = f16::from_f32(1.0).to_le_bytes();
-    let mut bytes = Vec::with_capacity(capped.pixels.len() * 8);
-    for px in &capped.pixels {
-        bytes.extend_from_slice(&f16::from_f32(px[0]).to_le_bytes());
-        bytes.extend_from_slice(&f16::from_f32(px[1]).to_le_bytes());
-        bytes.extend_from_slice(&f16::from_f32(px[2]).to_le_bytes());
-        bytes.extend_from_slice(&one);
-    }
-    (capped.width as u32, capped.height as u32, bytes)
+    // Preallocate the exact buffer and fill it in parallel by index (order-preserving,
+    // so the bytes are identical to the sequential extend_from_slice version).
+    let mut bytes = vec![0u8; src.pixels.len() * 8];
+    bytes
+        .par_chunks_mut(8)
+        .zip(src.pixels.par_iter())
+        .for_each(|(out, px)| {
+            out[0..2].copy_from_slice(&f16::from_f32(px[0]).to_le_bytes());
+            out[2..4].copy_from_slice(&f16::from_f32(px[1]).to_le_bytes());
+            out[4..6].copy_from_slice(&f16::from_f32(px[2]).to_le_bytes());
+            out[6..8].copy_from_slice(&one);
+        });
+    (src.width as u32, src.height as u32, bytes)
 }
 
 /// Build a linear-RGB Image from tightly-packed RGBA8 readback (alpha dropped, /255).
+/// `bytes` must be at least `w*h*4` long (caller validates); parallel, single pass.
 pub fn image_from_rgba8(w: u32, h: u32, bytes: &[u8]) -> Image {
     let n = (w * h) as usize;
-    let mut pixels = Vec::with_capacity(n);
-    for i in 0..n {
-        let o = i * 4;
-        pixels.push([
-            bytes[o] as f32 / 255.0,
-            bytes[o + 1] as f32 / 255.0,
-            bytes[o + 2] as f32 / 255.0,
-        ]);
-    }
+    let mut pixels = vec![[0.0_f32; 3]; n];
+    pixels
+        .par_iter_mut()
+        .zip(bytes.par_chunks_exact(4))
+        .for_each(|(out, b)| {
+            out[0] = b[0] as f32 / 255.0;
+            out[1] = b[1] as f32 / 255.0;
+            out[2] = b[2] as f32 / 255.0;
+        });
     Image {
         width: w as usize,
         height: h as usize,
@@ -117,14 +134,23 @@ pub fn image_from_rgba8(w: u32, h: u32, bytes: &[u8]) -> Image {
     }
 }
 
-/// Build a linear-RGB Image from tightly-packed RGBA f32 readback (alpha dropped).
-pub fn image_from_rgba_f32(w: u32, h: u32, data: &[f32]) -> Image {
+/// Build a linear-RGB Image directly from tightly-packed little-endian f32 RGBA
+/// readback BYTES (alpha dropped). One parallel pass straight from the IPC body —
+/// avoids first collecting the bytes into a Vec<f32>. `bytes` must be at least
+/// `w*h*16` long (caller validates). Output is bit-identical to decoding each
+/// channel with `f32::from_le_bytes` sequentially.
+pub fn image_from_rgba_f32_le(w: u32, h: u32, bytes: &[u8]) -> Image {
     let n = (w * h) as usize;
-    let mut pixels = Vec::with_capacity(n);
-    for i in 0..n {
-        let o = i * 4;
-        pixels.push([data[o], data[o + 1], data[o + 2]]);
-    }
+    let mut pixels = vec![[0.0_f32; 3]; n];
+    pixels
+        .par_iter_mut()
+        .zip(bytes.par_chunks_exact(16))
+        .for_each(|(out, b)| {
+            out[0] = f32::from_le_bytes([b[0], b[1], b[2], b[3]]);
+            out[1] = f32::from_le_bytes([b[4], b[5], b[6], b[7]]);
+            out[2] = f32::from_le_bytes([b[8], b[9], b[10], b[11]]);
+            // b[12..16] = alpha, dropped
+        });
     Image {
         width: w as usize,
         height: h as usize,
@@ -386,9 +412,11 @@ mod tests {
     }
 
     #[test]
-    fn image_from_rgba_f32_drops_alpha() {
+    fn image_from_rgba_f32_le_drops_alpha() {
+        // Two RGBA pixels as little-endian f32 bytes; alpha (4th channel) is dropped.
         let data = [0.25f32, 0.5, 0.75, 1.0, 0.1, 0.2, 0.3, 1.0];
-        let img = image_from_rgba_f32(2, 1, &data);
+        let bytes: Vec<u8> = data.iter().flat_map(|f| f.to_le_bytes()).collect();
+        let img = image_from_rgba_f32_le(2, 1, &bytes);
         assert_eq!((img.width, img.height), (2, 1));
         assert_eq!(img.pixels[0], [0.25, 0.5, 0.75]);
         assert_eq!(img.pixels[1], [0.1, 0.2, 0.3]);
