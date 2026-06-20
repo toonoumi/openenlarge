@@ -71,16 +71,18 @@ const HDR_KNEE: f32 = 0.8;
 /// HDR headroom ceiling (linear-ish display units, ~1.3 stops over SDR white).
 /// Tuned on real scans later; keep modest to avoid clipping.
 const HDR_HEADROOM: f32 = 2.5;
-/// Exposure → effective-d_max coupling. EV stops scale d_max by `2^(-K·EV)`:
-/// lower EV → larger eff_d_max → flatter highlight slope (blown highlights
-/// re-separate); EV=0 → identity. Mirrored verbatim in shaders.ts (INVERT_FRAG).
-const EXPO_DMAX_K: f32 = 0.5;
-const EFF_DMAX_LO: f32 = 0.5;
-const EFF_DMAX_HI: f32 = 6.0;
+/// Exposure → t-multiply. The exposure slider (EV) scales the normalised
+/// log-density `t` by `2^(EXPO_K·EV)`, pivoting at black (t=0 stays 0): brightening
+/// pushes tones up the filmic curve, darkening pulls them down. Highlight-preserving
+/// (a saturated specular at t ≫ 1 stays clipped to white until pulled far down) and
+/// free of the dead zone the old eff_d_max clamp produced past ~EV+3. Mirrored
+/// verbatim in shaders.ts (INVERT_FRAG).
+const EXPO_K: f32 = 0.14;
 
 // --- Filmic display S-curve (replaces the old paper-grade/soft-clip encode). ---
-// Applied per channel in the NORMALISED LOG-DENSITY domain `t = d/eff_d_max`,
-// which is linear in scene stops — the correct place for a tone curve (the old
+// Applied per channel in the NORMALISED LOG-DENSITY domain `t = d/d_max` (then
+// scaled by exposure), which is linear in scene stops — the correct place for a
+// tone curve (the old
 // `1 − 10^(−d/d_max)` paper response was a pure shoulder that capped white at
 // ~0.90 and dumped all contrast into the shadows). A logistic, rescaled to exact
 // anchors: gentle toe (shadow detail), mid slope > 1 (contrast/punch), gentle
@@ -93,10 +95,10 @@ const FILMIC_K: f32 = 5.0; // contrast / max slope
 // content lands in the lower-mid range. Black (t=0→0) and white (t=WHITE_T→1) stay
 // anchored regardless. 0.44 chosen on real scans.
 const FILMIC_PIVOT: f32 = 0.44;
-const FILMIC_WHITE_T: f32 = 1.05; // density (× eff_d_max) that maps to 1.0
+const FILMIC_WHITE_T: f32 = 1.05; // density (× d_max) that maps to 1.0
 
 /// Logistic display S-curve on normalised log-density `t` (0 = scene black at the
-/// film base, 1 = the white point at `eff_d_max`). Rescaled so `filmic_s(0) == 0`
+/// film base, 1 = the white point at `d_max`). Rescaled so `filmic_s(0) == 0`
 /// exactly (neutral black) and `filmic_s(FILMIC_WHITE_T) == 1.0` (true white).
 #[inline]
 fn filmic_s(t: f32) -> f32 {
@@ -136,13 +138,13 @@ pub fn invert_d(rgb: [f32; 3], p: &InversionParams) -> [f32; 3] {
         return develop_positive_px(rgb, p);
     }
     const THRESHOLD: f32 = 2.328_306_4e-10; // negadoctor's -32 EV floor
-    // Exposure acts in the DENSITY domain, not as a linear print gain: EV stops
-    // modulate the effective d_max about the black pivot. Lowering EV raises
-    // eff_d_max → flatter highlight slope → blown highlights re-separate (I1);
-    // EV=0 (print_exposure=1) → eff_d_max==d_max → byte-identical to before.
+    // Exposure is a t-MULTIPLY pivoting at black (not the old eff_d_max rescale):
+    // EV stops scale the normalised log-density by 2^(EXPO_K·EV). Brightening pushes
+    // tones up the filmic curve; darkening pulls them down while a saturated specular
+    // (t ≫ 1) stays clipped to white — highlight-preserving, and with no dead zone.
+    // EV=0 (print_exposure=1) → expo_gain=1 → unchanged. d_max sets the white anchor.
     let ev = p.print_exposure.max(EPS).log2();
-    let eff_d_max =
-        (p.d_max * 2f32.powf(-EXPO_DMAX_K * ev)).clamp(EFF_DMAX_LO, EFF_DMAX_HI);
+    let expo_gain = 2f32.powf(EXPO_K * ev);
     // `paper_black`, `paper_grade`, `soft_clip` are DEPRECATED by the filmic
     // display curve below (they encoded the old `1 − 10^(−x)` paper response that
     // capped white at ~0.90 and had no toe). The fields are kept on the struct /
@@ -154,8 +156,9 @@ pub fn invert_d(rgb: [f32; 3], p: &InversionParams) -> [f32; 3] {
         // dense neg = scene highlight = large). This is LINEAR IN SCENE STOPS — the
         // correct domain for the tone curve.
         let d = (dmin / clamped).log10().max(0.0);
-        // Normalised log-density `t`: d == eff_d_max → t == 1 (the white point).
-        let t = d / eff_d_max.max(EPS);
+        // Normalised log-density `t`: d == d_max → t == 1 (the white point), then
+        // exposure scales t about the black pivot.
+        let t = (d / p.d_max.max(EPS)) * expo_gain;
         // WB is a linear gain on the positive OUTPUT (filmic value), NOT a scale on
         // t. This keeps black neutral (filmic_s(0)·wb = 0, so no "yellow shadow")
         // AND stays consistent with `auto_wb_gains` / the gray-point picker, which
@@ -418,8 +421,8 @@ mod tests {
 
     #[test]
     fn highlight_rolloff_retains_separation() {
-        // Raise exposure (print_exposure 2.0): eff_d_max shrinks, so highlights move
-        // toward white but the SDR rolloff still keeps them *below* white with a
+        // Raise exposure (print_exposure 2.0): t scales up, so highlights move
+        // toward white but the filmic shoulder still keeps them *below* white with a
         // visible gap between distinct luminances — latitude survives into Develop.
         let p = InversionParams { print_exposure: 2.0, ..Default::default() };
         let bright = invert_d([0.1, 0.1, 0.1], &p)[0]; // denser neg → brighter pos
@@ -510,13 +513,15 @@ mod tests {
 
     #[test]
     fn lower_exposure_reseparates_blown_highlights() {
-        // Heavily over-exposed Pro400H-style: two close, very dense (bright-scene)
-        // probes the default render collapses near white. Lowering exposure must
-        // pull them DOWN off white AND widen the gap between them (re-separate),
-        // not merely dim a collapsed cluster (the old linear-gain "brightness" feel).
+        // Two close highlights pushed just past the white point collapse together at
+        // EV0 (both clip near 1.0). Lowering exposure pulls them DOWN off white and
+        // re-separates them — the t-multiply slides them back into the curve's body.
+        // (The recovery is gentler than the old eff_d_max rescale: a SATURATED
+        // specular deliberately stays white — see exposure_preserves_speculars — so
+        // this uses near-knee highlights, which is the recoverable case.)
         let base = [1.0, 1.0, 1.0];
-        let hi_a = [3.2e-3, 3.2e-3, 3.2e-3];
-        let hi_b = [5.0e-3, 5.0e-3, 5.0e-3];
+        let hi_a = [0.011, 0.011, 0.011]; // d ≈ 1.96 (≈1.3·d_max)
+        let hi_b = [0.0158, 0.0158, 0.0158]; // d ≈ 1.80 (≈1.2·d_max)
         let at = |ev: f32, neg: [f32; 3]| {
             let p = InversionParams {
                 base, d_max: 1.5, print_exposure: 2f32.powf(ev), ..Default::default()
@@ -524,20 +529,15 @@ mod tests {
             invert_d(neg, &p)[0]
         };
         let gap0 = (at(0.0, hi_a) - at(0.0, hi_b)).abs();
-        let gap_dn = (at(-2.0, hi_a) - at(-2.0, hi_b)).abs();
-        eprintln!(
-            "OVER-EXPOSED HIGHLIGHT before/after: gap@EV0={gap0:.4} gap@EV-2={gap_dn:.4}  \
-             a:{:.4}->{:.4}  b:{:.4}->{:.4}",
-            at(0.0, hi_a), at(-2.0, hi_a), at(0.0, hi_b), at(-2.0, hi_b)
-        );
-        assert!(at(-2.0, hi_a) < at(0.0, hi_a), "lower EV must darken the highlight");
-        assert!(gap_dn > gap0 * 2.0, "separation must widen: {gap0} -> {gap_dn}");
+        let gap_dn = (at(-3.0, hi_a) - at(-3.0, hi_b)).abs();
+        assert!(at(-3.0, hi_a) < at(0.0, hi_a), "lower EV must darken the highlight");
+        assert!(gap_dn > gap0 && gap_dn > 0.01, "separation must widen: {gap0} -> {gap_dn}");
     }
 
     #[test]
     fn black_anchored_under_any_exposure() {
         // A pixel AT the film base is the deepest shadow → must invert to ~black for
-        // ANY exposure, because eff_d_max only changes the slope about the black pivot.
+        // ANY exposure, because the t-multiply pivots at the black point (0·gain=0).
         let base = [0.7, 0.6, 0.5];
         for ev in [-3.0f32, 0.0, 3.0] {
             let p = InversionParams { base, print_exposure: 2f32.powf(ev), ..Default::default() };
@@ -547,13 +547,41 @@ mod tests {
     }
 
     #[test]
-    fn eff_dmax_clamped_no_blowup() {
-        // Extreme exposure is bounded by the clamp band — finite, in-range, no NaN.
+    fn extreme_exposure_no_blowup() {
+        // Extreme exposure stays finite + in-range (no NaN, no overflow).
         let base = [1.0, 1.0, 1.0];
         for ev in [-20.0f32, 20.0] {
             let p = InversionParams { base, print_exposure: 2f32.powf(ev), ..Default::default() };
             let out = invert_d([0.01, 0.01, 0.01], &p);
             for &v in &out { assert!(v.is_finite() && (0.0..=1.0001).contains(&v), "EV {ev}: {v}"); }
         }
+    }
+
+    #[test]
+    fn exposure_has_no_dead_zone_at_high_ev() {
+        // The old eff_d_max coupling clamped at ~EV+3, so +4 and +5 produced an
+        // IDENTICAL image (a dead zone the user hit). t-multiply exposure keeps
+        // responding across the whole ±5 range, and brightens monotonically.
+        let p = |ev: f32| InversionParams {
+            base: [1.0, 1.0, 1.0], d_max: 1.5, print_exposure: 2f32.powf(ev), ..Default::default()
+        };
+        let at = |ev: f32| invert_d([0.5, 0.5, 0.5], &p(ev))[0];
+        assert!(at(5.0) > at(4.0) + 1e-3, "no dead zone: EV+4 {} vs +5 {}", at(4.0), at(5.0));
+        assert!(at(-2.0) < at(0.0) && at(0.0) < at(2.0), "monotonic brighten");
+    }
+
+    #[test]
+    fn exposure_preserves_speculars_when_darkening() {
+        // Highlight-preserving: darkening lowers mids/shadows but a dense specular
+        // stays bright — instead of the old eff_d_max collapse that dragged white
+        // down with everything (the "flat / forced-dark JPG" the user reported).
+        let p = |ev: f32| InversionParams {
+            base: [1.0, 1.0, 1.0], d_max: 1.5, print_exposure: 2f32.powf(ev), ..Default::default()
+        };
+        let spec = [10f32.powf(-2.1); 3]; // d = 1.4·d_max → a saturated specular
+        let mid = [10f32.powf(-0.825); 3]; // d ≈ 0.55·d_max → a midtone
+        let at = |ev: f32, neg: [f32; 3]| invert_d(neg, &p(ev))[0];
+        assert!(at(-2.0, spec) > 0.9, "specular stays bright when darkening: {}", at(-2.0, spec));
+        assert!(at(-2.0, mid) < at(0.0, mid), "mid darkens when darkening");
     }
 }

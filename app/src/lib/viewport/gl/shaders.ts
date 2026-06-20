@@ -324,10 +324,8 @@ uniform mat2 u_orient;        // oriented-UV → source-UV (undoes rot90/flip)
 
 const float EPS = 1e-5;
 const float LOG10 = 0.30102999566; // 1/log2(10): log10(x) = log2(x)*LOG10
-// Exposure → eff_d_max coupling — MUST equal engine.rs EXPO_DMAX_K/EFF_DMAX_LO/HI.
-const float EXPO_DMAX_K = 0.5;
-const float EFF_DMAX_LO = 0.5;
-const float EFF_DMAX_HI = 6.0;
+// Exposure → t-multiply (pivot at black) — MUST equal engine.rs EXPO_K.
+const float EXPO_K = 0.14;
 
 // Filmic display S-curve — MUST equal engine.rs FILMIC_K/FILMIC_PIVOT/FILMIC_WHITE_T
 // and filmic_s(). Logistic on normalised log-density, rescaled so filmicS(0)==0
@@ -364,12 +362,12 @@ vec3 invert(vec3 rgbIn) {
     vec3 dmin = max(u_base, vec3(EPS));
     // Negative density d = log10(base/scan) >= 0 — linear in scene stops.
     vec3 d = max(log2(dmin / clamped) * LOG10, vec3(0.0));  // log10(dmin/clamped)
-    // Exposure acts in the density domain: EV stops modulate eff_d_max about the
-    // black pivot (mirrors engine.rs invert_d). EV=0 → eff_d_max==u_d_max.
+    // Exposure is a t-multiply pivoting at black: EV stops scale t by 2^(EXPO_K·EV)
+    // (mirrors engine.rs invert_d). EV=0 → expo_gain==1. d_max sets the white anchor.
     float ev = log2(max(u_print_exposure, EPS));
-    float eff_d_max = clamp(u_d_max * exp2(-EXPO_DMAX_K * ev), EFF_DMAX_LO, EFF_DMAX_HI);
-    // Normalised log-density; d == eff_d_max -> t == 1 (white point).
-    vec3 t = d / max(eff_d_max, EPS);
+    float expo_gain = exp2(EXPO_K * ev);
+    // Normalised log-density; d == d_max -> t == 1 (white point), then exposure scales.
+    vec3 t = (d / max(u_d_max, EPS)) * expo_gain;
     // WB is a linear gain on the positive OUTPUT (filmic value), NOT a t-scale:
     // keeps black neutral (filmicS(0)*wb = 0) and stays consistent with the
     // gray-world auto-WB + gray-point picker (mirror engine.rs invert_d).
