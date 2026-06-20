@@ -127,10 +127,27 @@
     try {
       const wb = await api.asShotWb(id!, withEffectiveBase(get(params), dir), imageCrop, geom);
       params.update((p) => ({ ...p, temp: wb.temp, tint: wb.tint, wb_manual: false }));
+      // Auto-exposure on initial develop: fold a highlight-preserving exposure into the
+      // baseline (after WB, so it measures the balanced positive) the first time a frame
+      // is shown — so a fresh inversion opens at a sensible brightness, like auto-WB.
+      await seedExposure(id!);
       reseedActive();
     } catch { /* not developed yet */ }
   }
   $: seed($activeId, $params.stock, JSON.stringify(effBase));
+
+  // One-shot-per-image auto-exposure. Only runs while exposure is untouched (default),
+  // so it never clobbers a saved or hand-set value; marked seen only on success so a
+  // not-yet-developed frame retries on the next seed pass. Folded into the baseline by
+  // seed()'s reseedActive — it's part of the initial look, not a separate undo step.
+  const expSeeded = new Set<string>();
+  async function seedExposure(id: string) {
+    if (expSeeded.has(id)) return;
+    if (get(params).exposure !== defaultParams().exposure) { expSeeded.add(id); return; }
+    const { exposure } = await api.autoBrightness(id, withEffectiveBase(get(params), dir), imageCrop, geom);
+    params.update((p) => ({ ...p, exposure }));
+    expSeeded.add(id);
+  }
 
   function autoWb() { seed($activeId, $params.stock, JSON.stringify(effBase), true); }
 
@@ -334,7 +351,7 @@
           <!-- Auto brightness: solves a highlight-preserving exposure. Sparkles = this
                image; "roll" = every developed frame, each with its own value. -->
           <button class="auto" title={$t('basic.autoBrightnessTitle')} on:click={autoBrightness}>
-            <Icon name="sparkles" size={12} />{$t('basic.auto')}
+            <Icon name="sun" size={12} />{$t('basic.auto')}
           </button>
           <button class="auto roll" title={$t('basic.autoBrightnessAllTitle')}
                   on:click={autoBrightnessAll} disabled={$developProgress.active}>

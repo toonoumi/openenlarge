@@ -687,7 +687,7 @@
             <button class="tool-btn" on:click={autoBrightnessAll}
                     disabled={$developedFolderImages.length === 0 || $developProgress.active}
                     aria-label={$t('roll.autoBrightness')}>
-              <Icon name="sparkles" size={20} />
+              <Icon name="sun" size={20} />
             </button>
             <span class="tool-label">{$t('roll.autoBrightness')}</span>
           </div>
