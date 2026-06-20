@@ -2134,21 +2134,6 @@ fn auto_dust_mask(
     (mask, fresh)
 }
 
-/// OR two whole-frame masks (`x0=y0=0`, same `w,h`). An empty side (`w==0`)
-/// yields the other; used to merge the auto-dust defect mask with brush strokes.
-fn union_mask(mut a: film_core::dust::Mask, b: &film_core::dust::Mask) -> film_core::dust::Mask {
-    if a.w == 0 || a.h == 0 {
-        return b.clone();
-    }
-    if b.w == 0 || b.h == 0 || a.bits.len() != b.bits.len() {
-        return a;
-    }
-    for (av, bv) in a.bits.iter_mut().zip(b.bits.iter()) {
-        *av = *av || *bv;
-    }
-    a
-}
-
 /// Connected components (4-neighbour) of the set pixels in a whole-frame mask,
 /// returning each blob's centroid normalized to [0,1] (x by width, y by height).
 /// These are the distinct dust/defect spots surfaced to the UI as heal markers.
@@ -2535,15 +2520,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn union_mask_ors_full_frame_bits() {
-        use film_core::dust::Mask;
-        let a = Mask { x0: 0, y0: 0, w: 2, h: 1, bits: vec![true, false] };
-        let b = Mask { x0: 0, y0: 0, w: 2, h: 1, bits: vec![false, true] };
-        let u = super::union_mask(a, &b);
-        assert_eq!(u.bits, vec![true, true]);
-    }
-
-    #[test]
     fn blob_centroids_finds_one_blob_center() {
         // 4x4 frame, a single 2x2 set block at (x=2..3, y=0..1) → centroid (2.5,0.5).
         let mut bits = vec![false; 16];
@@ -2569,14 +2545,6 @@ mod tests {
         assert!(mask.bits[0], "blob A kept");
         assert!(!mask.bits[10], "blob B cleared");
         assert_eq!(blob_centroids(&mask).len(), 1);
-    }
-
-    #[test]
-    fn union_mask_with_empty_returns_other() {
-        use film_core::dust::Mask;
-        let a = Mask { x0: 0, y0: 0, w: 0, h: 0, bits: Vec::new() };
-        let b = Mask { x0: 0, y0: 0, w: 2, h: 1, bits: vec![true, false] };
-        assert_eq!(super::union_mask(a, &b).bits, vec![true, false]);
     }
 
     #[test]
