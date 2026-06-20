@@ -7,7 +7,7 @@
 //! docs/superpowers/spikes/autodust-model-notes.md before shipping. Search this
 //! file for `PHASE-0` for every spot that needs confirmation.
 
-use crate::autodust::{DETECT_SHORT, TILE, TILE_PAD};
+use crate::autodust::{DETECT_SHORT, FEATHER, HOLE_DILATE, TILE, TILE_PAD};
 use crate::upscale::assets as up_assets;
 use crate::autodust::assets;
 use crate::upscale::engine::{plan_tiles, Tile};
@@ -80,6 +80,84 @@ fn srgb_decode(x: f32) -> f32 {
 
 /// Smallest film-base divisor (avoid divide-by-zero on a degenerate channel).
 const BASE_EPS: f32 = 1e-4;
+
+/// Separable square max-filter (radius `r`) — grayscale dilation of a [0,1] map.
+/// Grows the hole so the speck's penumbra is fully covered and kept out of the
+/// inpainter's conditioning context. `r==0` is a pass-through copy.
+fn dilate(src: &[f32], w: usize, h: usize, r: usize) -> Vec<f32> {
+    if r == 0 || w == 0 || h == 0 {
+        return src.to_vec();
+    }
+    let mut tmp = vec![0f32; w * h];
+    for y in 0..h {
+        for x in 0..w {
+            let (x0, x1) = (x.saturating_sub(r), (x + r).min(w - 1));
+            let mut m = 0f32;
+            for xx in x0..=x1 {
+                m = m.max(src[y * w + xx]);
+            }
+            tmp[y * w + x] = m;
+        }
+    }
+    let mut out = vec![0f32; w * h];
+    for x in 0..w {
+        for y in 0..h {
+            let (y0, y1) = (y.saturating_sub(r), (y + r).min(h - 1));
+            let mut m = 0f32;
+            for yy in y0..=y1 {
+                m = m.max(tmp[yy * w + x]);
+            }
+            out[y * w + x] = m;
+        }
+    }
+    out
+}
+
+/// One separable box-blur pass (radius `r`), normalized by the actual (edge-clamped)
+/// window so values near a border aren't darkened. Two passes approximate a Gaussian.
+fn box_blur_pass(src: &[f32], w: usize, h: usize, r: usize) -> Vec<f32> {
+    let mut tmp = vec![0f32; w * h];
+    for y in 0..h {
+        for x in 0..w {
+            let (x0, x1) = (x.saturating_sub(r), (x + r).min(w - 1));
+            let mut s = 0f32;
+            for xx in x0..=x1 {
+                s += src[y * w + xx];
+            }
+            tmp[y * w + x] = s / (x1 - x0 + 1) as f32;
+        }
+    }
+    let mut out = vec![0f32; w * h];
+    for x in 0..w {
+        for y in 0..h {
+            let (y0, y1) = (y.saturating_sub(r), (y + r).min(h - 1));
+            let mut s = 0f32;
+            for yy in y0..=y1 {
+                s += tmp[yy * w + x];
+            }
+            out[y * w + x] = s / (y1 - y0 + 1) as f32;
+        }
+    }
+    out
+}
+
+/// Feather alpha for compositing the fill: dilate the binary hole by `HOLE_DILATE`,
+/// blur it by `FEATHER` (twice, ~Gaussian), then clamp the result up to the dilated
+/// hole so every hole pixel stays fully opaque (`alpha==1` → no residual dust) while
+/// kept pixels carry a smooth 1→0 ramp outward. Returns `(alpha, dilated_hole)`; the
+/// dilated hole is the actual mask fed to MI-GAN.
+fn feather_alpha(hole: &[f32], w: usize, h: usize) -> (Vec<f32>, Vec<f32>) {
+    let holed = dilate(hole, w, h, HOLE_DILATE);
+    let mut alpha = if FEATHER == 0 || w == 0 || h == 0 {
+        holed.clone()
+    } else {
+        box_blur_pass(&box_blur_pass(&holed, w, h, FEATHER), w, h, FEATHER)
+    };
+    for (a, &d) in alpha.iter_mut().zip(holed.iter()) {
+        *a = a.max(d);
+    }
+    (alpha, holed)
+}
 
 /// Indices of `tiles` whose inner rect overlaps any masked pixel. Used to skip
 /// clean tiles so MI-GAN only runs where there is something to fill.
@@ -206,18 +284,37 @@ pub fn inpaint(app_data: &Path, img: &mut Image, mask: &Mask, base: [f32; 3]) ->
 
     for &i in &sel {
         let t = tiles[i];
-        // image: uint8 RGB; mask: uint8 grayscale (0 = hole, 255 = keep).
-        let mut image_t = Array4::<u8>::zeros((1, 3, t.sh, t.sw));
-        let mut mask_t = Array4::<u8>::from_elem((1, 1, t.sh, t.sw), 255u8);
-        for yy in 0..t.sh {
-            for xx in 0..t.sw {
+        let (sw, sh) = (t.sw, t.sh);
+
+        // Binary hole over the padded tile, read from the whole-frame mask. Computed
+        // on the PADDED read so the dilation/feather see holes that spill past the
+        // inner rect — keeping the feather consistent across tile boundaries.
+        let mut hole = vec![0f32; sw * sh];
+        for yy in 0..sh {
+            for xx in 0..sw {
+                let gx = t.sx + xx;
+                let gy = t.sy + yy;
+                if gx < mask.w && gy < mask.h && mask.bits[gy * mask.w + gx] {
+                    hole[yy * sw + xx] = 1.0;
+                }
+            }
+        }
+        // Dilate (bury the penumbra + clean the context) and feather (seamless blend).
+        let (alpha, holed) = feather_alpha(&hole, sw, sh);
+
+        // image: uint8 RGB; mask: uint8 grayscale (0 = hole, 255 = keep). Feed the
+        // DILATED hole so the speck's penumbra is excluded from MI-GAN's context.
+        let mut image_t = Array4::<u8>::zeros((1, 3, sh, sw));
+        let mut mask_t = Array4::<u8>::from_elem((1, 1, sh, sw), 255u8);
+        for yy in 0..sh {
+            for xx in 0..sw {
                 let gx = t.sx + xx;
                 let gy = t.sy + yy;
                 let p = img.pixels[gy * img.width + gx];
                 image_t[[0, 0, yy, xx]] = enc(p[0], base[0]);
                 image_t[[0, 1, yy, xx]] = enc(p[1], base[1]);
                 image_t[[0, 2, yy, xx]] = enc(p[2], base[2]);
-                if gx < mask.w && gy < mask.h && mask.bits[gy * mask.w + gx] {
+                if holed[yy * sw + xx] > 0.5 {
                     mask_t[[0, 0, yy, xx]] = 0; // hole
                 }
             }
@@ -233,22 +330,32 @@ pub fn inpaint(app_data: &Path, img: &mut Image, mask: &Mask, base: [f32; 3]) ->
             Err(_) => continue,
         };
         let shape = view.shape();
-        if shape.len() != 4 || shape[1] < 3 || shape[2] != t.sh || shape[3] != t.sw {
+        if shape.len() != 4 || shape[1] < 3 || shape[2] != sh || shape[3] != sw {
             continue;
         }
-        // Write back ONLY the masked pixels of the inner (unpadded) rect.
+        // Composite the fill over the inner (unpadded) rect with the feather alpha:
+        // alpha==1 in the hole → pure fill (no residual dust); a smooth 1→0 ramp in
+        // the surrounding band → seamless blend, no hard seam.
         for yy in 0..t.ih {
             for xx in 0..t.iw {
-                let gx = t.ox + xx;
-                let gy = t.oy + yy;
-                if !(gx < mask.w && gy < mask.h && mask.bits[gy * mask.w + gx]) {
+                let (sy, sx) = (t.iy + yy, t.ix + xx);
+                let a = alpha[sy * sw + sx];
+                if a <= 0.0 {
                     continue;
                 }
-                let (sy, sx) = (t.iy + yy, t.ix + xx);
-                img.pixels[gy * img.width + gx] = [
+                let gx = t.ox + xx;
+                let gy = t.oy + yy;
+                let gi = gy * img.width + gx;
+                let orig = img.pixels[gi];
+                let fill = [
                     dec(view[[0, 0, sy, sx]], base[0]),
                     dec(view[[0, 1, sy, sx]], base[1]),
                     dec(view[[0, 2, sy, sx]], base[2]),
+                ];
+                img.pixels[gi] = [
+                    orig[0] * (1.0 - a) + fill[0] * a,
+                    orig[1] * (1.0 - a) + fill[1] * a,
+                    orig[2] * (1.0 - a) + fill[2] * a,
                 ];
             }
         }
@@ -320,6 +427,129 @@ mod tests {
         assert_eq!((dw, dh), (768, 512));
         assert_eq!(dw % 16, 0);
         assert_eq!(dh % 16, 0);
+    }
+
+    #[test]
+    fn dilate_grows_a_point_by_radius() {
+        // 9x9 with a single hot pixel at (4,4); dilate r=2 → an 5x5 square set.
+        let (w, h) = (9usize, 9usize);
+        let mut src = vec![0f32; w * h];
+        src[4 * w + 4] = 1.0;
+        let d = dilate(&src, w, h, 2);
+        assert_eq!(d[4 * w + 4], 1.0, "center stays set");
+        assert_eq!(d[2 * w + 4], 1.0, "2px up is now set");
+        assert_eq!(d[4 * w + 6], 1.0, "2px right is now set");
+        assert_eq!(d[2 * w + 2], 1.0, "corner of the square set (separable max)");
+        assert_eq!(d[1 * w + 4], 0.0, "3px away stays clear");
+        // r==0 is a pass-through.
+        assert_eq!(dilate(&src, w, h, 0), src);
+    }
+
+    #[test]
+    fn box_blur_preserves_a_flat_field() {
+        // Edge-normalized blur of a constant field must return the same constant
+        // everywhere (no border darkening).
+        let (w, h) = (7usize, 5usize);
+        let src = vec![0.7f32; w * h];
+        let b = box_blur_pass(&src, w, h, 3);
+        for v in b {
+            assert!((v - 0.7).abs() < 1e-6);
+        }
+    }
+
+    #[test]
+    fn feather_alpha_is_opaque_in_hole_and_ramps_outward() {
+        // A single hole pixel in a large field. After dilate+feather: alpha==1 across
+        // the dilated hole (no residual dust), a partial ramp just outside, and 0 far
+        // away. The returned dilated hole must cover strictly more than the input.
+        let (w, h) = (21usize, 21usize);
+        let mut hole = vec![0f32; w * h];
+        let c = 10 * w + 10;
+        hole[c] = 1.0;
+        let (alpha, holed) = feather_alpha(&hole, w, h);
+        assert_eq!(alpha[c], 1.0, "hole center fully opaque");
+        // HOLE_DILATE pixels out is still in the (opaque) dilated hole.
+        assert_eq!(alpha[c - HOLE_DILATE], 1.0, "dilated-hole edge opaque");
+        assert!(holed.iter().filter(|&&v| v > 0.5).count() > 1, "dilation grew the hole");
+        // Just past the dilated hole: a partial feather value in (0,1).
+        let edge = (10) * w + (10 + HOLE_DILATE + 1);
+        assert!(alpha[edge] > 0.0 && alpha[edge] < 1.0, "outward ramp is partial, got {}", alpha[edge]);
+        // Far corner is effectively transparent (a negligible blur tail is fine).
+        assert!(alpha[0] < 0.01, "far field ~transparent, got {}", alpha[0]);
+    }
+
+    /// End-to-end check against the REAL installed MI-GAN model: a smooth vertical
+    /// "sky" gradient with a bright speck must come back with the speck gone AND no
+    /// hard seam across the former hole boundary. Ignored by default (needs the
+    /// ~28 MB model + runtime installed); run with:
+    ///   cargo test --lib autodust::engine::tests::migan_fills_speck -- --ignored --nocapture
+    #[test]
+    #[ignore]
+    fn migan_fills_speck_without_a_seam() {
+        use std::path::PathBuf;
+        let home = std::env::var("HOME").expect("HOME");
+        let app_data = PathBuf::from(home).join("Library/Application Support/com.mohaelder.openenlarge");
+        assert!(assets::migan_path(&app_data).exists(), "model not installed");
+
+        let (w, h) = (96usize, 96usize);
+        let base = [0.85f32, 0.62, 0.42];
+        // Neutral vertical gradient in the orange-negative domain (pixel = base*ratio).
+        let ratio = |y: usize| 0.70 - 0.30 * (y as f32 / (h - 1) as f32);
+        let mut img = Image {
+            width: w,
+            height: h,
+            pixels: (0..w * h)
+                .map(|i| {
+                    let r = ratio(i / w);
+                    [base[0] * r, base[1] * r, base[2] * r]
+                })
+                .collect(),
+            ir: None,
+        };
+        let (cx, cy) = (48usize, 48usize);
+        // Bright speck (a 7x7 block well above the local sky) + its disc mask.
+        let mut bits = vec![false; w * h];
+        for dy in -3i32..=3 {
+            for dx in -3i32..=3 {
+                let x = (cx as i32 + dx) as usize;
+                let y = (cy as i32 + dy) as usize;
+                img.pixels[y * w + x] = [base[0] * 0.97, base[1] * 0.97, base[2] * 0.97];
+                if dx * dx + dy * dy <= 9 {
+                    bits[y * w + x] = true;
+                }
+            }
+        }
+        let mask = Mask { x0: 0, y0: 0, w, h, bits };
+
+        inpaint(&app_data, &mut img, &mask, base).expect("inpaint ok");
+
+        let luma_at = |p: [f32; 3]| luma(p);
+        // (a) Speck removed: center luma is back near the local sky (ratio≈0.55 at cy),
+        // NOT the speck's 0.97. Expected sky luma vs the speck luma are far apart.
+        let sky = luma([base[0] * ratio(cy), base[1] * ratio(cy), base[2] * ratio(cy)]);
+        let speck = luma([base[0] * 0.97, base[1] * 0.97, base[2] * 0.97]);
+        let got = luma_at(img.pixels[cy * w + cx]);
+        assert!(
+            (got - sky).abs() < 0.4 * (speck - sky).abs(),
+            "speck not removed: center luma {got}, sky {sky}, speck {speck}"
+        );
+        // (b) No hard seam at the fill BOUNDARY. The hole is a disc of radius 3
+        // dilated by HOLE_DILATE (≈5px), so the kept→fill transition on the center
+        // row sits around x=cx±6..±9. A binary writeback would jump the full
+        // fill/original difference across one pixel there; the feather must spread it
+        // into small steps. (Steps DEEP inside the hole are the model's own
+        // reconstruction texture — out of scope for the compositing fix.)
+        let step_at = |x: usize| {
+            (luma_at(img.pixels[cy * w + x]) - luma_at(img.pixels[cy * w + x - 1])).abs()
+        };
+        let boundary_max = (cx - 9..=cx - 6)
+            .chain(cx + 6..=cx + 9)
+            .map(step_at)
+            .fold(0f32, f32::max);
+        assert!(
+            boundary_max < 0.015,
+            "hard seam at fill boundary: max step {boundary_max} (feather not blending)"
+        );
     }
 
     #[test]

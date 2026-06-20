@@ -25,3 +25,19 @@ pub const DETECT_SHORT: usize = 512;
 /// a ~2k-long image; callers scale it with image area so the size-gate stays
 /// resolution-independent.
 pub const MAX_BLOB: usize = 600;
+
+/// Extra dilation (px) applied to every hole BEFORE MI-GAN inference and writeback.
+/// A tight brush/detector mask leaves the speck's anti-aliased penumbra just outside
+/// the hole, where it (a) survives as a faint ring and (b) contaminates the model's
+/// surrounding "keep" context, biasing the fill toward the defect color. Growing the
+/// hole buries the penumbra and excludes it from conditioning — like a Photoshop
+/// user instinctively over-painting a speck.
+pub const HOLE_DILATE: usize = 2;
+
+/// Outward feather radius (px) for compositing the MI-GAN fill back into the image.
+/// A binary writeback (fill only the hole, leave neighbors as-is) butts the fill hard
+/// against the original at a 1px edge → a visible seam. Instead we ramp an alpha from
+/// 1 inside the hole to 0 across `FEATHER` px of surrounding pixels and alpha-composite
+/// the model output (which already matches the surroundings) over the original, so the
+/// transition is seamless. 0 disables feathering (pure hole replace).
+pub const FEATHER: usize = 4;
