@@ -313,6 +313,7 @@ uniform float u_d_max, u_print_exposure, u_paper_black, u_paper_grade, u_soft_cl
 uniform int u_mode;           // 0=B 1=C 2=Naive 3=D
 uniform bool u_raw;           // true → output the scan (display gamma), no inversion
 uniform bool u_positive;      // true → positive passthrough (no inversion), WB+exposure only
+uniform int u_wb_mode;        // 0 = gain (post-curve), 1 = subtractive (pre-curve)
 // Geometry: output→source UV mapping. The output is the crop sub-rect of the
 // (straightened) oriented image, so we invert the backend's source→output order
 // (orient → straighten → crop) by going crop → un-straighten → un-orient.
@@ -326,6 +327,8 @@ const float EPS = 1e-5;
 const float LOG10 = 0.30102999566; // 1/log2(10): log10(x) = log2(x)*LOG10
 // Exposure → t-multiply (pivot at black) — MUST equal engine.rs EXPO_K.
 const float EXPO_K = 0.14;
+// Subtractive WB strength — MUST equal engine.rs CMY_STRENGTH.
+const float CMY_STRENGTH = 1.6;
 
 // Filmic display S-curve — MUST equal engine.rs FILMIC_K/FILMIC_PIVOT/FILMIC_WHITE_T
 // and filmic_s(). Logistic on normalised log-density, rescaled so filmicS(0)==0
@@ -389,11 +392,25 @@ vec3 invert(vec3 rgbIn) {
     // exposure then scales its log-density filmicInv(y) and re-applies the curve —
     // so a neutral patch (equal y across channels) stays neutral at every exposure
     // (fixes the ±5-EV temperature shift).
-    vec3 y = vec3(filmicSraw(t.r), filmicSraw(t.g), filmicSraw(t.b)) * u_wb;
-    return clamp(vec3(
-      filmicS(filmicInv(y.r) * expo_gain),
-      filmicS(filmicInv(y.g) * expo_gain),
-      filmicS(filmicInv(y.b) * expo_gain)), 0.0, 1.0);
+    // WB mode (mirror engine.rs invert_d):
+    //  0 gain: WB as post-curve display gain, exposure via the filmicInv round-trip.
+    //  1 subtractive (color head): per-channel density multiply BEFORE the curve,
+    //    folding exposure into the same t-multiply; anchored at black (t=0 → 0).
+    vec3 v;
+    if (u_wb_mode == 1) {
+      vec3 s = pow(max(u_wb, vec3(EPS)), vec3(CMY_STRENGTH));
+      v = vec3(
+        filmicS(t.r * s.r * expo_gain),
+        filmicS(t.g * s.g * expo_gain),
+        filmicS(t.b * s.b * expo_gain));
+    } else {
+      vec3 y = vec3(filmicSraw(t.r), filmicSraw(t.g), filmicSraw(t.b)) * u_wb;
+      v = vec3(
+        filmicS(filmicInv(y.r) * expo_gain),
+        filmicS(filmicInv(y.g) * expo_gain),
+        filmicS(filmicInv(y.b) * expo_gain));
+    }
+    return clamp(v, 0.0, 1.0);
   }
   if (u_mode == 2) {           // Naive: 1 - clamp(I/base,0,1). Intentionally uses
     // its own [0,1] clamp (engine.rs invert_naive), not the [EPS,1] r above.

@@ -14,6 +14,7 @@ export interface ResolvedInversion {
   paper_grade: number;
   soft_clip: number;
   positive: boolean;
+  wb_mode: number;
 }
 
 /** GL-ready uniform buffers for the INVERT pass. */
@@ -32,6 +33,7 @@ export interface InversionUniforms {
   paper_grade: number;
   soft_clip: number;
   positive: boolean;
+  wb_mode: number;
 }
 
 export function toInversionUniforms(r: ResolvedInversion): InversionUniforms {
@@ -50,5 +52,6 @@ export function toInversionUniforms(r: ResolvedInversion): InversionUniforms {
     paper_grade: r.paper_grade,
     soft_clip: r.soft_clip,
     positive: r.positive,
+    wb_mode: r.wb_mode,
   };
 }
