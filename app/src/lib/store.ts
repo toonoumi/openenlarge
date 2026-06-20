@@ -33,6 +33,17 @@ export const dustById = writable<Record<string, DustEdits>>({});
 export const activeDust = derived([dustById, activeId], ([m, id]) =>
   id ? m[id] ?? emptyDust() : emptyDust());
 
+/** Active image's global auto-dust spot centroids (normalized), from the backend
+ *  `autodust://result` event. Cleared/replaced per image; drives the marker overlay. */
+export const autodustSpotsById = writable<Record<string, { x: number; y: number }[]>>({});
+export const activeAutodustSpots = derived([autodustSpotsById, activeId], ([m, id]) =>
+  id ? m[id] ?? [] : []);
+
+/** A selected heal spot: a brush stroke (by index into dust.strokes) or a global
+ *  auto-dust spot (by index into activeAutodustSpots). null = nothing selected. */
+export type SpotSel = { kind: "stroke" | "auto"; index: number };
+export const selectedSpot = writable<SpotSel | null>(null);
+
 /** Per-image editable metadata overrides (camera/lens/iso/…/note). */
 export const metaById = writable<Record<string, MetaOverride>>({});
 /** The active image's metadata override (empty object when none). */
