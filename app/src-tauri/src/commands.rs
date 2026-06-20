@@ -1159,33 +1159,77 @@ pub struct ThumbView {
 /// params and persistent edits — used to live-refresh the Library grid cell and
 /// filmstrip while editing. Applies orientation/straighten/crop, develop params,
 /// dust strokes, and IR removal so the thumbnail matches the viewport.
+///
+/// `async` + `spawn_blocking` (like `render_view`): the CPU pipeline runs off the
+/// Tauri runtime worker so it never blocks the UI thread. This is what lets the
+/// roll contact sheet's render pool actually run frames concurrently — a sync
+/// command would serialize every frame on the main thread (the ~5s adjust lag).
 #[tauri::command]
-pub fn thumbnail(
+pub async fn thumbnail(
     id: String,
     params: InvertParams,
     view: ThumbView,
-    session: State<Session>,
+    session: State<'_, Session>,
 ) -> Result<String, String> {
     ensure_resident(&session, &id)?;
-    let images = session.images.lock().unwrap();
-    let img = images.get(&id).ok_or("unknown image id")?;
-    let dev = img.developed.as_ref().ok_or("not developed")?;
+    // Snapshot the owned inputs under the lock, then drop it so the render runs
+    // off-thread. Cloning `working` is the cost of getting it off the UI thread
+    // (mirrors render_view); the borrow-skips in the compute fn avoid a *second*
+    // copy when geometry is identity (the common contact-sheet case).
+    let (working, thumb, base, d_max) = {
+        let images = session.images.lock().unwrap();
+        let img = images.get(&id).ok_or("unknown image id")?;
+        let dev = img.developed.as_ref().ok_or("not developed")?;
+        (dev.working.clone(), dev.thumb.clone(), dev.base, dev.d_max)
+    };
+    tauri::async_runtime::spawn_blocking(move || {
+        thumbnail_compute(&working, &thumb, base, d_max, &params, &view)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
 
-    // Geometry: orient (lossless) → straighten → persistent crop. No view crop —
-    // the whole frame is shown, scaled to fit THUMB_EDGE.
-    let oriented = orient(&dev.working, view.rot90, view.flip_h, view.flip_v);
-    let straightened = rotate(&oriented, view.angle);
-    let base_img = match view.image_crop {
+/// Pure CPU render of one thumbnail: geometry (orient → straighten → persistent
+/// crop) → downscale → invert → dust/IR → finish → JPEG. Owned inputs so it runs
+/// in `spawn_blocking` without borrowing the `Session`. Each geometry stage borrows
+/// the previous buffer when it would be a no-op, so identity geometry (no
+/// rot/flip/straighten/crop — the usual roll case) skips re-copying the whole
+/// working image before the downscale.
+fn thumbnail_compute(
+    working: &film_core::Image,
+    thumb: &film_core::Image,
+    base: [f32; 3],
+    d_max: f32,
+    params: &InvertParams,
+    view: &ThumbView,
+) -> Result<String, String> {
+    let oriented_owned;
+    let oriented: &film_core::Image = if view.rot90 == 0 && !view.flip_h && !view.flip_v {
+        working
+    } else {
+        oriented_owned = orient(working, view.rot90, view.flip_h, view.flip_v);
+        &oriented_owned
+    };
+    let straightened_owned;
+    let straightened: &film_core::Image = if view.angle.abs() < 1e-4 {
+        oriented
+    } else {
+        straightened_owned = rotate(oriented, view.angle);
+        &straightened_owned
+    };
+    let base_img_owned;
+    let base_img: &film_core::Image = match view.image_crop {
         Some(nc) => {
             let (ix, iy, iw, ih) = crop_px(nc, straightened.width, straightened.height);
-            crop(&straightened, ix, iy, iw, ih)
+            base_img_owned = crop(straightened, ix, iy, iw, ih);
+            &base_img_owned
         }
         None => straightened,
     };
-    let small = proxy(&base_img, view.edge.unwrap_or(THUMB_EDGE));
+    let small = proxy(base_img, view.edge.unwrap_or(THUMB_EDGE));
     let (ow, oh) = (small.width as u32, small.height as u32);
-    let mut ip = resolve_params(&params, &dev.thumb, effective_base(&params, dev.base));
-    ip.d_max = effective_dmax(&params, dev.d_max);
+    let mut ip = resolve_params(params, thumb, effective_base(params, base));
+    ip.d_max = effective_dmax(params, d_max);
     let mut inv = invert_image(&small, &ip, mode_from(&params.mode));
     let stamps = view_stamps(
         &view.dust,
@@ -1204,7 +1248,7 @@ pub fn thumbnail(
             dust::apply_ir(&mut inv, ir, view.ir_removal.sensitivity);
         }
     }
-    let fin = finish_image(&inv, &finish_from(&params));
+    let fin = finish_image(&inv, &finish_from(params));
     to_jpeg_b64(&fin, false, 82)
 }
 
