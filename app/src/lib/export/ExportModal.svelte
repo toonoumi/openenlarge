@@ -148,19 +148,26 @@
   let qualityEl: HTMLInputElement;
   let maxMbEl: HTMLInputElement;
 
-  // Output resolution cap on the long edge (px); 0 = full resolution.
-  const RES_OPTIONS = [0, 4096, 2048, 1024] as const;
-  let resLongEdge: number = 0;
+  // Output resolution cap on the LONGEST side (px). Presets + a custom value;
+  // 0 (Full) = no downscale. Custom mode reveals a free-form px input.
+  const RES_PRESETS = [0, 4096, 2048] as const; // 0 = Full
+  let resPreset: number = 0;
+  let resCustom = false;
+  let customPx = 3000;
+
+  // Effective longest-side cap fed to the backend (rounded; ≤0 → full res).
+  $: effLongEdge = resCustom ? Math.round(customPx) || 0 : resPreset;
 
   $: kindIndex = kind === "jpeg" ? 0 : kind === "tiff" ? 1 : 2;
-  $: resIndex = Math.max(0, RES_OPTIONS.indexOf(resLongEdge as (typeof RES_OPTIONS)[number]));
+  // Pill index: presets 0..n-1, Custom is the last segment.
+  $: resIndex = resCustom ? RES_PRESETS.length : Math.max(0, RES_PRESETS.indexOf(resPreset as (typeof RES_PRESETS)[number]));
 
   $: format = {
     kind,
     bitDepth: kind === "jpeg" ? undefined : bitDepth,
     quality: kind === "jpeg" ? quality : undefined,
     maxBytes: kind === "jpeg" && maxMb > 0 ? Math.round(maxMb * 1024 * 1024) : null,
-    resizeLongEdge: resLongEdge > 0 ? resLongEdge : null,
+    resizeLongEdge: effLongEdge > 0 ? effLongEdge : null,
   } as ExportFormat;
 
   // ---- Export run state ----
@@ -371,15 +378,27 @@
 
       <div class="field">
         <span class="flabel">{$t('export.resolution')}
-          <b>{resLongEdge === 0 ? $t('export.resFull') : $t('export.resPx', { px: resLongEdge })}</b></span>
+          <b>{effLongEdge === 0 ? $t('export.resFull') : $t('export.resPx', { px: effLongEdge })}</b>
+          <span class="hint">· {$t('export.resHint')}</span></span>
         <div class="seg" style="--n:4; --i:{resIndex}">
-          {#each RES_OPTIONS as opt}
-            <button type="button" class:active={resLongEdge === opt} on:click={() => (resLongEdge = opt)}>
+          {#each RES_PRESETS as opt}
+            <button type="button" class:active={!resCustom && resPreset === opt}
+                    on:click={() => { resCustom = false; resPreset = opt; }}>
               {opt === 0 ? $t('export.resFull') : opt}
             </button>
           {/each}
+          <button type="button" class:active={resCustom} on:click={() => (resCustom = true)}>
+            {$t('export.resCustom')}
+          </button>
           <span class="seg-ind"></span>
         </div>
+        {#if resCustom}
+          <div class="custom-res" transition:slideFade>
+            <input class="num" type="number" min="1" max="20000" step="1"
+                   bind:value={customPx} aria-label={$t('export.resHint')} />
+            <span class="unit">{$t('export.resPxUnit')}</span>
+          </div>
+        {/if}
       </div>
 
       <div class="opts-wrap">
@@ -535,6 +554,17 @@
     color: var(--text-faint); }
   .flabel b { color: var(--text); font-weight: 600; letter-spacing: 0; text-transform: none;
     margin-left: 4px; }
+  .flabel .hint { color: var(--text-faint); font-weight: 600; letter-spacing: 0;
+    text-transform: none; margin-left: 4px; }
+
+  /* Custom longest-side input (revealed when Resolution = Custom) */
+  .custom-res { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+  .custom-res .num {
+    width: 120px; padding: 8px 10px; border-radius: 8px;
+    background: var(--glass-hi); border: 1px solid var(--glass-brd); color: var(--text);
+    font-size: 13px; font-weight: 600; outline: none; transition: border-color 0.15s; }
+  .custom-res .num:focus { border-color: var(--accent); }
+  .custom-res .unit { font-size: 12px; color: var(--text-dim); }
 
   /* Segmented control with a sliding accent pill */
   .seg {
