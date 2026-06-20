@@ -27,7 +27,7 @@ export function mergeEnsured(existing: ImageEntry, updated: ImageEntry): ImageEn
 
 /** Extensions we accept on import (file dialog filter + drag-drop). */
 export const IMPORT_EXTENSIONS = [
-  "jpg", "jpeg", "png", "dng", "tif", "tiff", "raf", "rw2", "nef", "arw", "cr3", "3fr", "raw",
+  "jpg", "jpeg", "png", "dng", "tif", "tiff", "raf", "rw2", "nef", "arw", "cr3", "3fr", "orf", "raw",
 ];
 
 /** Keep only paths whose extension we can import (case-insensitive). */
