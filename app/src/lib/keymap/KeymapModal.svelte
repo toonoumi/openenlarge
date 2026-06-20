@@ -103,6 +103,12 @@
                   <span class="combo">{#each bindingTokens(binding) as tk}<kbd>{tk}</kbd>{/each}</span>
                 {/if}
               {/each}
+              <!-- Chord adjustments are held while tapping the arrows: spell that out
+                   inline (the held key is rebindable, the ←/→ are fixed). -->
+              {#if action.kind === "chord"}
+                <span class="plus">+</span>
+                <span class="combo"><kbd>←</kbd><kbd>→</kbd></span>
+              {/if}
             </span>
           </div>
         {/each}
@@ -138,6 +144,7 @@
   .label { font-size: 13px; color: var(--text); }
   .keys { display: flex; align-items: center; gap: 6px; flex: none; }
   .sep { color: var(--text-dim); font-size: 12px; }
+  .plus { color: var(--text-dim); font-size: 12px; margin: 0 -1px; }
   .combo { display: flex; gap: 2px; align-items: center; }
   /* Editable chips look pressable; the listening one glows like the accent buttons. */
   .combo.edit { background: transparent; border: 1px solid transparent; border-radius: 7px;
