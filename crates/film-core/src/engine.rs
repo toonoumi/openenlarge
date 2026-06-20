@@ -78,6 +78,29 @@ const EXPO_DMAX_K: f32 = 0.5;
 const EFF_DMAX_LO: f32 = 0.5;
 const EFF_DMAX_HI: f32 = 6.0;
 
+// --- Filmic display S-curve (replaces the old paper-grade/soft-clip encode). ---
+// Applied per channel in the NORMALISED LOG-DENSITY domain `t = d/eff_d_max`,
+// which is linear in scene stops — the correct place for a tone curve (the old
+// `1 − 10^(−d/d_max)` paper response was a pure shoulder that capped white at
+// ~0.90 and dumped all contrast into the shadows). A logistic, rescaled to exact
+// anchors: gentle toe (shadow detail), mid slope > 1 (contrast/punch), gentle
+// shoulder to TRUE white at 1.0 (highlight separation). MUST be mirrored verbatim
+// in shaders.ts (INVERT_FRAG) so the CPU export and GPU proxy preview match.
+const FILMIC_K: f32 = 5.0; // contrast / max slope
+const FILMIC_PIVOT: f32 = 0.5; // max-slope point in normalised density
+const FILMIC_WHITE_T: f32 = 1.05; // density (× eff_d_max) that maps to 1.0
+
+/// Logistic display S-curve on normalised log-density `t` (0 = scene black at the
+/// film base, 1 = the white point at `eff_d_max`). Rescaled so `filmic_s(0) == 0`
+/// exactly (neutral black) and `filmic_s(FILMIC_WHITE_T) == 1.0` (true white).
+#[inline]
+fn filmic_s(t: f32) -> f32 {
+    let l = |x: f32| 1.0 / (1.0 + (-FILMIC_K * (x - FILMIC_PIVOT)).exp());
+    let l0 = l(0.0);
+    let lw = l(FILMIC_WHITE_T);
+    ((l(t) - l0) / (lw - l0)).clamp(0.0, 1.0)
+}
+
 /// Positive passthrough: the working buffer is linear, so display-encode it with
 /// `1/2.2` (matching the raw-scan view), after applying exposure + WB gain.
 /// `0 * wb == 0` keeps black neutral, mirroring the inversion's WB convention.
@@ -115,36 +138,31 @@ pub fn invert_d(rgb: [f32; 3], p: &InversionParams) -> [f32; 3] {
     let ev = p.print_exposure.max(EPS).log2();
     let eff_d_max =
         (p.d_max * 2f32.powf(-EXPO_DMAX_K * ev)).clamp(EFF_DMAX_LO, EFF_DMAX_HI);
+    // `paper_black`, `paper_grade`, `soft_clip` are DEPRECATED by the filmic
+    // display curve below (they encoded the old `1 − 10^(−x)` paper response that
+    // capped white at ~0.90 and had no toe). The fields are kept on the struct /
+    // uniforms / session JSON for compatibility but are no longer read here.
     std::array::from_fn(|c| {
         let clamped = rgb[c].max(THRESHOLD);
         let dmin = p.base[c].max(EPS);
-        let log_dens = (clamped / dmin).log10(); // = -log10(dmin/clamped)
-        let corrected = log_dens / eff_d_max.max(EPS);
-        let ten_to_x = 10f32.powf(corrected);
-        // Linear print_exposure gain is DROPPED (folded into eff_d_max above) so the
-        // white anchor stays put and exposure redistributes — not scales — highlights.
-        let print_lin = ((1.0 + p.paper_black) - ten_to_x).max(0.0);
-        // WB as a linear gain on the print; keeps black neutral (0·wb = 0).
-        let out = (print_lin * p.wb[c]).powf(p.paper_grade);
+        // Negative density d = log10(base/scan) ≥ 0 (thin neg = scene black = 0;
+        // dense neg = scene highlight = large). This is LINEAR IN SCENE STOPS — the
+        // correct domain for the tone curve.
+        let d = (dmin / clamped).log10().max(0.0);
+        // Normalised log-density `t`: d == eff_d_max → t == 1 (the white point).
+        // WB is a log-domain SCALE on t, so t == 0 → 0 and deep shadows stay
+        // neutral black (preserves the "yellow-shadow" fix; the bug was an OFFSET).
+        let t = (d / eff_d_max.max(EPS)) * p.wb[c];
+        let out = filmic_s(t);
         if p.hdr {
-            // HDR: expand highlights above the knee into [knee, HDR_HEADROOM] so
-            // speculars/lights exceed SDR white (the gain map captures this headroom).
+            // HDR: expand the filmic shoulder above the knee into [knee, headroom]
+            // so speculars/lights exceed SDR white (the gain map captures this).
             if out > HDR_KNEE {
-                let t = ((out - HDR_KNEE) / (1.0 - HDR_KNEE)).clamp(0.0, 1.0);
-                HDR_KNEE + t * (HDR_HEADROOM - HDR_KNEE)
+                let e = ((out - HDR_KNEE) / (1.0 - HDR_KNEE)).clamp(0.0, 1.0);
+                HDR_KNEE + e * (HDR_HEADROOM - HDR_KNEE)
             } else {
                 out
             }
-        } else if out > p.soft_clip {
-            // Reciprocal (Reinhard-style) highlight rolloff. Matches the lower
-            // branch's value AND slope at the knee, so nothing at or below
-            // soft_clip changes — but it has a far longer tail than the old
-            // exponential, so distinct bright highlights keep their separation
-            // instead of all slamming to ~1.0. That preserved separation is the
-            // latitude the Develop Highlights/Contrast sliders can then pull back.
-            let comp = (1.0 - p.soft_clip).max(EPS);
-            let u = (out - p.soft_clip) / comp;
-            1.0 - comp / (1.0 + u)
         } else {
             out
         }
@@ -175,6 +193,69 @@ pub fn invert_image(img: &crate::Image, p: &InversionParams, _mode: Mode) -> cra
 mod tests {
     use super::*;
     use crate::Image;
+
+    // --- Filmic display curve (the 2026-06-20 tonal-rendering fix) -------------
+
+    #[test]
+    fn filmic_anchors_black_and_white() {
+        assert!(filmic_s(0.0).abs() < 1e-6, "black: {}", filmic_s(0.0));
+        assert!(
+            (filmic_s(FILMIC_WHITE_T) - 1.0).abs() < 1e-6,
+            "white: {}",
+            filmic_s(FILMIC_WHITE_T)
+        );
+    }
+
+    #[test]
+    fn filmic_is_monotonic() {
+        let mut prev = filmic_s(0.0);
+        let mut t = 0.0;
+        while t <= 1.2 {
+            let cur = filmic_s(t);
+            assert!(cur >= prev - 1e-6, "fold at t={t}: {cur} < {prev}");
+            prev = cur;
+            t += 1.0 / 256.0;
+        }
+    }
+
+    #[test]
+    fn filmic_redistributes_gamma_toe_mid_shoulder() {
+        // Absolute slope: gentle toe (<1), punchy mids (>1), gentle shoulder (<1).
+        let slope = |t: f32| (filmic_s(t + 1e-3) - filmic_s(t - 1e-3)) / 2e-3;
+        let toe = slope(0.12);
+        let mid = slope(0.50);
+        let shoulder = slope(0.95);
+        assert!(mid > 1.0, "mid slope must add punch: {mid}");
+        assert!(toe < mid, "toe gentler than mid: toe {toe} mid {mid}");
+        assert!(shoulder < mid, "shoulder gentler than mid: shoulder {shoulder} mid {mid}");
+    }
+
+    #[test]
+    fn invert_d_reaches_true_white() {
+        // The densest neutral negative at the auto-fit d_max maps to t == 1.0 and
+        // must render to a real white (>= 0.98) — NOT the old structural 0.90 cap
+        // that read as washed-out/pale.
+        let p = InversionParams { base: [1.0, 1.0, 1.0], d_max: 1.5, ..Default::default() };
+        let densest = 10f32.powf(-1.5); // log10(base/scan) == d_max == 1.5 → t == 1.0
+        let out = invert_d([densest; 3], &p);
+        assert!(out[0] >= 0.98, "white must reach >=0.98, got {}", out[0]);
+    }
+
+    #[test]
+    fn invert_d_black_stays_neutral_under_wb() {
+        // A pixel at the film base (zero density) is scene-black; WB is a log-domain
+        // scale on t, so t==0 → 0 on every channel and black stays neutral (no
+        // per-channel "yellow shadow" tint).
+        let p = InversionParams {
+            base: [1.0, 1.0, 1.0],
+            wb: [1.2, 1.0, 0.6],
+            ..Default::default()
+        };
+        let out = invert_d([1.0, 1.0, 1.0], &p); // scan == base → d == 0
+        for c in 0..3 {
+            assert!(out[c].abs() < 1e-4, "black chan {c} not neutral: {}", out[c]);
+        }
+    }
 
     #[test]
     fn invert_image_is_per_pixel_and_order_preserving() {
@@ -324,12 +405,13 @@ mod tests {
 
     #[test]
     fn highlight_rolloff_unchanged_below_knee() {
-        // Nothing at or below the knee may shift — the look up to soft_clip is
-        // identical; only the above-knee tail is gentler.
+        // Midtones sit well below white on the filmic curve (only the densest
+        // negatives reach the shoulder), so a neutral mid stays in the body of the
+        // curve, never clipped to white.
         let p = InversionParams::default();
         let mid = invert_d([0.5, 0.5, 0.5], &p);
         for c in 0..3 {
-            assert!(mid[c] <= 0.9 + 1e-4, "mid below knee: {}", mid[c]);
+            assert!(mid[c] <= 0.9 + 1e-4, "mid below white: {}", mid[c]);
         }
     }
 

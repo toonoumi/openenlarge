@@ -190,22 +190,18 @@ vec3 finishAt(vec2 uv) {
   return pointColor(colorMixer(colorGrade(cu)));
 }
 
-// B1 — output detail-loss detection. The warning must answer "is this highlight
-// gone or recoverable on the CURRENT render", which is a property of the engine's
-// output, NOT the post-rolloff display value: invert_d's Reinhard highlight
-// soft-clip asymptotes toward (never reaching) 1.0, so a blown highlight rolls off
-// to ~0.99 and a naive (value >= 1.0) test on the displayed pixel never fires (bug).
-//
-// 'src' is the inverted positive — post-engine, PRE-finish (texture(u_src)). A
-// highlight at/above the soft-clip knee is being compressed; once it is well into
-// the rolloff (>= halfway from the knee to white) the detail is effectively lost.
-// Shadows clamped toward black (invert_d's max(print_lin, 0)) lose detail
-// symmetrically. Strict mode flags the onset (any compression / near-black).
-// Returns a 2-bit code: bit1 (=2) highlight loss, bit0 (=1) shadow loss.
+// B1 — output detail-loss detection. With the filmic display curve the engine
+// reaches true white at 1.0 and rolls off gently through a shoulder, so highlight
+// detail is effectively gone once a channel sits deep in that shoulder (near 1.0);
+// shadows are lost near black. 'src' is the inverted positive — post-engine,
+// PRE-finish (texture(u_src)). Strict mode flags the ONSET (entering the shoulder /
+// near-black). Returns a 2-bit code: bit1 (=2) highlight loss, bit0 (=1) shadow loss.
 const float CLIP_LO = 2.0 / 255.0;
 const float CLIP_LO_STRICT = 8.0 / 255.0;
+const float CLIP_HI = 0.992;       // deep in the shoulder → highlight detail gone
+const float CLIP_HI_STRICT = 0.96; // onset: entering the highlight shoulder
 int clipCode(vec3 src) {
-  float hiT = u_clip_strict > 0.5 ? u_soft_clip : 0.5 * (1.0 + u_soft_clip);
+  float hiT = u_clip_strict > 0.5 ? CLIP_HI_STRICT : CLIP_HI;
   float loT = u_clip_strict > 0.5 ? CLIP_LO_STRICT : CLIP_LO;
   int code = 0;
   if (src.r >= hiT || src.g >= hiT || src.b >= hiT) code += 2;
@@ -333,6 +329,20 @@ const float EXPO_DMAX_K = 0.5;
 const float EFF_DMAX_LO = 0.5;
 const float EFF_DMAX_HI = 6.0;
 
+// Filmic display S-curve — MUST equal engine.rs FILMIC_K/FILMIC_PIVOT/FILMIC_WHITE_T
+// and filmic_s(). Logistic on normalised log-density, rescaled so filmicS(0)==0
+// (neutral black) and filmicS(FILMIC_WHITE_T)==1.0 (true white). Replaces the old
+// paper-grade/soft-clip encode that capped white at ~0.90.
+const float FILMIC_K = 5.0;
+const float FILMIC_PIVOT = 0.5;
+const float FILMIC_WHITE_T = 1.05;
+float filmicL(float x) { return 1.0 / (1.0 + exp(-FILMIC_K * (x - FILMIC_PIVOT))); }
+float filmicS(float t) {
+  float l0 = filmicL(0.0);
+  float lw = filmicL(FILMIC_WHITE_T);
+  return clamp((filmicL(t) - l0) / (lw - l0), 0.0, 1.0);
+}
+
 float tone(float v, float gain) {
   v = max(v * u_exposure * gain - u_black, 0.0);
   return pow(v, u_gamma);
@@ -345,31 +355,22 @@ vec3 invert(vec3 rgbIn) {
     rgbIn.g / max(u_base.g, EPS),
     rgbIn.b / max(u_base.b, EPS)), EPS, 1.0);
   if (u_mode == 3) {           // Mode D: negadoctor (Cineon). Mirrors engine.rs invert_d.
-    // NOTE: Mode D does not use tone()/u_exposure/u_black/u_gamma; it has its own
-    // print_exposure/paper_black/paper_grade. Those uniforms are inert in this branch.
+    // NOTE: Mode D does not use tone()/u_exposure/u_black/u_gamma. u_paper_black/
+    // u_paper_grade/u_soft_clip are DEPRECATED by the filmic curve and inert here.
     // Like Naive, this re-derives from rgbIn and ignores the shared 'r' above
     // (it needs its own THRESH clamp, not r's [EPS,1] clamp).
     const float THRESH = 2.3283064e-10;
     vec3 clamped = max(rgbIn, vec3(THRESH));
     vec3 dmin = max(u_base, vec3(EPS));
-    vec3 log_dens = log2(clamped / dmin) * LOG10;          // log10(clamped/dmin)
+    // Negative density d = log10(base/scan) >= 0 — linear in scene stops.
+    vec3 d = max(log2(dmin / clamped) * LOG10, vec3(0.0));  // log10(dmin/clamped)
     // Exposure acts in the density domain: EV stops modulate eff_d_max about the
     // black pivot (mirrors engine.rs invert_d). EV=0 → eff_d_max==u_d_max.
     float ev = log2(max(u_print_exposure, EPS));
     float eff_d_max = clamp(u_d_max * exp2(-EXPO_DMAX_K * ev), EFF_DMAX_LO, EFF_DMAX_HI);
-    vec3 corrected = log_dens / max(eff_d_max, EPS);
-    vec3 ten = exp2(corrected / LOG10);                    // 10^corrected
-    // Linear print_exposure gain DROPPED (folded into eff_d_max); white anchor fixed.
-    vec3 print_lin = max(vec3(1.0 + u_paper_black) - ten, vec3(0.0));
-    vec3 outc = pow(print_lin * u_wb, vec3(u_paper_grade)); // WB as a linear gain; 0*wb=0 keeps black neutral
-    // Reciprocal (Reinhard) highlight rolloff: matches value+slope at the knee
-    // (look unchanged below soft_clip), longer tail than the old exponential so
-    // bright highlights keep separation instead of slamming to 1.0. Mirrors
-    // engine.rs::invert_d.
-    float comp = max(1.0 - u_soft_clip, EPS);
-    vec3 u = (outc - vec3(u_soft_clip)) / comp;
-    vec3 over = vec3(1.0) - comp / (1.0 + u);
-    return mix(outc, over, step(vec3(u_soft_clip), outc));  // soft-clip where outc >= soft_clip
+    // Normalised log-density; WB is a log-domain SCALE (t=0 -> 0, neutral black).
+    vec3 t = (d / max(eff_d_max, EPS)) * u_wb;
+    return vec3(filmicS(t.r), filmicS(t.g), filmicS(t.b));  // filmic display curve
   }
   if (u_mode == 2) {           // Naive: 1 - clamp(I/base,0,1). Intentionally uses
     // its own [0,1] clamp (engine.rs invert_naive), not the [EPS,1] r above.
