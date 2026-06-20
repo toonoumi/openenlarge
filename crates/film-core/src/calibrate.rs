@@ -61,7 +61,12 @@ const SAMPLE_CAP: usize = 512;
 /// image. Widths/heights floor at 1px so a tiny crop never yields an empty band.
 fn scaled_rect(rect: Option<Rect>, src: &Image, small: &Image) -> Rect {
     match rect {
-        None => Rect { x: 0, y: 0, w: small.width, h: small.height },
+        None => Rect {
+            x: 0,
+            y: 0,
+            w: small.width,
+            h: small.height,
+        },
         Some(r) => {
             let sx = small.width as f32 / src.width.max(1) as f32;
             let sy = small.height as f32 / src.height.max(1) as f32;
@@ -100,7 +105,11 @@ fn coherent_band_avg(mut px: Vec<[f32; 3]>, lo: f32, hi: f32) -> [f32; 3] {
         }
     }
     let k = band.len() as f64;
-    [(sum[0] / k) as f32, (sum[1] / k) as f32, (sum[2] / k) as f32]
+    [
+        (sum[0] / k) as f32,
+        (sum[1] / k) as f32,
+        (sum[2] / k) as f32,
+    ]
 }
 
 /// Sample the film base as a single COHERENT color: collect the region's pixels,
@@ -365,7 +374,12 @@ fn downscale_for_detect(img: &Image, target_long: usize) -> Image {
             pixels[y * w + x] = img.pixels[sy * img.width + sx];
         }
     }
-    Image { width: w, height: h, pixels, ir: None }
+    Image {
+        width: w,
+        height: h,
+        pixels,
+        ir: None,
+    }
 }
 
 /// Mean RGB and mean per-channel coefficient-of-variation over a window.
@@ -385,7 +399,11 @@ fn patch_stats(img: &Image, x0: usize, y0: usize, pw: usize, ph: usize) -> ([f32
         return ([0.0; 3], 1.0);
     }
     let nf = n as f64;
-    let mean = [(sum[0] / nf) as f32, (sum[1] / nf) as f32, (sum[2] / nf) as f32];
+    let mean = [
+        (sum[0] / nf) as f32,
+        (sum[1] / nf) as f32,
+        (sum[2] / nf) as f32,
+    ];
     let mut cv_sum = 0.0f32;
     for c in 0..3 {
         let m = sum[c] / nf;
@@ -420,7 +438,10 @@ fn scan_region(img: &Image, rx: usize, ry: usize, rw: usize, rh: usize, best: &m
             let (mean, cv) = patch_stats(img, x, y, REBATE_PATCH, REBATE_PATCH);
             let s = rebate_score(mean, cv);
             if s > best.confidence {
-                *best = RebateBase { base: mean, confidence: s };
+                *best = RebateBase {
+                    base: mean,
+                    confidence: s,
+                };
             }
             x += step;
         }
@@ -436,11 +457,17 @@ pub fn detect_rebate_base(img: &Image) -> RebateBase {
     let small = downscale_for_detect(img, 512);
     let (w, h) = (small.width, small.height);
     if w == 0 || h == 0 {
-        return RebateBase { base: [0.0; 3], confidence: 0.0 };
+        return RebateBase {
+            base: [0.0; 3],
+            confidence: 0.0,
+        };
     }
     let bw = ((w as f32 * REBATE_BAND_FRAC) as usize).max(REBATE_PATCH);
     let bh = ((h as f32 * REBATE_BAND_FRAC) as usize).max(REBATE_PATCH);
-    let mut best = RebateBase { base: [0.0; 3], confidence: 0.0 };
+    let mut best = RebateBase {
+        base: [0.0; 3],
+        confidence: 0.0,
+    };
     scan_region(&small, 0, 0, w, bh, &mut best); // top
     scan_region(&small, 0, h.saturating_sub(bh), w, bh, &mut best); // bottom
     scan_region(&small, 0, 0, bw, h, &mut best); // left
@@ -463,15 +490,34 @@ mod tests {
             img.pixels[i] = [t, t, t];
         }
         let d = sample_dmax(&img, [1.0, 1.0, 1.0], None);
-        assert!((d - 2.0).abs() < 0.2, "expected ~2.0 density range, got {d}");
+        assert!(
+            (d - 2.0).abs() < 0.2,
+            "expected ~2.0 density range, got {d}"
+        );
 
         // A near-clear region (all bright) → tiny range, clamped up to the floor 1.0.
-        let flat = Image { width: 4, height: 1, pixels: vec![[0.9, 0.9, 0.9]; 4], ir: None };
-        assert!((sample_dmax(&flat, [1.0, 1.0, 1.0], None) - 1.0).abs() < 1e-4, "floor 1.0");
+        let flat = Image {
+            width: 4,
+            height: 1,
+            pixels: vec![[0.9, 0.9, 0.9]; 4],
+            ir: None,
+        };
+        assert!(
+            (sample_dmax(&flat, [1.0, 1.0, 1.0], None) - 1.0).abs() < 1e-4,
+            "floor 1.0"
+        );
 
         // A pitch-black region (transmission ~0) must not blow up — clamped to 4.0.
-        let dark = Image { width: 4, height: 1, pixels: vec![[0.0001, 0.0001, 0.0001]; 4], ir: None };
-        assert!((sample_dmax(&dark, [1.0, 1.0, 1.0], None) - 4.0).abs() < 1e-4, "ceil 4.0");
+        let dark = Image {
+            width: 4,
+            height: 1,
+            pixels: vec![[0.0001, 0.0001, 0.0001]; 4],
+            ir: None,
+        };
+        assert!(
+            (sample_dmax(&dark, [1.0, 1.0, 1.0], None) - 4.0).abs() < 1e-4,
+            "ceil 4.0"
+        );
     }
 
     #[test]
@@ -511,11 +557,21 @@ mod tests {
             }
         }
         // Sample within the top border strip (full width, top 10%).
-        let rect = Some(Rect { x: 0, y: 0, w, h: h / 10 });
+        let rect = Some(Rect {
+            x: 0,
+            y: 0,
+            w,
+            h: h / 10,
+        });
         let (blo, bhi) = BASE_BAND_REBATE;
         let b = sample_base_coherent(&img, rect, blo, bhi);
         for c in 0..3 {
-            assert!((b[c] - orange[c]).abs() < 0.02, "ch {c} = {} (want {})", b[c], orange[c]);
+            assert!(
+                (b[c] - orange[c]).abs() < 0.02,
+                "ch {c} = {} (want {})",
+                b[c],
+                orange[c]
+            );
         }
     }
 
@@ -534,7 +590,11 @@ mod tests {
                 let grain = (((x * 7 + y * 13) % 5) as f32 - 2.0) * 0.01;
                 let dust = (x * 31 + y * 17) % 23 == 0;
                 let p = if x < band {
-                    if dust { [0.02, 0.02, 0.02] } else { [orange[0] + grain, orange[1] + grain, orange[2] + grain] }
+                    if dust {
+                        [0.02, 0.02, 0.02]
+                    } else {
+                        [orange[0] + grain, orange[1] + grain, orange[2] + grain]
+                    }
                 } else {
                     [0.85, 0.85, 0.80]
                 };
@@ -542,11 +602,21 @@ mod tests {
             }
         }
         // Rect parked inside the rebate (cols 1..11).
-        let r = Rect { x: 1, y: 0, w: band - 2, h };
+        let r = Rect {
+            x: 1,
+            y: 0,
+            w: band - 2,
+            h,
+        };
         let (lo, hi) = BASE_BAND_REBATE;
         let b = sample_base_coherent_fullres(&img, r, lo, hi);
         for c in 0..3 {
-            assert!((b[c] - orange[c]).abs() < 0.02, "ch {c} = {} (want {})", b[c], orange[c]);
+            assert!(
+                (b[c] - orange[c]).abs() < 0.02,
+                "ch {c} = {} (want {})",
+                b[c],
+                orange[c]
+            );
         }
     }
 
@@ -610,7 +680,7 @@ mod tests {
         // must NOT read this as a warm illuminant and over-cool the image (the
         // white-patch-on-warm-highlights bug that made photos come out too blue).
         let mut pixels = vec![[0.45f32, 0.45, 0.45]; 800];
-        pixels.extend(std::iter::repeat([0.90f32, 0.78, 0.62]).take(200));
+        pixels.extend(std::iter::repeat_n([0.90f32, 0.78, 0.62], 200));
         let img = Image {
             width: 1000,
             height: 1,
@@ -691,7 +761,10 @@ mod tests {
         let scaled = Image {
             width: n,
             height: 1,
-            pixels: pixels.iter().map(|p| [p[0] * 1.5, p[1] * 1.5, p[2] * 1.5]).collect(),
+            pixels: pixels
+                .iter()
+                .map(|p| [p[0] * 1.5, p[1] * 1.5, p[2] * 1.5])
+                .collect(),
             ir: None,
         };
 
@@ -736,7 +809,11 @@ mod tests {
         img.pixels[9] = [0.99, 0.98, 0.97]; // specular speck (trimmed by hi)
         let b = sample_base_coherent(&img, None, 0.1, 0.9);
         for c in 0..3 {
-            assert!((b[c] - [0.43, 0.19, 0.11][c]).abs() < 1e-3, "ch {c} = {}", b[c]);
+            assert!(
+                (b[c] - [0.43, 0.19, 0.11][c]).abs() < 1e-3,
+                "ch {c} = {}",
+                b[c]
+            );
         }
     }
 
@@ -752,7 +829,11 @@ mod tests {
                 let mut px = if edge { border } else { center };
                 if !edge && noisy {
                     let j = if (x + y) % 2 == 0 { 0.18 } else { -0.18 };
-                    px = [(px[0] + j).clamp(0.0, 1.0), (px[1] + j).clamp(0.0, 1.0), (px[2] + j).clamp(0.0, 1.0)];
+                    px = [
+                        (px[0] + j).clamp(0.0, 1.0),
+                        (px[1] + j).clamp(0.0, 1.0),
+                        (px[2] + j).clamp(0.0, 1.0),
+                    ];
                 }
                 img.pixels[y * w + x] = px;
             }
@@ -765,8 +846,8 @@ mod tests {
         let orange = [0.42, 0.19, 0.10];
         let img = bordered(200, 150, orange, [0.5, 0.5, 0.5], true);
         let r = detect_rebate_base(&img);
-        for c in 0..3 {
-            assert!((r.base[c] - orange[c]).abs() < 0.03, "ch {c}={}", r.base[c]);
+        for (c, &o) in orange.iter().enumerate() {
+            assert!((r.base[c] - o).abs() < 0.03, "ch {c}={}", r.base[c]);
         }
         assert!(r.confidence > 0.1, "confidence {}", r.confidence);
     }
@@ -776,15 +857,28 @@ mod tests {
         let orange = [0.42, 0.19, 0.10];
         let img = bordered(200, 150, orange, [0.30, 0.21, 0.55], false);
         let r = detect_rebate_base(&img);
-        assert!(r.base[0] > r.base[2], "must pick orange (R>B), got {:?}", r.base);
+        assert!(
+            r.base[0] > r.base[2],
+            "must pick orange (R>B), got {:?}",
+            r.base
+        );
         assert!((r.base[0] - orange[0]).abs() < 0.05, "base {:?}", r.base);
     }
 
     #[test]
     fn detect_rebate_low_confidence_when_no_orange_border() {
-        let img = Image { width: 200, height: 150, pixels: vec![[0.5, 0.5, 0.5]; 200 * 150], ir: None };
+        let img = Image {
+            width: 200,
+            height: 150,
+            pixels: vec![[0.5, 0.5, 0.5]; 200 * 150],
+            ir: None,
+        };
         let r = detect_rebate_base(&img);
-        assert!(r.confidence < 0.05, "expected low confidence, got {}", r.confidence);
+        assert!(
+            r.confidence < 0.05,
+            "expected low confidence, got {}",
+            r.confidence
+        );
     }
 
     #[test]
@@ -798,8 +892,16 @@ mod tests {
         }
         let b = sample_base_coherent(&img, None, 0.90, 0.99);
         assert!(b[0] > 0.88, "bright R cluster, got {}", b[0]);
-        assert!((b[1] / b[0] - 0.45).abs() < 0.03, "G/R ratio {}", b[1] / b[0]);
-        assert!((b[2] / b[0] - 0.26).abs() < 0.03, "B/R ratio {}", b[2] / b[0]);
+        assert!(
+            (b[1] / b[0] - 0.45).abs() < 0.03,
+            "G/R ratio {}",
+            b[1] / b[0]
+        );
+        assert!(
+            (b[2] / b[0] - 0.26).abs() < 0.03,
+            "B/R ratio {}",
+            b[2] / b[0]
+        );
     }
 
     #[test]
@@ -809,7 +911,12 @@ mod tests {
         // max across channels → 2.0.
         let white = [0.08f32, 0.008, 0.08];
         let pixels = vec![white; 16];
-        let img = Image { width: 4, height: 4, pixels, ir: None };
+        let img = Image {
+            width: 4,
+            height: 4,
+            pixels,
+            ir: None,
+        };
         let d = dmax_from_white_point(&img, [0.8, 0.8, 0.8], None);
         assert!((d - 2.0).abs() < 1e-3, "expected ~2.0, got {d}");
     }
@@ -818,11 +925,21 @@ mod tests {
     fn dmax_from_white_point_clamps_to_range() {
         // Extremely dense leader would exceed 4.0 → clamp; near-clear would underflow → 1.0.
         let dense = vec![[1e-5f32, 1e-5, 1e-5]; 16];
-        let img = Image { width: 4, height: 4, pixels: dense, ir: None };
+        let img = Image {
+            width: 4,
+            height: 4,
+            pixels: dense,
+            ir: None,
+        };
         assert_eq!(dmax_from_white_point(&img, [0.8, 0.8, 0.8], None), 4.0);
 
         let clearish = vec![[0.79f32, 0.79, 0.79]; 16];
-        let img2 = Image { width: 4, height: 4, pixels: clearish, ir: None };
+        let img2 = Image {
+            width: 4,
+            height: 4,
+            pixels: clearish,
+            ir: None,
+        };
         assert_eq!(dmax_from_white_point(&img2, [0.8, 0.8, 0.8], None), 1.0);
     }
 
@@ -830,14 +947,27 @@ mod tests {
     fn flat_crop_has_low_density_spread_ranged_has_high() {
         let base = [1.0, 1.0, 1.0];
         // No real blacks (the B3 trigger: crop into sky/highlights) → tiny spread.
-        let flat = Image { width: 8, height: 8, pixels: vec![[0.85, 0.85, 0.85]; 64], ir: None };
+        let flat = Image {
+            width: 8,
+            height: 8,
+            pixels: vec![[0.85, 0.85, 0.85]; 64],
+            ir: None,
+        };
         let (_d, spread) = sample_dmax_spread(&flat, base, None);
         assert!(spread < 0.1, "flat crop spread should be tiny: {spread}");
         // Spans blacks → brights → substantial density range.
         let mut px = vec![[0.9, 0.9, 0.9]; 32];
         px.extend(vec![[0.02, 0.02, 0.02]; 32]);
-        let ranged = Image { width: 8, height: 8, pixels: px, ir: None };
+        let ranged = Image {
+            width: 8,
+            height: 8,
+            pixels: px,
+            ir: None,
+        };
         let (_d2, spread2) = sample_dmax_spread(&ranged, base, None);
-        assert!(spread2 > 0.5, "ranged crop spread should be substantial: {spread2}");
+        assert!(
+            spread2 > 0.5,
+            "ranged crop spread should be substantial: {spread2}"
+        );
     }
 }

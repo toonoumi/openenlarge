@@ -7,7 +7,10 @@ use film_core::export::write_tiff16;
 use std::path::PathBuf;
 
 #[derive(Parser)]
-#[command(name = "film-cli", about = "Invert a color negative scan (Kodak Cineon)")]
+#[command(
+    name = "film-cli",
+    about = "Invert a color negative scan (Kodak Cineon)"
+)]
 struct Cli {
     /// Input TIFF / linear DNG
     input: PathBuf,
@@ -80,7 +83,12 @@ fn main() -> Result<()> {
     // Parse an optional white-rect the same way as base_rect.
     let white_rect = cli.white_rect.as_ref().and_then(|v| {
         if v.len() == 4 {
-            Some(Rect { x: v[0], y: v[1], w: v[2], h: v[3] })
+            Some(Rect {
+                x: v[0],
+                y: v[1],
+                w: v[2],
+                h: v[3],
+            })
         } else {
             None
         }

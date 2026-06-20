@@ -50,7 +50,13 @@ fn main() {
             .and_then(|s| s.to_str())
             .unwrap_or("scan");
 
-        let pd = InversionParams { base, ..Default::default() };
-        encode(&invert_image(&full, &pd, Mode::D), &format!("/tmp/{stem}_D.png"));
+        let pd = InversionParams {
+            base,
+            ..Default::default()
+        };
+        encode(
+            &invert_image(&full, &pd, Mode::D),
+            &format!("/tmp/{stem}_D.png"),
+        );
     }
 }

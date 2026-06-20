@@ -1,7 +1,9 @@
 //! Report rebate detection vs the brightest-cluster fallback for each scan.
 //! Usage: cargo run -p film-core --example detect_report -- <scan...>
 
-use film_core::calibrate::{detect_rebate_base, sample_base_coherent, BASE_BAND_AUTO, REBATE_CONFIDENCE};
+use film_core::calibrate::{
+    detect_rebate_base, sample_base_coherent, BASE_BAND_AUTO, REBATE_CONFIDENCE,
+};
 use film_core::decode::{decode_ldr, decode_raw, decode_tiff};
 use film_core::engine::{invert_image, InversionParams, Mode};
 use film_core::Image;
@@ -23,11 +25,20 @@ fn downscale(img: &Image, target_long: usize) -> Image {
             pixels[y * w + x] = img.pixels[sy * img.width + sx];
         }
     }
-    Image { width: w, height: h, pixels, ir: None }
+    Image {
+        width: w,
+        height: h,
+        pixels,
+        ir: None,
+    }
 }
 
 fn decode_any(path: &Path) -> Image {
-    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
     let r = match ext.as_str() {
         "tif" | "tiff" => decode_tiff(path),
         "jpg" | "jpeg" | "png" => decode_ldr(path),
@@ -43,7 +54,10 @@ fn main() {
         let det = detect_rebate_base(&img);
         let (lo, hi) = BASE_BAND_AUTO;
         let fb = sample_base_coherent(&img, None, lo, hi);
-        let stem = Path::new(&path).file_stem().and_then(|s| s.to_str()).unwrap_or("scan");
+        let stem = Path::new(&path)
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("scan");
         // Mirror commands::auto_base: confident → det; anti-blue → det; else fb.
         let (used, base) = if det.confidence >= REBATE_CONFIDENCE {
             ("DETECTED", det.base)
@@ -60,7 +74,10 @@ fn main() {
         // Smoke: invert with the chosen base + tuned Cineon defaults, NEUTRAL WB
         // (WB is Plan 3) — confirms the base hue, not the white balance.
         let small = downscale(&img, 700);
-        let p = InversionParams { base, ..Default::default() };
+        let p = InversionParams {
+            base,
+            ..Default::default()
+        };
         let inv = invert_image(&small, &p, Mode::D);
         let mut buf = vec![0u8; inv.width * inv.height * 3];
         for (i, px) in inv.pixels.iter().enumerate() {
@@ -69,8 +86,14 @@ fn main() {
             }
         }
         let out = format!("/tmp/tune/{stem}_fbinvert.png");
-        image::save_buffer(&out, &buf, inv.width as u32, inv.height as u32, image::ColorType::Rgb8)
-            .expect("write png");
+        image::save_buffer(
+            &out,
+            &buf,
+            inv.width as u32,
+            inv.height as u32,
+            image::ColorType::Rgb8,
+        )
+        .expect("write png");
         eprintln!("  wrote {out}");
     }
 }

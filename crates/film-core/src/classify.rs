@@ -58,7 +58,12 @@ mod tests {
     use crate::Image;
 
     fn solid(w: usize, h: usize, px: [f32; 3]) -> Image {
-        Image { width: w, height: h, pixels: vec![px; w * h], ir: None }
+        Image {
+            width: w,
+            height: h,
+            pixels: vec![px; w * h],
+            ir: None,
+        }
     }
 
     /// A "positive": natural full-range gradient from near-black to near-white,
@@ -69,7 +74,12 @@ mod tests {
             let v = i as f32 / 255.0;
             pixels.push([v, v, v]);
         }
-        Image { width: 256, height: 1, pixels, ir: None }
+        Image {
+            width: 256,
+            height: 1,
+            pixels,
+            ir: None,
+        }
     }
 
     /// A "negative": compressed, high, strongly orange-cast (C-41-like).
@@ -77,22 +87,33 @@ mod tests {
         let mut pixels = Vec::new();
         for i in 0..256 {
             let v = 0.55 + (i as f32 / 255.0) * 0.2; // compressed, lifted
-            pixels.push([v, v * 0.7, v * 0.4]);       // orange cast
+            pixels.push([v, v * 0.7, v * 0.4]); // orange cast
         }
-        Image { width: 256, height: 1, pixels, ir: None }
+        Image {
+            width: 256,
+            height: 1,
+            pixels,
+            ir: None,
+        }
     }
 
     #[test]
     fn positive_image_classifies_positive() {
         let (is_pos, conf) = classify_positive(&synthetic_positive());
-        assert!(is_pos, "full-range balanced image should read positive (conf {conf})");
+        assert!(
+            is_pos,
+            "full-range balanced image should read positive (conf {conf})"
+        );
         assert!((0.0..=1.0).contains(&conf));
     }
 
     #[test]
     fn negative_image_classifies_negative() {
         let (is_pos, conf) = classify_positive(&synthetic_negative());
-        assert!(!is_pos, "compressed orange-cast image should read negative (conf {conf})");
+        assert!(
+            !is_pos,
+            "compressed orange-cast image should read negative (conf {conf})"
+        );
         assert!((0.0..=1.0).contains(&conf));
     }
 
@@ -104,7 +125,12 @@ mod tests {
 
     #[test]
     fn empty_image_defaults_negative() {
-        let (is_pos, conf) = classify_positive(&Image { width: 0, height: 0, pixels: vec![], ir: None });
+        let (is_pos, conf) = classify_positive(&Image {
+            width: 0,
+            height: 0,
+            pixels: vec![],
+            ir: None,
+        });
         assert!(!is_pos);
         assert_eq!(conf, 0.0);
     }
