@@ -1700,6 +1700,126 @@ pub(crate) fn auto_seed_wb(
     (temp, tint * 150.0) // tint back to UI −150..150
 }
 
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct AutoBrightness {
+    /// Solved exposure in EV stops. Drives the highlight-preserving filmic exposure
+    /// (NOT the linear `brightness` gain), so it brightens via the display curve's
+    /// shoulder without clipping — a nondestructive, curve-based lift.
+    pub exposure: f32,
+}
+
+/// Auto-brightness for one image: solve the EXPOSURE (EV) that lands the image's
+/// bright-content luminance on a target, measured on the FINISHED display positive.
+/// Per-image (each frame measures its own), crop/orient-aware like `as_shot_wb`.
+#[tauri::command]
+pub fn auto_brightness(
+    id: String,
+    params: InvertParams,
+    crop: Option<[f64; 4]>,
+    rot90: Option<u8>,
+    flip_h: Option<bool>,
+    flip_v: Option<bool>,
+    angle: Option<f32>,
+    session: State<Session>,
+) -> Result<AutoBrightness, String> {
+    ensure_resident(&session, &id)?;
+    let (base, thumb, dev_dmax) = {
+        let images = session.images.lock().unwrap();
+        let img = images.get(&id).ok_or("unknown image id")?;
+        let dev = img.developed.as_ref().ok_or("not developed")?;
+        (dev.base, dev.thumb.clone(), dev.d_max)
+    };
+    // Measure only the visible image area so rebate/borders don't bias the estimate
+    // (the crop is in oriented space — orient/straighten first, as `as_shot_wb` does).
+    let thumb = match crop {
+        Some(nc) => {
+            let geom = geom_base(
+                &thumb,
+                rot90.unwrap_or(0),
+                flip_h.unwrap_or(false),
+                flip_v.unwrap_or(false),
+                angle.unwrap_or(0.0),
+            );
+            let (x, y, w, h) = crop_px(nc, geom.width, geom.height);
+            crate::convert::crop(&geom, x, y, w, h)
+        }
+        None => thumb,
+    };
+    let exposure = auto_brightness_value(&thumb, &params, effective_base(&params, base), dev_dmax);
+    Ok(AutoBrightness { exposure })
+}
+
+/// Solve the exposure (EV) that maps the `AUTO_PCT`-th luminance percentile of the
+/// finished display positive to `AUTO_TARGET`. Exposure feeds the filmic curve
+/// non-linearly, so this is a short secant fit running a few cheap invert+finish
+/// passes on the small proxy. All other params (WB, contrast, tone curve, brightness)
+/// are held at their current values, so the auto value composes with the user's look.
+pub(crate) fn auto_brightness_value(
+    src: &film_core::Image,
+    params: &InvertParams,
+    base: [f32; 3],
+    dev_dmax: f32,
+) -> f32 {
+    const AUTO_TARGET: f32 = 0.80; // display [0,1] anchor for bright content ("balanced")
+    const AUTO_PCT: f32 = 0.90; // 90th-pct luminance — below speculars / rebate bleed
+    const TOL: f32 = 0.01;
+    const EV_CLAMP: f32 = 3.0;
+
+    // Finished-positive luminance percentile at a candidate exposure.
+    let measure = |ev: f32| -> f32 {
+        let mut p = params.clone();
+        p.exposure = ev;
+        let mut ip = resolve_params(&p, src, base); // honors temp/tint WB; print_exposure = 2^ev
+        ip.d_max = effective_dmax(params, dev_dmax);
+        let inv = invert_image(src, &ip, mode_from(&params.mode));
+        let pos = finish_image(&inv, &finish_from(params)); // current contrast/curve/brightness
+        percentile_luma(&pos, AUTO_PCT)
+    };
+
+    let y0 = measure(0.0);
+    if y0 < 1e-4 {
+        return 0.0; // degenerate / near-black frame — don't rescale on noise
+    }
+    if (y0 - AUTO_TARGET).abs() <= TOL {
+        return 0.0;
+    }
+    // Secant from (0, y0): seed with the linear-stop guess, refine through the curve.
+    let mut e_prev = 0.0f32;
+    let mut y_prev = y0;
+    let mut e = (AUTO_TARGET / y0).log2().clamp(-EV_CLAMP, EV_CLAMP);
+    for _ in 0..3 {
+        let y = measure(e);
+        if (y - AUTO_TARGET).abs() <= TOL {
+            break;
+        }
+        let denom = y - y_prev;
+        let next = if denom.abs() < 1e-5 {
+            e
+        } else {
+            e + (AUTO_TARGET - y) * (e - e_prev) / denom
+        };
+        e_prev = e;
+        y_prev = y;
+        e = next.clamp(-EV_CLAMP, EV_CLAMP);
+    }
+    (e * 100.0).round() / 100.0 // exposure slider step is 0.01
+}
+
+/// The `pct` (0..1) percentile of BT.709 luminance over an image's pixels.
+fn percentile_luma(img: &film_core::Image, pct: f32) -> f32 {
+    if img.pixels.is_empty() {
+        return 0.0;
+    }
+    let mut ys: Vec<f32> = img
+        .pixels
+        .iter()
+        .map(|p| 0.2126 * p[0] + 0.7152 * p[1] + 0.0722 * p[2])
+        .collect();
+    ys.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let idx = (((ys.len() - 1) as f32) * pct.clamp(0.0, 1.0)).round() as usize;
+    ys[idx.min(ys.len() - 1)]
+}
+
 /// Render the catalog/grid display thumbnail (JPEG b64) from a linear proxy.
 /// `render_src` is the higher-res proxy the JPEG is drawn from; `seed_src` is the
 /// (typically smaller) proxy the auto-WB estimate runs on — matching `as_shot_wb`

@@ -5,10 +5,11 @@
   import { get } from "svelte/store";
   import { t } from "$lib/i18n";
   import { developedFolderImages } from "$lib/export/eligible";
-  import { editsById, cropById, images, activeId, setActive, rollOverwriteSkip, module, deleteTarget } from "$lib/store";
+  import { editsById, cropById, images, activeId, setActive, rollOverwriteSkip, module, deleteTarget, developProgress } from "$lib/store";
+  import { autoBrightnessRoll } from "$lib/workflow";
   import { rollReferenceId, resetRollDraft, rollDraft, rollDraftTouched } from "$lib/roll/draft";
   import RollAdjust from "$lib/roll/RollAdjust.svelte";
-  import { applyToneColorToAll, applyBaseToAll, applyWhitePointToAll, applyCropToAll, framesWithToneColor, framesWithCrop, framesWithBase, framesWithWhitePoint } from "$lib/roll/apply";
+  import { applyToneColorToAll, applyBaseToAll, applyWhitePointToAll, applyExposureToAll, applyCropToAll, framesWithToneColor, framesWithCrop, framesWithBase, framesWithWhitePoint } from "$lib/roll/apply";
   import { livePreviewParams, draftThumbView } from "$lib/roll/livePreview";
   import { withEffectiveBase } from "$lib/develop/base";
   import { imageDir } from "$lib/library/folderScope";
@@ -185,6 +186,9 @@
         const baseParams = touched
           ? {
               ...livePreviewParams(draft.params, own),
+              // exposure is per-image (Auto-Brightness); only mirror a roll-wide value
+              // the user actually set, else keep each frame's own.
+              ...(draft.params.exposure !== defaultParams().exposure ? { exposure: draft.params.exposure } : {}),
               ...(draft.params.base_override != null ? { base_override: draft.params.base_override } : {}),
               ...(draft.params.d_max_override != null ? { d_max_override: draft.params.d_max_override } : {}),
             }
@@ -255,6 +259,9 @@
     // Also apply base/dmax overrides when set in the draft (null-guarded).
     if (draft.params.base_override != null) nextEdits = applyBaseToAll(nextEdits, ids, draft.params.base_override);
     if (draft.params.d_max_override != null) nextEdits = applyWhitePointToAll(nextEdits, ids, draft.params.d_max_override);
+    // Exposure is per-image (Auto-Brightness solves it per frame); only mirror a
+    // roll-wide exposure the user deliberately set, so per-image values aren't lost.
+    if (draft.params.exposure !== defaultParams().exposure) nextEdits = applyExposureToAll(nextEdits, ids, draft.params.exposure);
 
     // Guard: discard stale batch BEFORE writing stores so a stale run doesn't clobber newer state.
     if (persistToken !== token || destroyed) return;
@@ -408,6 +415,15 @@
     setActive(id);
     editMode = "wp";
     wpPicking = true;
+  }
+
+  // Auto-brightness the whole roll: each developed frame gets its OWN solved exposure
+  // (a per-image value, not the shared draft look), then refresh the contact sheet so
+  // the new exposures show. Guarded against re-entry while a batch is running.
+  async function autoBrightnessAll() {
+    if (get(developProgress).active) return;
+    await autoBrightnessRoll();
+    runPreviewBatch(get(rollDraft));
   }
 
   function onBaseSampled(e: CustomEvent<[number, number, number]>) {
@@ -666,6 +682,14 @@
               <Icon name="pipette" size={20} />
             </button>
             <span class="tool-label">{$t('roll.wp.heading')}</span>
+          </div>
+          <div class="tool">
+            <button class="tool-btn" on:click={autoBrightnessAll}
+                    disabled={$developedFolderImages.length === 0 || $developProgress.active}
+                    aria-label={$t('roll.autoBrightness')}>
+              <Icon name="sparkles" size={20} />
+            </button>
+            <span class="tool-label">{$t('roll.autoBrightness')}</span>
           </div>
         </div>
       </RollAdjust>

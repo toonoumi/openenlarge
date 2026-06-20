@@ -1,10 +1,13 @@
 import { get } from "svelte/store";
 import { images, activeId, module, developProgress, editsById, cropById, dustById, folderImages, invalidatePreview, undevelopableIds } from "./store";
 import { api, defaultParams, type ImageEntry } from "./api";
-import { dropHistory } from "./develop/historyStore";
+import { dropHistory, reseedActive } from "./develop/historyStore";
 import { track } from "./telemetry";
 import { showToast } from "./toast";
 import { translate } from "./i18n";
+import { developedFolderImages } from "./export/eligible";
+import { withEffectiveBase } from "./develop/base";
+import { imageDir } from "./library/folderScope";
 
 /** Ids of images not yet developed, in order. Pure helper (testable). */
 export function undevelopedIds(list: ImageEntry[]): string[] {
@@ -96,6 +99,47 @@ export async function importPaths(paths: string[]): Promise<void> {
 function nextPaint(): Promise<void> {
   if (typeof requestAnimationFrame === "undefined") return new Promise((r) => setTimeout(r, 0));
   return new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+}
+
+/** Auto-brightness the WHOLE ROLL: every DEVELOPED image in the folder gets its OWN
+ * solved exposure (highlight-preserving filmic lift), applied in one atomic store
+ * write with the progress overlay. Per-image values — never a single shared
+ * brightness — so it must write editsById directly (the Roll look-mirror would
+ * otherwise flatten them, since exposure isn't an excluded field). */
+export async function autoBrightnessRoll(): Promise<void> {
+  const frames = get(developedFolderImages);
+  if (frames.length === 0) return;
+  developProgress.set({ active: true, done: 0, total: frames.length });
+  await nextPaint();
+  const solved: Record<string, number> = {};
+  for (const img of frames) {
+    try {
+      const p = withEffectiveBase(get(editsById)[img.id] ?? defaultParams(), imageDir(img));
+      const c = get(cropById)[img.id] ?? null;
+      const crop = c
+        ? ([c.rect.x, c.rect.y, c.rect.w, c.rect.h] as [number, number, number, number])
+        : null;
+      const geom = c ? { rot90: c.rot90, flip_h: c.flipH, flip_v: c.flipV, angle: c.angle } : {};
+      const { exposure } = await api.autoBrightness(img.id, p, crop, geom);
+      solved[img.id] = exposure;
+    } catch (e) {
+      console.error("auto-brightness failed", img.id, e);
+    }
+    developProgress.update((s) => ({ ...s, done: s.done + 1 }));
+  }
+  // One atomic write; each frame keeps its OWN exposure.
+  editsById.update((m) => {
+    const next = { ...m };
+    for (const id of Object.keys(solved)) {
+      next[id] = { ...(next[id] ?? defaultParams()), exposure: solved[id] };
+    }
+    return next;
+  });
+  for (const img of frames) invalidatePreview(img.id);
+  reseedActive(); // fold the active image's new exposure into its per-image undo baseline
+  await nextPaint();
+  developProgress.set({ active: false, done: frames.length, total: frames.length });
+  showToast(translate("toast.autoBrightnessDone", { count: Object.keys(solved).length }));
 }
 
 /** Develop every not-yet-developed image IN THE SELECTED FOLDER sequentially,
