@@ -141,6 +141,7 @@ export.cropSelected,"Crop selected","裁剪所选","src/lib/export/ExportModal.s
 viewport.fit,"Fit","适应","src/lib/viewport/Viewport.svelte","zoom label"
 viewport.zoomPercent,"{percent}%","{percent}%","src/lib/viewport/Viewport.svelte","zoom label"
 viewport.rgbReadout,"sRGB 8-bit at cursor","光标处 sRGB 8 位强度","src/lib/viewport/Viewport.svelte","densitometer tooltip"
+viewport.rendering,"Rendering…","渲染中…","src/lib/viewport/Viewport.svelte","render-in-flight spinner label"
 quality.deleteImage,"Delete image…","删除照片…","src/lib/viewport/QualityMenu.svelte","button"
 folderNav.imported,"Imported","已导入","src/lib/library/FolderNav.svelte","heading"
 folderNav.noImages,"No images yet","还没有照片","src/lib/library/FolderNav.svelte","emptyState"

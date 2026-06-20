@@ -290,16 +290,42 @@ export class FinishRenderer {
 
   setUniforms(u: FinishUniforms) { this.uniforms = u; }
 
-  /** Upload the raw linear negative as an RGBA16F texture (once per image). */
-  setSourceFloat(pixels: Uint16Array, w: number, h: number) {
-    const gl = this.gl; if (!gl || !this.srcTexF || !this.interTex) return;
-    this.srcW = w; this.srcH = h; this.useFloat = true;
+  /**
+   * Upload the raw linear negative as an RGBA16F texture (once per image).
+   * Returns false WITHOUT committing the new source when this device can't
+   * allocate the request — a hi-res deep-zoom tier (up to MAX_GPU_EDGE=8192)
+   * needs FOUR RGBA16F textures (source + interTex + finishTex + blurTmpTex,
+   * ~512MB each at 8192²), which can exceed MAX_TEXTURE_SIZE or VRAM. Without
+   * this guard the allocation fails silently, the invert pass reads an
+   * incomplete texture, and the canvas renders solid black. Returning false
+   * lets the caller fall back to the resident proxy (already on screen) instead.
+   */
+  setSourceFloat(pixels: Uint16Array, w: number, h: number): boolean {
+    const gl = this.gl; if (!gl || !this.srcTexF || !this.interTex) return false;
+    // Hard limit first: a dimension over MAX_TEXTURE_SIZE always fails.
+    const max = gl.getParameter(gl.MAX_TEXTURE_SIZE) as number;
+    if (w > max || h > max) return false;
+    gl.getError(); // clear any pre-existing error so the check below is meaningful
     gl.bindTexture(gl.TEXTURE_2D, this.srcTexF);
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false); // geometry handled in-shader
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, w, h, 0, gl.RGBA, gl.HALF_FLOAT, pixels);
-    // (Re)allocate the intermediate to the OUTPUT size; default = source size.
+    // (Re)allocate the intermediate + finish/blur scratch to the OUTPUT size.
     this.allocInter(w, h);
+    // VRAM check: if any of those RGBA16F allocations failed, GL flags an error
+    // and/or the invert FBO (interTex attachment) is incomplete — either way the
+    // invert pass would render black. Detect it and keep srcW/srcH/useFloat at the
+    // previous (good) values so a draw before the proxy re-upload can't go black.
+    let ok = gl.getError() === gl.NO_ERROR;
+    if (ok && this.fbo) {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.interTex, 0);
+      ok = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    }
+    if (!ok) return false;
+    this.srcW = w; this.srcH = h; this.useFloat = true;
     this.hasSource = true;
+    return true;
   }
 
   /** Size the intermediate + finished-color FBO textures (output dims = canvas). */
@@ -536,7 +562,9 @@ export class FinishRenderer {
     if (w > max || h > max) return null;
 
     // Upload the full-res source, set inversion + IDENTITY geometry + finishing.
-    this.setSourceFloat(src, w, h);
+    // Bail (→ CPU fallback) if this device can't allocate the source/intermediate
+    // at (w,h) rather than reading back a black frame.
+    if (!this.setSourceFloat(src, w, h)) return null;
     this.setInversion(inv);
     this.setGeometry({ crop_off: [0, 0], crop_scale: [1, 1], angle: 0, aspect: 1, orient: [1, 0, 0, 1], raw: false, outW: w, outH: h });
     this.setUniforms(fu); this.setLut(lut); this.setColorGrade(cg); this.setColorMix(cm);

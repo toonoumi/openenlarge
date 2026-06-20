@@ -74,6 +74,29 @@
   let animating = false;
   let animTimer: ReturnType<typeof setTimeout> | null = null;
 
+  // ---- Render-in-flight indicator -----------------------------------------
+  // `busy` drives a spinner overlay while an async backend render/upload is in
+  // flight (image open, dust/IR bake, hi-res deep-zoom decode). Finishing-layer
+  // edits are instant GPU redraws and never set it. A short show-delay keeps the
+  // spinner from flashing on fast proxy uploads.
+  let inflight = 0;
+  let busy = false;
+  let busyTimer: ReturnType<typeof setTimeout> | null = null;
+  const BUSY_DELAY_MS = 180;
+  function enterRender() {
+    inflight++;
+    if (inflight === 1 && !busyTimer && !busy) {
+      busyTimer = setTimeout(() => { busyTimer = null; busy = inflight > 0; }, BUSY_DELAY_MS);
+    }
+  }
+  function exitRender() {
+    inflight = Math.max(0, inflight - 1);
+    if (inflight === 0) {
+      if (busyTimer) { clearTimeout(busyTimer); busyTimer = null; }
+      busy = false;
+    }
+  }
+
   // GPU upload state. The working buffer is uploaded to the GPU as a float texture;
   // inversion + geometry then update via uniforms. In bake mode the upload re-fires
   // when strokes/geometry change (keyed by uploadKey); otherwise once per image.
@@ -110,6 +133,9 @@
   let wantHi = false;
   let hiTier = false;
   let hiTimer: ReturnType<typeof setTimeout> | null = null;
+  // Set true (per image) once a hi-res upload fails to allocate on this GPU, so we
+  // stop trying to upgrade and never flip-flop proxy↔hi-res. Reset on image switch.
+  let hiUnavailable = false;
   $: {
     const srcLong = Math.max(imgW, imgH);
     const dpr = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
@@ -126,7 +152,10 @@
   // pending upgrade is cancelled.
   function armHiTier() {
     if (hiTimer) { clearTimeout(hiTimer); hiTimer = null; }
-    switch (hiTierAction(wantHi, hiTier)) {
+    // Once hi-res has proven unallocatable for this image, never upgrade again —
+    // treat the desired tier as proxy so we don't loop fetch→fail→fallback→fetch.
+    const want = wantHi && !hiUnavailable;
+    switch (hiTierAction(want, hiTier)) {
       case "downgrade": hiTier = false; return; // proxy resident → instant; drop pending upgrade
       case "noop": return;                       // already at hi-res
       case "arm": hiTimer = setTimeout(() => { hiTimer = null; hiTier = true; }, HI_SETTLE_MS); return;
@@ -168,6 +197,7 @@
     return () => {
       ro.disconnect();
       if (hiTimer) { clearTimeout(hiTimer); hiTimer = null; }
+      if (busyTimer) { clearTimeout(busyTimer); busyTimer = null; }
       // Free the WebGL context on unmount — otherwise every remount leaks one and
       // WebKit stalls the app once it caps out (~16 contexts).
       renderer?.dispose();
@@ -182,6 +212,7 @@
     // uploadWorking binds the new texture and draws once. uploadKey reset forces the
     // re-upload (its key includes id, but resetting is explicit).
     texW = 0; texH = 0; uploadKey = ""; frameReady = false;
+    hiUnavailable = false; // re-evaluate hi-res capacity for the new image
   }
   $: if (interactive && scale === 0 && fit > 0) scale = fit;
 
@@ -203,6 +234,7 @@
     const rscale = Math.min(eff, CAP / Math.max(imgW, imgH));
     const out_w = Math.max(1, Math.round(imgW * rscale));
     const out_h = Math.max(1, Math.round(imgH * rscale));
+    enterRender();
     try {
       const data = await api.renderView(id, params, {
         crop: [0, 0, imgW, imgH], out_w, out_h, raw, finish: !(useGL && renderer),
@@ -221,6 +253,8 @@
       // anything else is a real error worth surfacing (don't swallow silently).
       if (!(typeof e === "string" && e === "not developed")) console.error("renderView failed", e);
       /* keep previous frame */
+    } finally {
+      exitRender();
     }
   }
 
@@ -325,11 +359,28 @@
   // Upload the working float texture to the GPU. In bake mode, fetch the BAKED
   // (geometry + pre-invert heal) buffer; else the raw working buffer. Sets uniforms
   // + draws after upload. Re-fetches only when the upload key changes.
+  // A tier this GPU can't allocate (size/VRAM) must not render black. When a hi-res
+  // upgrade fails, drop back to the resident proxy — which is still on the canvas —
+  // and stop retrying hi-res for this image (the hiTier change re-triggers a proxy
+  // upload). uploadKey is left unset so the proxy actually re-uploads.
+  function dropHiTier() {
+    if (hiTier) {
+      hiUnavailable = true;
+      hiTier = false;
+      // The failed hi-res upload left the source/intermediate textures at the wrong
+      // (hi-res) size; clear uploadKey so the hiTier change re-runs uploadWorking and
+      // actually re-uploads the proxy (its key now differs), restoring a consistent
+      // state — otherwise the dedupe (uploadKey === key) would skip the re-upload.
+      uploadKey = "";
+    }
+  }
+
   async function uploadWorking() {
     if (!gpuEligible || !id || !renderer) return;
     const key = currentUploadKey();
     if (uploadKey === key) return; // already on the GPU for these inputs
     const k = key;
+    enterRender();
     try {
       if (bakeMode) {
         const spec = {
@@ -342,7 +393,7 @@
         const info = await api.workingBakedInfo(id, spec, hiTier);
         const buf = await api.workingBakedPixels(id, spec, params, hiTier);
         if (!renderer || currentUploadKey() !== k) return; // stale (params changed mid-fetch)
-        renderer.setSourceFloat(new Uint16Array(buf), info.w, info.h);
+        if (!renderer.setSourceFloat(new Uint16Array(buf), info.w, info.h)) { dropHiTier(); return; }
         texW = info.w; texH = info.h;
         if (spec.migan) dispatch("aierased"); // MI-GAN apply bake finished → clear the button spinner
         if (spec.auto_dust.enabled) dispatch("autodusted"); // auto-dust heal bake finished → clear toggle spinner
@@ -350,7 +401,7 @@
         const info = await api.workingInfo(id, hiTier);
         const buf = await api.workingPixels(id, hiTier);
         if (!renderer || currentUploadKey() !== k) return; // image changed mid-fetch
-        renderer.setSourceFloat(new Uint16Array(buf), info.w, info.h);
+        if (!renderer.setSourceFloat(new Uint16Array(buf), info.w, info.h)) { dropHiTier(); return; }
         texW = info.w; texH = info.h;
       }
       uploadKey = k;
@@ -362,6 +413,8 @@
       // or any structural change) retries; frameReady stays false so the cached-preview
       // / thumbnail overlay keeps covering the canvas instead of a stuck stale frame.
       if (!(typeof e === "string" && e === "not developed")) console.error("uploadWorking failed", e);
+    } finally {
+      exitRender();
     }
   }
 
@@ -731,6 +784,12 @@
     <div class="marquee" style="left:{Math.min(mqSX, mqCX)}px; top:{Math.min(mqSY, mqCY)}px; width:{Math.abs(mqCX - mqSX)}px; height:{Math.abs(mqCY - mqSY)}px;"></div>
   {/if}
   {#if id && interactive}<div class="zoom">{label}</div>{/if}
+  {#if busy && interactive && !raw}
+    <div class="rendering" aria-live="polite" aria-busy="true">
+      <span class="spinner" aria-hidden="true"></span>
+      <span class="rlabel">{$t("viewport.rendering")}</span>
+    </div>
+  {/if}
   {#if readoutActive && hoverRGB}
     <div class="readout" title={$t("viewport.rgbReadout")}>
       <span class="sw" style="background:rgb({hoverRGB[0]},{hoverRGB[1]},{hoverRGB[2]})"></span>
@@ -762,6 +821,15 @@
   .hint { color: var(--text-dim); position: absolute; inset: 0; display: grid; place-items: center; }
   .zoom { position: absolute; bottom: 8px; right: 10px; font-size: 11px; color: var(--text-dim);
     background: rgba(0,0,0,0.45); padding: 2px 8px; border-radius: 6px; z-index: 2; }
+  /* Render-in-flight pill: top-center, non-interactive, above the canvas + overlays. */
+  .rendering { position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+    display: flex; align-items: center; gap: 8px; z-index: 6; pointer-events: none;
+    font-size: 11px; color: var(--text); background: rgba(0,0,0,0.55);
+    padding: 4px 10px; border-radius: 999px; box-shadow: 0 1px 6px rgba(0,0,0,0.4); }
+  .rendering .spinner { width: 12px; height: 12px; border-radius: 50%;
+    border: 2px solid rgba(255,255,255,0.25); border-top-color: var(--accent);
+    animation: vp-spin 0.7s linear infinite; }
+  @keyframes vp-spin { to { transform: rotate(360deg); } }
   .readout { position: absolute; bottom: 32px; right: 10px; font-size: 11px; color: var(--text);
     background: rgba(0,0,0,0.45); padding: 2px 8px; border-radius: 6px; z-index: 2;
     display: flex; align-items: center; gap: 6px; pointer-events: none;
