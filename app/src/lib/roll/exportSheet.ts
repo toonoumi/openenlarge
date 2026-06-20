@@ -200,12 +200,12 @@ export async function exportContactSheet(): Promise<void> {
       ctx.fillStyle = "#000";
       ctx.fillRect(leftX, cursorY, stripW, rowH);
 
-      // Draw each frame fit (contained) inside its fixed landscape tile, centered.
-      // Portrait frames letterbox against the black frames-row background.
+      // Draw each frame fit (contained) inside its fixed landscape tile, flush left
+      // (no leading gap) + vertically centered. Slack letterboxes against the black row.
       for (let fi = 0; fi < strip.imgs.length; fi++) {
         const img = strip.imgs[fi];
         const frameLeft = leftX + FRAME_PAD + fi * (FRAME_W + FRAME_GAP);
-        const { dx, dy, dw, dh } = fitContain(img.naturalWidth, img.naturalHeight, FRAME_W, rowH);
+        const { dx, dy, dw, dh } = fitContain(img.naturalWidth, img.naturalHeight, FRAME_W, rowH, "left");
         ctx.drawImage(img, frameLeft + dx, cursorY + dy, dw, dh);
       }
 
@@ -273,11 +273,11 @@ export async function exportContactSheet(): Promise<void> {
           ctx.fillStyle = "#d8d3c4";
           ctx.fillRect(cellLeft, cursorY, proofCellW, proofFrameH);
 
-          // Image fit (contained) inside the padded tile, centered. Portrait
-          // frames letterbox against the warm-white background.
+          // Image fit (contained) inside the padded tile, flush left + vertically
+          // centered. Slack letterboxes against the warm-white background.
           const innerW = proofCellW - PROOF_PADDING * 2;
           const innerH = proofFrameH - PROOF_PADDING * 2;
-          const { dx, dy, dw, dh } = fitContain(img.naturalWidth, img.naturalHeight, innerW, innerH);
+          const { dx, dy, dw, dh } = fitContain(img.naturalWidth, img.naturalHeight, innerW, innerH, "left");
           ctx.drawImage(
             img,
             cellLeft + PROOF_PADDING + dx,

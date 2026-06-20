@@ -899,7 +899,7 @@
   .frame-cell { flex: 1; aspect-ratio: 3 / 2; position: relative; background: #000;
     overflow: hidden; padding: 0; border: none; cursor: pointer; display: block;
     appearance: none; -webkit-appearance: none; }
-  .frame-cell img { width: 100%; height: 100%; object-fit: contain; display: block; }
+  .frame-cell img { width: 100%; height: 100%; object-fit: contain; object-position: left center; display: block; }
   .frame-cell-pad { flex: 1; aspect-ratio: 3 / 2; background: transparent; cursor: default; }
 
   .rebate-info-row { display: flex; align-items: center; gap: 14px; height: 24px; padding: 0 12px; }
@@ -929,7 +929,7 @@
     box-shadow: 0 1px 3px rgba(0,0,0,.5); border: none; cursor: pointer;
     display: block; width: 100%; aspect-ratio: 3 / 2; box-sizing: border-box;
     appearance: none; -webkit-appearance: none; }
-  .proof-frame img { width: 100%; height: 100%; object-fit: contain; display: block; }
+  .proof-frame img { width: 100%; height: 100%; object-fit: contain; object-position: left center; display: block; }
   .proof-caption { text-align: center;
     font: 600 10px 'Spline Sans Mono', ui-monospace, 'SF Mono', Menlo, monospace;
     color: #6f6a5e; letter-spacing: .12em; }

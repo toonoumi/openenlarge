@@ -62,6 +62,23 @@ describe("fitContain", () => {
     expect(r).toEqual({ dx: 0, dy: 0, dw: 300, dh: 200 });
   });
 
+  it("left alignment removes the leading gap (dx=0), keeping vertical centering", () => {
+    // square image in a 3:2 tile → pillarboxed; left-aligned flushes it left
+    const r = fitContain(100, 100, 300, 200, "left");
+    expect(r.dw).toBe(200);
+    expect(r.dh).toBe(200);
+    expect(r.dx).toBe(0);   // no leading space
+    expect(r.dy).toBe(0);   // height fills, so no vertical slack here
+  });
+
+  it("left alignment of a squarer-than-tile landscape image flushes left, slack on the right only", () => {
+    // 4:3 image (1.333) inside 3:2 tile (1.5) → height-limited, narrower than tile
+    const r = fitContain(400, 300, 300, 200, "left");
+    expect(r.dh).toBe(200);
+    expect(r.dw).toBeCloseTo(266.67, 1);
+    expect(r.dx).toBe(0);   // flush left regardless of aspect → uniform leading edge
+  });
+
   it("falls back to the full box for degenerate (zero) dimensions", () => {
     expect(fitContain(0, 0, 300, 200)).toEqual({ dx: 0, dy: 0, dw: 300, dh: 200 });
   });

@@ -8,19 +8,22 @@ export interface SheetLayout { width: number; height: number; cols: number; rows
  *  Roll.svelte's `.frame-cell` / `.proof-frame`. */
 export const TILE_ASPECT = 3 / 2;
 
-/** Contain-fit an `iw`×`ih` image inside a `boxW`×`boxH` box, centered.
- *  Returns the destination rect (offset + size) for ctx.drawImage. */
+/** Contain-fit an `iw`×`ih` image inside a `boxW`×`boxH` box. Vertically centered;
+ *  horizontal alignment is `alignX` ("left" = flush left, no leading gap; "center").
+ *  Keeps the on-screen tiles' `object-position` in sync. Returns the destination
+ *  rect (offset + size) for ctx.drawImage. */
 export function fitContain(
   iw: number,
   ih: number,
   boxW: number,
   boxH: number,
+  alignX: "left" | "center" = "center",
 ): { dx: number; dy: number; dw: number; dh: number } {
   if (iw <= 0 || ih <= 0) return { dx: 0, dy: 0, dw: boxW, dh: boxH };
   const scale = Math.min(boxW / iw, boxH / ih);
   const dw = iw * scale;
   const dh = ih * scale;
-  return { dx: (boxW - dw) / 2, dy: (boxH - dh) / 2, dw, dh };
+  return { dx: alignX === "left" ? 0 : (boxW - dw) / 2, dy: (boxH - dh) / 2, dw, dh };
 }
 
 /** Lay out `count` equal tiles in a `cols`-wide grid with uniform gaps + margin.
