@@ -53,12 +53,17 @@
     </button>
     <span class="headbtns">
       <!-- White-point picker: anchors highlights/contrast (D_max). Lives in the Tone
-           section because it shapes lighting. -->
-      <button class="wpdrop" class:on={wpPicking} on:click={() => onWpPick?.()}
-              title={$t('curve.whitepoint')} aria-label={$t('curve.whitepoint')}>
-        <Icon name="pipette" size={14} />
-      </button>
-      <HelpDot text={$t('curve.whitepointHelp')} />
+           section because it shapes lighting. Only shown when a picker is wired
+           (per-image Tune); the roll contact-sheet view passes onWpPick={null} and
+           does white-point picking via its own reference-edit "WP" tool instead, so
+           the pipette + its help dot are hidden there to avoid a dead button. -->
+      {#if onWpPick}
+        <button class="wpdrop" class:on={wpPicking} on:click={() => onWpPick?.()}
+                title={$t('curve.whitepoint')} aria-label={$t('curve.whitepoint')}>
+          <Icon name="pipette" size={14} />
+        </button>
+        <HelpDot text={$t('curve.whitepointHelp')} />
+      {/if}
       <button class="reset" on:click={resetTone}>{$t('curve.reset')}</button>
     </span>
   </div>

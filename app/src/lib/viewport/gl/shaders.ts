@@ -22,6 +22,7 @@ uniform sampler2D u_lut;         // 256x1 composed tone LUT (R/G/B per channel)
 uniform vec2 u_texel;            // 1/width, 1/height
 uniform float u_contrast, u_highlights, u_shadows, u_whites, u_blacks;
 uniform float u_vibrance, u_saturation, u_texture;
+uniform float u_brightness;      // brightness/density (−1..1); log-curve gain, pre-tone
 // Color grading (precomputed offsets + masks; mirror finish.rs::ColorGrade).
 uniform vec3 u_cg_sh_off, u_cg_mid_off, u_cg_hi_off, u_cg_glob_off;
 uniform float u_cg_sh_lum, u_cg_mid_lum, u_cg_hi_lum, u_cg_glob_lum;
@@ -166,8 +167,14 @@ vec3 pointColor(vec3 rgb) {
   }
   return hsl2rgb(h + hueDelta, clamp(s * satFactor, 0.0, 1.0), clamp(l + lumDelta, 0.0, 1.0));
 }
+// Brightness/density slider span — MUST equal finish.rs BRIGHTNESS_DENSITY_RANGE
+// so the GPU proxy preview matches the CPU full-res export.
+const float BRIGHTNESS_DENSITY_RANGE = 0.5;
+
 vec3 finishAt(vec2 uv) {
-  vec3 c = texture(u_src, uv).rgb;
+  // Brightness/density: log-curve gain (10^(b·RANGE)) before the tone curve, so
+  // equal slider steps = equal density steps (mirror finish.rs::finish_pixel).
+  vec3 c = texture(u_src, uv).rgb * pow(10.0, u_brightness * BRIGHTNESS_DENSITY_RANGE);
   vec3 t = vec3(tone(c.r), tone(c.g), tone(c.b));
   float y = 0.2126 * t.r + 0.7152 * t.g + 0.0722 * t.b;
   float mx = max(max(t.r, t.g), t.b);

@@ -217,7 +217,7 @@
     params.update((p) => ({
       ...p,
       stock: d.stock,
-      exposure: d.exposure,
+      exposure: d.exposure, brightness: d.brightness,
       contrast: d.contrast, highlights: d.highlights, shadows: d.shadows,
       whites: d.whites, blacks: d.blacks,
       texture: d.texture, vibrance: d.vibrance, saturation: d.saturation,
@@ -280,11 +280,17 @@
       <div class="wbhead">
         <span>{$t('basic.tempTint')}</span>
         <span class="wbbtns">
-          <button class="wbdrop" class:on={wbPicking} title={$t('basic.grayPick')} on:click={() => onWbPick?.()}>
-            <Icon name="pipette" size={14} />
+          <!-- Manual white-point picker: target/crosshair icon (distinct from the
+               Auto WB button so the two are no longer confused). -->
+          <button class="wbdrop" class:on={wbPicking} title={$t('basic.grayPick')}
+                  aria-label={$t('basic.grayPick')} on:click={() => onWbPick?.()}>
+            <Icon name="target" size={14} />
           </button>
           <HelpDot text={$t('basic.grayPickHelp')} />
-          <button class="auto" on:click={autoWb}>{$t('basic.auto')}</button>
+          <!-- One-click Auto WB (Lightroom-style): sparkles + label, calls as_shot_wb. -->
+          <button class="auto autowb" title={$t('basic.autoWbTitle')} on:click={autoWb}>
+            <Icon name="sparkles" size={12} />{$t('basic.auto')}
+          </button>
         </span>
       </div>
       <!-- Temp: tightened film range (2800–10000 K) on the reciprocal track so the
@@ -299,6 +305,7 @@
       <!-- Tone -->
       <div class="sub">{$t('basic.tone')}</div>
       <Slider label={$t('basic.exposure')} min={-5} max={5} step={0.01} bind:value={$params.exposure} def={0} format={ev} />
+      <Slider label={$t('basic.brightness')} min={-100} max={100} bind:value={$params.brightness} def={0} format={signed} />
       <Slider label={$t('basic.contrast')} min={-100} max={100} bind:value={$params.contrast} def={0} format={signed} />
       <Slider label={$t('basic.highlights')} min={-100} max={100} bind:value={$params.highlights} def={0} format={signed} />
       <Slider label={$t('basic.shadows')} min={-100} max={100} bind:value={$params.shadows} def={0} format={signed} />
@@ -339,6 +346,9 @@
     font-size: 11px; color: var(--text-dim); margin: 4px 0; }
   .auto { background: transparent; border: 1px solid var(--glass-brd); color: var(--text-dim);
     border-radius: 6px; padding: 2px 8px; font-size: 11px; cursor: pointer; }
+  /* Auto WB: icon + label, accent on hover so it reads as the primary one-click action. */
+  .autowb { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px 2px 6px; }
+  .autowb:hover { color: var(--text); border-color: var(--accent); background: rgba(244,157,78,0.12); }
   .wbbtns { display: inline-flex; align-items: center; gap: 6px; }
   .wbdrop { display: inline-flex; align-items: center; justify-content: center;
     background: transparent; border: 1px solid var(--glass-brd); color: var(--text-dim);

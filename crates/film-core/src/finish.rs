@@ -402,6 +402,10 @@ pub struct FinishParams {
     pub texture: f32,
     pub vibrance: f32,
     pub saturation: f32,
+    /// Brightness/density (−1..1; 0 = identity). A log-curve gain on the finished
+    /// image applied BEFORE the tone curve, so equal steps = equal density. See
+    /// [`brightness_gain`].
+    pub brightness: f32,
     /// Composed tone-curve LUTs (per channel): channel(master(parametric(x))).
     pub lut_r: [f32; LUT_SIZE],
     pub lut_g: [f32; LUT_SIZE],
@@ -421,6 +425,7 @@ impl Default for FinishParams {
             texture: 0.0,
             vibrance: 0.0,
             saturation: 0.0,
+            brightness: 0.0,
             lut_r: identity_lut(),
             lut_g: identity_lut(),
             lut_b: identity_lut(),
@@ -428,6 +433,18 @@ impl Default for FinishParams {
             cm: ColorMix::default(),
         }
     }
+}
+
+/// Brightness/density slider span. At the extremes (b = ±1) the gain is
+/// `10^(±BRIGHTNESS_DENSITY_RANGE)` ≈ ×3.16 / ×0.32 (~±1.66 stops). MUST equal
+/// `BRIGHTNESS_DENSITY_RANGE` in shaders.ts (FRAG) so the GPU proxy preview and
+/// the CPU full-res export brighten identically.
+pub const BRIGHTNESS_DENSITY_RANGE: f32 = 0.5;
+
+/// Map the normalised brightness/density slider (−1..1) to a multiplicative gain
+/// through a log (density) curve: equal slider steps → equal density steps.
+fn brightness_gain(b: f32) -> f32 {
+    10f32.powf(b * BRIGHTNESS_DENSITY_RANGE)
 }
 
 /// Per-channel parametric tone curve in [0,1] display space. Monotone region
@@ -464,10 +481,13 @@ fn apply_saturation(rgb: [f32; 3], p: &FinishParams) -> [f32; 3] {
 /// Per-pixel finishing. Order: Basic tone curve + saturation → Tone Curve LUT →
 /// Color Grading. (Texture is a separate spatial pass in `finish_image`.)
 pub fn finish_pixel(rgb: [f32; 3], p: &FinishParams) -> [f32; 3] {
+    // Brightness/density: a log-curve gain applied before everything else, so it
+    // reads as an overall lift/density move that Contrast then pivots about.
+    let g = brightness_gain(p.brightness);
     let toned = [
-        tone_curve(rgb[0], p),
-        tone_curve(rgb[1], p),
-        tone_curve(rgb[2], p),
+        tone_curve(rgb[0] * g, p),
+        tone_curve(rgb[1] * g, p),
+        tone_curve(rgb[2] * g, p),
     ];
     let sat = apply_saturation(toned, p);
     let curved = [
@@ -613,6 +633,23 @@ mod tests {
                 assert!((out[c] - px[c]).abs() < 1e-4, "v={v} c={c} out={}", out[c]);
             }
         }
+    }
+
+    #[test]
+    fn brightness_is_a_density_gain_about_zero() {
+        // 0 = identity; >0 lifts a mid-gray, <0 lowers it; the move is a log/density
+        // gain (10^(b·RANGE)) applied before the tone curve.
+        let mid = [0.3_f32, 0.3, 0.3];
+        let id = finish_pixel(mid, &FinishParams::default());
+        assert!((id[0] - 0.3).abs() < 1e-4, "0 = identity");
+        let up = finish_pixel(mid, &FinishParams { brightness: 0.5, ..Default::default() });
+        let down = finish_pixel(mid, &FinishParams { brightness: -0.5, ..Default::default() });
+        assert!(up[0] > 0.3, "+brightness lifts: {}", up[0]);
+        assert!(down[0] < 0.3, "-brightness lowers: {}", down[0]);
+        // Density curve: gain at b=0.5 is 10^(0.5·RANGE); check the lifted mid matches
+        // the raw gain (still below the tone-curve clamp at this level).
+        let g = 10f32.powf(0.5 * BRIGHTNESS_DENSITY_RANGE);
+        assert!((up[0] - 0.3 * g).abs() < 1e-4, "gain {g}: {}", up[0]);
     }
 
     #[test]

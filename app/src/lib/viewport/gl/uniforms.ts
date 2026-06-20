@@ -5,10 +5,12 @@ import type { InvertParams } from "../../api";
 export interface FinishUniforms {
   contrast: number; highlights: number; shadows: number; whites: number;
   blacks: number; texture: number; vibrance: number; saturation: number;
+  brightness: number;
 }
 
 export function finishUniforms(p: InvertParams): FinishUniforms {
   return {
+    brightness: p.brightness / 100,
     contrast: p.contrast / 100,
     highlights: p.highlights / 100,
     shadows: p.shadows / 100,

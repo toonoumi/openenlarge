@@ -68,6 +68,15 @@ pub struct InvertParams {
     pub texture: f32,
     pub vibrance: f32,
     pub saturation: f32,
+    /// Brightness/density (UI −100..100; 0 = identity). Sits between Exposure and
+    /// Contrast in the panel. Unlike Exposure (which redistributes via eff_d_max),
+    /// this is a plain multiplicative gain on the finished image, mapped through a
+    /// log curve so equal slider steps = equal density (log-luminance) steps —
+    /// `gain = 10^(b/100 · BRIGHTNESS_DENSITY_RANGE)`. Applied in finish.rs /
+    /// shaders.ts before the tone curve. `#[serde(default)]` so pre-existing saved
+    /// edits (no `brightness` key) load as 0 = identity.
+    #[serde(default)]
+    pub brightness: f32,
 
     // Tone Curve: region sliders (−100..100) + point curves (0..1 control points).
     #[serde(default)]

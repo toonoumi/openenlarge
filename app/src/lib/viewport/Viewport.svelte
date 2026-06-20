@@ -484,6 +484,7 @@
   // Finishing-only change → GPU redraw, no backend fetch. Tone curve + color
   // grading are all finishing-layer controls, so they live here too.
   $: finishKey = [
+    params.brightness,
     params.contrast, params.highlights, params.shadows, params.whites, params.blacks,
     params.texture, params.vibrance, params.saturation,
     params.tc_highlights, params.tc_lights, params.tc_darks, params.tc_shadows,
