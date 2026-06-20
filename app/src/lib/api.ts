@@ -54,6 +54,7 @@ export interface InvertParams {
   temp: number; // Kelvin
   tint: number; // −150..150
   wb_manual: boolean; // user set WB deliberately (gray-point pick) → don't auto-reseed it
+  wb_mode: "gain" | "subtractive"; // WB application: post-curve gain vs subtractive color-head
   hdr: boolean; // HDR preview toggle (per image); live render stays SDR
   brightness: number; // −100..100, log/density curve; sits between exposure & contrast
   contrast: number; highlights: number; shadows: number;
@@ -351,7 +352,7 @@ export const api = {
 export const defaultParams = (): InvertParams => ({
   mode: "d", stock: "none", base_override: null, d_max_override: null,
   exposure: 0, black: 0, gamma: 0.4545,
-  auto_wb: true, temp: 5500, tint: 0, wb_manual: false, hdr: false,
+  auto_wb: true, temp: 5500, tint: 0, wb_manual: false, wb_mode: "subtractive", hdr: false,
   brightness: 0,
   contrast: 0, highlights: 0, shadows: 0, whites: 0, blacks: 0,
   texture: 0, vibrance: 0, saturation: 0,

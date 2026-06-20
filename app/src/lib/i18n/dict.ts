@@ -459,6 +459,8 @@ export const dict: Record<string, Record<string, string>> = {
     "label.positive": "Positive",
     "label.multiple": "Multiple adjustments",
     "label.edit": "Edit",
+    "basic.colorHead": "Color head",
+    "basic.colorHeadTitle": "Subtractive CMY color-head white balance (toggle)",
   },
   zh: {
     "app.brand": "OpenEnlarge",
@@ -918,5 +920,7 @@ export const dict: Record<string, Record<string, string>> = {
     "label.positive": "正片",
     "label.multiple": "多项调整",
     "label.edit": "编辑",
+    "basic.colorHead": "彩色头",
+    "basic.colorHeadTitle": "减色 CMY 彩色头白平衡（切换）",
   },
 };

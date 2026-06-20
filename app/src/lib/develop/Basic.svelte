@@ -333,6 +333,11 @@
           <button class="auto autowb" title={$t('basic.autoWbTitle')} on:click={autoWb}>
             <Icon name="sparkles" size={12} />{$t('basic.auto')}
           </button>
+          <button class="auto" class:on={$params.wb_mode === 'subtractive'}
+                  title={$t('basic.colorHeadTitle')} aria-pressed={$params.wb_mode === 'subtractive'}
+                  on:click={() => { params.update((p) => ({ ...p, wb_mode: p.wb_mode === 'subtractive' ? 'gain' : 'subtractive' })); commitActive(); }}>
+            {$t('basic.colorHead')}
+          </button>
         </span>
       </div>
       <!-- Temp: tightened film range (2800–10000 K) on the reciprocal track so the
@@ -404,6 +409,8 @@
   /* Auto WB: icon + label, accent on hover so it reads as the primary one-click action. */
   .autowb { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px 2px 6px; }
   .autowb:hover { color: var(--text); border-color: var(--accent); background: rgba(244,157,78,0.12); }
+  /* Toggle-on state for .auto buttons (e.g. color-head toggle). */
+  .auto.on { color: #fff; border-color: var(--accent); background: rgba(244,157,78,0.18); }
   .wbbtns { display: inline-flex; align-items: center; gap: 6px; }
   /* Tone header carries the Auto-brightness buttons; .sub gives the label its caps,
      so the buttons opt out of the inherited uppercase/tracking. */
