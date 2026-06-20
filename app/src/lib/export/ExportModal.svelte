@@ -244,6 +244,7 @@
           // Export keeps committed brush strokes only; AI auto-dust is a live-view
           // feature (deferred for export), so it is disabled on the export bake.
           auto_dust: { enabled: false, sensitivity: 50 },
+          auto_dust_exclusions: [],
         };
         const bit16 = (kind === "tiff" || kind === "png") && bitDepth === 16;
 
