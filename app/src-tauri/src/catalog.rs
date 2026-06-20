@@ -330,16 +330,32 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     if version < 2 {
         // Per-image editable metadata overrides (camera/lens/iso/shutter/aperture/
         // date/note), stored as one opaque JSON blob alongside the other edits.
-        conn.execute_batch("ALTER TABLE edits ADD COLUMN meta_json TEXT;")?;
+        add_column_if_missing(conn, "edits", "meta_json", "TEXT")?;
     }
     if version < 3 {
         // Render-engine version the baked `thumbnail` was rendered with. 0 = "before
         // versioning" (always stale vs the current engine). Lets the grid lazily
         // regenerate thumbnails whose look predates an engine change (e.g. the filmic
         // curve) instead of showing the old look until each image is opened.
-        conn.execute_batch("ALTER TABLE images ADD COLUMN thumb_version INTEGER NOT NULL DEFAULT 0;")?;
+        add_column_if_missing(conn, "images", "thumb_version", "INTEGER NOT NULL DEFAULT 0")?;
     }
     conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;
+    Ok(())
+}
+
+/// Idempotent `ALTER TABLE ADD COLUMN`. A bare ALTER auto-commits immediately, so a
+/// run that added the column but crashed before bumping `user_version` would re-run
+/// the ALTER on next launch and fail with "duplicate column". Guarding on
+/// `PRAGMA table_info` makes the migration safe to re-apply.
+fn add_column_if_missing(conn: &Connection, table: &str, col: &str, decl: &str) -> rusqlite::Result<()> {
+    let mut stmt = conn.prepare(&format!("PRAGMA table_info({table})"))?;
+    let exists = stmt
+        .query_map([], |r| r.get::<_, String>(1))? // column 1 = name
+        .filter_map(Result::ok)
+        .any(|name| name == col);
+    if !exists {
+        conn.execute_batch(&format!("ALTER TABLE {table} ADD COLUMN {col} {decl};"))?;
+    }
     Ok(())
 }
 
@@ -459,6 +475,19 @@ mod tests {
             prefs.get("quality").map(String::as_str),
             Some("performance")
         );
+    }
+
+    #[test]
+    fn migration_idempotent_after_partial_apply() {
+        // Reproduce the crash: a prior run added a column (bare ALTER auto-commits)
+        // but didn't reach pragma_update(user_version), leaving the column present at
+        // an older version. Re-running migrate must NOT panic on "duplicate column".
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        migrate(&conn).unwrap(); // full migrate → current schema, columns present
+        conn.pragma_update(None, "user_version", 1i64).unwrap(); // simulate stuck version
+        migrate(&conn).unwrap(); // must succeed (idempotent), not duplicate-column panic
+        let v: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
+        assert_eq!(v, SCHEMA_VERSION);
     }
 
     #[test]
