@@ -335,10 +335,23 @@ const float FILMIC_K = 5.0;
 const float FILMIC_PIVOT = 0.44; // < 0.5: brighter mids (calibration lift); see engine.rs
 const float FILMIC_WHITE_T = 1.05;
 float filmicL(float x) { return 1.0 / (1.0 + exp(-FILMIC_K * (x - FILMIC_PIVOT))); }
-float filmicS(float t) {
+// Unclamped filmic forward — mirrors engine.rs filmic_s_raw (super-white density
+// stays > 1 for the WB round-trip; do NOT clamp here).
+float filmicSraw(float t) {
   float l0 = filmicL(0.0);
   float lw = filmicL(FILMIC_WHITE_T);
-  return clamp((filmicL(t) - l0) / (lw - l0), 0.0, 1.0);
+  return (filmicL(t) - l0) / (lw - l0);
+}
+float filmicS(float t) { return clamp(filmicSraw(t), 0.0, 1.0); }
+// Exact inverse of filmicSraw (a logit) — mirrors engine.rs filmic_inv. Maps a
+// display density y back to normalised log-density; filmicInv(0)==0. big is
+// clamped just inside (0,1) so the logit stays finite when WB pushes y past the
+// white asymptote (y ≳ 1.053) — that channel is a blown highlight → white.
+float filmicInv(float y) {
+  float l0 = filmicL(0.0);
+  float lw = filmicL(FILMIC_WHITE_T);
+  float big = clamp(y * (lw - l0) + l0, 1e-6, 1.0 - 1e-6); // = filmicL(t)
+  return FILMIC_PIVOT + log(big / (1.0 - big)) / FILMIC_K;
 }
 
 float tone(float v, float gain) {
@@ -362,16 +375,25 @@ vec3 invert(vec3 rgbIn) {
     vec3 dmin = max(u_base, vec3(EPS));
     // Negative density d = log10(base/scan) >= 0 — linear in scene stops.
     vec3 d = max(log2(dmin / clamped) * LOG10, vec3(0.0));  // log10(dmin/clamped)
-    // Exposure is a t-multiply pivoting at black: EV stops scale t by 2^(EXPO_K·EV)
-    // (mirrors engine.rs invert_d). EV=0 → expo_gain==1. d_max sets the white anchor.
+    // Exposure scales the WB-NEUTRALISED log-density (not raw t) so brightness
+    // changes hue-free: EV stops scale by 2^(EXPO_K·EV). EV=0 → expo_gain==1 →
+    // look unchanged. d_max sets the white anchor. (Mirrors engine.rs invert_d.)
     float ev = log2(max(u_print_exposure, EPS));
     float expo_gain = exp2(EXPO_K * ev);
-    // Normalised log-density; d == d_max -> t == 1 (white point), then exposure scales.
-    vec3 t = (d / max(u_d_max, EPS)) * expo_gain;
+    // Normalised log-density; d == d_max -> t == 1 (white point).
+    vec3 t = d / max(u_d_max, EPS);
     // WB is a linear gain on the positive OUTPUT (filmic value), NOT a t-scale:
     // keeps black neutral (filmicS(0)*wb = 0) and stays consistent with the
-    // gray-world auto-WB + gray-point picker (mirror engine.rs invert_d).
-    return clamp(vec3(filmicS(t.r), filmicS(t.g), filmicS(t.b)) * u_wb, 0.0, 1.0);
+    // gray-world auto-WB + gray-point picker. y is the WB-neutralised EV-0
+    // display density (UNCLAMPED forward, so super-white highlights stay distinct);
+    // exposure then scales its log-density filmicInv(y) and re-applies the curve —
+    // so a neutral patch (equal y across channels) stays neutral at every exposure
+    // (fixes the ±5-EV temperature shift).
+    vec3 y = vec3(filmicSraw(t.r), filmicSraw(t.g), filmicSraw(t.b)) * u_wb;
+    return clamp(vec3(
+      filmicS(filmicInv(y.r) * expo_gain),
+      filmicS(filmicInv(y.g) * expo_gain),
+      filmicS(filmicInv(y.b) * expo_gain)), 0.0, 1.0);
   }
   if (u_mode == 2) {           // Naive: 1 - clamp(I/base,0,1). Intentionally uses
     // its own [0,1] clamp (engine.rs invert_naive), not the [EPS,1] r above.

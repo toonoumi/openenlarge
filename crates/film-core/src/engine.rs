@@ -102,10 +102,37 @@ const FILMIC_WHITE_T: f32 = 1.05; // density (× d_max) that maps to 1.0
 /// exactly (neutral black) and `filmic_s(FILMIC_WHITE_T) == 1.0` (true white).
 #[inline]
 fn filmic_s(t: f32) -> f32 {
+    filmic_s_raw(t).clamp(0.0, 1.0)
+}
+
+/// Unclamped filmic forward — the same logistic but WITHOUT the `[0,1]` clamp, so
+/// super-white density (`t > FILMIC_WHITE_T`, dense negatives / blown highlights)
+/// stays a distinct value above 1.0 instead of collapsing to white. Used only for
+/// the WB-neutralisation round-trip in `invert_d`, where clamping would destroy the
+/// highlight latitude that lowering exposure can recover. The final display value
+/// goes through the clamped `filmic_s`.
+#[inline]
+fn filmic_s_raw(t: f32) -> f32 {
     let l = |x: f32| 1.0 / (1.0 + (-FILMIC_K * (x - FILMIC_PIVOT)).exp());
     let l0 = l(0.0);
     let lw = l(FILMIC_WHITE_T);
-    ((l(t) - l0) / (lw - l0)).clamp(0.0, 1.0)
+    (l(t) - l0) / (lw - l0)
+}
+
+/// Exact inverse of [`filmic_s_raw`] (the logistic is invertible — a logit). Maps a
+/// display-density `y` back to its normalised log-density `t`, so exposure can scale
+/// the WB-neutralised density (see `invert_d`). `filmic_inv(0) == 0` (black pivots at
+/// 0) and `filmic_inv(filmic_s_raw(t)) == t`. The internal `big` is clamped just
+/// inside `(0,1)` to keep the logit finite when a WB gain pushes `y` past the
+/// representable white asymptote (`y ≳ 1.053`) — that channel is a blown highlight
+/// and resolves to white. MUST be mirrored verbatim in shaders.ts (INVERT_FRAG).
+#[inline]
+fn filmic_inv(y: f32) -> f32 {
+    let l = |x: f32| 1.0 / (1.0 + (-FILMIC_K * (x - FILMIC_PIVOT)).exp());
+    let l0 = l(0.0);
+    let lw = l(FILMIC_WHITE_T);
+    let big = (y * (lw - l0) + l0).clamp(1e-6, 1.0 - 1e-6); // = l(t)
+    FILMIC_PIVOT + (big / (1.0 - big)).ln() / FILMIC_K
 }
 
 /// Positive passthrough: the working buffer is linear, so display-encode it with
@@ -138,11 +165,19 @@ pub fn invert_d(rgb: [f32; 3], p: &InversionParams) -> [f32; 3] {
         return develop_positive_px(rgb, p);
     }
     const THRESHOLD: f32 = 2.328_306_4e-10; // negadoctor's -32 EV floor
-                                            // Exposure is a t-MULTIPLY pivoting at black (not the old eff_d_max rescale):
-                                            // EV stops scale the normalised log-density by 2^(EXPO_K·EV). Brightening pushes
-                                            // tones up the filmic curve; darkening pulls them down while a saturated specular
-                                            // (t ≫ 1) stays clipped to white — highlight-preserving, and with no dead zone.
-                                            // EV=0 (print_exposure=1) → expo_gain=1 → unchanged. d_max sets the white anchor.
+                                            // Exposure is a log-density MULTIPLY pivoting at black (not the old eff_d_max
+                                            // rescale): EV stops scale the normalised log-density by 2^(EXPO_K·EV).
+                                            // Brightening pushes tones up the filmic curve; darkening pulls them down while
+                                            // a saturated specular stays clipped to white — highlight-preserving, no dead
+                                            // zone. EV=0 → expo_gain=1 → unchanged. d_max sets the white anchor.
+                                            //
+                                            // CRITICAL: the scale is applied to the WB-NEUTRALISED log-density
+                                            // `filmic_inv(filmic_s(t)·wb)`, not to raw `t`. WB is a post-curve gain
+                                            // (below), so a neutral patch has unequal per-channel `t` but EQUAL `filmic_s(t)·wb`;
+                                            // scaling raw `t` would push each channel a different amount through the nonlinear
+                                            // curve and shift the colour temperature with exposure (the ±5-EV "warmer/cooler"
+                                            // bug). Scaling the WB-neutralised density keeps neutrals neutral at every
+                                            // exposure: brightness moves, hue does not.
     let ev = p.print_exposure.max(EPS).log2();
     let expo_gain = 2f32.powf(EXPO_K * ev);
     // `paper_black`, `paper_grade`, `soft_clip` are DEPRECATED by the filmic
@@ -156,15 +191,23 @@ pub fn invert_d(rgb: [f32; 3], p: &InversionParams) -> [f32; 3] {
         // dense neg = scene highlight = large). This is LINEAR IN SCENE STOPS — the
         // correct domain for the tone curve.
         let d = (dmin / clamped).log10().max(0.0);
-        // Normalised log-density `t`: d == d_max → t == 1 (the white point), then
-        // exposure scales t about the black pivot.
-        let t = (d / p.d_max.max(EPS)) * expo_gain;
+        // Normalised log-density `t`: d == d_max → t == 1 (the white point).
+        let t = d / p.d_max.max(EPS);
         // WB is a linear gain on the positive OUTPUT (filmic value), NOT a scale on
         // t. This keeps black neutral (filmic_s(0)·wb = 0, so no "yellow shadow")
         // AND stays consistent with `auto_wb_gains` / the gray-point picker, which
         // both treat WB as a multiply on the displayed positive. (A t-scale is a
         // nonlinear remap that those gray-world estimators cannot neutralise.)
-        let v = filmic_s(t) * p.wb[c];
+        // `y` is that WB-neutralised display density (the EV-0 result). Use the
+        // UNCLAMPED forward so a super-white highlight keeps a distinct value > 1 —
+        // clamping here would merge near-white tones and kill the latitude that
+        // lowering exposure recovers.
+        let y = filmic_s_raw(t) * p.wb[c];
+        // Exposure scales the WB-neutralised log-density `filmic_inv(y)`, then
+        // re-applies the (clamped) curve. At EV 0 (expo_gain == 1) this is exactly
+        // `filmic_s(t)·wb` — the look is unchanged; off EV 0 it brightens/darkens
+        // without moving hue (see the expo_gain note above).
+        let v = filmic_s(filmic_inv(y) * expo_gain);
         if p.hdr {
             // HDR: expand the filmic shoulder above the knee into [knee, headroom]
             // so speculars/lights exceed SDR white (the gain map captures this).
@@ -298,6 +341,80 @@ mod tests {
         let out = invert_d([1.0, 1.0, 1.0], &p); // scan == base → d == 0
         for (c, v) in out.iter().enumerate() {
             assert!(v.abs() < 1e-4, "black chan {c} not neutral: {v}");
+        }
+    }
+
+    #[test]
+    fn exposure_does_not_shift_white_balance() {
+        // Regression for the 乐凯 C400 report: nudging exposure ±5 EV visibly shifted
+        // the colour temperature. Root cause was exposure scaling raw `t` (pre-curve)
+        // while WB multiplied post-curve — a neutral patch's unequal per-channel `t`
+        // moved different amounts through the nonlinear filmic curve. Exposure now
+        // scales the WB-NEUTRALISED density, so a patch that is neutral at EV 0 stays
+        // neutral at every exposure.
+        let base = [0.90, 0.55, 0.35]; // orange C-41 mask
+        // A neutral patch with a realistic per-channel density imbalance (B thinner).
+        let densities = [
+            [0.34f32, 0.37, 0.28], // shadow
+            [0.62, 0.66, 0.54],    // mid
+            [0.95, 1.00, 0.84],    // light
+        ];
+        for d in densities {
+            let scan: [f32; 3] = std::array::from_fn(|c| base[c] / 10f32.powf(d[c]));
+            // WB that neutralises this patch at EV 0 (a post-curve gain, exactly how
+            // auto_wb_gains / the gray-point picker produce gains).
+            let p0 = InversionParams { base, d_max: 1.5, ..Default::default() };
+            let n = invert_d(scan, &p0);
+            let g = (n[0] + n[1] + n[2]) / 3.0;
+            let wb = [g / n[0], g / n[1], g / n[2]];
+            // Neutral at EV 0 by construction; assert it stays neutral at ±5 EV.
+            let mut refs = Vec::new();
+            for ev in [-5.0f32, -2.0, 0.0, 2.0, 5.0] {
+                let p = InversionParams {
+                    base,
+                    d_max: 1.5,
+                    wb,
+                    print_exposure: 2f32.powf(ev),
+                    ..Default::default()
+                };
+                let out = invert_d(scan, &p);
+                let m = (out[0] + out[1] + out[2]) / 3.0;
+                if m > 1e-3 && m < 0.999 {
+                    // skip pure black / fully-clipped white (trivially neutral)
+                    for c in 0..3 {
+                        // Per-channel deviation from gray, normalised — a proxy for hue
+                        // drift. The old pre-curve coupling pushed this to several %
+                        // (hundreds of K); the fix holds it near machine epsilon.
+                        let dev = (out[c] - m).abs() / m;
+                        assert!(dev < 1e-3, "EV{ev} d={d:?} chan {c} hue drift {dev}: {out:?}");
+                    }
+                }
+                refs.push(out);
+            }
+            let _ = refs;
+        }
+    }
+
+    #[test]
+    fn ev0_output_unchanged_by_wb_refactor() {
+        // The exposure refactor must NOT alter the EV-0 look: at EV 0 the output is
+        // still exactly `filmic_s(t)·wb` (the WB convention auto_wb / gray-point rely
+        // on). Probe coloured pixels with a non-trivial WB.
+        let base = [0.8, 0.6, 0.4];
+        let wb = [1.15, 1.0, 0.7];
+        let p = InversionParams { base, d_max: 1.5, wb, ..Default::default() };
+        for scan in [[0.4f32, 0.3, 0.2], [0.1, 0.25, 0.5], [0.05, 0.05, 0.05]] {
+            let out = invert_d(scan, &p);
+            for c in 0..3 {
+                let d = (base[c] / scan[c].max(1e-9)).log10().max(0.0);
+                let want = (filmic_s(d / 1.5) * wb[c]).min(1.0);
+                assert!(
+                    (out[c] - want).abs() < 1e-5,
+                    "EV0 chan {c}: {} vs filmic_s(t)·wb {}",
+                    out[c],
+                    want
+                );
+            }
         }
     }
 
