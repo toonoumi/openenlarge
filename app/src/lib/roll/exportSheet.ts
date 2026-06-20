@@ -7,6 +7,7 @@ import { developedFolderImages } from "$lib/export/eligible";
 import { withEffectiveBase } from "$lib/develop/base";
 import { imageDir } from "$lib/library/folderScope";
 import { draftThumbView } from "./livePreview";
+import { TILE_ASPECT, fitContain } from "./contactSheet";
 
 // ─── Layout constants (match on-screen filmstrip) ────────────────────────────
 const STRIP_SIZE = 6;     // frames per strip row
@@ -29,20 +30,9 @@ const PROOF_SHADOW_SIZE = 3;
 const PROOF_PADDING = 3;
 const PROOF_CAPTION_H = 8 + 12; // 8px gap + 12px text line
 
-// Fallback aspect when naturalWidth is unavailable (41:49 portrait)
-const FALLBACK_FRAME_H = Math.round(FRAME_W * 49 / 41);
-
-// ─── Per-image true height at FRAME_W ───────────────────────────────────────
-function frameH(img: HTMLImageElement): number {
-  if (!img.naturalWidth) return FALLBACK_FRAME_H;
-  return Math.round(FRAME_W * img.naturalHeight / img.naturalWidth);
-}
-
-// ─── Max frame height across a strip's images (= row height) ─────────────────
-function stripRowH(imgs: HTMLImageElement[]): number {
-  if (imgs.length === 0) return FALLBACK_FRAME_H;
-  return Math.max(...imgs.map(frameH));
-}
+// Fixed LANDSCAPE tile height — every tile is the same size regardless of the
+// frame's orientation; portrait frames are letterboxed inside (see TILE_ASPECT).
+const FRAME_H = Math.round(FRAME_W / TILE_ASPECT);
 
 // ─── Helper: draw sprocket holes (faint vertical ticks) ─────────────────────
 function drawSprocketBand(
@@ -137,11 +127,8 @@ export async function exportContactSheet(): Promise<void> {
     strips.push({ imgs: slice, nums, padCount: STRIP_SIZE - slice.length });
   }
 
-  // ── Pre-compute per-strip row heights (depends on loaded images) ──────────
-  // rowH[i] = max frame height across strip i's images
-  const rowHs = strips.map((s) => stripRowH(s.imgs));
-
   // ── Compute canvas geometry ───────────────────────────────────────────────
+  // Every strip's frames-row is a fixed FRAME_H tall (uniform tiles).
   // Strip width: 6 frames + gaps + padding on both sides
   const stripContentW = STRIP_SIZE * FRAME_W + (STRIP_SIZE - 1) * FRAME_GAP + 2 * FRAME_PAD;
 
@@ -149,19 +136,15 @@ export async function exportContactSheet(): Promise<void> {
   let canvasH: number;
 
   if (filmEdge) {
-    // Each strip: rebate-top + frames-row (rowH) + rebate-bottom
-    const totalStripsH = rowHs.reduce(
-      (sum, rh) => sum + REBATE_TOP_H + rh + REBATE_BOT_H,
-      0,
-    ) + Math.max(0, strips.length - 1) * STRIP_GAP;
+    // Each strip: rebate-top + frames-row (FRAME_H) + rebate-bottom
+    const perStripH = REBATE_TOP_H + FRAME_H + REBATE_BOT_H;
+    const totalStripsH = strips.length * perStripH + Math.max(0, strips.length - 1) * STRIP_GAP;
     canvasW = 2 * OUTER_MARGIN + stripContentW;
     canvasH = 2 * OUTER_MARGIN + totalStripsH;
   } else {
-    // Each proof strip: proof-frame (PROOF_PADDING*2 + rowH) + caption
-    const totalStripsH = rowHs.reduce(
-      (sum, rh) => sum + PROOF_PADDING * 2 + rh + PROOF_CAPTION_H,
-      0,
-    ) + Math.max(0, strips.length - 1) * STRIP_GAP;
+    // Each proof strip: proof-frame (PROOF_PADDING*2 + FRAME_H) + caption
+    const perStripH = PROOF_PADDING * 2 + FRAME_H + PROOF_CAPTION_H;
+    const totalStripsH = strips.length * perStripH + Math.max(0, strips.length - 1) * STRIP_GAP;
     canvasW = 2 * OUTER_MARGIN + stripContentW;
     canvasH = 2 * OUTER_MARGIN + totalStripsH;
   }
@@ -183,7 +166,7 @@ export async function exportContactSheet(): Promise<void> {
 
   for (let si = 0; si < strips.length; si++) {
     const strip = strips[si];
-    const rowH = rowHs[si];
+    const rowH = FRAME_H; // fixed landscape tile height for every strip
 
     if (filmEdge) {
       // ── FILMSTRIP mode ──────────────────────────────────────────────────
@@ -217,13 +200,13 @@ export async function exportContactSheet(): Promise<void> {
       ctx.fillStyle = "#000";
       ctx.fillRect(leftX, cursorY, stripW, rowH);
 
-      // Draw each frame image at its TRUE aspect, top-aligned
+      // Draw each frame fit (contained) inside its fixed landscape tile, centered.
+      // Portrait frames letterbox against the black frames-row background.
       for (let fi = 0; fi < strip.imgs.length; fi++) {
         const img = strip.imgs[fi];
-        const fh = frameH(img);
         const frameLeft = leftX + FRAME_PAD + fi * (FRAME_W + FRAME_GAP);
-        // Plain drawImage: cell exactly matches image aspect → no crop, no letterbox
-        ctx.drawImage(img, frameLeft, cursorY, FRAME_W, fh);
+        const { dx, dy, dw, dh } = fitContain(img.naturalWidth, img.naturalHeight, FRAME_W, rowH);
+        ctx.drawImage(img, frameLeft + dx, cursorY + dy, dw, dh);
       }
 
       cursorY += rowH;
@@ -281,7 +264,6 @@ export async function exportContactSheet(): Promise<void> {
 
         if (fi < strip.imgs.length) {
           const img = strip.imgs[fi];
-          const fh = frameH(img);
 
           // Shadow (dark rect behind)
           ctx.fillStyle = "rgba(0,0,0,0.5)";
@@ -291,13 +273,17 @@ export async function exportContactSheet(): Promise<void> {
           ctx.fillStyle = "#d8d3c4";
           ctx.fillRect(cellLeft, cursorY, proofCellW, proofFrameH);
 
-          // Image inside padding at true aspect, top-aligned
+          // Image fit (contained) inside the padded tile, centered. Portrait
+          // frames letterbox against the warm-white background.
+          const innerW = proofCellW - PROOF_PADDING * 2;
+          const innerH = proofFrameH - PROOF_PADDING * 2;
+          const { dx, dy, dw, dh } = fitContain(img.naturalWidth, img.naturalHeight, innerW, innerH);
           ctx.drawImage(
             img,
-            cellLeft + PROOF_PADDING,
-            cursorY + PROOF_PADDING,
-            proofCellW - PROOF_PADDING * 2,
-            fh,
+            cellLeft + PROOF_PADDING + dx,
+            cursorY + PROOF_PADDING + dy,
+            dw,
+            dh,
           );
 
           // Caption below frame

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { layoutContactSheet } from "./contactSheet";
+import { layoutContactSheet, fitContain, TILE_ASPECT } from "./contactSheet";
 
 describe("layoutContactSheet", () => {
   const opts = { cols: 3, tileW: 100, tileH: 75, gap: 10, margin: 20 };
@@ -34,5 +34,39 @@ describe("layoutContactSheet", () => {
     expect(l.tiles).toEqual([]);
     expect(l.width).toBe(360);   // still cols-wide
     expect(l.height).toBe(40);   // just top+bottom margin
+  });
+});
+
+describe("fitContain", () => {
+  // Box is a landscape tile: 300×200 (3:2).
+  it("landscape image wider than the tile fits to width, letterboxed top/bottom", () => {
+    // 3:1 image (very wide) → limited by width
+    const r = fitContain(600, 200, 300, 200);
+    expect(r.dw).toBe(300);
+    expect(r.dh).toBe(100);
+    expect(r.dx).toBe(0);
+    expect(r.dy).toBe(50); // centered vertically
+  });
+
+  it("portrait image fits to height, pillarboxed left/right (no row inflation)", () => {
+    // 1:2 portrait image inside a 300×200 landscape tile → limited by height
+    const r = fitContain(100, 200, 300, 200);
+    expect(r.dh).toBe(200);   // never exceeds the tile height
+    expect(r.dw).toBe(100);
+    expect(r.dy).toBe(0);
+    expect(r.dx).toBe(100);   // centered horizontally
+  });
+
+  it("an exact-aspect image fills the tile with no offset", () => {
+    const r = fitContain(3, 2, 300, 200);
+    expect(r).toEqual({ dx: 0, dy: 0, dw: 300, dh: 200 });
+  });
+
+  it("falls back to the full box for degenerate (zero) dimensions", () => {
+    expect(fitContain(0, 0, 300, 200)).toEqual({ dx: 0, dy: 0, dw: 300, dh: 200 });
+  });
+
+  it("TILE_ASPECT is 3:2 landscape", () => {
+    expect(TILE_ASPECT).toBeCloseTo(1.5);
   });
 });

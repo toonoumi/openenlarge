@@ -1,6 +1,28 @@
 export interface Tile { x: number; y: number; w: number; h: number }
 export interface SheetLayout { width: number; height: number; cols: number; rows: number; tiles: Tile[] }
 
+/** Contact-sheet tiles are a fixed LANDSCAPE aspect (35mm 3:2). A frame of any
+ *  orientation — including a portrait crop — occupies a landscape tile and is fit
+ *  INSIDE it (letterboxed/centered), so portrait frames never inflate row height.
+ *  Mirrors Lightroom's uniform grid. Keep in sync with the `aspect-ratio` on
+ *  Roll.svelte's `.frame-cell` / `.proof-frame`. */
+export const TILE_ASPECT = 3 / 2;
+
+/** Contain-fit an `iw`×`ih` image inside a `boxW`×`boxH` box, centered.
+ *  Returns the destination rect (offset + size) for ctx.drawImage. */
+export function fitContain(
+  iw: number,
+  ih: number,
+  boxW: number,
+  boxH: number,
+): { dx: number; dy: number; dw: number; dh: number } {
+  if (iw <= 0 || ih <= 0) return { dx: 0, dy: 0, dw: boxW, dh: boxH };
+  const scale = Math.min(boxW / iw, boxH / ih);
+  const dw = iw * scale;
+  const dh = ih * scale;
+  return { dx: (boxW - dw) / 2, dy: (boxH - dh) / 2, dw, dh };
+}
+
 /** Lay out `count` equal tiles in a `cols`-wide grid with uniform gaps + margin.
  * Pure geometry — pixel coordinates for a canvas compositor. */
 export function layoutContactSheet(
