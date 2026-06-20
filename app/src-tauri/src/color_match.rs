@@ -16,6 +16,7 @@ pub struct RegionStats {
 /// (contrast proxy) and mean chroma (saturation proxy).
 #[derive(Clone, Copy, Debug, Default)]
 pub struct ImageStats {
+    pub glob: RegionStats,
     pub sh: RegionStats,
     pub mid: RegionStats,
     pub hi: RegionStats,
@@ -74,6 +75,7 @@ pub fn compute_stats(img: &Image) -> ImageStats {
     let mean_l = global.l;
     let var = l_vals.iter().map(|&l| (l - mean_l) * (l - mean_l)).sum::<f32>() / n;
     ImageStats {
+        glob: global,
         sh: region(0), mid: region(1), hi: region(2),
         l_std: var.sqrt(),
         chroma: chroma_sum / n,
@@ -110,21 +112,25 @@ pub fn reference_thumb_data_url(path: &str) -> Result<String, String> {
     ))
 }
 
-/// Weighted squared distance between two fingerprints. Region a*/b* (color cast)
-/// dominate; L and global contrast/chroma are weighted lower so exposure/contrast
-/// don't fight the cast match.
+/// Weighted squared distance between two fingerprints. Matches ONLY the quantities
+/// the optimizer can actually control (see `axes()`): global colour cast (a*/b* →
+/// temp/tint), contrast (l_std → contrast) and saturation (chroma → saturation).
+///
+/// Earlier this matched *per-region absolute* a*/b*, but the optimizer has only a
+/// global WB shift (the per-region cg_* wheels are excluded), so a regional cast it
+/// cannot reproduce was minimised the only way left — by collapsing chroma toward
+/// neutral, graying the image as Strength rose. Matching the controllable global
+/// quantities pins saturation to the reference's chroma instead of driving it to 0.
+///
+/// Absolute lightness is NOT matched (exposure is excluded; we transfer toning, not
+/// the reference's scene brightness).
 pub fn loss(cur: &ImageStats, target: &ImageStats) -> f32 {
-    // L* (absolute lightness) is weighted low: we transfer the reference's colour
-    // cast, contrast and saturation, NOT its scene brightness — forcing absolute
-    // lightness/hue onto a different scene produces a muddy "everything-brown" wash.
-    let region = |c: &RegionStats, t: &RegionStats| -> f32 {
-        0.2 * (c.l - t.l).powi(2) + (c.a - t.a).powi(2) + (c.b - t.b).powi(2)
-    };
-    region(&cur.sh, &target.sh)
-        + region(&cur.mid, &target.mid)
-        + region(&cur.hi, &target.hi)
-        + 0.25 * (cur.l_std - target.l_std).powi(2)
-        + 0.25 * (cur.chroma - target.chroma).powi(2)
+    let cast = (cur.glob.a - target.glob.a).powi(2) + (cur.glob.b - target.glob.b).powi(2);
+    let contrast = (cur.l_std - target.l_std).powi(2);
+    let chroma = (cur.chroma - target.chroma).powi(2);
+    // Cast and chroma carry equal weight so saturation is genuinely matched and can
+    // never be sacrificed to improve the cast term; contrast is secondary.
+    cast + chroma + 0.5 * contrast
 }
 
 use crate::commands::{finish_from, mode_from, resolve_params, effective_base, effective_dmax};
@@ -321,6 +327,28 @@ mod tests {
         assert!(end_loss <= start_loss + 1e-3, "optimizer must not worsen the seed");
     }
 
+    #[test]
+    fn matched_render_tracks_reference_chroma_not_gray() {
+        // Full pipeline (optimize → render → loss). A negative thumb with two
+        // regions develops into a positive with regional colour variation — the
+        // exact case that used to make the optimizer collapse chroma toward gray.
+        let p = base_params();
+        let mut px = vec![[0.50, 0.42, 0.34]; 64];
+        for v in px.iter_mut().take(32) { *v = [0.40, 0.45, 0.38]; }
+        let src = Image { width: 8, height: 8, pixels: px, ir: None };
+        let (db, dd) = ([0.5, 0.4, 0.3], 1.5);
+        let r = write_ref_png([180, 110, 70], "cm_test_match_chroma.png");
+        let target = reference_stats(&r).unwrap();
+        let m = match_to_reference(&p, &src, db, dd, &r, 100).unwrap();
+        let mut pm = p.clone();
+        m.write_into(&mut pm);
+        let got = render_stats(&pm, &src, db, dd);
+        let _ = std::fs::remove_file(&r);
+        assert!(got.chroma > target.chroma * 0.5,
+            "matched chroma {} must track reference chroma {}, not collapse to gray",
+            got.chroma, target.chroma);
+    }
+
     fn solid(rgb: [f32; 3], px: usize) -> Image {
         Image { width: px, height: 1, pixels: vec![rgb; px], ir: None }
     }
@@ -343,6 +371,43 @@ mod tests {
     fn loss_is_zero_for_identical_stats() {
         let s = compute_stats(&solid([0.5, 0.4, 0.3], 32));
         assert!(loss(&s, &s) < 1e-6, "identical stats → ~0 loss");
+    }
+
+    #[test]
+    fn loss_ignores_unmatchable_regional_split() {
+        // Same global cast, contrast and chroma, but OPPOSITE per-region split
+        // toning. The optimizer can only move global WB/contrast/saturation, so a
+        // regional split it physically cannot reproduce must NOT register as loss —
+        // otherwise the cheapest way to shrink it is to collapse chroma (the gray bug).
+        let mk = |sh_a: f32, hi_a: f32| ImageStats {
+            glob: RegionStats { l: 50.0, a: 0.0, b: 0.0 },
+            sh: RegionStats { l: 25.0, a: sh_a, b: 0.0 },
+            mid: RegionStats { l: 50.0, a: 0.0, b: 0.0 },
+            hi: RegionStats { l: 75.0, a: hi_a, b: 0.0 },
+            l_std: 20.0,
+            chroma: 12.0,
+        };
+        let cur = mk(10.0, -10.0);
+        let target = mk(-10.0, 10.0);
+        assert!(loss(&cur, &target) < 1.0,
+            "matching global cast+contrast+chroma → ~0 loss despite regional split");
+    }
+
+    #[test]
+    fn loss_penalizes_desaturation_when_chroma_matches() {
+        // When chroma already matches the reference, pulling chroma toward gray must
+        // INCREASE loss — the optimizer must never desaturate to win.
+        let target = ImageStats {
+            glob: RegionStats { l: 50.0, a: 8.0, b: 8.0 },
+            l_std: 20.0, chroma: 15.0, ..ImageStats::default()
+        };
+        let matched = target;
+        let desat = ImageStats {
+            glob: RegionStats { l: 50.0, a: 1.0, b: 1.0 },
+            chroma: 2.0, ..target
+        };
+        assert!(loss(&desat, &target) > loss(&matched, &target),
+            "killing chroma when it already matches must increase loss");
     }
 
     #[test]
