@@ -10,9 +10,11 @@ Have an idea or a vote? [Open an issue](https://github.com/mohaelder/openenlarge
 
 ## Next
 
-- **Import Roll** — a dedicated "import as a roll" flow: bring in a folder of scans as one
-  roll that shares a single film-base calibration and density range across every frame, so a
-  whole roll develops consistently without re-sampling the base frame by frame.
+- **RGB narrowband light-source support** — clean orange-mask removal (去色罩) for camera scans
+  lit by narrowband RGB LEDs, with per-vendor wavelength presets. Light source becomes its own
+  axis (separate from film stock); the correction is data-driven and validated across real rolls.
+  See the [design spec](docs/superpowers/specs/2026-06-20-rgb-narrowband-light-source-design.md);
+  implementation is gated on sample scans from light-source vendors.
 - **Improve HDR** — graduate HDR out of *experimental*: let the develop sliders edit *into* the
   HDR headroom (not just toggle it on), widen export beyond gain-map JPEG, and verify the preview
   across more displays and platforms.
@@ -30,6 +32,8 @@ A sampling of what's already landed — see [Releases](https://github.com/mohael
 for the full history.
 
 - Cineon density inversion with per-roll film-base calibration
+- Import Roll — develop a whole folder as one roll sharing a single film-base calibration and
+  density range, with live roll-wide contact-sheet edits and a manual base recalibrate tool
 - Automatic negative/positive detection and crop-aware analysis
 - Tethered shooting (watch-folder auto-import + develop)
 - Tone Matching, AI Enhance, local 4K/8K upscaling
