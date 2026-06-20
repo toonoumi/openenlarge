@@ -113,6 +113,7 @@ export interface BakeSpec {
   dust: DustStroke[];
   ir_removal: IrRemoval;
   auto_dust: AutoDust;
+  auto_dust_exclusions: [number, number][];
 }
 
 /** Persistent per-image edits that shape a thumbnail (no zoom/view crop). */

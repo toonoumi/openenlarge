@@ -54,3 +54,35 @@ describe("brush radius mapping", () => {
     expect(normRadius(10, 0, 0)).toBe(0);
   });
 });
+
+import { strokeCentroid, removeStrokeAt, addExclusion, setShowSpots } from "./dust";
+
+describe("dust helpers", () => {
+  it("strokeCentroid averages the polyline points", () => {
+    expect(strokeCentroid({ points: [{ x: 0, y: 0 }, { x: 1, y: 1 }], r: 0.1 })).toEqual({ x: 0.5, y: 0.5 });
+    expect(strokeCentroid({ points: [], r: 0.1 })).toEqual({ x: 0, y: 0 });
+  });
+
+  it("removeStrokeAt removes by index and clears aiApplied", () => {
+    const d = { ...emptyDust(), strokes: [{ points: [{ x: 0, y: 0 }], r: 0.1 }, { points: [{ x: 1, y: 1 }], r: 0.2 }], aiApplied: true };
+    const out = removeStrokeAt(d, 0);
+    expect(out.strokes).toHaveLength(1);
+    expect(out.strokes[0].r).toBe(0.2);
+    expect(out.aiApplied).toBe(false);
+    expect(removeStrokeAt(d, 5).strokes).toHaveLength(2); // out of range → unchanged
+  });
+
+  it("addExclusion appends a kept-spot seed", () => {
+    const out = addExclusion(emptyDust(), { x: 0.3, y: 0.4 });
+    expect(out.autoDustExclusions).toEqual([{ x: 0.3, y: 0.4 }]);
+  });
+
+  it("setShowSpots toggles the overlay flag", () => {
+    expect(setShowSpots(emptyDust(), false).showSpots).toBe(false);
+  });
+
+  it("emptyDust defaults the new fields", () => {
+    expect(emptyDust().autoDustExclusions).toEqual([]);
+    expect(emptyDust().showSpots).toBe(true);
+  });
+});

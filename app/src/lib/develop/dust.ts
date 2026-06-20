@@ -16,6 +16,10 @@ export interface DustEdits {
   autoDust: AutoDust;
   brushMigan: boolean;
   aiApplied: boolean;
+  /** Normalized seed points for global auto-dust spots the user chose to KEEP. */
+  autoDustExclusions: DustPoint[];
+  /** Show eraser-icon markers over heal locations in the viewport. */
+  showSpots: boolean;
 }
 
 export const emptyDust = (): DustEdits => ({
@@ -24,6 +28,8 @@ export const emptyDust = (): DustEdits => ({
   autoDust: { enabled: false, sensitivity: 50 },
   brushMigan: false,
   aiApplied: false,
+  autoDustExclusions: [],
+  showSpots: true,
 });
 
 export function addStroke(d: DustEdits, s: DustStroke): DustEdits {
@@ -52,6 +58,27 @@ export function setBrushMigan(d: DustEdits, brushMigan: boolean): DustEdits {
 }
 export function setAiApplied(d: DustEdits, aiApplied: boolean): DustEdits {
   return { ...d, aiApplied };
+}
+
+/** Centroid (normalized) of a stroke's polyline — the eraser-marker anchor. */
+export function strokeCentroid(s: DustStroke): DustPoint {
+  if (s.points.length === 0) return { x: 0, y: 0 };
+  let sx = 0, sy = 0;
+  for (const p of s.points) { sx += p.x; sy += p.y; }
+  return { x: sx / s.points.length, y: sy / s.points.length };
+}
+/** Remove the manual/AI heal spot (stroke) at `i`. Out-of-range → unchanged. */
+export function removeStrokeAt(d: DustEdits, i: number): DustEdits {
+  if (i < 0 || i >= d.strokes.length) return d;
+  return { ...d, strokes: d.strokes.filter((_, k) => k !== i), aiApplied: false };
+}
+/** Keep a global auto-dust spot: exclude its centroid from removal. */
+export function addExclusion(d: DustEdits, p: DustPoint): DustEdits {
+  return { ...d, autoDustExclusions: [...d.autoDustExclusions, p] };
+}
+/** Toggle the heal-spot marker overlay. */
+export function setShowSpots(d: DustEdits, showSpots: boolean): DustEdits {
+  return { ...d, showSpots };
 }
 
 /** Normalized-to-width radius → on-screen pixels at the current zoom `eff`. */
