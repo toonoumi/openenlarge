@@ -334,7 +334,7 @@ const float EFF_DMAX_HI = 6.0;
 // (neutral black) and filmicS(FILMIC_WHITE_T)==1.0 (true white). Replaces the old
 // paper-grade/soft-clip encode that capped white at ~0.90.
 const float FILMIC_K = 5.0;
-const float FILMIC_PIVOT = 0.5;
+const float FILMIC_PIVOT = 0.44; // < 0.5: brighter mids (calibration lift); see engine.rs
 const float FILMIC_WHITE_T = 1.05;
 float filmicL(float x) { return 1.0 / (1.0 + exp(-FILMIC_K * (x - FILMIC_PIVOT))); }
 float filmicS(float t) {

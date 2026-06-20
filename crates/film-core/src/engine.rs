@@ -87,7 +87,12 @@ const EFF_DMAX_HI: f32 = 6.0;
 // shoulder to TRUE white at 1.0 (highlight separation). MUST be mirrored verbatim
 // in shaders.ts (INVERT_FRAG) so the CPU export and GPU proxy preview match.
 const FILMIC_K: f32 = 5.0; // contrast / max slope
-const FILMIC_PIVOT: f32 = 0.5; // max-slope point in normalised density
+// Max-slope point in normalised density. Below the geometric midpoint (0.5) so the
+// curve renders mids/shadows brighter — a calibration lift (digital "print
+// exposure"), since auto-fit d_max puts the white point at the top and most real
+// content lands in the lower-mid range. Black (t=0→0) and white (t=WHITE_T→1) stay
+// anchored regardless. 0.44 chosen on real scans.
+const FILMIC_PIVOT: f32 = 0.44;
 const FILMIC_WHITE_T: f32 = 1.05; // density (× eff_d_max) that maps to 1.0
 
 /// Logistic display S-curve on normalised log-density `t` (0 = scene black at the
