@@ -374,7 +374,14 @@
     dustById.update((m) => ({ ...m, [id]: fn(m[id] ?? emptyDust()) }));
     dustRev.update((n) => n + 1);
   }
-  const setShowSpotsEdit = (on: boolean) => updateDust((d) => setShowSpots(d, on));
+  // showSpots is a view-only overlay flag — update the store (so it persists and the
+  // markers re-render via the prop) WITHOUT bumping dustRev, so toggling it never
+  // triggers a re-bake (which would re-run auto-dust and fire the "N spots removed"
+  // toast).
+  function setShowSpotsEdit(on: boolean) {
+    const id = $activeId; if (!id) return;
+    dustById.update((m) => ({ ...m, [id]: setShowSpots(m[id] ?? emptyDust(), on) }));
+  }
   // Clear any selection when leaving the eraser tool or switching image.
   $: if ($tool !== "eraser") selectedSpot.set(null);
   $: { $activeId; selectedSpot.set(null); }

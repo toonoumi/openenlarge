@@ -657,14 +657,18 @@
     const [ix, iy] = imgPoint(e);
     return { x: ix / imgW, y: iy / imgH };
   }
+  // True while the cursor is over a heal-spot marker → show the tap/pointer cursor
+  // (and hide the brush circle) so the spot reads as clickable.
+  let overSpot = false;
   function onEraserMove(e: PointerEvent) {
     const rect = el.getBoundingClientRect();
     curX = e.clientX - rect.left;
     curY = e.clientY - rect.top;
+    overSpot = spotsVisible && !painting ? !!hitTestSpot(e) : false;
     if (painting) pending = [...pending, normPoint(e)];
   }
   function onEnter() { if (eraser) hovering = true; }
-  function onLeave() { hovering = false; painting = false; pending = []; mqActive = false; hoverRGB = null; }
+  function onLeave() { hovering = false; painting = false; pending = []; mqActive = false; hoverRGB = null; overSpot = false; }
 
   function onDown(e: PointerEvent) {
     if (!interactive) return;
@@ -784,7 +788,7 @@
 </script>
 
 <div
-  class="vp" class:interactive class:zoomed class:erasing={eraser} class:picking={pointPick} class:marqueearm={eraser && marquee}
+  class="vp" class:interactive class:zoomed class:erasing={eraser} class:picking={pointPick} class:marqueearm={eraser && marquee} class:overspot={eraser && overSpot}
   bind:this={el}
   on:wheel={onWheel}
   on:pointerdown={onDown} on:pointermove={onMove} on:pointerup={onUp} on:pointercancel={onCancel}
@@ -842,7 +846,7 @@
       {/each}
     </div>
   {/if}
-  {#if eraser && hovering && !marquee}
+  {#if eraser && hovering && !marquee && !overSpot}
     <div class="brush" style="left:{curX}px; top:{curY}px; width:{cursorR * 2}px; height:{cursorR * 2}px;"></div>
   {/if}
   {#if eraser && marquee && mqActive}
@@ -902,6 +906,7 @@
   .readout .sw { width: 10px; height: 10px; border-radius: 2px; flex: none;
     box-shadow: inset 0 0 0 1px rgba(255,255,255,0.35); }
   .vp.erasing { cursor: none; }
+  .vp.erasing.overspot { cursor: pointer; }
   .vp.picking { cursor: crosshair; }
   .maskov { position: absolute; pointer-events: none; z-index: 2; overflow: visible; }
   .maskov path { stroke: rgba(244,70,70,0.55); }
