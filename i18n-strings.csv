@@ -316,6 +316,7 @@ eraser.autoDownloadPrompt,"Download the local AI models (~{mb} MB) to auto-detec
 eraser.autoDownload,"Download AI models","下载 AI 模型","src/lib/develop/EraserPanel.svelte","button"
 eraser.autoButton,"Detect & remove","检测并去除","src/lib/develop/EraserPanel.svelte","button"
 eraser.autoHint,"Runs local AI models on your device (no upload). Use the sensitivity slider if it removes too much or too little.","在本地设备上运行 AI 模型（不上传）。如果去除过多或过少，请使用灵敏度滑块。","src/lib/develop/EraserPanel.svelte","hint"
+eraser.showSpots,"Show heal spots","显示修复点","src/lib/develop/EraserPanel.svelte","label"
 curve.editorAriaLabel,"Tone curve editor","色调曲线编辑器","src/lib/develop/CurveEditor.svelte","aria-label"
 curve.pointAriaLabel,"curve point","曲线点","src/lib/develop/CurveEditor.svelte","aria-label"
 curve.histLabel,"Histogram","直方图","src/lib/develop/CurveEditor.svelte","toggle label"

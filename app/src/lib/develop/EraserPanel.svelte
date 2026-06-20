@@ -16,6 +16,8 @@
   export let brushMigan = false;
   /** Whether the current strokes have been MI-GAN-applied (drives the button state). */
   export let aiApplied = false;
+  /** Show eraser-icon markers over heal locations in the viewport. */
+  export let showSpots = true;
   /** Number of committed strokes (enables/disables the AI erase button). */
   export let strokeCount = 0;
   /** True while the MI-GAN erase bake is running. */
@@ -27,7 +29,7 @@
 
   const dispatch = createEventDispatcher<{
     reset: void; irEnabled: boolean; irSensitivity: number; brushMigan: boolean; aiErase: void;
-    zoomArea: void; resetView: void;
+    zoomArea: void; resetView: void; showSpots: boolean;
   }>();
 </script>
 
@@ -82,6 +84,12 @@
       <span>{aiBusy ? $t('eraser.aiErasing') : $t('eraser.aiErase')}</span>
     </button>
   {/if}
+
+  <label class="check">
+    <input type="checkbox" checked={showSpots}
+           on:change={(e) => dispatch("showSpots", (e.target as HTMLInputElement).checked)} />
+    <span>{$t('eraser.showSpots')}</span>
+  </label>
 
   <button class="row" on:click={() => dispatch("reset")}>{$t('eraser.reset')}</button>
   <div class="hint">{brushMigan ? $t('eraser.aiMaskHint') : $t('eraser.hint')}</div>
