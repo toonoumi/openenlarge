@@ -6,6 +6,7 @@ import { createPerImageParams } from "./perImage";
 import { emptyDust, type DustEdits } from "./develop/dust";
 import { scopeToFolder } from "./library/folderScope";
 import { type SelState, type Mods, noneSelected, allSelected, click } from "./selection";
+import type { SettingsSnapshot } from "./roll/apply";
 
 export const images = writable<ImageEntry[]>([]);
 export const activeId = writable<string | null>(null);
@@ -245,10 +246,10 @@ export const preReanalyze = writable<{ id: string; d_max_override: number | null
  * single image; many drive the "Delete N items" multi-delete. */
 export const deleteTarget = writable<string[]>([]);
 
-/** Copied tone/color develop settings (⌘/Ctrl+C), pasted onto other images with
- * ⌘/Ctrl+V. Holds the tone/color subset of InvertParams (no film profile or
- * per-image calibration). null = nothing copied yet. */
-export const settingsClipboard = writable<Partial<InvertParams> | null>(null);
+/** Copied develop settings (⌘/Ctrl+C), pasted onto other images with ⌘/Ctrl+V.
+ * Holds a full snapshot of the source frame (all params + its crop); the paste
+ * dialog picks which groups actually travel. null = nothing copied yet. */
+export const settingsClipboard = writable<SettingsSnapshot | null>(null);
 
 /** Ids awaiting a "paste settings" confirmation (length > 1 = dialog showing).
  * Mirrors deleteTarget; a single-image paste applies immediately and never

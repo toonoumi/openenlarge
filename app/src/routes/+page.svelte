@@ -175,8 +175,11 @@
     on:cancel={() => deleteTarget.set([])} />
 {/if}
 {#if $applySettingsTarget.length > 1}
-  <ConfirmApplySettings count={$applySettingsTarget.length}
-    on:confirm={() => { const ids = $applySettingsTarget; applySettingsTarget.set([]); applyClipboardTo(ids); }}
+  <ConfirmApplySettings
+    title={$t('confirmApply.title', { count: $applySettingsTarget.length, plural: $applySettingsTarget.length === 1 ? '' : 's' })}
+    sub={$t('confirmApply.sub')}
+    defaults={{ toneColor: true, crop: false, base: false, exposure: false, whitePoint: false }}
+    on:confirm={(e) => { const ids = $applySettingsTarget; applySettingsTarget.set([]); applyClipboardTo(ids, e.detail.groups); }}
     on:cancel={() => applySettingsTarget.set([])} />
 {/if}
 <Toast />

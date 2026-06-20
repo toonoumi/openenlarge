@@ -3,6 +3,24 @@ import type { CropRect } from "../crop/types";
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v));
 
+/** The selectable setting groups, mirroring the per-group apply helpers below.
+ *  Shared by the "apply settings" picker dialog and both of its entry points
+ *  (clipboard paste + Develop's "apply to whole roll"). */
+export type SettingGroup = "toneColor" | "crop" | "base" | "exposure" | "whitePoint";
+export type GroupSelection = Record<SettingGroup, boolean>;
+
+/** Render/iteration order for the picker. */
+export const ALL_GROUPS: readonly SettingGroup[] = [
+  "toneColor", "crop", "base", "exposure", "whitePoint",
+];
+
+/** A self-contained source of settings to apply (the active frame, or a clipboard
+ *  snapshot). `params` carries every group's fields; `crop` lives in its own store. */
+export interface SettingsSnapshot {
+  params: InvertParams;
+  crop: CropRect | null;
+}
+
 /** Per-image film/calibration fields that are NOT part of the shared "look".
  *  `exposure` is here because Auto-Brightness solves a DISTINCT value per frame;
  *  a deliberate roll-wide exposure is re-applied separately (null-guarded) so it

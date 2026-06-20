@@ -1,7 +1,11 @@
 <script lang="ts">
   import { get } from "svelte/store";
   import { t } from "$lib/i18n";
-  import { params, activeId, images, folderBaseByPath, baseSampling, sampledBase, sampledDmax, whitePointPinned, preReanalyze, developProgress } from "../store";
+  import { params, activeId, images, cropById, folderBaseByPath, baseSampling, sampledBase, sampledDmax, whitePointPinned, preReanalyze, developProgress } from "../store";
+  import { developedFolderImages } from "../export/eligible";
+  import { applySelectedTo } from "./copySettings";
+  import type { GroupSelection, SettingsSnapshot } from "../roll/apply";
+  import ConfirmApplySettings from "../overlay/ConfirmApplySettings.svelte";
   import { api, defaultParams } from "../api";
   import { autoBrightnessRoll } from "../workflow";
   import { reseedActive, commitActive } from "./historyStore";
@@ -274,6 +278,22 @@
     params.update((p) => ({ ...p, positive: !p.positive }));
     commitActive();
   }
+
+  // "Apply to whole roll": open the shared picker, then push the active frame's
+  // selected settings onto every developed frame in the current folder.
+  let rollApplyIds: string[] | null = null;
+  function openRollApply() {
+    const ids = get(developedFolderImages).map((f) => f.id);
+    if (ids.length) rollApplyIds = ids;
+  }
+  function confirmRollApply(groups: GroupSelection) {
+    const ids = rollApplyIds;
+    rollApplyIds = null;
+    const id = get(activeId);
+    if (!ids || !id) return;
+    const src: SettingsSnapshot = { params: get(params), crop: get(cropById)[id] ?? null };
+    applySelectedTo(ids, src, groups);
+  }
 </script>
 
 <div class="section">
@@ -316,6 +336,10 @@
           <p class="lowconf">{$t('base.lowConfidence')}</p>
         {/if}
       {/if}
+
+      <!-- Sync this frame's chosen settings across every frame in the roll. -->
+      <button class="recal rollapply" on:click={openRollApply}
+              disabled={!$activeId}>{$t('basic.applyToRoll')}</button>
 
       <!-- White Balance -->
       <div class="sub">{$t('basic.whiteBalance')}</div>
@@ -387,6 +411,15 @@
   {/if}
 </div>
 
+{#if rollApplyIds}
+  <ConfirmApplySettings
+    title={$t('confirmApply.rollTitle', { count: rollApplyIds.length })}
+    sub={$t('confirmApply.rollSub')}
+    defaults={{ toneColor: true, crop: true, base: true, exposure: false, whitePoint: true }}
+    on:confirm={(e) => confirmRollApply(e.detail.groups)}
+    on:cancel={() => (rollApplyIds = null)} />
+{/if}
+
 <style>
   .section { margin-bottom: 12px; }
   .head { display: flex; align-items: center; justify-content: space-between;
@@ -448,4 +481,8 @@
   .lowconf { font-size: 11px; color: rgba(244,157,78,0.9); margin: 6px 0 0; }
   /* Inverse button sits at the top of the panel — breathing room above. */
   .inverse { margin-top: 14px; }
+  /* "Apply to whole roll" separates the per-image film-base block from WB. */
+  .rollapply { margin: 14px 0 16px; }
+  .recal:disabled { opacity: 0.4; cursor: not-allowed; }
+  .recal:disabled:hover { border-color: var(--glass-brd); background: transparent; }
 </style>
