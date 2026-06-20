@@ -356,7 +356,7 @@
   function currentUploadKey(): string {
     const tier = hiTier ? 'hi' : 'lo';
     if (bakeMode) {
-      return `bake|${tier}|${id}|${developRev}|${dustRev}|${irRemoval.enabled}|${irRemoval.sensitivity}|${brushMigan}|${aiApplied}|${autoDustEnabled}|${autoDustSensitivity}|${autoExclusions.length}|${imageCrop ? imageCrop.join(',') : 'full'}|${rot90}|${flipH}|${flipV}|${angle}`;
+      return `bake|${tier}|${id}|${developRev}|${dustRev}|${irRemoval.enabled}|${irRemoval.sensitivity}|${brushMigan}|${aiApplied}|${autoDustEnabled}|${autoDustSensitivity}|${autoExclusions.map((p) => p.x.toFixed(4) + ',' + p.y.toFixed(4)).join(';')}|${imageCrop ? imageCrop.join(',') : 'full'}|${rot90}|${flipH}|${flipV}|${angle}`;
     }
     return `raw|${tier}|${id}|${developRev}`;
   }
@@ -640,6 +640,7 @@
   }
   // Double-tap tracking: a second tap on the same marker within 300ms removes it.
   let lastTap: { kind: "stroke" | "auto"; index: number; t: number } | null = null;
+  $: if (!spotsVisible) lastTap = null;
 
   // SVG path for a stroke's polyline in display px (normalized → dispW/dispH).
   // A single dab becomes "M p L p" so a round cap renders it as a dot.
@@ -703,7 +704,7 @@
       return;
     }
     if (eraser) {
-      if (spotsVisible && !marquee) {
+      if (spotsVisible) {
         const hit = hitTestSpot(e);
         if (hit) {
           const now = performance.now();
