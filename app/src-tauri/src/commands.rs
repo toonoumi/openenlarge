@@ -2172,7 +2172,7 @@ fn blob_centroids(mask: &film_core::dust::Mask) -> Vec<[f64; 2]> {
             sx += x;
             sy += y;
             n += 1;
-            let mut push = |q: usize, seen: &mut Vec<bool>, stack: &mut Vec<usize>| {
+            let push = |q: usize, seen: &mut Vec<bool>, stack: &mut Vec<usize>| {
                 if mask.bits[q] && !seen[q] {
                     seen[q] = true;
                     stack.push(q);
@@ -2232,7 +2232,7 @@ fn drop_excluded(mask: &mut film_core::dust::Mask, exclusions: &[[f64; 2]]) {
         mask.bits[s] = false;
         while let Some(p) = stack.pop() {
             let (x, y) = (p % w, p / w);
-            let mut clear = |q: usize, bits: &mut Vec<bool>, stack: &mut Vec<usize>| {
+            let clear = |q: usize, bits: &mut Vec<bool>, stack: &mut Vec<usize>| {
                 if bits[q] {
                     bits[q] = false;
                     stack.push(q);
