@@ -467,15 +467,100 @@ fn tone_curve(v: f32, p: &FinishParams) -> f32 {
     v.clamp(0.0, 1.0)
 }
 
-/// Vibrance/saturation: push each channel away from luma. Saturation is uniform;
-/// vibrance is weighted by (1 − current saturation) so vivid pixels move less.
+// --- OKLab perceptual saturation (replaces the display-space cube stretch). ---
+// Chroma is scaled in OKLab so pushes enrich colour without per-channel clipping
+// (which twists hue → neon). Luma (L) is held fixed; near-neutrals and skin hues are
+// protected; out-of-gamut chroma is compressed along the (gray→colour) line back to
+// the boundary. MUST be mirrored in shaders.ts (FRAG/finishAt).
+const SAT_C_REF: f32 = 0.20;      // OKLab chroma treated as "fully saturated" (vibrance weight)
+const SAT_C_NEUTRAL: f32 = 0.025; // boost ramps from 0 below this chroma (protect neutrals)
+const SKIN_HUE: f32 = 0.70;       // OKLab hue (rad) at skin/orange
+const SKIN_WIDTH: f32 = 0.55;     // half-window (rad) of the skin damp
+const SKIN_DAMP: f32 = 0.5;       // max boost reduction inside the skin window
+
+#[inline]
+fn srgb_to_linear(c: f32) -> f32 {
+    if c <= 0.04045 { c / 12.92 } else { ((c + 0.055) / 1.055).powf(2.4) }
+}
+#[inline]
+fn linear_to_srgb(c: f32) -> f32 {
+    if c <= 0.0031308 { 12.92 * c } else { 1.055 * c.powf(1.0 / 2.4) - 0.055 }
+}
+#[inline]
+fn linear_to_oklab(r: f32, g: f32, b: f32) -> [f32; 3] {
+    let l = 0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b;
+    let m = 0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b;
+    let s = 0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b;
+    let (l_, m_, s_) = (l.cbrt(), m.cbrt(), s.cbrt());
+    [
+        0.2104542553 * l_ + 0.7936177850 * m_ - 0.0040720468 * s_,
+        1.9779984951 * l_ - 2.4285922050 * m_ + 0.4505937099 * s_,
+        0.0259040371 * l_ + 0.7827717662 * m_ - 0.8086757660 * s_,
+    ]
+}
+#[inline]
+fn oklab_to_linear(lab: [f32; 3]) -> [f32; 3] {
+    let l_ = lab[0] + 0.3963377774 * lab[1] + 0.2158037573 * lab[2];
+    let m_ = lab[0] - 0.1055613458 * lab[1] - 0.0638541728 * lab[2];
+    let s_ = lab[0] - 0.0894841775 * lab[1] - 1.2914855480 * lab[2];
+    let (l, m, s) = (l_ * l_ * l_, m_ * m_ * m_, s_ * s_ * s_);
+    [
+        4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+        -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+        -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s,
+    ]
+}
+/// Angular distance on the hue circle, in radians [0, π].
+#[inline]
+fn hue_dist(a: f32, b: f32) -> f32 {
+    let tau = 2.0 * std::f32::consts::PI;
+    let mut d = (a - b).rem_euclid(tau);
+    if d > std::f32::consts::PI { d = tau - d; }
+    d
+}
+
+/// Perceptual saturation in OKLab: scale chroma (luma fixed), protect neutrals + skin,
+/// and compress any out-of-gamut result along the hue line instead of clipping per
+/// channel. `saturation` is uniform; `vibrance` is weighted toward muted pixels.
+/// Identity when both are 0. Mirrored in shaders.ts::finishAt.
 fn apply_saturation(rgb: [f32; 3], p: &FinishParams) -> [f32; 3] {
-    let y = 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2];
-    let mx = rgb[0].max(rgb[1]).max(rgb[2]);
-    let mn = rgb[0].min(rgb[1]).min(rgb[2]);
-    let cur_sat = if mx > EPS { (mx - mn) / mx } else { 0.0 };
-    let factor = 1.0 + p.saturation + p.vibrance * (1.0 - cur_sat);
-    std::array::from_fn(|c| (y + (rgb[c] - y) * factor).clamp(0.0, 1.0))
+    if p.saturation.abs() < EPS && p.vibrance.abs() < EPS {
+        return rgb;
+    }
+    let lin = [srgb_to_linear(rgb[0]), srgb_to_linear(rgb[1]), srgb_to_linear(rgb[2])];
+    let lab = linear_to_oklab(lin[0], lin[1], lin[2]);
+    let (l, a, b) = (lab[0], lab[1], lab[2]);
+    let c = (a * a + b * b).sqrt();
+    if c < EPS {
+        return rgb; // pure neutral: nothing to saturate
+    }
+    let h = b.atan2(a);
+    // Boost: saturation uniform; vibrance weighted toward muted (low-chroma) pixels.
+    let vib_w = 1.0 - (c / SAT_C_REF).clamp(0.0, 1.0);
+    let mut gain = p.saturation + p.vibrance * vib_w;
+    // Protect near-neutrals and skin hues from the boost.
+    let neutral = smoothstep(0.0, SAT_C_NEUTRAL, c);
+    let skin = 1.0 - SKIN_DAMP * smoothstep(SKIN_WIDTH, 0.0, hue_dist(h, SKIN_HUE));
+    gain *= neutral * skin;
+    let scale = (1.0 + gain).max(0.0);
+    let lab2 = [l, a * scale, b * scale];
+    // Hue-preserving gamut compression: find the largest fraction `tg` of the
+    // (gray → boosted colour) segment that stays in [0,1] on every channel. The
+    // achromatic point (L,0,0) is in gamut, so tg ≥ 0 always exists.
+    let gray = oklab_to_linear([l, 0.0, 0.0]);
+    let col = oklab_to_linear(lab2);
+    let mut tg = 1.0_f32;
+    for ch in 0..3 {
+        let (g0, c0) = (gray[ch], col[ch]);
+        if c0 > 1.0 {
+            tg = tg.min((1.0 - g0) / (c0 - g0));
+        } else if c0 < 0.0 {
+            tg = tg.min(g0 / (g0 - c0));
+        }
+    }
+    let tg = tg.clamp(0.0, 1.0);
+    let out_lin: [f32; 3] = std::array::from_fn(|ch| (gray[ch] + (col[ch] - gray[ch]) * tg).clamp(0.0, 1.0));
+    [linear_to_srgb(out_lin[0]), linear_to_srgb(out_lin[1]), linear_to_srgb(out_lin[2])]
 }
 
 /// Per-pixel finishing. Order: Basic tone curve + saturation → Tone Curve LUT →
@@ -613,6 +698,67 @@ pub fn finish_image(img: &Image, p: &FinishParams) -> Image {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn chroma_of(rgb: [f32; 3]) -> f32 {
+        let lin = [srgb_to_linear(rgb[0]), srgb_to_linear(rgb[1]), srgb_to_linear(rgb[2])];
+        let lab = linear_to_oklab(lin[0], lin[1], lin[2]);
+        (lab[1] * lab[1] + lab[2] * lab[2]).sqrt()
+    }
+    /// Build a display-space pixel from an OKLab (L, C, hue) triple.
+    fn px_from_lch(l: f32, c: f32, h: f32) -> [f32; 3] {
+        let lab = [l, c * h.cos(), c * h.sin()];
+        let lin = oklab_to_linear(lab);
+        std::array::from_fn(|i| linear_to_srgb(lin[i].clamp(0.0, 1.0)))
+    }
+
+    #[test]
+    fn oklab_saturation_identity_at_zero() {
+        let px = [0.42_f32, 0.55, 0.30];
+        let p = FinishParams { saturation: 0.0, vibrance: 0.0, ..Default::default() };
+        assert_eq!(apply_saturation(px, &p), px);
+    }
+
+    #[test]
+    fn oklab_saturation_raises_chroma() {
+        let px = [0.55_f32, 0.40, 0.30];
+        let p = FinishParams { saturation: 0.5, ..Default::default() };
+        let out = apply_saturation(px, &p);
+        assert!(chroma_of(out) > chroma_of(px) + 1e-3, "{} !> {}", chroma_of(out), chroma_of(px));
+    }
+
+    #[test]
+    fn oklab_saturation_stays_in_gamut_under_heavy_push() {
+        let px = [0.60_f32, 0.35, 0.25];
+        let p = FinishParams { saturation: 3.0, ..Default::default() };
+        let out = apply_saturation(px, &p);
+        for c in 0..3 {
+            assert!((0.0..=1.0).contains(&out[c]), "channel {c} out of gamut: {out:?}");
+        }
+    }
+
+    #[test]
+    fn oklab_saturation_preserves_neutral() {
+        let px = [0.5_f32, 0.5, 0.5];
+        let p = FinishParams { saturation: 1.0, ..Default::default() };
+        let out = apply_saturation(px, &p);
+        for c in 0..3 {
+            assert!((out[c] - 0.5).abs() < 0.02, "neutral drifted: {out:?}");
+        }
+    }
+
+    #[test]
+    fn oklab_saturation_damps_skin() {
+        // Two pixels with equal lightness + chroma, one at the skin hue, one opposite.
+        // The skin pixel must gain LESS chroma than the non-skin pixel.
+        let l = 0.7_f32;
+        let c0 = 0.06_f32;
+        let skin = px_from_lch(l, c0, SKIN_HUE);
+        let other = px_from_lch(l, c0, SKIN_HUE + std::f32::consts::PI);
+        let p = FinishParams { saturation: 1.0, ..Default::default() };
+        let skin_ratio = chroma_of(apply_saturation(skin, &p)) / chroma_of(skin);
+        let other_ratio = chroma_of(apply_saturation(other, &p)) / chroma_of(other);
+        assert!(skin_ratio < other_ratio - 1e-3, "skin {skin_ratio} not damped vs {other_ratio}");
+    }
 
     fn img_from(pixels: Vec<[f32; 3]>) -> Image {
         Image {
@@ -770,31 +916,22 @@ mod tests {
 
     #[test]
     fn positive_saturation_increases_chroma() {
-        let p = FinishParams {
-            saturation: 0.5,
-            ..Default::default()
-        };
-        let px = [0.6, 0.4, 0.3];
-        let out = apply_saturation(px, &p);
-        let chroma_in = px[0] - px[2];
-        let chroma_out = out[0] - out[2];
-        assert!(chroma_out > chroma_in, "in {chroma_in} out {chroma_out}");
+        let px = [0.6_f32, 0.4, 0.3];
+        let p = FinishParams { saturation: 0.5, ..Default::default() };
+        assert!(chroma_of(apply_saturation(px, &p)) > chroma_of(px));
     }
 
     #[test]
     fn vibrance_affects_muted_more_than_vivid() {
-        let p = FinishParams {
-            vibrance: 1.0,
-            ..Default::default()
-        };
-        let muted = [0.52, 0.50, 0.48];
-        let vivid = [0.90, 0.10, 0.05];
-        let chroma = |px: [f32; 3]| px[0].max(px[1]).max(px[2]) - px[0].min(px[1]).min(px[2]);
-        let ratio = |px: [f32; 3]| chroma(apply_saturation(px, &p)) / chroma(px);
-        // Vibrance boosts low-saturation (muted) pixels more than already-vivid ones.
+        let p = FinishParams { vibrance: 1.0, ..Default::default() };
+        let muted = [0.52_f32, 0.50, 0.48];
+        let vivid = [0.90_f32, 0.10, 0.05];
+        // Vibrance boosts low-chroma (muted) pixels more than already-vivid ones,
+        // measured as chroma ratio in OKLab.
+        let ratio = |px: [f32; 3]| chroma_of(apply_saturation(px, &p)) / chroma_of(px);
         assert!(
             ratio(muted) > ratio(vivid),
-            "muted {} vivid {}",
+            "muted ratio {} vivid ratio {}",
             ratio(muted),
             ratio(vivid)
         );
