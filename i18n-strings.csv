@@ -456,6 +456,5 @@ label.metadata,"Metadata","元数据","src/lib/develop/history.ts","undo label"
 label.positive,"Positive","正片","src/lib/develop/history.ts","undo label"
 label.multiple,"Multiple adjustments","多项调整","src/lib/develop/history.ts","undo label"
 label.edit,"Edit","编辑","src/lib/develop/history.ts","undo label"
-
 basic.colorHead,"Color head","彩色头","src/lib/develop/Basic.svelte","toggle"
 basic.colorHeadTitle,"Subtractive CMY color-head white balance (toggle)","减色 CMY 彩色头白平衡（切换）","src/lib/develop/Basic.svelte","tooltip"
