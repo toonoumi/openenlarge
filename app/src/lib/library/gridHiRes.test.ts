@@ -45,6 +45,7 @@ describe("gridThumbView", () => {
       strokes: [{ points: [{ x: 0.1, y: 0.1 }], r: 0.02 }],
       irRemoval: { enabled: true, sensitivity: 60 },
       autoDust: { enabled: false, sensitivity: 50 }, brushMigan: false, aiApplied: false,
+      autoDustExclusions: [], showSpots: true,
     };
     const view = gridThumbView(null, dust, 1080);
     expect(view.dust).toEqual(dust.strokes);

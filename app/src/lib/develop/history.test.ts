@@ -8,7 +8,7 @@ import {
 const snap = (exposure: number): EditSnapshot => ({
   params: { exposure } as unknown as EditSnapshot["params"],
   crop: null,
-  dust: { strokes: [], irRemoval: { enabled: false, sensitivity: 50 }, autoDust: { enabled: false, sensitivity: 50 }, brushMigan: false, aiApplied: false },
+  dust: { strokes: [], irRemoval: { enabled: false, sensitivity: 50 }, autoDust: { enabled: false, sensitivity: 50 }, brushMigan: false, aiApplied: false, autoDustExclusions: [], showSpots: true },
   meta: {},
 });
 
@@ -113,7 +113,7 @@ describe("changeLabel — names the control that differs", () => {
   const base = (): EditSnapshot => ({
     params: {} as EditSnapshot["params"],
     crop: null,
-    dust: { strokes: [], irRemoval: { enabled: false, sensitivity: 50 }, autoDust: { enabled: false, sensitivity: 50 }, brushMigan: false, aiApplied: false },
+    dust: { strokes: [], irRemoval: { enabled: false, sensitivity: 50 }, autoDust: { enabled: false, sensitivity: 50 }, brushMigan: false, aiApplied: false, autoDustExclusions: [], showSpots: true },
     meta: {},
   });
   const withParams = (p: Record<string, unknown>): EditSnapshot =>

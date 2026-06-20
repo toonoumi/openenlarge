@@ -2,7 +2,7 @@
   import { t } from "$lib/i18n";
   import { fade } from "svelte/transition";
   import { cubicOut } from "svelte/easing";
-  import { activeId, params, images, folderImages, tool, cropById, activeCrop, dustById, activeDust, deleteTarget, dustRev, developRev, folderBaseByPath, baseSampling, sampledBase, sampledDmax, selectAll, deleteSelectionIds, setActive, previewSrc, clipWarn, hotkeyBindings } from "../store";
+  import { activeId, params, images, folderImages, tool, cropById, activeCrop, dustById, activeDust, deleteTarget, dustRev, developRev, folderBaseByPath, baseSampling, sampledBase, sampledDmax, selectAll, deleteSelectionIds, setActive, previewSrc, clipWarn, hotkeyBindings, autodustSpotsById, activeAutodustSpots, selectedSpot } from "../store";
   import { get } from "svelte/store";
   import { onMount } from "svelte";
   import { createPreviewPrefetcher } from "../develop/previewPrefetch";
@@ -27,7 +27,8 @@
   import EraserPanel from "../develop/EraserPanel.svelte";
   import AutoDustPanel from "../develop/AutoDustPanel.svelte";
   import AiEnhancePanel from "../develop/AiEnhancePanel.svelte";
-  import { addStroke, resetDust, emptyDust, setIrEnabled, setIrSensitivity, setAutoDustEnabled, setAutoDustSensitivity, setBrushMigan, setAiApplied, type DustStroke, type DustEdits } from "../develop/dust";
+  import { addStroke, resetDust, emptyDust, setIrEnabled, setIrSensitivity, setAutoDustEnabled, setAutoDustSensitivity, setBrushMigan, setAiApplied, removeStrokeAt, addExclusion, setShowSpots, type DustStroke, type DustEdits } from "../develop/dust";
+  import { listen } from "@tauri-apps/api/event";
   import type { Rect, CropRect } from "../crop/types";
   import { defaultFull, conform, constrainToRotated } from "../crop/cropMath";
   import { presetNormAspect } from "../crop/presets";
@@ -49,7 +50,12 @@
   // reads previewById). Cancels on any interaction; developed images only.
   onMount(() => {
     const prefetcher = createPreviewPrefetcher();
-    return () => prefetcher.stop();
+    let un: (() => void) | null = null;
+    listen<{ id: string; count: number; spots: [number, number][] }>("autodust://result", (e) => {
+      const { id, spots } = e.payload;
+      autodustSpotsById.update((m) => ({ ...m, [id]: (spots ?? []).map(([x, y]) => ({ x, y })) }));
+    }).then((u) => { un = u; });
+    return () => { prefetcher.stop(); un?.(); };
   });
 
   $: active = $images.find((i) => i.id === $activeId);
@@ -262,6 +268,13 @@
         e.preventDefault(); selectAll(); return true;
       case "nav.delete": {
         if (inTextField()) return false;
+        // In the eraser tool, the delete hotkey removes the selected heal spot
+        // (not the image).
+        if ($tool === "eraser" && get(selectedSpot)) {
+          e.preventDefault();
+          removeSpot(get(selectedSpot)!);
+          return true;
+        }
         e.preventDefault();
         const ids = deleteSelectionIds(); if (ids.length) deleteTarget.set(ids);
         return true;
@@ -361,6 +374,22 @@
     dustById.update((m) => ({ ...m, [id]: fn(m[id] ?? emptyDust()) }));
     dustRev.update((n) => n + 1);
   }
+  const setShowSpotsEdit = (on: boolean) => updateDust((d) => setShowSpots(d, on));
+  // Clear any selection when leaving the eraser tool or switching image.
+  $: if ($tool !== "eraser") selectedSpot.set(null);
+  $: { $activeId; selectedSpot.set(null); }
+
+  /** Remove a heal spot: a brush stroke, or a global spot (kept via exclusion). */
+  function removeSpot(sel: import("../store").SpotSel) {
+    if (sel.kind === "stroke") {
+      updateDust((d) => removeStrokeAt(d, sel.index));
+    } else {
+      const c = $activeAutodustSpots[sel.index];
+      if (c) updateDust((d) => addExclusion(d, c));
+    }
+    selectedSpot.set(null);
+  }
+
   const commitStroke = (s: DustStroke) => updateDust((d) => addStroke(d, s));
   const resetDustEdits = () => updateDust((d) => resetDust(d));
   function setIrOn(on: boolean) { updateDust((d) => setIrEnabled(d, on)); }
@@ -461,6 +490,8 @@
                   eraser={$tool === "eraser"} marquee={zoomMarquee} {brush} dust={dust.strokes} irRemoval={dust.irRemoval} dustRev={$dustRev} developRev={$developRev}
                   brushMigan={dust.brushMigan} aiApplied={dust.aiApplied}
                   autoDustEnabled={dust.autoDust.enabled} autoDustSensitivity={dust.autoDust.sensitivity}
+                  showSpots={dust.showSpots} autoSpots={$activeAutodustSpots}
+                  autoExclusions={dust.autoDustExclusions} selectedSpot={$selectedSpot}
                   pointPick={pickTarget !== ""}
                   clipHigh={$clipWarn.high} clipLow={$clipWarn.low} clipStrict={$clipWarn.strict}
                   on:stroke={(e) => commitStroke(e.detail)} on:brush={(e) => (brush = e.detail)}
@@ -468,6 +499,8 @@
                   on:autodusted={() => (autoBusy = false)}
                   on:zoomchange={(e) => (viewZoomed = e.detail)}
                   on:marqueedone={() => (zoomMarquee = false)}
+                  on:selectspot={(e) => selectedSpot.set(e.detail)}
+                  on:removespot={(e) => removeSpot(e.detail)}
                   on:pointpick={onPointPick} />
         {#if $baseSampling}
           <div class="picker-overlay">
@@ -501,13 +534,15 @@
                          irEnabled={dust.irRemoval.enabled} irSensitivity={dust.irRemoval.sensitivity}
                          brushMigan={dust.brushMigan} aiApplied={dust.aiApplied}
                          strokeCount={dust.strokes.length} aiBusy={aiBusy}
+                         showSpots={dust.showSpots}
                          on:reset={resetDustEdits}
                          on:irEnabled={(e) => setIrOn(e.detail)}
                          on:irSensitivity={(e) => setIrSens(e.detail)}
                          on:brushMigan={(e) => setBrushAi(e.detail)}
                          on:aiErase={aiErase}
                          on:zoomArea={() => (zoomMarquee = true)}
-                         on:resetView={() => { vp?.resetZoom(); zoomMarquee = false; }} />
+                         on:resetView={() => { vp?.resetZoom(); zoomMarquee = false; }}
+                         on:showSpots={(e) => setShowSpotsEdit(e.detail)} />
             <AutoDustPanel id={$activeId}
                            enabled={dust.autoDust.enabled}
                            busy={autoBusy}
