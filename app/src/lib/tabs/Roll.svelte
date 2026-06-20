@@ -99,29 +99,10 @@
     return result;
   })();
 
-  // Editable edge text state — only the tapped strip shows the input
-  let edgeEditingStrip: number | null = null;
-  let edgeInputValue = "";
-
-  function startEdgeEdit(stripIndex: number) {
-    edgeInputValue = $rollEdgeText;
-    edgeEditingStrip = stripIndex;
-  }
-
-  function commitEdgeEdit() {
-    const trimmed = edgeInputValue.trim();
-    if (trimmed) rollEdgeText.set(trimmed);
-    edgeEditingStrip = null;
-  }
-
-  function cancelEdgeEdit() {
-    edgeEditingStrip = null;
-  }
-
-  function onEdgeKeydown(e: KeyboardEvent) {
-    if (e.key === "Enter") { e.preventDefault(); commitEdgeEdit(); }
-    else if (e.key === "Escape") { cancelEdgeEdit(); }
-  }
+  // The film-edge marking is edited via the labeled field in the toolbar (so it's
+  // clearly editable and applies to the whole roll); the strip renders it read-only.
+  // Each strip's bottom rebate shows the marking REPEATS times, evenly distributed.
+  const EDGE_REPEATS = 3;
 
   // --- Live apply -------------------------------------------------------------
   // Component-local map of id → data-URL for draft-look thumbnails (shown in the grid).
@@ -543,12 +524,6 @@
     }
   }
 
-  // Svelte action: focus an input element immediately on mount.
-  function focusOnMount(node: HTMLInputElement) {
-    node.focus();
-    node.select();
-    return {};
-  }
 </script>
 
 <svelte:window on:keydown={onWindowKeydown} />
@@ -561,6 +536,19 @@
         <!-- Toggle + export grouped: the bottom stroke spans only this group (to
              the end of the export button), with a gap before the right panel. -->
         <div class="toolbar-actions">
+          <!-- Editable film-edge marking for the whole roll -->
+          {#if $rollFilmEdge}
+            <label class="edge-field">
+              <span class="edge-field-label">{$t('roll.edgeText')}</span>
+              <input
+                type="text"
+                value={$rollEdgeText}
+                on:input={(e) => rollEdgeText.set(e.currentTarget.value)}
+                placeholder={$t('roll.edgeTextPlaceholder')}
+                aria-label={$t('roll.edgeText')}
+              />
+            </label>
+          {/if}
           <!-- Film edge toggle (left of export button) -->
           <button class="film-edge-toggle" on:click={() => rollFilmEdge.update(b => !b)}
                   aria-label={$t('roll.filmEdge')} aria-pressed={$rollFilmEdge}>
@@ -614,21 +602,11 @@
                     <div class="rebate rebate-bottom">
                       <div class="rebate-info-row">
                         <div class="barcode"></div>
-                        {#if edgeEditingStrip === stripIndex}
-                          <input
-                            class="edge-text-input"
-                            type="text"
-                            bind:value={edgeInputValue}
-                            on:blur={commitEdgeEdit}
-                            on:keydown={onEdgeKeydown}
-                            aria-label="Film edge text"
-                            use:focusOnMount
-                          />
-                        {:else}
-                          <button class="edge-text" on:click|stopPropagation={() => startEdgeEdit(stripIndex)}
-                                  aria-label="Edit film edge text">{$rollEdgeText}</button>
-                        {/if}
-                        <div style="flex:1"></div>
+                        <div class="edge-track">
+                          {#each Array(EDGE_REPEATS) as _}
+                            <span class="edge-text">{$rollEdgeText}</span>
+                          {/each}
+                        </div>
                         <span class="edge-arrow">→</span>
                       </div>
                       <div class="sprocket-holes"></div>
@@ -841,6 +819,18 @@
     padding: 6px 8px; flex: none; background: transparent; }
   /* Toggle + export grouped at the right, with a gap before the panel. */
   .toolbar-actions { display: flex; align-items: center; gap: 10px; margin-right: 12px; }
+
+  /* Editable film-edge marking field in the toolbar */
+  .edge-field { display: flex; align-items: center; gap: 8px; margin-right: 4px; }
+  .edge-field-label { font-size: 12px; color: var(--text-faint); white-space: nowrap;
+    text-transform: uppercase; letter-spacing: .4px; }
+  .edge-field input {
+    width: 220px; padding: 6px 10px; border-radius: 8px;
+    background: var(--glass-hi); border: 1px solid var(--glass-brd); color: var(--text);
+    font: 600 12px 'Spline Sans Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+    letter-spacing: .04em; outline: none; transition: border-color 0.15s, background 0.15s; }
+  .edge-field input:focus { border-color: #cf9152; background: rgba(255,255,255,0.06); }
+  .edge-field input::placeholder { color: var(--text-faint); letter-spacing: 0; }
   .sheet { flex: 1; overflow-y: auto; padding: 0; background: #111111; display: flex; flex-direction: column; }
   .empty { color: var(--text-faint); padding: 16px; }
 
@@ -872,10 +862,10 @@
       rgba(216,207,184,.16) 9px 15px,
       rgba(216,207,184,0) 15px 20px); }
 
-  .frame-numbers { display: flex; height: 19px; align-items: center; }
+  .frame-numbers { display: flex; height: 24px; align-items: center; }
   .frame-num { flex: 1; text-align: center;
-    font: 600 10px 'Spline Sans Mono', ui-monospace, 'SF Mono', Menlo, monospace;
-    color: #7e7868; letter-spacing: .12em; }
+    font: 600 14px 'Spline Sans Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+    color: #a39a82; letter-spacing: .14em; }
   .frame-num.frame-pad { visibility: hidden; }
 
   .frames-row { display: flex; gap: 7px; background: #000; padding: 0 6px; align-items: flex-start; }
@@ -885,24 +875,22 @@
   .frame-cell img { width: 100%; height: auto; display: block; }
   .frame-cell-pad { flex: 1; background: transparent; cursor: default; }
 
-  .rebate-info-row { display: flex; align-items: center; gap: 11px; height: 18px; padding: 0 10px; }
-  .barcode { width: 30px; height: 9px; flex: none;
+  .rebate-info-row { display: flex; align-items: center; gap: 14px; height: 24px; padding: 0 12px; }
+  .barcode { width: 34px; height: 11px; flex: none;
     background: repeating-linear-gradient(90deg,
       #c9c3b0 0 1px, transparent 1px 3px,
       #c9c3b0 3px 4px, transparent 4px 6px,
       #c9c3b0 6px 8px, transparent 8px 11px,
       #c9c3b0 11px 12px, transparent 12px 15px,
       #c9c3b0 15px 17px, transparent 17px 19px); }
-  .edge-text { background: transparent; border: none; padding: 0; cursor: text;
-    font: 600 9px 'Spline Sans Mono', ui-monospace, 'SF Mono', Menlo, monospace;
-    color: #857f6f; letter-spacing: .24em; white-space: nowrap; }
-  .edge-text-input { background: transparent; border: none; border-bottom: 1px solid #857f6f;
-    padding: 0; outline: none;
-    font: 600 9px 'Spline Sans Mono', ui-monospace, 'SF Mono', Menlo, monospace;
-    color: #857f6f; letter-spacing: .24em; white-space: nowrap;
-    width: 220px; }
-  .edge-arrow { font: 600 9px 'Spline Sans Mono', ui-monospace, 'SF Mono', Menlo, monospace;
-    color: #6c6657; letter-spacing: .24em; }
+  /* Edge marking repeated and evenly distributed across the strip width */
+  .edge-track { flex: 1; min-width: 0; display: flex; align-items: center; gap: 14px; }
+  .edge-text { flex: 1; min-width: 0; text-align: center;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font: 600 12px 'Spline Sans Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+    color: #968f7c; letter-spacing: .24em; }
+  .edge-arrow { font: 600 13px 'Spline Sans Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+    color: #7a7464; letter-spacing: .24em; flex: none; }
 
   /* ===== Proof grid (film-edge OFF) ===== */
   .proof-strip { display: flex; gap: 16px; padding: 0 0 16px; align-items: flex-start; }

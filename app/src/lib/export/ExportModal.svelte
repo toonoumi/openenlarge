@@ -148,13 +148,19 @@
   let qualityEl: HTMLInputElement;
   let maxMbEl: HTMLInputElement;
 
+  // Output resolution cap on the long edge (px); 0 = full resolution.
+  const RES_OPTIONS = [0, 4096, 2048, 1024] as const;
+  let resLongEdge: number = 0;
+
   $: kindIndex = kind === "jpeg" ? 0 : kind === "tiff" ? 1 : 2;
+  $: resIndex = Math.max(0, RES_OPTIONS.indexOf(resLongEdge as (typeof RES_OPTIONS)[number]));
 
   $: format = {
     kind,
     bitDepth: kind === "jpeg" ? undefined : bitDepth,
     quality: kind === "jpeg" ? quality : undefined,
     maxBytes: kind === "jpeg" && maxMb > 0 ? Math.round(maxMb * 1024 * 1024) : null,
+    resizeLongEdge: resLongEdge > 0 ? resLongEdge : null,
   } as ExportFormat;
 
   // ---- Export run state ----
@@ -359,6 +365,19 @@
           <button type="button" class:active={kind === "jpeg"} on:click={() => (kind = "jpeg")}>{$t('export.formatJpeg')}</button>
           <button type="button" class:active={kind === "tiff"} on:click={() => (kind = "tiff")}>{$t('export.formatTiff')}</button>
           <button type="button" class:active={kind === "png"} on:click={() => (kind = "png")}>{$t('export.formatPng')}</button>
+          <span class="seg-ind"></span>
+        </div>
+      </div>
+
+      <div class="field">
+        <span class="flabel">{$t('export.resolution')}
+          <b>{resLongEdge === 0 ? $t('export.resFull') : $t('export.resPx', { px: resLongEdge })}</b></span>
+        <div class="seg" style="--n:4; --i:{resIndex}">
+          {#each RES_OPTIONS as opt}
+            <button type="button" class:active={resLongEdge === opt} on:click={() => (resLongEdge = opt)}>
+              {opt === 0 ? $t('export.resFull') : opt}
+            </button>
+          {/each}
           <span class="seg-ind"></span>
         </div>
       </div>

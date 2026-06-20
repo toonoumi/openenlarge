@@ -14,10 +14,11 @@ const FRAME_W = 260;      // frame width in pixels
 
 // Filmstrip rebate/spacing (pixels, scaled to frame size)
 const SPROCKET_H = 8;
-const FRAME_NUM_H = 19;
+const FRAME_NUM_H = 26;
 const REBATE_TOP_H = SPROCKET_H + FRAME_NUM_H;
-const BARCODE_INFO_H = 18;
+const BARCODE_INFO_H = 26;
 const REBATE_BOT_H = BARCODE_INFO_H + SPROCKET_H;
+const EDGE_REPEATS = 3; // edge marking copies distributed across the strip
 const FRAME_GAP = 7;      // gap between frames within a strip
 const FRAME_PAD = 6;      // left+right padding inside the black frames row
 const STRIP_GAP = 16;     // vertical gap between strips
@@ -197,8 +198,8 @@ export async function exportContactSheet(): Promise<void> {
       drawSprocketBand(ctx, leftX, cursorY, stripW, SPROCKET_H);
 
       // Frame numbers
-      ctx.fillStyle = "#7e7868";
-      ctx.font = "600 13px 'Spline Sans Mono', ui-monospace, monospace";
+      ctx.fillStyle = "#a39a82";
+      ctx.font = "600 18px 'Spline Sans Mono', ui-monospace, monospace";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       const numY = cursorY + SPROCKET_H + FRAME_NUM_H / 2;
@@ -235,25 +236,33 @@ export async function exportContactSheet(): Promise<void> {
       const infoY = cursorY;
       const infoMidY = infoY + BARCODE_INFO_H / 2;
 
-      // Barcode (30×9px)
-      const barcodeX = leftX + 10;
-      const barcodeY = infoY + (BARCODE_INFO_H - 9) / 2;
-      drawBarcode(ctx, barcodeX, barcodeY, 30, 9);
-
-      // Edge text
-      ctx.fillStyle = "#857f6f";
-      ctx.font = "600 12px 'Spline Sans Mono', ui-monospace, monospace";
-      ctx.textAlign = "left";
-      ctx.textBaseline = "middle";
-      ctx.letterSpacing = "0.24em";
-      ctx.fillText(edgeText, barcodeX + 30 + 11, infoMidY);
-      ctx.letterSpacing = "0px";
+      // Barcode (34×11px)
+      const barcodeW = 34;
+      const barcodeX = leftX + 12;
+      const barcodeY = infoY + (BARCODE_INFO_H - 11) / 2;
+      drawBarcode(ctx, barcodeX, barcodeY, barcodeW, 11);
 
       // Arrow "→" on the right
-      ctx.fillStyle = "#6c6657";
-      ctx.font = "600 12px 'Spline Sans Mono', ui-monospace, monospace";
+      ctx.fillStyle = "#7a7464";
+      ctx.font = "600 16px 'Spline Sans Mono', ui-monospace, monospace";
       ctx.textAlign = "right";
-      ctx.fillText("→", leftX + stripW - 10, infoMidY);
+      ctx.textBaseline = "middle";
+      const arrowX = leftX + stripW - 12;
+      ctx.fillText("→", arrowX, infoMidY);
+
+      // Edge text — repeated and evenly distributed between the barcode and arrow
+      ctx.fillStyle = "#968f7c";
+      ctx.font = "600 15px 'Spline Sans Mono', ui-monospace, monospace";
+      ctx.textAlign = "center";
+      ctx.letterSpacing = "0.24em";
+      const trackLeft = barcodeX + barcodeW + 16;
+      const trackRight = arrowX - 24;
+      const trackW = Math.max(0, trackRight - trackLeft);
+      for (let r = 0; r < EDGE_REPEATS; r++) {
+        const cx = trackLeft + (trackW * (r + 0.5)) / EDGE_REPEATS;
+        ctx.fillText(edgeText, cx, infoMidY);
+      }
+      ctx.letterSpacing = "0px";
 
       // Sprocket holes — bottom band
       drawSprocketBand(ctx, leftX, cursorY + BARCODE_INFO_H, stripW, SPROCKET_H);

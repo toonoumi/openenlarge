@@ -127,6 +127,7 @@ export interface ExportFormat {
   bitDepth?: 8 | 16;        // tiff/png only
   quality?: number;         // jpeg only, 1–100
   maxBytes?: number | null; // jpeg only
+  resizeLongEdge?: number | null; // downscale cap on the long edge; null/0 = full res
 }
 
 /** One image as returned by load_catalog. `developed`/`has_ir` reflect whether a

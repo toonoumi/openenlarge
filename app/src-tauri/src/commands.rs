@@ -38,6 +38,8 @@ pub struct ExportFormat {
     pub quality: u8, // jpeg, 1–100
     #[serde(default)]
     pub max_bytes: Option<u64>, // jpeg
+    #[serde(default)]
+    pub resize_long_edge: Option<u32>, // downscale cap on the long edge; None/0 = full res
 }
 
 /// User-edited metadata overrides sent from the panel. Each field, when present
@@ -1275,6 +1277,24 @@ pub(crate) fn finish_full_res(
     Ok((fin, metadata))
 }
 
+/// Downscale a finished image so its long edge is at most `long_edge` px. Never
+/// upscales; `None`/0 leaves the image untouched. Shared by the CPU, GPU, and HDR
+/// export paths so the Export modal's resolution selector applies uniformly.
+fn downscale_long_edge(img: film_core::Image, long_edge: Option<u32>) -> film_core::Image {
+    let le = match long_edge {
+        Some(le) if le > 0 => le,
+        _ => return img,
+    };
+    let cur = img.width.max(img.height) as u32;
+    if cur <= le {
+        return img;
+    }
+    let scale = le as f64 / cur as f64;
+    let w = ((img.width as f64 * scale).round() as u32).max(1);
+    let h = ((img.height as f64 * scale).round() as u32).max(1);
+    resize_to(&img, w, h)
+}
+
 /// Re-decode the file at full resolution and export it in the chosen format.
 #[allow(clippy::too_many_arguments)] // Tauri command: flat args mirror the JS invoke contract
 #[tauri::command]
@@ -1296,6 +1316,7 @@ pub async fn export_image(
     let (fin, metadata) = finish_full_res(
         &id, &params, image_crop, rot90, flip_h, flip_v, angle, &dust, &ir_removal, &session,
     )?;
+    let fin = downscale_long_edge(fin, format.resize_long_edge);
     let out = Path::new(&out_path);
     match format.kind.as_str() {
         "tiff" => {
@@ -1365,6 +1386,7 @@ pub async fn export_image_hdr(
         }
         None => full,
     };
+    let full = downscale_long_edge(full, format.resize_long_edge);
 
     let mut ip = resolve_params(&params, &thumb, effective_base(&params, base));
     ip.d_max = effective_dmax(&params, dev_dmax);
@@ -1500,6 +1522,7 @@ pub async fn export_finish(
         } else {
             image_from_rgba8(readback.w, readback.h, &data)
         };
+        let img = downscale_long_edge(img, format.resize_long_edge);
         let out = Path::new(&out_path);
         match format.kind.as_str() {
             "tiff" => {
