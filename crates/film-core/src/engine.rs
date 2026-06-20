@@ -7,6 +7,18 @@
 use nalgebra::Matrix3;
 use rayon::prelude::*;
 
+/// How white balance is applied. `Gain` multiplies the positive output after the
+/// filmic curve (von-Kries display gain). `Subtractive` applies the same gains as a
+/// per-channel multiply on normalised log-density BEFORE the filmic curve, like a
+/// dichroic enlarger head changing each emulsion layer's exposure — coupled to the
+/// tone-curve slope, anchored at black, no highlight clipping.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum WbMode {
+    #[default]
+    Gain,
+    Subtractive,
+}
+
 /// All knobs for one inversion. Defaults give a reasonable neutral result.
 #[derive(Debug, Clone)]
 pub struct InversionParams {
@@ -24,6 +36,8 @@ pub struct InversionParams {
     pub gamma: f32,
     /// Per-channel white-balance gain applied in linear light before gamma.
     pub wb: [f32; 3],
+    /// How `wb` is applied: post-curve gain (default) or subtractive (pre-curve, color-head).
+    pub wb_mode: WbMode,
     /// Cineon (Mode D) — scalar white / dynamic-range anchor (D_max).
     pub d_max: f32,
     /// Cineon (Mode D) — print exposure (ASC-CDL slope).
@@ -54,6 +68,7 @@ impl Default for InversionParams {
             black: 0.0,
             gamma: 1.0 / 2.2,
             wb: [1.0, 1.0, 1.0],
+            wb_mode: WbMode::Gain,
             d_max: 1.5,
             print_exposure: 1.0,
             paper_black: 0.0,
@@ -78,6 +93,10 @@ const HDR_HEADROOM: f32 = 2.5;
 /// free of the dead zone the old eff_d_max clamp produced past ~EV+3. Mirrored
 /// verbatim in shaders.ts (INVERT_FRAG).
 const EXPO_K: f32 = 0.14;
+/// Subtractive WB strength: gain `g` → density scale `g^CMY_STRENGTH` on `t`. Tuned so
+/// the mid-tone shift at a typical Temp/Tint roughly matches the old gain magnitude
+/// while giving a proper shadow→highlight crossover. Mirrored in shaders.ts.
+const CMY_STRENGTH: f32 = 1.6;
 
 // --- Filmic display S-curve (replaces the old paper-grade/soft-clip encode). ---
 // Applied per channel in the NORMALISED LOG-DENSITY domain `t = d/d_max` (then
@@ -202,12 +221,30 @@ pub fn invert_d(rgb: [f32; 3], p: &InversionParams) -> [f32; 3] {
         // UNCLAMPED forward so a super-white highlight keeps a distinct value > 1 —
         // clamping here would merge near-white tones and kill the latitude that
         // lowering exposure recovers.
-        let y = filmic_s_raw(t) * p.wb[c];
-        // Exposure scales the WB-neutralised log-density `filmic_inv(y)`, then
-        // re-applies the (clamped) curve. At EV 0 (expo_gain == 1) this is exactly
-        // `filmic_s(t)·wb` — the look is unchanged; off EV 0 it brightens/darkens
-        // without moving hue (see the expo_gain note above).
-        let v = filmic_s(filmic_inv(y) * expo_gain);
+        // WB application depends on the mode (mirror shaders.ts INVERT_FRAG):
+        //  - Gain:        post-curve display multiply  →  filmic_s(t) · wb[c]
+        //  - Subtractive: pre-curve density multiply    →  filmic_s(t · wb[c]^CMY_STRENGTH)
+        //    Anchored at black (t=0 → 0 for any filter), coupled to the filmic slope.
+        let v = match p.wb_mode {
+            WbMode::Gain => {
+                // WB is a linear gain on the positive OUTPUT (filmic value), NOT a scale on
+                // t. This keeps black neutral (filmic_s(0)·wb = 0, so no "yellow shadow")
+                // AND stays consistent with `auto_wb_gains` / the gray-point picker, which
+                // both treat WB as a multiply on the displayed positive. (A t-scale is a
+                // nonlinear remap that those gray-world estimators cannot neutralise.)
+                // `y` is that WB-neutralised display density (the EV-0 result). Use the
+                // UNCLAMPED forward so a super-white highlight keeps a distinct value > 1 —
+                // clamping here would merge near-white tones and kill the latitude that
+                // lowering exposure recovers.
+                let y = filmic_s_raw(t) * p.wb[c];
+                // Exposure scales the WB-neutralised log-density `filmic_inv(y)`, then
+                // re-applies the (clamped) curve. At EV 0 (expo_gain == 1) this is exactly
+                // `filmic_s(t)·wb` — the look is unchanged; off EV 0 it brightens/darkens
+                // without moving hue (see the expo_gain note above).
+                filmic_s(filmic_inv(y) * expo_gain)
+            }
+            WbMode::Subtractive => filmic_s(t * p.wb[c].max(EPS).powf(CMY_STRENGTH) * expo_gain),
+        };
         if p.hdr {
             // HDR: expand the filmic shoulder above the knee into [knee, headroom]
             // so speculars/lights exceed SDR white (the gain map captures this).
@@ -866,5 +903,44 @@ mod tests {
             at(-2.0, spec)
         );
         assert!(at(-2.0, mid) < at(0.0, mid), "mid darkens when darkening");
+    }
+
+    fn sub_params(wb: [f32; 3]) -> InversionParams {
+        InversionParams { base: [0.9, 0.9, 0.9], d_max: 1.5, wb, wb_mode: WbMode::Subtractive, ..Default::default() }
+    }
+
+    #[test]
+    fn subtractive_black_stays_neutral() {
+        // A pixel equal to the film base has density 0 → t=0 → filmic_s(0)=0 for every
+        // channel regardless of the WB filter. No "yellow shadow".
+        let p = sub_params([1.3, 1.0, 0.7]);
+        let out = invert_d(p.base, &p);
+        assert_eq!(out, [0.0, 0.0, 0.0], "subtractive black must be pure neutral, got {out:?}");
+    }
+
+    #[test]
+    fn subtractive_neutral_wb_equals_gain() {
+        // With wb = [1,1,1] the subtractive and gain paths both reduce to filmic_s(t).
+        let scan = [0.25_f32, 0.30, 0.18];
+        let gain = InversionParams { base: [0.9, 0.9, 0.9], d_max: 1.5, wb: [1.0, 1.0, 1.0], wb_mode: WbMode::Gain, ..Default::default() };
+        let sub = InversionParams { wb_mode: WbMode::Subtractive, ..gain.clone() };
+        let a = invert_d(scan, &gain);
+        let b = invert_d(scan, &sub);
+        for c in 0..3 {
+            assert!((a[c] - b[c]).abs() < 1e-6, "c{c}: gain {a:?} != sub {b:?}");
+        }
+    }
+
+    #[test]
+    fn subtractive_warm_filter_brightens_red_midtone() {
+        // A red-boosted WB filter (red gain > 1) raises the red channel of a mid-density
+        // pixel vs. the neutral subtractive render — the subtractive shift IS happening.
+        let scan = [0.30_f32, 0.30, 0.30];
+        let neutral = sub_params([1.0, 1.0, 1.0]);
+        let warm = sub_params([1.3, 1.0, 0.8]);
+        let n = invert_d(scan, &neutral);
+        let w = invert_d(scan, &warm);
+        assert!(w[0] > n[0] + 1e-4, "red filter should brighten red mid: {n:?} -> {w:?}");
+        assert!(w[2] < n[2] - 1e-4, "blue cut should darken blue mid: {n:?} -> {w:?}");
     }
 }
