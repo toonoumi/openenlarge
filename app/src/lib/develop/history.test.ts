@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   seeded, pushed, undone, redone, canUndo, canRedo, snapEqual, matchUndoRedo,
-  HISTORY_CAP, type EditSnapshot, type ImageHistory,
+  changeLabel, HISTORY_CAP, type EditSnapshot, type ImageHistory,
 } from "./history";
 
 // Minimal snapshot factory: only `params.exposure` varies in these tests.
@@ -105,6 +105,59 @@ describe("history engine — pure ops", () => {
     h = redone(h).history; // present 2
     expect(h.present.params.exposure).toBe(2);
     expect(canRedo(h)).toBe(false);
+  });
+});
+
+describe("changeLabel — names the control that differs", () => {
+  // Build a snapshot from partial params/crop/dust/meta overrides.
+  const base = (): EditSnapshot => ({
+    params: {} as EditSnapshot["params"],
+    crop: null,
+    dust: { strokes: [], irRemoval: { enabled: false, sensitivity: 50 }, autoDust: { enabled: false, sensitivity: 50 }, brushMigan: false, aiApplied: false },
+    meta: {},
+  });
+  const withParams = (p: Record<string, unknown>): EditSnapshot =>
+    ({ ...base(), params: p as unknown as EditSnapshot["params"] });
+
+  it("names a single basic slider", () => {
+    expect(changeLabel(withParams({ exposure: 0 }), withParams({ exposure: 1 }))).toBe("basic.exposure");
+    expect(changeLabel(withParams({ contrast: 0 }), withParams({ contrast: 9 }))).toBe("basic.contrast");
+  });
+
+  it("groups white-balance params under one label", () => {
+    // Auto-WB sets temp + tint + auto_wb together → still one label.
+    const a = withParams({ temp: 5000, tint: 0, auto_wb: false });
+    const b = withParams({ temp: 5500, tint: 7, auto_wb: true });
+    expect(changeLabel(a, b)).toBe("basic.whiteBalance");
+  });
+
+  it("groups panel params under the panel label", () => {
+    expect(changeLabel(withParams({ cm_red_hue: 0 }), withParams({ cm_red_hue: 5 }))).toBe("colorMixer.title");
+    expect(changeLabel(withParams({ cg_sh_hue: 0 }), withParams({ cg_sh_hue: 5 }))).toBe("colorGrading.title");
+    expect(changeLabel(withParams({ tc_curve: [] }), withParams({ tc_curve: [[0, 0]] }))).toBe("curve.title");
+    expect(changeLabel(withParams({ pc_samples: [] }), withParams({ pc_samples: [1] }))).toBe("colorMixer.tab.point");
+    expect(changeLabel(withParams({ stock: "none" }), withParams({ stock: "ektar100" }))).toBe("basic.filmProfile");
+  });
+
+  it("names crop, dust, and metadata changes", () => {
+    const crop = { ...base(), crop: { rect: { x: 0, y: 0, w: 1, h: 1 }, aspect: "custom", orientation: "landscape", rot90: 0, flipH: false, flipV: false, angle: 0 } as EditSnapshot["crop"] };
+    expect(changeLabel(base(), crop)).toBe("crop.title");
+
+    const dust = { ...base(), dust: { ...base().dust, strokes: [{ points: [], r: 0.1 }] } };
+    expect(changeLabel(base(), dust)).toBe("label.dustRemoval");
+
+    const meta = { ...base(), meta: { note: "hi" } };
+    expect(changeLabel(base(), meta)).toBe("label.metadata");
+  });
+
+  it("returns a 'multiple' label when distinct controls changed at once", () => {
+    const a = withParams({ exposure: 0, contrast: 0 });
+    const b = withParams({ exposure: 1, contrast: 9 });
+    expect(changeLabel(a, b)).toBe("label.multiple");
+  });
+
+  it("falls back to a generic label when nothing meaningful differs", () => {
+    expect(changeLabel(base(), base())).toBe("label.edit");
   });
 });
 

@@ -4,8 +4,10 @@ import {
   activeCrop, activeDust, activeMeta, dustRev,
 } from "../store";
 import {
-  seeded, pushed, undone, redone, type EditSnapshot, type ImageHistory,
+  seeded, pushed, undone, redone, changeLabel, type EditSnapshot, type ImageHistory,
 } from "./history";
+import { showToast } from "../toast";
+import { translate } from "../i18n";
 
 /** Per-image undo/redo stacks. In-memory only — never persisted to the catalog. */
 export const historyById = writable<Record<string, ImageHistory>>({});
@@ -72,8 +74,10 @@ export function undoActive(): void {
   if (!h) return;
   const { history, snapshot } = undone(h);
   if (!snapshot) return;
+  const what = translate(changeLabel(h.present, snapshot));
   historyById.update((m) => ({ ...m, [id]: history }));
   applySnapshot(id, snapshot);
+  showToast(translate("toast.undo", { what }));
 }
 
 export function redoActive(): void {
@@ -83,8 +87,10 @@ export function redoActive(): void {
   if (!h) return;
   const { history, snapshot } = redone(h);
   if (!snapshot) return;
+  const what = translate(changeLabel(h.present, snapshot));
   historyById.update((m) => ({ ...m, [id]: history }));
   applySnapshot(id, snapshot);
+  showToast(translate("toast.redo", { what }));
 }
 
 /** Free an image's history (called when the image is deleted). */
