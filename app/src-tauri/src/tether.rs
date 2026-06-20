@@ -100,7 +100,7 @@ pub fn wait_until_stable(path: &Path, poll: Duration, max_wait: Duration) -> boo
 /// File extensions we treat as scans, lowercase, no dot. Mirrors the import
 /// dialog filter in `panels/Source.svelte`.
 const SCAN_EXTS: &[&str] = &[
-    "jpg", "jpeg", "png", "dng", "tif", "tiff", "raf", "rw2", "nef", "arw", "cr3", "3fr", "orf", "raw",
+    "jpg", "jpeg", "png", "dng", "tif", "tiff", "raf", "rw2", "nef", "arw", "cr2", "cr3", "3fr", "orf", "raw",
 ];
 
 /// True if `file_name` is a scan we should auto-develop: a known image extension,
@@ -131,6 +131,7 @@ mod tests {
     fn accepts_known_raw_and_image_extensions() {
         assert!(is_accepted_scan("DSCF1234.RAF"));
         assert!(is_accepted_scan("P1010001.ORF"));
+        assert!(is_accepted_scan("IMG_5678.CR2"));
         assert!(is_accepted_scan("IMG_0001.dng"));
         assert!(is_accepted_scan("scan.tiff"));
         assert!(is_accepted_scan("frame.JPG"));

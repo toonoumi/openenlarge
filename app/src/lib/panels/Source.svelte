@@ -11,7 +11,7 @@
   $: filterFilmScans = $t("source.filterFilmScans");
 
   async function pickAndImport() {
-    const sel = await open({ multiple: true, filters: [{ name: filterFilmScans, extensions: ["jpg", "jpeg", "png", "dng", "tif", "tiff", "raf", "rw2", "nef", "arw", "cr3", "3fr", "orf", "raw"] }] });
+    const sel = await open({ multiple: true, filters: [{ name: filterFilmScans, extensions: ["jpg", "jpeg", "png", "dng", "tif", "tiff", "raf", "rw2", "nef", "arw", "cr2", "cr3", "3fr", "orf", "raw"] }] });
     if (!sel) return;
     const paths = Array.isArray(sel) ? sel : [sel];
     importing = true; error = "";
