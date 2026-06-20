@@ -2115,11 +2115,11 @@ fn auto_dust_mask(
     ip: &InversionParams,
     mode: Mode,
     sensitivity: f32,
+    exclusions: &[[f64; 2]],
     cached: Option<(usize, usize, Vec<f32>)>,
 ) -> (film_core::dust::Mask, Option<(usize, usize, Vec<f32>)>) {
     let (w, h) = (baked.width, baked.height);
     let empty = film_core::dust::Mask { x0: 0, y0: 0, w: 0, h: 0, bits: Vec::new() };
-    // Positive image the detector expects (no finishing layer needed).
     let positive = invert_image(baked, ip, mode);
     let (prob, fresh) = match cached {
         Some((cw, ch, p)) if (cw, ch) == (w, h) && p.len() == w * h => (p, None),
@@ -2129,7 +2129,8 @@ fn auto_dust_mask(
         },
     };
     let max_blob = (crate::autodust::MAX_BLOB * w.max(h) / 2000).max(1);
-    let mask = film_core::dust::prob_defect_mask(w, h, &prob, sensitivity, max_blob);
+    let mut mask = film_core::dust::prob_defect_mask(w, h, &prob, sensitivity, max_blob);
+    drop_excluded(&mut mask, exclusions);
     (mask, fresh)
 }
 
@@ -2148,26 +2149,29 @@ fn union_mask(mut a: film_core::dust::Mask, b: &film_core::dust::Mask) -> film_c
     a
 }
 
-/// Count connected components (4-neighbour) of set pixels in a whole-frame mask —
-/// i.e. the number of distinct dust/defect spots, for the "N dust spots removed"
-/// toast. Empty mask → 0.
-fn count_blobs(mask: &film_core::dust::Mask) -> u32 {
+/// Connected components (4-neighbour) of the set pixels in a whole-frame mask,
+/// returning each blob's centroid normalized to [0,1] (x by width, y by height).
+/// These are the distinct dust/defect spots surfaced to the UI as heal markers.
+fn blob_centroids(mask: &film_core::dust::Mask) -> Vec<[f64; 2]> {
     let (w, h) = (mask.w, mask.h);
+    let mut out = Vec::new();
     if w == 0 || h == 0 {
-        return 0;
+        return out;
     }
     let mut seen = vec![false; w * h];
     let mut stack: Vec<usize> = Vec::new();
-    let mut blobs = 0u32;
     for start in 0..w * h {
         if !mask.bits[start] || seen[start] {
             continue;
         }
-        blobs += 1;
         seen[start] = true;
         stack.push(start);
+        let (mut sx, mut sy, mut n) = (0usize, 0usize, 0usize);
         while let Some(p) = stack.pop() {
             let (x, y) = (p % w, p / w);
+            sx += x;
+            sy += y;
+            n += 1;
             let mut push = |q: usize, seen: &mut Vec<bool>, stack: &mut Vec<usize>| {
                 if mask.bits[q] && !seen[q] {
                     seen[q] = true;
@@ -2179,8 +2183,67 @@ fn count_blobs(mask: &film_core::dust::Mask) -> u32 {
             if y > 0 { push(p - w, &mut seen, &mut stack); }
             if y + 1 < h { push(p + w, &mut seen, &mut stack); }
         }
+        if n > 0 {
+            out.push([(sx as f64 / n as f64) / w as f64, (sy as f64 / n as f64) / h as f64]);
+        }
     }
-    blobs
+    out
+}
+
+/// Remove from `mask` any connected blob touched by an excluded seed point
+/// (normalized [0,1]) — i.e. global dust the user chose to KEEP. A small search
+/// window tolerates sub-pixel drift between the stored centroid and the
+/// re-thresholded mask. Searches nearest pixels first to avoid latching onto a
+/// distant blob. Mutates the mask in place.
+fn drop_excluded(mask: &mut film_core::dust::Mask, exclusions: &[[f64; 2]]) {
+    let (w, h) = (mask.w, mask.h);
+    if w == 0 || h == 0 || exclusions.is_empty() {
+        return;
+    }
+    const WIN: i32 = 6; // px radius to snap a seed onto its blob
+    for ex in exclusions {
+        let cx = ((ex[0] * w as f64).round() as i32).clamp(0, w as i32 - 1);
+        let cy = ((ex[1] * h as f64).round() as i32).clamp(0, h as i32 - 1);
+        let mut seed: Option<usize> = None;
+        // Search center-first (by Chebyshev distance) so we latch onto the
+        // closest blob, not the topmost one in scan order.
+        'find: for r in 0..=WIN {
+            for dy in -r..=r {
+                for dx in -r..=r {
+                    // Only visit the ring at this radius (Chebyshev distance == r).
+                    if dy.abs() != r && dx.abs() != r {
+                        continue;
+                    }
+                    let x = cx + dx;
+                    let y = cy + dy;
+                    if x < 0 || y < 0 || x >= w as i32 || y >= h as i32 {
+                        continue;
+                    }
+                    let i = y as usize * w + x as usize;
+                    if mask.bits[i] {
+                        seed = Some(i);
+                        break 'find;
+                    }
+                }
+            }
+        }
+        let Some(s) = seed else { continue };
+        let mut stack = vec![s];
+        mask.bits[s] = false;
+        while let Some(p) = stack.pop() {
+            let (x, y) = (p % w, p / w);
+            let mut clear = |q: usize, bits: &mut Vec<bool>, stack: &mut Vec<usize>| {
+                if bits[q] {
+                    bits[q] = false;
+                    stack.push(q);
+                }
+            };
+            if x > 0 { clear(p - 1, &mut mask.bits, &mut stack); }
+            if x + 1 < w { clear(p + 1, &mut mask.bits, &mut stack); }
+            if y > 0 { clear(p - w, &mut mask.bits, &mut stack); }
+            if y + 1 < h { clear(p + w, &mut mask.bits, &mut stack); }
+        }
+    }
 }
 
 /// Heal an already-geometry-baked working buffer: dust strokes per the spec's
@@ -2271,13 +2334,13 @@ pub async fn working_baked_pixels(
     let (bytes, fresh, blobs) = tauri::async_runtime::spawn_blocking(move || {
         let baked = bake_geometry(&working, &spec);
         let (auto_mask, fresh) = if do_auto && crate::autodust::assets::installed(&app_data) {
-            let (m, fr) = auto_dust_mask(&app_data, &baked, &ip, mode, sens, cached);
+            let (m, fr) = auto_dust_mask(&app_data, &baked, &ip, mode, sens, &spec.auto_dust_exclusions, cached);
             (Some(m), fr)
         } else {
             (None, None)
         };
         // Distinct dust spots removed (for the completion toast) — only when auto-dust ran.
-        let blobs = auto_mask.as_ref().map(count_blobs);
+        let blobs = auto_mask.as_ref().map(|m| blob_centroids(m).len() as u32);
         let healed = bake_for_view_from_baked(&app_data, baked, &spec, auto_mask.as_ref(), base);
         let (_, _, bytes) = pack_rgba16f(&healed, MAX_GPU_EDGE);
         (bytes, fresh, blobs)
@@ -2431,6 +2494,34 @@ mod tests {
         let b = Mask { x0: 0, y0: 0, w: 2, h: 1, bits: vec![false, true] };
         let u = super::union_mask(a, &b);
         assert_eq!(u.bits, vec![true, true]);
+    }
+
+    #[test]
+    fn blob_centroids_finds_one_blob_center() {
+        // 4x4 frame, a single 2x2 set block at (x=2..3, y=0..1) → centroid (2.5,0.5).
+        let mut bits = vec![false; 16];
+        for &i in &[2usize, 3, 6, 7] {
+            bits[i] = true;
+        }
+        let mask = film_core::dust::Mask { x0: 0, y0: 0, w: 4, h: 4, bits };
+        let c = blob_centroids(&mask);
+        assert_eq!(c.len(), 1);
+        assert!((c[0][0] - 2.5 / 4.0).abs() < 1e-6, "cx {}", c[0][0]);
+        assert!((c[0][1] - 0.5 / 4.0).abs() < 1e-6, "cy {}", c[0][1]);
+    }
+
+    #[test]
+    fn drop_excluded_clears_only_the_seeded_blob() {
+        // Two separate single-pixel blobs: keep one via an exclusion seed on it.
+        let mut bits = vec![false; 16];
+        bits[0] = true; // blob A at (0,0)
+        bits[10] = true; // blob B at (2,2)
+        let mut mask = film_core::dust::Mask { x0: 0, y0: 0, w: 4, h: 4, bits };
+        // Seed on blob B (normalized center of pixel (2,2)).
+        drop_excluded(&mut mask, &[[2.0 / 4.0, 2.0 / 4.0]]);
+        assert!(mask.bits[0], "blob A kept");
+        assert!(!mask.bits[10], "blob B cleared");
+        assert_eq!(blob_centroids(&mask).len(), 1);
     }
 
     #[test]

@@ -27,6 +27,10 @@ pub struct BakeSpec {
     /// AI auto-dust: detector-driven defect mask, MI-GAN healed at bake time.
     #[serde(default)]
     pub auto_dust: AutoDust,
+    /// Normalized [x,y] seed points for auto-dust blobs the user chose to KEEP
+    /// (excluded from removal). Deleting a global heal spot adds its centroid here.
+    #[serde(default)]
+    pub auto_dust_exclusions: Vec<[f64; 2]>,
 }
 
 /// Geometry only (orient → straighten → persistent crop) on the raw negative.
@@ -223,6 +227,7 @@ mod tests {
             skip_dust_heal: false,
             migan: false,
             auto_dust: AutoDust::default(),
+            auto_dust_exclusions: Vec::new(),
         };
         let out = bake_working(&img, &spec);
         assert_eq!((out.width, out.height), (4, 4));
@@ -256,6 +261,7 @@ mod tests {
             skip_dust_heal: false,
             migan: false,
             auto_dust: AutoDust::default(),
+            auto_dust_exclusions: Vec::new(),
         };
         let out = bake_working(&img, &spec);
         assert_eq!((out.width, out.height), (5, 4));
@@ -283,6 +289,7 @@ mod tests {
             skip_dust_heal: false,
             migan: false,
             auto_dust: AutoDust::default(),
+            auto_dust_exclusions: Vec::new(),
         };
         let geom = bake_geometry(&img, &spec);
         let baked = bake_working(&img, &spec);
