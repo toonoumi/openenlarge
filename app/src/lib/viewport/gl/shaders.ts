@@ -368,9 +368,12 @@ vec3 invert(vec3 rgbIn) {
     // black pivot (mirrors engine.rs invert_d). EV=0 → eff_d_max==u_d_max.
     float ev = log2(max(u_print_exposure, EPS));
     float eff_d_max = clamp(u_d_max * exp2(-EXPO_DMAX_K * ev), EFF_DMAX_LO, EFF_DMAX_HI);
-    // Normalised log-density; WB is a log-domain SCALE (t=0 -> 0, neutral black).
-    vec3 t = (d / max(eff_d_max, EPS)) * u_wb;
-    return vec3(filmicS(t.r), filmicS(t.g), filmicS(t.b));  // filmic display curve
+    // Normalised log-density; d == eff_d_max -> t == 1 (white point).
+    vec3 t = d / max(eff_d_max, EPS);
+    // WB is a linear gain on the positive OUTPUT (filmic value), NOT a t-scale:
+    // keeps black neutral (filmicS(0)*wb = 0) and stays consistent with the
+    // gray-world auto-WB + gray-point picker (mirror engine.rs invert_d).
+    return clamp(vec3(filmicS(t.r), filmicS(t.g), filmicS(t.b)) * u_wb, 0.0, 1.0);
   }
   if (u_mode == 2) {           // Naive: 1 - clamp(I/base,0,1). Intentionally uses
     // its own [0,1] clamp (engine.rs invert_naive), not the [EPS,1] r above.

@@ -332,9 +332,13 @@ mod tests {
         // Full pipeline (optimize → render → loss). A negative thumb with two
         // regions develops into a positive with regional colour variation — the
         // exact case that used to make the optimizer collapse chroma toward gray.
+        // Scan values must be well BELOW the film base (dense negative) so they
+        // develop to chromatic MID-tones: the filmic curve's gentle toe keeps
+        // at/below-base pixels near black (correctly), where chroma is ~0 and there
+        // is nothing to match.
         let p = base_params();
-        let mut px = vec![[0.50, 0.42, 0.34]; 64];
-        for v in px.iter_mut().take(32) { *v = [0.40, 0.45, 0.38]; }
+        let mut px = vec![[0.10, 0.12, 0.14]; 64];
+        for v in px.iter_mut().take(32) { *v = [0.12, 0.10, 0.13]; }
         let src = Image { width: 8, height: 8, pixels: px, ir: None };
         let (db, dd) = ([0.5, 0.4, 0.3], 1.5);
         let r = write_ref_png([180, 110, 70], "cm_test_match_chroma.png");

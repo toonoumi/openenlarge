@@ -150,21 +150,24 @@ pub fn invert_d(rgb: [f32; 3], p: &InversionParams) -> [f32; 3] {
         // correct domain for the tone curve.
         let d = (dmin / clamped).log10().max(0.0);
         // Normalised log-density `t`: d == eff_d_max → t == 1 (the white point).
-        // WB is a log-domain SCALE on t, so t == 0 → 0 and deep shadows stay
-        // neutral black (preserves the "yellow-shadow" fix; the bug was an OFFSET).
-        let t = (d / eff_d_max.max(EPS)) * p.wb[c];
-        let out = filmic_s(t);
+        let t = d / eff_d_max.max(EPS);
+        // WB is a linear gain on the positive OUTPUT (filmic value), NOT a scale on
+        // t. This keeps black neutral (filmic_s(0)·wb = 0, so no "yellow shadow")
+        // AND stays consistent with `auto_wb_gains` / the gray-point picker, which
+        // both treat WB as a multiply on the displayed positive. (A t-scale is a
+        // nonlinear remap that those gray-world estimators cannot neutralise.)
+        let v = filmic_s(t) * p.wb[c];
         if p.hdr {
             // HDR: expand the filmic shoulder above the knee into [knee, headroom]
             // so speculars/lights exceed SDR white (the gain map captures this).
-            if out > HDR_KNEE {
-                let e = ((out - HDR_KNEE) / (1.0 - HDR_KNEE)).clamp(0.0, 1.0);
+            if v > HDR_KNEE {
+                let e = ((v - HDR_KNEE) / (1.0 - HDR_KNEE)).clamp(0.0, 1.0);
                 HDR_KNEE + e * (HDR_HEADROOM - HDR_KNEE)
             } else {
-                out
+                v
             }
         } else {
-            out
+            v.min(1.0) // SDR: clip to white (v ≥ 0 since filmic_s ≥ 0 and wb ≥ 0)
         }
     })
 }
@@ -239,6 +242,25 @@ mod tests {
         let densest = 10f32.powf(-1.5); // log10(base/scan) == d_max == 1.5 → t == 1.0
         let out = invert_d([densest; 3], &p);
         assert!(out[0] >= 0.98, "white must reach >=0.98, got {}", out[0]);
+    }
+
+    #[test]
+    fn wb_is_an_output_multiply_not_log_scale() {
+        // WB must be a linear gain on the positive OUTPUT, so gray-world gains
+        // measured on the WB-neutral inversion neutralize it (equal channel means).
+        // Both the auto-WB estimator (`auto_wb_gains`) and the gray-point picker
+        // (`gray_point_temp_tint`) assume this; a log-domain t-scale breaks them.
+        let neg = [0.12_f32, 0.10, 0.08];
+        let base = [0.5, 0.4, 0.3];
+        let p0 = InversionParams { base, d_max: 1.5, ..Default::default() };
+        let neutral = invert_d(neg, &p0); // wb == [1,1,1]
+        let gray = (neutral[0] + neutral[1] + neutral[2]) / 3.0;
+        let gains = [gray / neutral[0], gray / neutral[1], gray / neutral[2]];
+        let out = invert_d(neg, &InversionParams { wb: gains, ..p0 });
+        let m = (out[0] + out[1] + out[2]) / 3.0;
+        for c in 0..3 {
+            assert!((out[c] - m).abs() < 1e-4, "gains must neutralize output: {out:?}");
+        }
     }
 
     #[test]

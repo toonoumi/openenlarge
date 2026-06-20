@@ -597,14 +597,11 @@ fn develop_compute(path: String) -> Result<DevelopComputed, String> {
     drop(full);
 
     let small = proxy(&working, THUMB_EDGE);
-    // Honor the detected verdict so a positive's develop-time grid thumbnail isn't
-    // shown inverted before the image is opened (the per-image seed carries it after).
-    let defaults = InvertParams { positive, ..default_invert_params() };
-    let mut ip = resolve_params(&defaults, &thumb, base);
-    ip.d_max = d_max;
-    let inv_thumb = invert_image(&small, &ip, Mode::D);
-    let inv_thumb = finish_image(&inv_thumb, &finish_from(&defaults));
-    let thumbnail = to_jpeg_b64(&inv_thumb, false, 82)?;
+    // Bake the per-image auto-WB seed (estimated on the 256px `thumb`, matching the
+    // frontend `as_shot_wb`) into the develop-time grid thumbnail, so the contact
+    // sheet / grid / filmstrip show the correct look immediately on import instead
+    // of a neutral-WB render that only snaps right once you open Develop.
+    let thumbnail = render_grid_thumbnail(&small, &thumb, base, d_max, None, positive)?;
 
     // Build a cache-bounded copy of working (≤CACHE_WORKING_CAP long edge) for the sidecar.
     // Clone thumb too before the move into Developed.
@@ -1643,15 +1640,61 @@ pub fn as_shot_wb(
     // Estimate WB against the user's ACTUAL stock/mode so the gains neutralise the
     // colour space the image is actually rendered in. `build_params` leaves `wb` at
     // [1,1,1], so the estimate is independent of any temp/tint already on the sliders.
-    let mut ip = build_params(&params, effective_base(&params, base));
-    ip.d_max = effective_dmax(&params, dev_dmax);
-    let first = invert_image(&thumb, &ip, mode_from(&params.mode));
+    let (temp, tint) = auto_seed_wb(&thumb, &params, base, dev_dmax);
+    Ok(AsShotWb { temp, tint })
+}
+
+/// Per-image auto white balance as `(Kelvin, UI-tint −150..150)` — the gray-world
+/// estimate `as_shot_wb` returns, factored out so the develop-time grid thumbnail
+/// and the on-load regeneration bake the SAME WB the frontend seed applies when
+/// you open Develop. `build_params` leaves `wb` at [1,1,1], so the estimate is
+/// independent of any temp/tint already on `params`.
+pub(crate) fn auto_seed_wb(
+    src: &film_core::Image,
+    params: &InvertParams,
+    base: [f32; 3],
+    dev_dmax: f32,
+) -> (f32, f32) {
+    let mut ip = build_params(params, effective_base(params, base));
+    ip.d_max = effective_dmax(params, dev_dmax);
+    let first = invert_image(src, &ip, mode_from(&params.mode));
     let gains = auto_wb_gains(&first);
     let (temp, tint) = gains_to_cct(gains);
-    Ok(AsShotWb {
-        temp,
-        tint: tint * 150.0,
-    }) // back to UI −150..150
+    (temp, tint * 150.0) // tint back to UI −150..150
+}
+
+/// Render the catalog/grid display thumbnail (JPEG b64) from a linear proxy.
+/// `render_src` is the higher-res proxy the JPEG is drawn from; `seed_src` is the
+/// (typically smaller) proxy the auto-WB estimate runs on — matching `as_shot_wb`
+/// so a freshly baked thumbnail does not "snap" when Develop is first opened.
+///
+/// With `saved` edits present, those params drive the render (the user's look).
+/// Without them (never opened), the per-image auto-WB seed is baked in so the
+/// thumbnail still matches what opening Develop would show. Shared by
+/// `develop_compute` (fresh develop) and the on-load thumbnail regeneration.
+fn render_grid_thumbnail(
+    render_src: &film_core::Image,
+    seed_src: &film_core::Image,
+    base: [f32; 3],
+    d_max: f32,
+    saved: Option<&InvertParams>,
+    positive: bool,
+) -> Result<String, String> {
+    let params = match saved {
+        Some(p) => p.clone(),
+        None => {
+            let mut p = InvertParams { positive, ..default_invert_params() };
+            let (temp, tint) = auto_seed_wb(seed_src, &p, base, d_max);
+            p.temp = temp;
+            p.tint = tint;
+            p
+        }
+    };
+    let mut ip = resolve_params(&params, seed_src, base);
+    ip.d_max = effective_dmax(&params, d_max);
+    let inv = invert_image(render_src, &ip, mode_from(&params.mode));
+    let inv = finish_image(&inv, &finish_from(&params));
+    to_jpeg_b64(&inv, false, 82)
 }
 
 /// (Kelvin, gains_to_cct tint) that makes a sampled display pixel `rgb` render neutral.
@@ -1664,11 +1707,17 @@ pub fn as_shot_wb(
 /// sampled pixel and divided back out), so clicking always means "make this point gray".
 fn gray_point_temp_tint(params: &InvertParams, rgb: [f32; 3]) -> (f32, f32) {
     let ip = build_params(params, [1.0, 1.0, 1.0]);
-    // The power applied last to the positive: paper_grade for Cineon (Mode D), else gamma.
-    let e = (if params.mode == "d" { ip.paper_grade } else { ip.gamma }).max(1e-3);
     let wb_old = wb_from_params(params.temp, params.tint);
-    // displayed d_c = (P_c · wb_old_c)^e  ⇒  P_c = d_c^(1/e) / wb_old_c
-    let p: [f32; 3] = std::array::from_fn(|c| rgb[c].max(1e-5).powf(1.0 / e) / wb_old[c].max(1e-5));
+    // Recover the WB-neutral positive `P` at the clicked pixel. Mode D's filmic curve
+    // applies WB as a plain gain on its OUTPUT (no trailing power): displayed = P·wb
+    // ⇒ P = d / wb_old. Legacy modes still encode `(P·wb)^gamma` (WB inside the
+    // power) ⇒ P = d^(1/γ) / wb_old. (paper_grade is inert under the filmic engine.)
+    let p: [f32; 3] = if params.mode == "d" {
+        std::array::from_fn(|c| rgb[c].max(1e-5) / wb_old[c].max(1e-5))
+    } else {
+        let e = ip.gamma.max(1e-3);
+        std::array::from_fn(|c| rgb[c].max(1e-5).powf(1.0 / e) / wb_old[c].max(1e-5))
+    };
     let gray = (p[0] + p[1] + p[2]) / 3.0;
     let gains = [
         gray / p[0].max(1e-5),
@@ -2242,6 +2291,33 @@ mod tests {
         let img = film_core::Image { width: 4, height: 4, pixels: vec![white; 16], ir: None };
         let d = dmax_from_white_point(&img, [0.8, 0.8, 0.8], None);
         assert!((d - 2.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn auto_seed_wb_neutralizes_cast() {
+        // A negative with a denser GREEN channel inverts (neutral WB) to a green-cast
+        // positive. The develop-time / regenerated grid thumbnail must bake the same
+        // auto-WB the frontend seed applies, so a seeded render is MORE neutral than
+        // the un-seeded one. (This is the per-image WB that used to only appear once
+        // you opened Develop.)
+        use film_core::Image;
+        let neg = Image { width: 8, height: 8, pixels: vec![[0.30, 0.15, 0.30]; 64], ir: None };
+        let base = [1.0, 1.0, 1.0];
+        let dmax = 1.5;
+        let (temp, tint) = auto_seed_wb(&neg, &default_invert_params(), base, dmax);
+        let render = |p: &InvertParams| {
+            let mut ip = resolve_params(p, &neg, base);
+            ip.d_max = dmax;
+            invert_image(&neg, &ip, Mode::D).pixels[0]
+        };
+        let mut seeded = default_invert_params();
+        seeded.temp = temp;
+        seeded.tint = tint;
+        let imbalance =
+            |px: [f32; 3]| (px[0] - px[1]).abs() + (px[1] - px[2]).abs() + (px[0] - px[2]).abs();
+        let n = imbalance(render(&default_invert_params()));
+        let s = imbalance(render(&seeded));
+        assert!(s < n, "seeded imbalance {s} must be < neutral {n}");
     }
 
     #[test]

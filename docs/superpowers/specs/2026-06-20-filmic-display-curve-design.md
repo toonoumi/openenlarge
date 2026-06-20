@@ -46,12 +46,21 @@ double-compress the shoulder).
 ### Per-channel math (replaces the paper encode)
 
 ```
-t   = (d / eff_d_max) · wb[c]                 // normalized log-exposure; ·wb is a
-                                              // log-domain SCALE, so t=0 → 0 and
-                                              // black stays neutral
-t   = max(t, 0.0)
-out = filmicS(t)
+t   = d / eff_d_max                           // normalized log-exposure
+out = clamp(filmicS(t) · wb[c], 0, 1)         // WB is a LINEAR GAIN on the positive
+                                              // output: black stays neutral
+                                              // (filmicS(0)·wb = 0) AND it matches
+                                              // auto_wb_gains / the gray-point picker
 ```
+
+> **Correction (post-implementation):** an earlier draft applied WB as a *scale on
+> `t`* (log-domain). That broke the gray-world WB tools — `auto_wb_gains` and
+> `gray_point_temp_tint` both treat WB as a multiply on the displayed positive, and
+> a log-domain `t`-scale is a nonlinear remap they cannot neutralise (it produced an
+> extreme/pink auto-WB on re-analysis and a wrong gray-point pick). WB is therefore a
+> gain on the filmic **output**. `gray_point_temp_tint` was also updated: Mode D's
+> filmic curve applies no trailing power, so the display encode is `P·wb` (power = 1),
+> not the old `(P·wb)^paper_grade`.
 
 ### The curve
 
