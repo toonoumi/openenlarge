@@ -261,8 +261,8 @@
                 const bytes = bit16
                   ? new Uint8Array((out.data as Float32Array).buffer)
                   : (out.data as Uint8Array);
-                await api.exportFinish(img.id, outPath, { w: out.w, h: out.h, bit16 },
-                  Array.from(bytes), format, metaOverride);
+                await api.exportFinish(bytes, img.id, outPath, { w: out.w, h: out.h, bit16 },
+                  format, metaOverride);
                 exported = true;
               }
             }
