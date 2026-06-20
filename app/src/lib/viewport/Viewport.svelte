@@ -8,7 +8,7 @@
   import { toInversionUniforms } from "./gl/invert";
   import { clipUniforms } from "./gl/clip";
   import { toneLutBytes, colorGrade, colorMix } from "../develop/finish";
-  import { screenRadius, type DustStroke } from "../develop/dust";
+  import { screenRadius, strokeCentroid, type DustStroke } from "../develop/dust";
   import { marqueeZoom } from "./marquee";
   import { hiTierAction } from "./hiTier";
   import { pickPixel, sampleRobust } from "../develop/colorPick";
@@ -42,6 +42,11 @@
   export let brushMigan = false;
   /** Whether the strokes have been MI-GAN-applied (heal baked) vs shown as overlay. */
   export let aiApplied = false;
+  /** Heal-spot markers: show toggle, global spot centroids, kept-spot exclusions. */
+  export let showSpots = true;
+  export let autoSpots: { x: number; y: number }[] = [];
+  export let autoExclusions: { x: number; y: number }[] = [];
+  export let selectedSpot: import("../store").SpotSel | null = null;
   /** AI auto-dust: detector-driven defect heal, live on the main display. */
   export let autoDustEnabled = false;
   export let autoDustSensitivity = 50;
@@ -53,7 +58,7 @@
    *  overlay when this image has no cached fit-view preview yet (first view). */
   export let fallbackThumb = "";
 
-  const dispatch = createEventDispatcher<{ stroke: DustStroke; brush: number; pointpick: { r: number; g: number; b: number; u: number; v: number; rr: number; rg: number; rb: number }; aierased: void; autodusted: void; zoomchange: boolean; marqueedone: void }>();
+  const dispatch = createEventDispatcher<{ stroke: DustStroke; brush: number; pointpick: { r: number; g: number; b: number; u: number; v: number; rr: number; rg: number; rb: number }; aierased: void; autodusted: void; zoomchange: boolean; marqueedone: void; selectspot: import("../store").SpotSel; removespot: import("../store").SpotSel }>();
 
   const CAP = 5000;
   const PAD = 60;
@@ -351,7 +356,7 @@
   function currentUploadKey(): string {
     const tier = hiTier ? 'hi' : 'lo';
     if (bakeMode) {
-      return `bake|${tier}|${id}|${developRev}|${dustRev}|${irRemoval.enabled}|${irRemoval.sensitivity}|${brushMigan}|${aiApplied}|${autoDustEnabled}|${autoDustSensitivity}|${imageCrop ? imageCrop.join(',') : 'full'}|${rot90}|${flipH}|${flipV}|${angle}`;
+      return `bake|${tier}|${id}|${developRev}|${dustRev}|${irRemoval.enabled}|${irRemoval.sensitivity}|${brushMigan}|${aiApplied}|${autoDustEnabled}|${autoDustSensitivity}|${autoExclusions.length}|${imageCrop ? imageCrop.join(',') : 'full'}|${rot90}|${flipH}|${flipV}|${angle}`;
     }
     return `raw|${tier}|${id}|${developRev}`;
   }
@@ -389,6 +394,7 @@
           migan: brushMigan && aiApplied,
           skip_dust_heal: brushMigan && !aiApplied,
           auto_dust: { enabled: autoDustEnabled, sensitivity: autoDustSensitivity },
+          auto_dust_exclusions: autoExclusions.map((p) => [p.x, p.y] as [number, number]),
         };
         const info = await api.workingBakedInfo(id, spec, hiTier);
         const buf = await api.workingBakedPixels(id, spec, params, hiTier);
@@ -460,7 +466,7 @@
 
   // Upload the working float texture. Re-fires when the image changes or, in bake
   // mode, when strokes/IR/geometry change (currentUploadKey dedupes redundant runs).
-  $: if (gpuEligible) { id; developRev; dustRev; irRemoval.enabled; irRemoval.sensitivity; brushMigan; aiApplied; autoDustEnabled; autoDustSensitivity; imageCrop; rot90; flipH; flipV; angle; hiTier; uploadWorking(); }
+  $: if (gpuEligible) { id; developRev; dustRev; irRemoval.enabled; irRemoval.sensitivity; brushMigan; aiApplied; autoDustEnabled; autoDustSensitivity; autoExclusions; imageCrop; rot90; flipH; flipV; angle; hiTier; uploadWorking(); }
   $: if (!gpuEligible) uploadKey = "";
 
   // Inversion params now drive GPU uniforms (no backend pixel fetch) when eligible.
@@ -610,6 +616,31 @@
   let mqCX = 0, mqCY = 0;
   $: cursorR = screenRadius(brush, imgW, eff);
 
+  // Marker anchors in normalized [0,1] space, both kinds, for rendering + hit-test.
+  $: spotMarkers = [
+    ...dust.map((s, index) => ({ kind: "stroke" as const, index, c: strokeCentroid(s) })),
+    ...autoSpots.map((c, index) => ({ kind: "auto" as const, index, c })),
+  ];
+  // Markers are only interactive in the eraser tool while the toggle is on.
+  $: spotsVisible = eraser && showSpots && spotMarkers.length > 0;
+  const HIT_PX = 13; // tap radius (element px) to grab a marker instead of painting
+
+  /** Nearest marker within HIT_PX of the event, or null. */
+  function hitTestSpot(e: { clientX: number; clientY: number }): import("../store").SpotSel | null {
+    const rect = el.getBoundingClientRect();
+    const ex = e.clientX - rect.left, ey = e.clientY - rect.top;
+    let best: import("../store").SpotSel | null = null;
+    let bestD = HIT_PX * HIT_PX;
+    for (const m of spotMarkers) {
+      const mx = left + m.c.x * dispW, my = top + m.c.y * dispH;
+      const d = (mx - ex) * (mx - ex) + (my - ey) * (my - ey);
+      if (d <= bestD) { bestD = d; best = { kind: m.kind, index: m.index }; }
+    }
+    return best;
+  }
+  // Double-tap tracking: a second tap on the same marker within 300ms removes it.
+  let lastTap: { kind: "stroke" | "auto"; index: number; t: number } | null = null;
+
   // SVG path for a stroke's polyline in display px (normalized → dispW/dispH).
   // A single dab becomes "M p L p" so a round cap renders it as a dot.
   function strokeD(pts: { x: number; y: number }[], w: number, h: number): string {
@@ -672,6 +703,17 @@
       return;
     }
     if (eraser) {
+      if (spotsVisible && !marquee) {
+        const hit = hitTestSpot(e);
+        if (hit) {
+          const now = performance.now();
+          const same = lastTap && lastTap.kind === hit.kind && lastTap.index === hit.index && now - lastTap.t < 300;
+          if (same) { dispatch("removespot", hit); lastTap = null; }
+          else { dispatch("selectspot", hit); lastTap = { ...hit, t: now }; }
+          return; // grabbed a marker → do not paint
+        }
+        lastTap = null;
+      }
       painting = true;
       pending = [normPoint(e)];
       (e.target as Element).setPointerCapture?.(e.pointerId);
@@ -785,6 +827,20 @@
       {/if}
     </svg>
   {/if}
+  {#if spotsVisible}
+    <div class="spots" style="left:{left}px; top:{top}px; width:{dispW}px; height:{dispH}px;" aria-hidden="true">
+      {#each spotMarkers as m}
+        <span class="spot" class:sel={selectedSpot && selectedSpot.kind === m.kind && selectedSpot.index === m.index}
+              style="left:{m.c.x * dispW}px; top:{m.c.y * dispH}px;">
+          <svg viewBox="0 0 24 24" width="14" height="14">
+            <path d="M16.2 3.6 3.6 16.2a2 2 0 0 0 0 2.8l1.4 1.4a2 2 0 0 0 2.8 0L20.4 7.8a2 2 0 0 0 0-2.8l-1.4-1.4a2 2 0 0 0-2.8 0Z"
+                  fill="currentColor" opacity="0.92" />
+            <path d="M9 20.4h11" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+          </svg>
+        </span>
+      {/each}
+    </div>
+  {/if}
   {#if eraser && hovering && !marquee}
     <div class="brush" style="left:{curX}px; top:{curY}px; width:{cursorR * 2}px; height:{cursorR * 2}px;"></div>
   {/if}
@@ -855,4 +911,10 @@
   .marquee { position: absolute; z-index: 5; pointer-events: none;
     border: 1px solid #fff; background: rgba(244,157,78,0.15);
     box-shadow: 0 0 0 1px rgba(0,0,0,0.4); }
+  .spots { position: absolute; pointer-events: none; z-index: 4; overflow: visible; }
+  .spot { position: absolute; transform: translate(-50%, -50%); display: grid; place-items: center;
+    width: 20px; height: 20px; border-radius: 50%; color: #fff;
+    background: rgba(0,0,0,0.45); box-shadow: 0 0 0 1px rgba(0,0,0,0.5), inset 0 0 0 1px rgba(255,255,255,0.35); }
+  .spot.sel { color: #111; background: rgba(244,157,78,0.95);
+    box-shadow: 0 0 0 2px rgba(244,157,78,0.6), 0 0 0 1px rgba(0,0,0,0.5); }
 </style>
