@@ -48,7 +48,12 @@ fn downscale(img: &Image, target_long: usize) -> Image {
             pixels[y * w + x] = img.pixels[sy * img.width + sx];
         }
     }
-    Image { width: w, height: h, pixels, ir: None }
+    Image {
+        width: w,
+        height: h,
+        pixels,
+        ir: None,
+    }
 }
 
 fn save(canvas: &[[f32; 3]], w: usize, h: usize, path: &str) {
@@ -58,8 +63,7 @@ fn save(canvas: &[[f32; 3]], w: usize, h: usize, path: &str) {
             buf[i * 3 + c] = (px[c].clamp(0.0, 1.0) * 255.0 + 0.5) as u8;
         }
     }
-    image::save_buffer(path, &buf, w as u32, h as u32, image::ColorType::Rgb8)
-        .expect("write png");
+    image::save_buffer(path, &buf, w as u32, h as u32, image::ColorType::Rgb8).expect("write png");
     eprintln!("wrote {path}");
 }
 
@@ -107,6 +111,11 @@ fn main() {
                 }
             }
         }
-        save(&canvas, cw_total, ch_total, &format!("/tmp/tune/{stem}_grid.png"));
+        save(
+            &canvas,
+            cw_total,
+            ch_total,
+            &format!("/tmp/tune/{stem}_grid.png"),
+        );
     }
 }

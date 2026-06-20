@@ -223,7 +223,13 @@ pub fn prob_defect_mask(
     sensitivity: f32,
     max_blob: usize,
 ) -> Mask {
-    let empty = Mask { x0: 0, y0: 0, w: 0, h: 0, bits: Vec::new() };
+    let empty = Mask {
+        x0: 0,
+        y0: 0,
+        w: 0,
+        h: 0,
+        bits: Vec::new(),
+    };
     if w == 0 || h == 0 || prob.len() != w * h {
         return empty;
     }
@@ -252,19 +258,31 @@ pub fn prob_defect_mask(
             let (x, y) = (i % w, i / w);
             if x > 0 {
                 let ni = i - 1;
-                if raw[ni] && !visited[ni] { visited[ni] = true; stack.push(ni); }
+                if raw[ni] && !visited[ni] {
+                    visited[ni] = true;
+                    stack.push(ni);
+                }
             }
             if x + 1 < w {
                 let ni = i + 1;
-                if raw[ni] && !visited[ni] { visited[ni] = true; stack.push(ni); }
+                if raw[ni] && !visited[ni] {
+                    visited[ni] = true;
+                    stack.push(ni);
+                }
             }
             if y > 0 {
                 let ni = i - w;
-                if raw[ni] && !visited[ni] { visited[ni] = true; stack.push(ni); }
+                if raw[ni] && !visited[ni] {
+                    visited[ni] = true;
+                    stack.push(ni);
+                }
             }
             if y + 1 < h {
                 let ni = i + w;
-                if raw[ni] && !visited[ni] { visited[ni] = true; stack.push(ni); }
+                if raw[ni] && !visited[ni] {
+                    visited[ni] = true;
+                    stack.push(ni);
+                }
             }
         }
         if comp.len() > max_blob {
@@ -291,7 +309,13 @@ pub fn prob_defect_mask(
             }
         }
     }
-    Mask { x0: 0, y0: 0, w, h, bits }
+    Mask {
+        x0: 0,
+        y0: 0,
+        w,
+        h,
+        bits,
+    }
 }
 
 #[cfg(test)]
@@ -523,7 +547,11 @@ mod tests {
         let (w, h) = (10usize, 10usize);
         let mut prob = vec![0.0f32; w * h];
         prob[8 * w + 8] = 0.9; // isolated speck, clear of the block below
-        for y in 0..6 { for x in 0..6 { prob[y * w + x] = 0.9; } }
+        for y in 0..6 {
+            for x in 0..6 {
+                prob[y * w + x] = 0.9;
+            }
+        }
         // sensitivity 50 → threshold ~0.55; max_blob 9 px drops the 36px block.
         let m = prob_defect_mask(w, h, &prob, 50.0, 9);
         // The speck (and its 1px dilation) is masked.

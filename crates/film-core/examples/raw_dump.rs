@@ -36,13 +36,21 @@ fn downscale(img: &Image, target_long: usize) -> Image {
             pixels[y * w + x] = img.pixels[sy * img.width + sx];
         }
     }
-    Image { width: w, height: h, pixels, ir: None }
+    Image {
+        width: w,
+        height: h,
+        pixels,
+        ir: None,
+    }
 }
 
 fn main() {
     for path in std::env::args().skip(1) {
         let small = downscale(&decode_any(Path::new(&path)), 700);
-        let stem = Path::new(&path).file_stem().and_then(|s| s.to_str()).unwrap_or("scan");
+        let stem = Path::new(&path)
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("scan");
         let mut buf = vec![0u8; small.width * small.height * 3];
         for (i, px) in small.pixels.iter().enumerate() {
             for c in 0..3 {
@@ -51,8 +59,14 @@ fn main() {
             }
         }
         let out = format!("/tmp/tune/{stem}_raw.png");
-        image::save_buffer(&out, &buf, small.width as u32, small.height as u32, image::ColorType::Rgb8)
-            .expect("write png");
+        image::save_buffer(
+            &out,
+            &buf,
+            small.width as u32,
+            small.height as u32,
+            image::ColorType::Rgb8,
+        )
+        .expect("write png");
         eprintln!("wrote {out}  ({}x{})", small.width, small.height);
     }
 }

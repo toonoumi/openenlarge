@@ -642,8 +642,20 @@ mod tests {
         let mid = [0.3_f32, 0.3, 0.3];
         let id = finish_pixel(mid, &FinishParams::default());
         assert!((id[0] - 0.3).abs() < 1e-4, "0 = identity");
-        let up = finish_pixel(mid, &FinishParams { brightness: 0.5, ..Default::default() });
-        let down = finish_pixel(mid, &FinishParams { brightness: -0.5, ..Default::default() });
+        let up = finish_pixel(
+            mid,
+            &FinishParams {
+                brightness: 0.5,
+                ..Default::default()
+            },
+        );
+        let down = finish_pixel(
+            mid,
+            &FinishParams {
+                brightness: -0.5,
+                ..Default::default()
+            },
+        );
         assert!(up[0] > 0.3, "+brightness lifts: {}", up[0]);
         assert!(down[0] < 0.3, "-brightness lowers: {}", down[0]);
         // Density curve: gain at b=0.5 is 10^(0.5·RANGE); check the lifted mid matches
@@ -696,15 +708,29 @@ mod tests {
         // Highlights must actually reach the brightest (near-clipped) tones — the
         // old v²(1−v) weight vanished at v→1, so the slider couldn't recover blown
         // highlights. The shelf weight peaks at white.
-        let p = FinishParams { highlights: -1.0, ..Default::default() };
-        assert!(tone_curve(0.97, &p) < 0.90, "near-white pulled down: {}", tone_curve(0.97, &p));
+        let p = FinishParams {
+            highlights: -1.0,
+            ..Default::default()
+        };
+        assert!(
+            tone_curve(0.97, &p) < 0.90,
+            "near-white pulled down: {}",
+            tone_curve(0.97, &p)
+        );
     }
 
     #[test]
     fn positive_shadows_lift_near_black() {
         // Symmetric: shadows must reach near-black tones (old (1−v)²v vanished at v→0).
-        let p = FinishParams { shadows: 1.0, ..Default::default() };
-        assert!(tone_curve(0.03, &p) > 0.10, "near-black lifted: {}", tone_curve(0.03, &p));
+        let p = FinishParams {
+            shadows: 1.0,
+            ..Default::default()
+        };
+        assert!(
+            tone_curve(0.03, &p) > 0.10,
+            "near-black lifted: {}",
+            tone_curve(0.03, &p)
+        );
     }
 
     #[test]
@@ -712,9 +738,24 @@ mod tests {
         // Even with opposing endpoint+region sliders maxed, the curve must not fold
         // (a non-monotonic tone curve inverts tones — a visible artifact).
         for combo in [
-            FinishParams { shadows: 1.0, blacks: 1.0, ..Default::default() },
-            FinishParams { highlights: -1.0, whites: -1.0, ..Default::default() },
-            FinishParams { highlights: 1.0, shadows: 1.0, whites: 1.0, blacks: 1.0, contrast: 1.0, ..Default::default() },
+            FinishParams {
+                shadows: 1.0,
+                blacks: 1.0,
+                ..Default::default()
+            },
+            FinishParams {
+                highlights: -1.0,
+                whites: -1.0,
+                ..Default::default()
+            },
+            FinishParams {
+                highlights: 1.0,
+                shadows: 1.0,
+                whites: 1.0,
+                blacks: 1.0,
+                contrast: 1.0,
+                ..Default::default()
+            },
         ] {
             let mut prev = tone_curve(0.0, &combo);
             let mut v = 0.0;

@@ -89,11 +89,11 @@ const EXPO_K: f32 = 0.14;
 // shoulder to TRUE white at 1.0 (highlight separation). MUST be mirrored verbatim
 // in shaders.ts (INVERT_FRAG) so the CPU export and GPU proxy preview match.
 const FILMIC_K: f32 = 5.0; // contrast / max slope
-// Max-slope point in normalised density. Below the geometric midpoint (0.5) so the
-// curve renders mids/shadows brighter — a calibration lift (digital "print
-// exposure"), since auto-fit d_max puts the white point at the top and most real
-// content lands in the lower-mid range. Black (t=0→0) and white (t=WHITE_T→1) stay
-// anchored regardless. 0.44 chosen on real scans.
+                           // Max-slope point in normalised density. Below the geometric midpoint (0.5) so the
+                           // curve renders mids/shadows brighter — a calibration lift (digital "print
+                           // exposure"), since auto-fit d_max puts the white point at the top and most real
+                           // content lands in the lower-mid range. Black (t=0→0) and white (t=WHITE_T→1) stay
+                           // anchored regardless. 0.44 chosen on real scans.
 const FILMIC_PIVOT: f32 = 0.44;
 const FILMIC_WHITE_T: f32 = 1.05; // density (× d_max) that maps to 1.0
 
@@ -138,11 +138,11 @@ pub fn invert_d(rgb: [f32; 3], p: &InversionParams) -> [f32; 3] {
         return develop_positive_px(rgb, p);
     }
     const THRESHOLD: f32 = 2.328_306_4e-10; // negadoctor's -32 EV floor
-    // Exposure is a t-MULTIPLY pivoting at black (not the old eff_d_max rescale):
-    // EV stops scale the normalised log-density by 2^(EXPO_K·EV). Brightening pushes
-    // tones up the filmic curve; darkening pulls them down while a saturated specular
-    // (t ≫ 1) stays clipped to white — highlight-preserving, and with no dead zone.
-    // EV=0 (print_exposure=1) → expo_gain=1 → unchanged. d_max sets the white anchor.
+                                            // Exposure is a t-MULTIPLY pivoting at black (not the old eff_d_max rescale):
+                                            // EV stops scale the normalised log-density by 2^(EXPO_K·EV). Brightening pushes
+                                            // tones up the filmic curve; darkening pulls them down while a saturated specular
+                                            // (t ≫ 1) stays clipped to white — highlight-preserving, and with no dead zone.
+                                            // EV=0 (print_exposure=1) → expo_gain=1 → unchanged. d_max sets the white anchor.
     let ev = p.print_exposure.max(EPS).log2();
     let expo_gain = 2f32.powf(EXPO_K * ev);
     // `paper_black`, `paper_grade`, `soft_clip` are DEPRECATED by the filmic
@@ -238,7 +238,10 @@ mod tests {
         let shoulder = slope(0.95);
         assert!(mid > 1.0, "mid slope must add punch: {mid}");
         assert!(toe < mid, "toe gentler than mid: toe {toe} mid {mid}");
-        assert!(shoulder < mid, "shoulder gentler than mid: shoulder {shoulder} mid {mid}");
+        assert!(
+            shoulder < mid,
+            "shoulder gentler than mid: shoulder {shoulder} mid {mid}"
+        );
     }
 
     #[test]
@@ -246,7 +249,11 @@ mod tests {
         // The densest neutral negative at the auto-fit d_max maps to t == 1.0 and
         // must render to a real white (>= 0.98) — NOT the old structural 0.90 cap
         // that read as washed-out/pale.
-        let p = InversionParams { base: [1.0, 1.0, 1.0], d_max: 1.5, ..Default::default() };
+        let p = InversionParams {
+            base: [1.0, 1.0, 1.0],
+            d_max: 1.5,
+            ..Default::default()
+        };
         let densest = 10f32.powf(-1.5); // log10(base/scan) == d_max == 1.5 → t == 1.0
         let out = invert_d([densest; 3], &p);
         assert!(out[0] >= 0.98, "white must reach >=0.98, got {}", out[0]);
@@ -260,14 +267,21 @@ mod tests {
         // (`gray_point_temp_tint`) assume this; a log-domain t-scale breaks them.
         let neg = [0.12_f32, 0.10, 0.08];
         let base = [0.5, 0.4, 0.3];
-        let p0 = InversionParams { base, d_max: 1.5, ..Default::default() };
+        let p0 = InversionParams {
+            base,
+            d_max: 1.5,
+            ..Default::default()
+        };
         let neutral = invert_d(neg, &p0); // wb == [1,1,1]
         let gray = (neutral[0] + neutral[1] + neutral[2]) / 3.0;
         let gains = [gray / neutral[0], gray / neutral[1], gray / neutral[2]];
         let out = invert_d(neg, &InversionParams { wb: gains, ..p0 });
         let m = (out[0] + out[1] + out[2]) / 3.0;
         for c in 0..3 {
-            assert!((out[c] - m).abs() < 1e-4, "gains must neutralize output: {out:?}");
+            assert!(
+                (out[c] - m).abs() < 1e-4,
+                "gains must neutralize output: {out:?}"
+            );
         }
     }
 
@@ -282,8 +296,8 @@ mod tests {
             ..Default::default()
         };
         let out = invert_d([1.0, 1.0, 1.0], &p); // scan == base → d == 0
-        for c in 0..3 {
-            assert!(out[c].abs() < 1e-4, "black chan {c} not neutral: {}", out[c]);
+        for (c, v) in out.iter().enumerate() {
+            assert!(v.abs() < 1e-4, "black chan {c} not neutral: {v}");
         }
     }
 
@@ -343,7 +357,10 @@ mod tests {
         };
         let dim = invert_d([0.5, 0.5, 0.5], &p);
         let bright = invert_d([0.1, 0.1, 0.1], &p);
-        assert!(bright[0] > dim[0], "denser neg should be brighter: {bright:?} vs {dim:?}");
+        assert!(
+            bright[0] > dim[0],
+            "denser neg should be brighter: {bright:?} vs {dim:?}"
+        );
     }
 
     #[test]
@@ -351,7 +368,10 @@ mod tests {
         // base*10^(-k*scene) for a neutral scene must invert back to neutral (wb=1).
         let base = [0.8, 0.55, 0.35];
         let k = 0.6;
-        let p = InversionParams { base, ..Default::default() };
+        let p = InversionParams {
+            base,
+            ..Default::default()
+        };
         for g in [0.2f32, 0.5, 0.8] {
             let neg = [
                 base[0] * 10f32.powf(-k * g),
@@ -371,11 +391,23 @@ mod tests {
         // even though WB is injected as a log-space offset on the negative side.
         let base = [0.7, 0.6, 0.5];
         let probe = [0.3, 0.25, 0.2];
-        let neutral = InversionParams { base, ..Default::default() };
-        let warmed = InversionParams { base, wb: [1.5, 1.0, 1.0], ..Default::default() };
+        let neutral = InversionParams {
+            base,
+            ..Default::default()
+        };
+        let warmed = InversionParams {
+            base,
+            wb: [1.5, 1.0, 1.0],
+            ..Default::default()
+        };
         let a = invert_d(probe, &neutral);
         let b = invert_d(probe, &warmed);
-        assert!(b[0] > a[0], "R wb 1.5 should brighten R: {} vs {}", b[0], a[0]);
+        assert!(
+            b[0] > a[0],
+            "R wb 1.5 should brighten R: {} vs {}",
+            b[0],
+            a[0]
+        );
         assert!((b[1] - a[1]).abs() < 1e-6, "G unchanged");
     }
 
@@ -401,10 +433,20 @@ mod tests {
 
     #[test]
     fn invert_d_hdr_false_matches_today() {
-        let p = InversionParams { base: [0.7, 0.6, 0.5], ..Default::default() };
-        let phdr = InversionParams { hdr: false, ..p.clone() };
+        let p = InversionParams {
+            base: [0.7, 0.6, 0.5],
+            ..Default::default()
+        };
+        let phdr = InversionParams {
+            hdr: false,
+            ..p.clone()
+        };
         for probe in [[0.05f32, 0.04, 0.03], [0.3, 0.25, 0.2], [0.69, 0.59, 0.49]] {
-            assert_eq!(invert_d(probe, &p), invert_d(probe, &phdr), "hdr=false must equal default");
+            assert_eq!(
+                invert_d(probe, &p),
+                invert_d(probe, &phdr),
+                "hdr=false must equal default"
+            );
         }
     }
 
@@ -412,11 +454,29 @@ mod tests {
     fn invert_d_hdr_expands_highlights_above_knee() {
         let base = [0.7, 0.6, 0.5];
         let bright_neg = [0.7e-3, 0.6e-3, 0.5e-3]; // dense neg → bright positive
-        let sdr = invert_d(bright_neg, &InversionParams { base, hdr: false, ..Default::default() });
-        let hdr = invert_d(bright_neg, &InversionParams { base, hdr: true, ..Default::default() });
+        let sdr = invert_d(
+            bright_neg,
+            &InversionParams {
+                base,
+                hdr: false,
+                ..Default::default()
+            },
+        );
+        let hdr = invert_d(
+            bright_neg,
+            &InversionParams {
+                base,
+                hdr: true,
+                ..Default::default()
+            },
+        );
         assert!(sdr[0] <= 1.0001, "SDR highlight caps ~1.0: {}", sdr[0]);
         assert!(hdr[0] > 1.05, "HDR highlight exceeds 1.0: {}", hdr[0]);
-        assert!(hdr[0] <= 2.5001, "HDR highlight capped at headroom: {}", hdr[0]);
+        assert!(
+            hdr[0] <= 2.5001,
+            "HDR highlight capped at headroom: {}",
+            hdr[0]
+        );
     }
 
     #[test]
@@ -424,12 +484,22 @@ mod tests {
         // Raise exposure (print_exposure 2.0): t scales up, so highlights move
         // toward white but the filmic shoulder still keeps them *below* white with a
         // visible gap between distinct luminances — latitude survives into Develop.
-        let p = InversionParams { print_exposure: 2.0, ..Default::default() };
+        let p = InversionParams {
+            print_exposure: 2.0,
+            ..Default::default()
+        };
         let bright = invert_d([0.1, 0.1, 0.1], &p)[0]; // denser neg → brighter pos
         let dim = invert_d([0.3, 0.3, 0.3], &p)[0];
         assert!(bright > dim, "monotonic: {bright} vs {dim}");
-        assert!(bright < 0.995, "brightest highlight keeps headroom: {bright}");
-        assert!(bright - dim > 0.01, "highlight separation retained: {}", bright - dim);
+        assert!(
+            bright < 0.995,
+            "brightest highlight keeps headroom: {bright}"
+        );
+        assert!(
+            bright - dim > 0.01,
+            "highlight separation retained: {}",
+            bright - dim
+        );
         assert!(bright <= 1.0001, "still capped at white: {bright}");
     }
 
@@ -440,8 +510,8 @@ mod tests {
         // curve, never clipped to white.
         let p = InversionParams::default();
         let mid = invert_d([0.5, 0.5, 0.5], &p);
-        for c in 0..3 {
-            assert!(mid[c] <= 0.9 + 1e-4, "mid below white: {}", mid[c]);
+        for v in mid {
+            assert!(v <= 0.9 + 1e-4, "mid below white: {v}");
         }
     }
 
@@ -449,10 +519,29 @@ mod tests {
     fn invert_d_hdr_below_knee_unchanged() {
         let base = [0.7, 0.6, 0.5];
         let mid = [0.35f32, 0.30, 0.25];
-        let sdr = invert_d(mid, &InversionParams { base, hdr: false, ..Default::default() });
-        let hdr = invert_d(mid, &InversionParams { base, hdr: true, ..Default::default() });
+        let sdr = invert_d(
+            mid,
+            &InversionParams {
+                base,
+                hdr: false,
+                ..Default::default()
+            },
+        );
+        let hdr = invert_d(
+            mid,
+            &InversionParams {
+                base,
+                hdr: true,
+                ..Default::default()
+            },
+        );
         if sdr[0] < 0.8 {
-            assert!((sdr[0] - hdr[0]).abs() < 1e-5, "below-knee differs: {} vs {}", sdr[0], hdr[0]);
+            assert!(
+                (sdr[0] - hdr[0]).abs() < 1e-5,
+                "below-knee differs: {} vs {}",
+                sdr[0],
+                hdr[0]
+            );
         }
     }
 
@@ -471,43 +560,81 @@ mod tests {
     fn positive_passthrough_neutral_is_display_encode() {
         // positive + neutral params (exposure 1, wb 1) must match the raw-scan
         // display encode pow(rgb, 1/2.2) — no inversion, no tint.
-        let p = InversionParams { positive: true, ..Default::default() };
+        let p = InversionParams {
+            positive: true,
+            ..Default::default()
+        };
         for probe in [[0.04f32, 0.04, 0.04], [0.2, 0.3, 0.5], [0.9, 0.9, 0.9]] {
             let out = invert_d(probe, &p);
             for c in 0..3 {
                 let want = probe[c].powf(1.0 / 2.2);
-                assert!((out[c] - want).abs() < 1e-5, "ch {c}: {} vs {}", out[c], want);
+                assert!(
+                    (out[c] - want).abs() < 1e-5,
+                    "ch {c}: {} vs {}",
+                    out[c],
+                    want
+                );
             }
         }
     }
 
     #[test]
     fn positive_exposure_brightens() {
-        let base = InversionParams { positive: true, ..Default::default() };
-        let up = InversionParams { positive: true, print_exposure: 2.0, ..Default::default() };
+        let base = InversionParams {
+            positive: true,
+            ..Default::default()
+        };
+        let up = InversionParams {
+            positive: true,
+            print_exposure: 2.0,
+            ..Default::default()
+        };
         let a = invert_d([0.25, 0.25, 0.25], &base);
         let b = invert_d([0.25, 0.25, 0.25], &up);
-        assert!(b[0] > a[0], "2x exposure should brighten: {} vs {}", b[0], a[0]);
+        assert!(
+            b[0] > a[0],
+            "2x exposure should brighten: {} vs {}",
+            b[0],
+            a[0]
+        );
     }
 
     #[test]
     fn positive_wb_gains_one_channel() {
-        let neutral = InversionParams { positive: true, ..Default::default() };
-        let warm = InversionParams { positive: true, wb: [1.5, 1.0, 1.0], ..Default::default() };
+        let neutral = InversionParams {
+            positive: true,
+            ..Default::default()
+        };
+        let warm = InversionParams {
+            positive: true,
+            wb: [1.5, 1.0, 1.0],
+            ..Default::default()
+        };
         let a = invert_d([0.3, 0.3, 0.3], &neutral);
         let b = invert_d([0.3, 0.3, 0.3], &warm);
-        assert!(b[0] > a[0], "R gain should brighten R: {} vs {}", b[0], a[0]);
+        assert!(
+            b[0] > a[0],
+            "R gain should brighten R: {} vs {}",
+            b[0],
+            a[0]
+        );
         assert!((b[1] - a[1]).abs() < 1e-6, "G unchanged");
     }
 
     #[test]
     fn positive_false_matches_today() {
         // Regression: the default (negative) path is byte-for-byte unchanged.
-        let p = InversionParams { base: [0.7, 0.6, 0.5], ..Default::default() };
+        let p = InversionParams {
+            base: [0.7, 0.6, 0.5],
+            ..Default::default()
+        };
         assert!(!p.positive, "default must be negative");
         let probe = [0.3, 0.25, 0.2];
         let neg = invert_d(probe, &p);
-        let p2 = InversionParams { positive: false, ..p.clone() };
+        let p2 = InversionParams {
+            positive: false,
+            ..p.clone()
+        };
         assert_eq!(neg, invert_d(probe, &p2));
     }
 
@@ -524,14 +651,23 @@ mod tests {
         let hi_b = [0.0158, 0.0158, 0.0158]; // d ≈ 1.80 (≈1.2·d_max)
         let at = |ev: f32, neg: [f32; 3]| {
             let p = InversionParams {
-                base, d_max: 1.5, print_exposure: 2f32.powf(ev), ..Default::default()
+                base,
+                d_max: 1.5,
+                print_exposure: 2f32.powf(ev),
+                ..Default::default()
             };
             invert_d(neg, &p)[0]
         };
         let gap0 = (at(0.0, hi_a) - at(0.0, hi_b)).abs();
         let gap_dn = (at(-3.0, hi_a) - at(-3.0, hi_b)).abs();
-        assert!(at(-3.0, hi_a) < at(0.0, hi_a), "lower EV must darken the highlight");
-        assert!(gap_dn > gap0 && gap_dn > 0.01, "separation must widen: {gap0} -> {gap_dn}");
+        assert!(
+            at(-3.0, hi_a) < at(0.0, hi_a),
+            "lower EV must darken the highlight"
+        );
+        assert!(
+            gap_dn > gap0 && gap_dn > 0.01,
+            "separation must widen: {gap0} -> {gap_dn}"
+        );
     }
 
     #[test]
@@ -540,9 +676,15 @@ mod tests {
         // ANY exposure, because the t-multiply pivots at the black point (0·gain=0).
         let base = [0.7, 0.6, 0.5];
         for ev in [-3.0f32, 0.0, 3.0] {
-            let p = InversionParams { base, print_exposure: 2f32.powf(ev), ..Default::default() };
+            let p = InversionParams {
+                base,
+                print_exposure: 2f32.powf(ev),
+                ..Default::default()
+            };
             let out = invert_d(base, &p);
-            for &v in &out { assert!(v.abs() < 1e-4, "base must be black at EV {ev}: {out:?}"); }
+            for &v in &out {
+                assert!(v.abs() < 1e-4, "base must be black at EV {ev}: {out:?}");
+            }
         }
     }
 
@@ -551,9 +693,15 @@ mod tests {
         // Extreme exposure stays finite + in-range (no NaN, no overflow).
         let base = [1.0, 1.0, 1.0];
         for ev in [-20.0f32, 20.0] {
-            let p = InversionParams { base, print_exposure: 2f32.powf(ev), ..Default::default() };
+            let p = InversionParams {
+                base,
+                print_exposure: 2f32.powf(ev),
+                ..Default::default()
+            };
             let out = invert_d([0.01, 0.01, 0.01], &p);
-            for &v in &out { assert!(v.is_finite() && (0.0..=1.0001).contains(&v), "EV {ev}: {v}"); }
+            for &v in &out {
+                assert!(v.is_finite() && (0.0..=1.0001).contains(&v), "EV {ev}: {v}");
+            }
         }
     }
 
@@ -563,11 +711,22 @@ mod tests {
         // IDENTICAL image (a dead zone the user hit). t-multiply exposure keeps
         // responding across the whole ±5 range, and brightens monotonically.
         let p = |ev: f32| InversionParams {
-            base: [1.0, 1.0, 1.0], d_max: 1.5, print_exposure: 2f32.powf(ev), ..Default::default()
+            base: [1.0, 1.0, 1.0],
+            d_max: 1.5,
+            print_exposure: 2f32.powf(ev),
+            ..Default::default()
         };
         let at = |ev: f32| invert_d([0.5, 0.5, 0.5], &p(ev))[0];
-        assert!(at(5.0) > at(4.0) + 1e-3, "no dead zone: EV+4 {} vs +5 {}", at(4.0), at(5.0));
-        assert!(at(-2.0) < at(0.0) && at(0.0) < at(2.0), "monotonic brighten");
+        assert!(
+            at(5.0) > at(4.0) + 1e-3,
+            "no dead zone: EV+4 {} vs +5 {}",
+            at(4.0),
+            at(5.0)
+        );
+        assert!(
+            at(-2.0) < at(0.0) && at(0.0) < at(2.0),
+            "monotonic brighten"
+        );
     }
 
     #[test]
@@ -576,12 +735,19 @@ mod tests {
         // stays bright — instead of the old eff_d_max collapse that dragged white
         // down with everything (the "flat / forced-dark JPG" the user reported).
         let p = |ev: f32| InversionParams {
-            base: [1.0, 1.0, 1.0], d_max: 1.5, print_exposure: 2f32.powf(ev), ..Default::default()
+            base: [1.0, 1.0, 1.0],
+            d_max: 1.5,
+            print_exposure: 2f32.powf(ev),
+            ..Default::default()
         };
         let spec = [10f32.powf(-2.1); 3]; // d = 1.4·d_max → a saturated specular
         let mid = [10f32.powf(-0.825); 3]; // d ≈ 0.55·d_max → a midtone
         let at = |ev: f32, neg: [f32; 3]| invert_d(neg, &p(ev))[0];
-        assert!(at(-2.0, spec) > 0.9, "specular stays bright when darkening: {}", at(-2.0, spec));
+        assert!(
+            at(-2.0, spec) > 0.9,
+            "specular stays bright when darkening: {}",
+            at(-2.0, spec)
+        );
         assert!(at(-2.0, mid) < at(0.0, mid), "mid darkens when darkening");
     }
 }

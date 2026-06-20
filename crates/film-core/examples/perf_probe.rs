@@ -10,7 +10,11 @@ use std::path::Path;
 use std::time::Instant;
 
 fn decode_any(path: &Path) -> Image {
-    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
     match ext.as_str() {
         "tif" | "tiff" => decode_tiff(path),
         "jpg" | "jpeg" | "png" => decode_ldr(path),
@@ -35,13 +39,21 @@ fn downscale(img: &Image, target_long: usize) -> Image {
             pixels[y * w + x] = img.pixels[sy * img.width + sx];
         }
     }
-    Image { width: w, height: h, pixels, ir: None }
+    Image {
+        width: w,
+        height: h,
+        pixels,
+        ir: None,
+    }
 }
 
 fn ms(label: &str, mut f: impl FnMut()) {
     let t = Instant::now();
     f();
-    eprintln!("  {label:32} {:>8.1} ms", t.elapsed().as_secs_f64() * 1000.0);
+    eprintln!(
+        "  {label:32} {:>8.1} ms",
+        t.elapsed().as_secs_f64() * 1000.0
+    );
 }
 
 fn main() {
@@ -50,7 +62,8 @@ fn main() {
     let full = decode_any(Path::new(&path));
     eprintln!(
         "decoded {}x{} ({:.1} MP) in {:.0} ms",
-        full.width, full.height,
+        full.width,
+        full.height,
         (full.width * full.height) as f64 / 1e6,
         t.elapsed().as_secs_f64() * 1000.0
     );
@@ -61,14 +74,27 @@ fn main() {
         let base = detect_rebate_base(&working).base;
         eprintln!(
             "\n== working {}x{} ({:.1} MP){} ==",
-            working.width, working.height,
+            working.width,
+            working.height,
             (working.width * working.height) as f64 / 1e6,
-            if cap == 4096 { " [Performance]" } else { " [Quality/full]" }
+            if cap == 4096 {
+                " [Performance]"
+            } else {
+                " [Quality/full]"
+            }
         );
-        ms("detect_rebate_base (NEW)", || { let _ = detect_rebate_base(&working); });
-        ms("sample_dmax whole (NEW, per-switch)", || { let _ = sample_dmax(&working, base, None); });
-        ms("sample_base_coherent whole (NEW)", || { let _ = sample_base_coherent(&working, None, blo, bhi); });
-        ms("sample_base whole (OLD baseline)", || { let _ = sample_base(&working, None); });
+        ms("detect_rebate_base (NEW)", || {
+            let _ = detect_rebate_base(&working);
+        });
+        ms("sample_dmax whole (NEW, per-switch)", || {
+            let _ = sample_dmax(&working, base, None);
+        });
+        ms("sample_base_coherent whole (NEW)", || {
+            let _ = sample_base_coherent(&working, None, blo, bhi);
+        });
+        ms("sample_base whole (OLD baseline)", || {
+            let _ = sample_base(&working, None);
+        });
         if cap == usize::MAX && full.width.max(full.height) <= 4096 {
             eprintln!("  (source <= 4096, Quality == Performance here)");
             break;
