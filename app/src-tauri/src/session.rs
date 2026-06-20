@@ -267,6 +267,12 @@ pub struct Session {
     /// Cached AI-dust probability map per image id (`(w, h, w*h f32 in [0,1])`).
     /// The detector runs once; the sensitivity slider only re-thresholds + refills.
     pub autodust_prob: Mutex<HashMap<String, (usize, usize, Vec<f32>)>>,
+    /// Cached auto-dust-healed baked buffer per image id, keyed by a heal signature
+    /// (sensitivity + exclusions). Lets a fine-tune brush stroke re-heal only its own
+    /// region instead of re-inpainting every global dust spot. Proxy (fit) tier only;
+    /// dropped when the detector prob map is recomputed (geometry/content change) or
+    /// on LRU eviction.
+    pub autodust_healed: Mutex<HashMap<String, (String, Image)>>,
     /// Monotonic counter for LRU access ticks (see `CachedImage::last_access`).
     pub access_tick: AtomicU64,
 }
@@ -320,8 +326,10 @@ impl Session {
         }; // images lock released here
         if !evicted.is_empty() {
             let mut probs = self.autodust_prob.lock().unwrap();
+            let mut healed = self.autodust_healed.lock().unwrap();
             for id in &evicted {
                 probs.remove(id);
+                healed.remove(id);
             }
         }
         evicted

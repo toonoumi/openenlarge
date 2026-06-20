@@ -2246,34 +2246,50 @@ fn drop_excluded(mask: &mut film_core::dust::Mask, exclusions: &[[f64; 2]]) {
     }
 }
 
-/// Heal an already-geometry-baked working buffer: dust strokes per the spec's
-/// mode (classic Telea, MI-GAN, or skipped for the AI-mask overlay), unioned with
-/// the optional auto-dust defect `auto_mask`, then IR. When `auto_mask` is present
-/// (or `spec.migan`) and the model is installed, the combined mask is MI-GAN
-/// healed; otherwise strokes fall back to the classic Telea fill.
+/// MI-GAN-heal ONLY the auto-dust defect mask onto a geometry-baked buffer (Stage A).
+/// Returns the healed buffer; the caller then heals brush strokes on top (Stage B).
+/// No-op when the mask is empty or the model isn't installed.
+fn autodust_heal(
+    app_data: &Path,
+    mut img: film_core::Image,
+    mask: &film_core::dust::Mask,
+    base: [f32; 3],
+) -> film_core::Image {
+    if mask.bits.iter().any(|&b| b) && crate::autodust::assets::installed(app_data) {
+        let _ = crate::autodust::engine::inpaint(app_data, &mut img, mask, base);
+    }
+    img
+}
+
+/// Cache signature for the Stage-A auto-dust-healed buffer: sensitivity + the set of
+/// kept-dust exclusions. Geometry is NOT included — a geometry change recomputes the
+/// detector prob map (returns `fresh`), which the caller uses to drop this entry.
+fn autodust_heal_key(sensitivity: f32, exclusions: &[[f64; 2]]) -> String {
+    let mut s = format!("{:.2}", sensitivity);
+    for e in exclusions {
+        s.push_str(&format!("|{:.4},{:.4}", e[0], e[1]));
+    }
+    s
+}
+
+/// Heal an already-(geometry + auto-dust)-baked working buffer: brush dust strokes per
+/// the spec's mode (classic Telea, MI-GAN, or skipped for the AI-mask overlay), then
+/// IR. Global auto-dust is healed separately in Stage A (`autodust_heal`), so this no
+/// longer touches the auto-dust mask — a fine-tune stroke only inpaints its own region.
 fn bake_for_view_from_baked(
     app_data: &Path,
     mut img: film_core::Image,
     spec: &BakeSpec,
-    auto_mask: Option<&film_core::dust::Mask>,
     base: [f32; 3],
 ) -> film_core::Image {
     let stamps = export_stamps(&spec.dust, img.width, img.height);
-    let want_migan =
-        (spec.migan || auto_mask.is_some()) && crate::autodust::assets::installed(app_data);
+    let want_migan = spec.migan && crate::autodust::assets::installed(app_data);
     if want_migan {
-        // Brush strokes (unless in mask-overlay mode) ∪ the auto-dust defect mask.
-        let stroke_mask = if spec.skip_dust_heal {
-            film_core::dust::Mask { x0: 0, y0: 0, w: 0, h: 0, bits: Vec::new() }
-        } else {
-            full_mask_from_stamps(img.width, img.height, &stamps)
-        };
-        let mut mask = stroke_mask;
-        if let Some(am) = auto_mask {
-            mask = union_mask(mask, am);
-        }
-        if mask.bits.iter().any(|&b| b) {
-            let _ = crate::autodust::engine::inpaint(app_data, &mut img, &mask, base);
+        if !spec.skip_dust_heal {
+            let mask = full_mask_from_stamps(img.width, img.height, &stamps);
+            if mask.bits.iter().any(|&b| b) {
+                let _ = crate::autodust::engine::inpaint(app_data, &mut img, &mask, base);
+            }
         }
     } else if !spec.skip_dust_heal {
         film_core::dust::apply(&mut img, &stamps);
@@ -2321,38 +2337,69 @@ pub async fn working_baked_pixels(
         let img = images.get(&id).ok_or("unknown image id")?;
         img.developed.as_ref().ok_or("not developed")?.working.clone()
     };
-    let cached = if spec.auto_dust.enabled {
+    let cached_prob = if spec.auto_dust.enabled {
         session.autodust_prob.lock().unwrap().get(&id).cloned()
+    } else {
+        None
+    };
+    // Reuse the auto-dust-healed buffer only on the proxy tier (deep-zoom recomputes).
+    let want_cache = spec.auto_dust.enabled && !hires;
+    let cached_healed = if want_cache {
+        session.autodust_healed.lock().unwrap().get(&id).cloned()
     } else {
         None
     };
     let do_auto = spec.auto_dust.enabled;
     let sens = spec.auto_dust.sensitivity;
-    // The heal can run the detector + MI-GAN (seconds) — keep it off the main
-    // thread so the UI (and the WKWebView, which shares the main thread on macOS)
-    // stays responsive. Returns any freshly computed prob map to cache.
-    let (bytes, fresh, blobs) = tauri::async_runtime::spawn_blocking(move || {
+    let exclusions = spec.auto_dust_exclusions.clone();
+    // The heal can run the detector + MI-GAN (seconds) — keep it off the main thread so
+    // the UI stays responsive. Returns any freshly computed prob map + a freshly healed
+    // buffer to cache, and the active spot centroids to surface as UI markers.
+    let (bytes, fresh, store_healed, spots) = tauri::async_runtime::spawn_blocking(move || {
         let baked = bake_geometry(&working, &spec);
-        let (auto_mask, fresh) = if do_auto && crate::autodust::assets::installed(&app_data) {
-            let (m, fr) = auto_dust_mask(&app_data, &baked, &ip, mode, sens, &spec.auto_dust_exclusions, cached);
-            (Some(m), fr)
+        let mut fresh_prob = None;
+        let mut store_healed: Option<(String, film_core::Image)> = None;
+        let mut spots: Option<Vec<[f64; 2]>> = None;
+        // Stage A: auto-dust heal (cached by sensitivity + exclusions).
+        let stage_a = if do_auto && crate::autodust::assets::installed(&app_data) {
+            let (mask, fr) = auto_dust_mask(&app_data, &baked, &ip, mode, sens, &exclusions, cached_prob);
+            fresh_prob = fr;
+            spots = Some(blob_centroids(&mask));
+            let key = autodust_heal_key(sens, &exclusions);
+            // A fresh prob means the detector re-ran (geometry/content changed) → any
+            // cached heal is stale even if the key matches.
+            match cached_healed {
+                Some((ck, img)) if want_cache && ck == key && fresh_prob.is_none() => img,
+                _ => {
+                    let healed = autodust_heal(&app_data, baked, &mask, base);
+                    if want_cache {
+                        store_healed = Some((key, healed.clone()));
+                    }
+                    healed
+                }
+            }
         } else {
-            (None, None)
+            baked
         };
-        // Distinct dust spots removed (for the completion toast) — only when auto-dust ran.
-        let blobs = auto_mask.as_ref().map(|m| blob_centroids(m).len() as u32);
-        let healed = bake_for_view_from_baked(&app_data, baked, &spec, auto_mask.as_ref(), base);
+        // Stage B: brush strokes + IR on top of the (cached) auto-dust-healed buffer.
+        let healed = bake_for_view_from_baked(&app_data, stage_a, &spec, base);
         let (_, _, bytes) = pack_rgba16f(&healed, MAX_GPU_EDGE);
-        (bytes, fresh, blobs)
+        (bytes, fresh_prob, store_healed, spots)
     })
     .await
     .map_err(|e| e.to_string())?;
     if let Some(p) = fresh {
-        session.autodust_prob.lock().unwrap().insert(id, p);
+        session.autodust_prob.lock().unwrap().insert(id.clone(), p);
     }
-    if let Some(n) = blobs {
+    if let Some(entry) = store_healed {
+        session.autodust_healed.lock().unwrap().insert(id.clone(), entry);
+    }
+    if let Some(sp) = spots {
         use tauri::Emitter;
-        let _ = app.emit("autodust://result", serde_json::json!({ "count": n }));
+        let _ = app.emit(
+            "autodust://result",
+            serde_json::json!({ "id": id, "count": sp.len(), "spots": sp }),
+        );
     }
     Ok(tauri::ipc::Response::new(bytes))
 }
@@ -2910,6 +2957,32 @@ mod tests {
                 || bytes.windows(apple.len()).any(|w| w == apple),
             "no gain map"
         );
+    }
+
+    #[test]
+    fn autodust_heal_key_is_stable_and_distinguishes_inputs() {
+        let a = autodust_heal_key(50.0, &[[0.1, 0.2]]);
+        assert_eq!(a, autodust_heal_key(50.0, &[[0.1, 0.2]]), "same inputs → same key");
+        assert_ne!(a, autodust_heal_key(60.0, &[[0.1, 0.2]]), "sensitivity changes key");
+        assert_ne!(a, autodust_heal_key(50.0, &[[0.1, 0.2], [0.3, 0.4]]), "exclusions change key");
+        assert_ne!(a, autodust_heal_key(50.0, &[]), "no exclusions differs");
+    }
+
+    #[test]
+    fn bake_for_view_telea_heals_strokes_without_auto_mask() {
+        // migan=false → classic Telea fill heals the stroke; no app_data needed.
+        let mut pixels = vec![[0.5_f32, 0.5, 0.5]; 16];
+        pixels[5] = [0.9, 0.9, 0.9]; // speck at (1,1)
+        let img = film_core::Image { width: 4, height: 4, pixels, ir: None };
+        let spec = BakeSpec {
+            rot90: 0, flip_h: false, flip_v: false, angle: 0.0, image_crop: None,
+            dust: vec![DustStroke { points: vec![[0.25, 0.25]], r: 0.5 }],
+            ir_removal: IrRemoval { enabled: false, sensitivity: 0.0 },
+            skip_dust_heal: false, migan: false,
+            auto_dust: AutoDust::default(), auto_dust_exclusions: Vec::new(),
+        };
+        let out = bake_for_view_from_baked(Path::new("/nonexistent"), img, &spec, [0.0; 3]);
+        assert!((out.pixels[5][0] - 0.5).abs() < 0.35, "speck healed: {}", out.pixels[5][0]);
     }
 }
 
