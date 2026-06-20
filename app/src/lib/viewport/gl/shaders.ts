@@ -171,17 +171,74 @@ vec3 pointColor(vec3 rgb) {
 // so the GPU proxy preview matches the CPU full-res export.
 const float BRIGHTNESS_DENSITY_RANGE = 0.5;
 
+// OKLab perceptual saturation — MUST equal finish.rs apply_saturation + consts.
+const float SAT_C_REF = 0.20;
+const float SAT_C_NEUTRAL = 0.025;
+const float SKIN_HUE = 0.70;
+const float SKIN_WIDTH = 0.55;
+const float SKIN_DAMP = 0.5;
+const float PI = 3.14159265358979;
+
+float srgbToLinear(float c) { return c <= 0.04045 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4); }
+float linearToSrgb(float c) { return c <= 0.0031308 ? 12.92 * c : 1.055 * pow(c, 1.0 / 2.4) - 0.055; }
+vec3 srgbToLinear3(vec3 c) { return vec3(srgbToLinear(c.r), srgbToLinear(c.g), srgbToLinear(c.b)); }
+vec3 linearToSrgb3(vec3 c) { return vec3(linearToSrgb(c.r), linearToSrgb(c.g), linearToSrgb(c.b)); }
+vec3 linearToOklab(vec3 rgb) {
+  float l = 0.4122214708*rgb.r + 0.5363325363*rgb.g + 0.0514459929*rgb.b;
+  float m = 0.2119034982*rgb.r + 0.6806995451*rgb.g + 0.1073969566*rgb.b;
+  float s = 0.0883024619*rgb.r + 0.2817188376*rgb.g + 0.6299787005*rgb.b;
+  vec3 lms_ = pow(max(vec3(l, m, s), vec3(0.0)), vec3(1.0/3.0));
+  return vec3(
+    0.2104542553*lms_.x + 0.7936177850*lms_.y - 0.0040720468*lms_.z,
+    1.9779984951*lms_.x - 2.4285922050*lms_.y + 0.4505937099*lms_.z,
+    0.0259040371*lms_.x + 0.7827717662*lms_.y - 0.8086757660*lms_.z);
+}
+vec3 oklabToLinear(vec3 lab) {
+  float l_ = lab.x + 0.3963377774*lab.y + 0.2158037573*lab.z;
+  float m_ = lab.x - 0.1055613458*lab.y - 0.0638541728*lab.z;
+  float s_ = lab.x - 0.0894841775*lab.y - 1.2914855480*lab.z;
+  vec3 lms = vec3(l_*l_*l_, m_*m_*m_, s_*s_*s_);
+  return vec3(
+     4.0767416621*lms.x - 3.3077115913*lms.y + 0.2309699292*lms.z,
+    -1.2684380046*lms.x + 2.6097574011*lms.y - 0.3413193965*lms.z,
+    -0.0041960863*lms.x - 0.7034186147*lms.y + 1.7076147010*lms.z);
+}
+float hueDist(float a, float b) {
+  float d = mod(abs(a - b), 2.0 * PI);
+  return d > PI ? 2.0 * PI - d : d;
+}
+vec3 oklabSaturate(vec3 rgb) {
+  if (abs(u_saturation) < 1e-5 && abs(u_vibrance) < 1e-5) return rgb;
+  vec3 lab = linearToOklab(srgbToLinear3(rgb));
+  float c = length(lab.yz);
+  if (c < 1e-5) return rgb;
+  float hh = atan(lab.z, lab.y);
+  float vibW = 1.0 - clamp(c / SAT_C_REF, 0.0, 1.0);
+  float gain = u_saturation + u_vibrance * vibW;
+  float neutral = smoothstep(0.0, SAT_C_NEUTRAL, c);
+  float skin = 1.0 - SKIN_DAMP * smoothstep(SKIN_WIDTH, 0.0, hueDist(hh, SKIN_HUE));
+  gain *= neutral * skin;
+  float scale = max(1.0 + gain, 0.0);
+  vec3 lab2 = vec3(lab.x, lab.y * scale, lab.z * scale);
+  vec3 gray = oklabToLinear(vec3(lab.x, 0.0, 0.0));
+  vec3 col = oklabToLinear(lab2);
+  float tg = 1.0;
+  for (int ch = 0; ch < 3; ch++) {
+    float g0 = gray[ch]; float c0 = col[ch];
+    if (c0 > 1.0) tg = min(tg, (1.0 - g0) / (c0 - g0));
+    else if (c0 < 0.0) tg = min(tg, g0 / (g0 - c0));
+  }
+  tg = clamp(tg, 0.0, 1.0);
+  vec3 outLin = clamp(mix(gray, col, tg), 0.0, 1.0);
+  return linearToSrgb3(outLin);
+}
+
 vec3 finishAt(vec2 uv) {
   // Brightness/density: log-curve gain (10^(b·RANGE)) before the tone curve, so
   // equal slider steps = equal density steps (mirror finish.rs::finish_pixel).
   vec3 c = texture(u_src, uv).rgb * pow(10.0, u_brightness * BRIGHTNESS_DENSITY_RANGE);
   vec3 t = vec3(tone(c.r), tone(c.g), tone(c.b));
-  float y = 0.2126 * t.r + 0.7152 * t.g + 0.0722 * t.b;
-  float mx = max(max(t.r, t.g), t.b);
-  float mn = min(min(t.r, t.g), t.b);
-  float cur = mx > 1e-5 ? (mx - mn) / mx : 0.0;
-  float f = 1.0 + u_saturation + u_vibrance * (1.0 - cur);
-  vec3 s = clamp(vec3(y) + (t - vec3(y)) * f, 0.0, 1.0);
+  vec3 s = oklabSaturate(t);
   // Tone curve LUT (per channel: sample at the channel's own value).
   vec3 cu = vec3(
     texture(u_lut, vec2(s.r, 0.5)).r,
