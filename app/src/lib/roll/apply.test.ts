@@ -15,9 +15,10 @@ const crop: CropRect = {
 
 describe("tone/color", () => {
   it("toneColorOf excludes film/calibration fields", () => {
-    const p = { ...defaultParams(), exposure: 1, base_override: [1, 1, 1] as [number, number, number], d_max_override: 2 };
+    const p = { ...defaultParams(), exposure: 1, contrast: 10, base_override: [1, 1, 1] as [number, number, number], d_max_override: 2 };
     const tc = toneColorOf(p);
-    expect(tc.exposure).toBe(1);
+    expect(tc.contrast).toBe(10);          // a real shared tone/color field is kept
+    expect("exposure" in tc).toBe(false);  // per-image (Auto-Brightness) — excluded
     expect("base_override" in tc).toBe(false);
     expect("d_max_override" in tc).toBe(false);
     expect("stock" in tc).toBe(false);

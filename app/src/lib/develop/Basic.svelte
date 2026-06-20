@@ -1,8 +1,9 @@
 <script lang="ts">
   import { get } from "svelte/store";
   import { t } from "$lib/i18n";
-  import { params, activeId, images, folderBaseByPath, baseSampling, sampledBase, sampledDmax, whitePointPinned, preReanalyze } from "../store";
+  import { params, activeId, images, folderBaseByPath, baseSampling, sampledBase, sampledDmax, whitePointPinned, preReanalyze, developProgress } from "../store";
   import { api, defaultParams } from "../api";
+  import { autoBrightnessRoll } from "../workflow";
   import { reseedActive, commitActive } from "./historyStore";
   import { createSeedGuard } from "./seedGuard";
   import { withEffectiveBase } from "./base";
@@ -133,6 +134,24 @@
 
   function autoWb() { seed($activeId, $params.stock, JSON.stringify(effBase), true); }
 
+  // Auto brightness (this image): solve the exposure that lands bright content on a
+  // balanced target via the highlight-preserving filmic curve, then commit it as a
+  // deliberate, undoable look change. Each image measures its own — see whole-roll below.
+  async function autoBrightness() {
+    const id = $activeId;
+    if (!id) return;
+    try {
+      const { exposure } = await api.autoBrightness(id, withEffectiveBase(get(params), dir), imageCrop, geom);
+      params.update((p) => ({ ...p, exposure }));
+      commitActive();
+    } catch { /* not developed yet */ }
+  }
+  // Auto brightness across every developed frame in the roll (per-image values).
+  function autoBrightnessAll() {
+    if ($developProgress.active) return;
+    autoBrightnessRoll();
+  }
+
   // As-shot neutral baseline for the Temp readout. Temp is shown as a relative ±
   // offset from this point (feedback I2: absolute Kelvin is meaningless to the user).
   // Tracked independently of seed() so the readout is correct even on images that
@@ -192,14 +211,20 @@
   // Re-derive D_max only when the crop CHANGES on the current image — not on image
   // switch (the stored develop-time d_max already covers that). Switching no longer
   // recomputes analysis or adds an undo step.
-  let lastCrop = { id: "", key: "" };
+  let lastCrop = { id: "", key: "", orient: "" };
   $: {
     const id = $activeId ?? "";
     const key = JSON.stringify(imageCrop);
-    if (id && id === lastCrop.id && key !== lastCrop.key && !isPinned(id)) {
+    // rot90 / flips / straighten merely RE-ORIENT the same pixels, so D_max (and the
+    // WB re-seed reanalyze() does) must not move. Rotating the crop rect changes
+    // `imageCrop`, which previously refit the white point and visibly brightened the
+    // frame ("exposure jumps on rotate"). Re-derive ONLY when the crop's coverage
+    // changes (resize/move) WITHOUT a reorientation.
+    const orient = `${geom.rot90 ?? 0}|${geom.flip_h ? 1 : 0}|${geom.flip_v ? 1 : 0}|${geom.angle ?? 0}`;
+    if (id && id === lastCrop.id && key !== lastCrop.key && orient === lastCrop.orient && !isPinned(id)) {
       reanalyze();
     }
-    lastCrop = { id, key };
+    lastCrop = { id, key, orient };
   }
 
   // A user drag of Temp/Tint makes WB user-controlled (sticky vs the base-change
@@ -303,7 +328,20 @@
         bind:value={$params.tint} def={0} gradient={TINT_GRADIENT} format={signed} on:input={markWbManual} />
 
       <!-- Tone -->
-      <div class="sub">{$t('basic.tone')}</div>
+      <div class="sub tonehead">
+        <span>{$t('basic.tone')}</span>
+        <span class="wbbtns">
+          <!-- Auto brightness: solves a highlight-preserving exposure. Sparkles = this
+               image; "roll" = every developed frame, each with its own value. -->
+          <button class="auto" title={$t('basic.autoBrightnessTitle')} on:click={autoBrightness}>
+            <Icon name="sparkles" size={12} />{$t('basic.auto')}
+          </button>
+          <button class="auto roll" title={$t('basic.autoBrightnessAllTitle')}
+                  on:click={autoBrightnessAll} disabled={$developProgress.active}>
+            {$t('basic.autoBrightnessAll')}
+          </button>
+        </span>
+      </div>
       <Slider label={$t('basic.exposure')} min={-5} max={5} step={0.01} bind:value={$params.exposure} def={0} format={ev} />
       <Slider label={$t('basic.brightness')} min={-100} max={100} bind:value={$params.brightness} def={0} format={signed} />
       <Slider label={$t('basic.contrast')} min={-100} max={100} bind:value={$params.contrast} def={0} format={signed} />
@@ -350,6 +388,14 @@
   .autowb { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px 2px 6px; }
   .autowb:hover { color: var(--text); border-color: var(--accent); background: rgba(244,157,78,0.12); }
   .wbbtns { display: inline-flex; align-items: center; gap: 6px; }
+  /* Tone header carries the Auto-brightness buttons; .sub gives the label its caps,
+     so the buttons opt out of the inherited uppercase/tracking. */
+  .tonehead { display: flex; justify-content: space-between; align-items: center; }
+  .tonehead .auto { display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 8px 2px 6px; text-transform: none; letter-spacing: 0; }
+  .tonehead .auto:hover { color: var(--text); border-color: var(--accent);
+    background: rgba(244,157,78,0.12); }
+  .tonehead .auto[disabled] { opacity: 0.5; cursor: default; }
   .wbdrop { display: inline-flex; align-items: center; justify-content: center;
     background: transparent; border: 1px solid var(--glass-brd); color: var(--text-dim);
     border-radius: 6px; padding: 2px 6px; cursor: pointer; }

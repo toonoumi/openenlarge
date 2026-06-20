@@ -3,9 +3,12 @@ import type { CropRect } from "../crop/types";
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v));
 
-/** Per-image film/calibration fields that are NOT part of the shared "look". */
+/** Per-image film/calibration fields that are NOT part of the shared "look".
+ *  `exposure` is here because Auto-Brightness solves a DISTINCT value per frame;
+ *  a deliberate roll-wide exposure is re-applied separately (null-guarded) so it
+ *  can't silently flatten those per-image values. */
 const EXCLUDE = new Set<keyof InvertParams>([
-  "mode", "stock", "base_override", "d_max_override", "hdr", "positive",
+  "mode", "stock", "base_override", "d_max_override", "hdr", "positive", "exposure",
 ]);
 
 /** The tone/color subset of a params object (everything except EXCLUDE). */
@@ -59,6 +62,16 @@ export function applyBaseToAll(
 ): Record<string, InvertParams> {
   const next = { ...edits };
   for (const id of ids) next[id] = { ...entry(edits, id), base_override: base ? [...base] : null };
+  return next;
+}
+
+/** Apply ONE shared exposure to every frame — used only when the user deliberately
+ *  sets a roll-wide exposure (else each frame keeps its own, e.g. Auto-Brightness). */
+export function applyExposureToAll(
+  edits: Record<string, InvertParams>, ids: string[], exposure: number,
+): Record<string, InvertParams> {
+  const next = { ...edits };
+  for (const id of ids) next[id] = { ...entry(edits, id), exposure };
   return next;
 }
 

@@ -218,6 +218,19 @@ export const api = {
       rot90: geom.rot90 ?? 0, flipH: geom.flip_h ?? false,
       flipV: geom.flip_v ?? false, angle: geom.angle ?? 0,
     }),
+  /** Per-image auto-brightness: solve the exposure (EV) that lands the image's
+   *  bright-content luminance on a balanced target via the highlight-preserving
+   *  filmic curve. Returns the exposure to drop into params.exposure. */
+  autoBrightness: (
+    id: string, params: InvertParams,
+    crop: [number, number, number, number] | null = null,
+    geom: { rot90?: number; flip_h?: boolean; flip_v?: boolean; angle?: number } = {},
+  ) =>
+    invoke<{ exposure: number }>("auto_brightness", {
+      id, params, crop,
+      rot90: geom.rot90 ?? 0, flipH: geom.flip_h ?? false,
+      flipV: geom.flip_v ?? false, angle: geom.angle ?? 0,
+    }),
   analyze: (
     id: string, params: InvertParams,
     crop: [number, number, number, number] | null = null,
