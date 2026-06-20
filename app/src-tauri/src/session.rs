@@ -204,6 +204,10 @@ pub struct ImageEntry {
     /// Develop-time negative/positive classification (true = positive).
     #[serde(default)]
     pub positive: bool,
+    /// True when the baked `thumbnail` predates the current engine version (grid
+    /// lazily regenerates). A freshly rendered entry is never stale.
+    #[serde(default)]
+    pub thumb_stale: bool,
 }
 
 /// Decoded working data, present once an image is developed.
@@ -339,6 +343,7 @@ impl Session {
                 .unwrap_or(false),
             offline: false,
             positive: false,
+            thumb_stale: false,
         };
         self.images.lock().unwrap().insert(id, img);
         entry

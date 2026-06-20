@@ -4,6 +4,9 @@ import type { ThumbView } from "../api";
 
 /** Long-edge px for the boosted (zoomed-in) Library grid thumbnail. */
 export const GRID_HIRES_EDGE = 1080;
+/** Long-edge px for the static (catalog) grid thumbnail — matches the backend
+ * develop-time THUMB_EDGE, so a lazily regenerated thumbnail matches a fresh develop. */
+export const GRID_STATIC_EDGE = 320;
 /** At/below this many columns the cells are large enough to warrant a hi-res render. */
 export const GRID_HIRES_MAX_COLS = 2;
 

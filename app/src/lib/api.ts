@@ -20,6 +20,8 @@ export interface ImageEntry {
   id: string; path: string; file_name: string; thumbnail: string;
   metadata: Metadata; developed: boolean; has_ir: boolean; offline: boolean;
   positive: boolean;
+  /** Baked thumbnail predates the current render engine → grid lazily regenerates. */
+  thumb_stale?: boolean;
 }
 /** A tone-curve control point in [0,1]×[0,1] (input → output). */
 export type CurvePoint = [number, number];
@@ -137,6 +139,8 @@ export interface CatalogImage {
   id: string; path: string; file_name: string; thumbnail: string;
   metadata: Metadata; offline: boolean; developed: boolean; has_ir: boolean;
   positive: boolean;
+  /** Baked thumbnail predates the current render engine → grid lazily regenerates. */
+  thumb_stale?: boolean;
 }
 /** One image's stored edits as returned by load_catalog (JSON already parsed). */
 export interface CatalogEdits {
@@ -313,12 +317,19 @@ export const api = {
       "export_begin", { id, params, spec: { ...spec, dust: wireDust(spec.dust) }, maxEdge }),
   /** Fetch (and release) the stashed full-res half-float RGBA bytes for GPU upload. */
   exportPixels: (id: string) => invoke<ArrayBuffer>("export_pixels", { id }),
-  /** Encode the GPU readback into the chosen format (+ EXIF). `data` is a byte array. */
+  /** Encode the GPU readback into the chosen format (+ EXIF). The pixel `bytes`
+   *  cross the IPC as a raw body (not a JSON number array — that serialized
+   *  hundreds of MB per frame); metadata rides in a base64 `x-meta` header. */
   exportFinish: (
-    id: string, outPath: string, readback: { w: number; h: number; bit16: boolean },
-    data: number[], format: ExportFormat, metaOverride: MetaOverride | null,
-  ) =>
-    invoke<void>("export_finish", { id, outPath, readback, data, format, metaOverride }),
+    bytes: Uint8Array, id: string, outPath: string,
+    readback: { w: number; h: number; bit16: boolean },
+    format: ExportFormat, metaOverride: MetaOverride | null,
+  ) => {
+    const meta = JSON.stringify({ id, outPath, readback, format, metaOverride });
+    // base64 keeps the (possibly unicode) path header-safe; metadata is tiny.
+    const xMeta = btoa(String.fromCharCode(...new TextEncoder().encode(meta)));
+    return invoke<void>("export_finish", bytes, { headers: { "x-meta": xMeta } });
+  },
   tetherStart: (dir: string) => invoke<void>("tether_start", { dir }),
   tetherStop: () => invoke<void>("tether_stop"),
 };

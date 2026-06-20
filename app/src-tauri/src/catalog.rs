@@ -23,6 +23,10 @@ pub struct CatalogImage {
     /// the catalog DB; defaults to false on reload and is reseeded when the image develops.
     #[serde(default)]
     pub positive: bool,
+    /// True when the baked `thumbnail` was rendered by an older engine version than the
+    /// current `film_core::ENGINE_VERSION` — the grid lazily regenerates these.
+    #[serde(default)]
+    pub thumb_stale: bool,
 }
 
 /// One image's stored edits. Stored as opaque JSON blobs; deserialized to `Value`
@@ -51,7 +55,7 @@ pub struct Catalog {
     conn: Mutex<Connection>,
 }
 
-const SCHEMA_VERSION: i64 = 2;
+const SCHEMA_VERSION: i64 = 3;
 
 impl Catalog {
     /// Open (creating if absent) the catalog at `db_path`. Enables WAL and migrates.
@@ -117,18 +121,20 @@ impl Catalog {
     ) -> rusqlite::Result<()> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
-            "UPDATE images SET thumbnail = ?2, metadata = ?3 WHERE id = ?1",
-            rusqlite::params![id, thumbnail, metadata_json],
+            "UPDATE images SET thumbnail = ?2, metadata = ?3, thumb_version = ?4 WHERE id = ?1",
+            rusqlite::params![id, thumbnail, metadata_json, film_core::ENGINE_VERSION as i64],
         )?;
         Ok(())
     }
 
     /// Persist just the thumbnail (the frontend's edited-look render). Lets the strip
     /// thumbnail survive relaunch instead of reverting to the develop-time default.
+    /// Stamps the current engine version, so a freshly rendered thumbnail is no longer
+    /// flagged stale.
     pub fn update_thumbnail(&self, id: &str, thumbnail: &str) -> rusqlite::Result<()> {
         self.conn.lock().unwrap().execute(
-            "UPDATE images SET thumbnail = ?2 WHERE id = ?1",
-            rusqlite::params![id, thumbnail],
+            "UPDATE images SET thumbnail = ?2, thumb_version = ?3 WHERE id = ?1",
+            rusqlite::params![id, thumbnail, film_core::ENGINE_VERSION as i64],
         )?;
         Ok(())
     }
@@ -151,11 +157,13 @@ impl Catalog {
     ) -> rusqlite::Result<Vec<CatalogImage>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, path, file_name, metadata, thumbnail FROM images ORDER BY added_at ASC",
+            "SELECT id, path, file_name, metadata, thumbnail, thumb_version \
+             FROM images ORDER BY added_at ASC",
         )?;
         let rows = stmt.query_map([], |r| {
             let path: String = r.get(1)?;
             let metadata: String = r.get(3)?;
+            let thumb_version: i64 = r.get(5)?;
             Ok(CatalogImage {
                 id: r.get(0)?,
                 offline: !exists(&path),
@@ -166,6 +174,7 @@ impl Catalog {
                 developed: false,
                 has_ir: false,
                 positive: false,
+                thumb_stale: thumb_version != film_core::ENGINE_VERSION as i64,
             })
         })?;
         rows.collect()
@@ -323,6 +332,13 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
         // date/note), stored as one opaque JSON blob alongside the other edits.
         conn.execute_batch("ALTER TABLE edits ADD COLUMN meta_json TEXT;")?;
     }
+    if version < 3 {
+        // Render-engine version the baked `thumbnail` was rendered with. 0 = "before
+        // versioning" (always stale vs the current engine). Lets the grid lazily
+        // regenerate thumbnails whose look predates an engine change (e.g. the filmic
+        // curve) instead of showing the old look until each image is opened.
+        conn.execute_batch("ALTER TABLE images ADD COLUMN thumb_version INTEGER NOT NULL DEFAULT 0;")?;
+    }
     conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;
     Ok(())
 }
@@ -443,6 +459,20 @@ mod tests {
             prefs.get("quality").map(String::as_str),
             Some("performance")
         );
+    }
+
+    #[test]
+    fn thumb_version_tracks_engine_and_clears_on_render() {
+        let cat = Catalog::open_in_memory().unwrap();
+        let id = cat.upsert_image("/p.raw", "p.raw", "{}", "data:thumb", 1).unwrap();
+        // A freshly imported row is at thumb_version 0 → stale vs the current engine.
+        let before = cat.load_images(&|_| true).unwrap();
+        assert!(before[0].thumb_stale, "v0 thumbnail must read stale");
+        // Rendering (update_thumbnail) stamps the current version → no longer stale.
+        cat.update_thumbnail(&id, "data:new").unwrap();
+        let after = cat.load_images(&|_| true).unwrap();
+        assert!(!after[0].thumb_stale, "rendered thumbnail must read current");
+        assert_eq!(after[0].thumbnail, "data:new");
     }
 
     #[test]

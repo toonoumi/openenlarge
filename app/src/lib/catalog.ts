@@ -58,7 +58,7 @@ export function applySnapshot(snap: CatalogSnapshot): void {
   const entries: ImageEntry[] = snap.images.map((ci) => ({
     id: ci.id, path: ci.path, file_name: ci.file_name, thumbnail: ci.thumbnail,
     metadata: ci.metadata, developed: ci.developed, has_ir: ci.has_ir, offline: ci.offline,
-    positive: ci.positive ?? false,
+    positive: ci.positive ?? false, thumb_stale: ci.thumb_stale ?? false,
   }));
   images.set(entries);
   editsById.set(editsMap);

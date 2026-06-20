@@ -2,11 +2,11 @@
   import { tick, onMount } from "svelte";
   import { get } from "svelte/store";
   import { activeId, selectedFolder, gridZoom, folderImages, selection, selectClick,
-    editsById, cropById, dustById } from "../store";
+    editsById, cropById, dustById, images } from "../store";
   import { api, defaultParams, type ImageEntry } from "../api";
   import { withEffectiveBase } from "../develop/base";
   import { imageDir } from "./folderScope";
-  import { gridColumns, gridThumbView, GRID_HIRES_EDGE, GRID_HIRES_MAX_COLS } from "./gridHiRes";
+  import { gridColumns, gridThumbView, GRID_HIRES_EDGE, GRID_STATIC_EDGE, GRID_HIRES_MAX_COLS } from "./gridHiRes";
   import { t } from "$lib/i18n";
 
   const mods = (e: MouseEvent) => ({ meta: e.metaKey || e.ctrlKey, shift: e.shiftKey });
@@ -51,12 +51,42 @@
     finally { inFlight.delete(id); }
   }
 
-  // Render hi-res for every visible developed cell that lacks an up-to-date one.
+  // Lazily regenerate a stale static thumbnail (baked by an older render engine, e.g.
+  // pre-filmic) the first time its cell is visible — reusing the proven render path
+  // (resident-LRU bounded). For never-opened images we bake the same auto-WB seed the
+  // develop-time thumbnail uses; opened images render from their saved edits. One
+  // regen per image: saveThumbnail stamps the engine version, clearing thumb_stale.
+  async function regenStale(img: ImageEntry) {
+    if (!img.developed || !img.thumb_stale || inFlight.has(img.id)) return;
+    inFlight.add(img.id);
+    try {
+      const dir = imageDir(img);
+      const saved = get(editsById)[img.id];
+      let params;
+      if (saved) {
+        params = withEffectiveBase(saved, dir);
+      } else {
+        const seed = withEffectiveBase({ ...defaultParams(), positive: img.positive }, dir);
+        const wb = await api.asShotWb(img.id, seed, null, { rot90: 0, flip_h: false, flip_v: false, angle: 0 });
+        params = { ...seed, temp: wb.temp, tint: wb.tint };
+      }
+      const view = gridThumbView(get(cropById)[img.id], get(dustById)[img.id], GRID_STATIC_EDGE);
+      const url = await api.thumbnail(img.id, params, view);
+      await api.saveThumbnail(img.id, url);
+      images.update((list) =>
+        list.map((i) => (i.id === img.id ? { ...i, thumbnail: url, thumb_stale: false } : i)));
+    } catch { /* not developed yet / decode failed → leave stale, retry on next view */ }
+    finally { inFlight.delete(img.id); }
+  }
+
+  // For every visible developed cell: refresh a stale static thumbnail first, else
+  // (when zoomed) render the hi-res boost.
   function ensureVisible() {
-    if (!boost) return;
     for (const id of visible) {
       const img = shown.find((i) => i.id === id);
-      if (img?.developed && hiRes[id]?.key !== img.thumbnail) renderHiRes(img);
+      if (!img?.developed) continue;
+      if (img.thumb_stale) { regenStale(img); continue; }
+      if (boost && hiRes[id]?.key !== img.thumbnail) renderHiRes(img);
     }
   }
   $: boost, shown, ensureVisible(); // re-check when zoom crosses the threshold or list changes

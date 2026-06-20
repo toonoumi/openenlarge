@@ -16,6 +16,7 @@ use film_core::dust::{self, Stamp};
 use film_core::engine::{invert_image, InversionParams, Mode};
 use film_core::finish::{finish_image, tone_luts, ColorGrade, ColorMix, FinishParams, PcSample};
 use film_core::wb::{gains_to_cct, wb_from_kelvin};
+use base64::Engine;
 use serde::Deserialize;
 use std::path::Path;
 use tauri::State;
@@ -676,6 +677,7 @@ async fn develop_heavy(
             has_ir: c.has_ir,
             offline: false,
             positive: c.positive,
+            thumb_stale: false,
         };
         (entry, metadata_json)
     }; // lock released here
@@ -726,6 +728,7 @@ pub async fn ensure_developed(
             has_ir: dev.working.ir.is_some(),
             offline: false,
             positive: dev.positive,
+            thumb_stale: false,
         })
     };
 
@@ -1535,18 +1538,52 @@ pub struct ExportReadback {
     pub bit16: bool,
 }
 
+/// Metadata for `export_finish`, carried in the base64 `x-meta` header so the
+/// (potentially hundreds-of-MB) pixel buffer can cross the IPC as a raw byte
+/// body instead of a JSON number array. Mirrors the JS object.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportFinishMeta {
+    pub id: String,
+    pub out_path: String,
+    pub readback: ExportReadback,
+    pub format: ExportFormat,
+    #[serde(default)]
+    pub meta_override: Option<MetaOverride>,
+}
+
 /// Build an Image from the GPU readback and encode it with the chosen format.
-#[allow(clippy::too_many_arguments)]
+///
+/// The pixel readback arrives as the **raw request body** (not a JSON array): a
+/// 16-bit export is f32 RGBA = 16 bytes/px, so a 24 MP frame is ~384 MB — sending
+/// that as a `number[]` JSON-serialized the whole buffer (multi-GB transient,
+/// thrashing the batch). Metadata rides in the base64 `x-meta` header instead.
 #[tauri::command]
 pub async fn export_finish(
-    id: String,
-    out_path: String,
-    readback: ExportReadback,
-    data: Vec<u8>,
-    format: ExportFormat,
-    meta_override: Option<MetaOverride>,
+    request: tauri::ipc::Request<'_>,
     session: State<'_, Session>,
 ) -> Result<(), String> {
+    // Pull the raw pixel body + decode the header metadata, then drop the borrowed
+    // request before the await so the encode future stays Send.
+    let (data, id, out_path, readback, format, meta_override) = {
+        let data = match request.body() {
+            tauri::ipc::InvokeBody::Raw(bytes) => bytes.clone(),
+            _ => return Err("export_finish expects a raw byte body".into()),
+        };
+        let b64 = request
+            .headers()
+            .get("x-meta")
+            .ok_or("export_finish missing x-meta header")?
+            .to_str()
+            .map_err(|e| e.to_string())?;
+        let json = base64::engine::general_purpose::STANDARD
+            .decode(b64)
+            .map_err(|e| format!("x-meta base64: {e}"))?;
+        let m: ExportFinishMeta = serde_json::from_slice(&json).map_err(|e| e.to_string())?;
+        (data, m.id, m.out_path, m.readback, m.format, m.meta_override)
+    };
+    drop(request);
+
     // Snapshot the metadata before the lock-free encode so batch export can overlap
     // this encode/write with other images' decode/bake. (The stashed input buffer
     // was already freed by export_pixels.)
