@@ -163,6 +163,7 @@ pub(crate) fn default_invert_params() -> InvertParams {
         cm_magenta_sat: 0.0,
         cm_magenta_lum: 0.0,
         pc_samples: Vec::new(),
+        wb_mode: "gain".to_string(),
     }
 }
 
@@ -188,6 +189,15 @@ pub(crate) fn mode_from(_s: &str) -> Mode {
     Mode::D
 }
 
+/// Parse the wire `wb_mode` string into the engine enum. Unknown values fall back
+/// to `Gain` (the safe legacy behavior).
+pub(crate) fn wb_mode_from(s: &str) -> film_core::WbMode {
+    match s {
+        "subtractive" => film_core::WbMode::Subtractive,
+        _ => film_core::WbMode::Gain,
+    }
+}
+
 pub(crate) fn build_params(p: &InvertParams, base: [f32; 3]) -> InversionParams {
     // One engine: Kodak Cineon (negadoctor). The exposure slider drives print
     // exposure; d_max/paper_* come from InversionParams::Default; WB is set by the
@@ -198,6 +208,7 @@ pub(crate) fn build_params(p: &InvertParams, base: [f32; 3]) -> InversionParams 
         print_exposure: 2f32.powf(p.exposure), // EV stops → linear print exposure
         d_max: p.d_max_override.unwrap_or(1.5),
         positive: p.positive,
+        wb_mode: wb_mode_from(&p.wb_mode),
         ..Default::default()
     }
 }
@@ -2951,6 +2962,21 @@ mod tests {
         };
         let out = bake_for_view_from_baked(Path::new("/nonexistent"), img, &spec, [0.0; 3]);
         assert!((out.pixels[5][0] - 0.5).abs() < 0.35, "speck healed: {}", out.pixels[5][0]);
+    }
+
+    #[test]
+    fn build_params_defaults_wb_mode_gain() {
+        let p = crate::commands_test_support::sample_invert_params();
+        let ip = build_params(&p, [0.8, 0.6, 0.4]);
+        assert_eq!(ip.wb_mode, film_core::WbMode::Gain);
+    }
+
+    #[test]
+    fn build_params_reads_subtractive_wb_mode() {
+        let mut p = crate::commands_test_support::sample_invert_params();
+        p.wb_mode = "subtractive".to_string();
+        let ip = build_params(&p, [0.8, 0.6, 0.4]);
+        assert_eq!(ip.wb_mode, film_core::WbMode::Subtractive);
     }
 }
 

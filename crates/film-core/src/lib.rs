@@ -10,6 +10,7 @@ pub mod image;
 pub mod wb;
 
 pub use image::Image;
+pub use engine::WbMode;
 
 /// Render-engine version: bump whenever the inversion/finish math that bakes a
 /// cached display thumbnail changes (e.g. the filmic display curve). The catalog

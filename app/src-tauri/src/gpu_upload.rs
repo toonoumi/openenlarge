@@ -158,6 +158,8 @@ pub struct ResolvedInversion {
     /// Positive passthrough (slide/print): skip inversion, render scan + exposure/WB.
     #[serde(default)]
     pub positive: bool,
+    /// WB mode for the shader: 0 = gain (post-curve), 1 = subtractive (pre-curve).
+    pub wb_mode: u8,
 }
 
 /// Resolve the UI params (+ sampled film base) into GPU uniforms, reusing the
@@ -187,6 +189,10 @@ pub fn resolve_to_uniforms(p: &InvertParams, base: [f32; 3]) -> ResolvedInversio
         soft_clip: ip.soft_clip,
         mode,
         positive: p.positive,
+        wb_mode: match crate::commands::wb_mode_from(&p.wb_mode) {
+            film_core::WbMode::Subtractive => 1,
+            film_core::WbMode::Gain => 0,
+        },
     }
 }
 
@@ -421,5 +427,16 @@ mod tests {
         let u = resolve_to_uniforms(&p, [0.8, 0.6, 0.4]);
         assert_eq!(u.mode, 3);
         assert!((u.d_max - 2.6).abs() < 1e-6, "override → uniform d_max");
+    }
+
+    #[test]
+    fn resolve_to_uniforms_maps_wb_mode() {
+        let mut p = sample_invert_params();
+        p.wb_mode = "subtractive".to_string();
+        let u = resolve_to_uniforms(&p, [0.8, 0.6, 0.4]);
+        assert_eq!(u.wb_mode, 1u8);
+        p.wb_mode = "gain".to_string();
+        let u = resolve_to_uniforms(&p, [0.8, 0.6, 0.4]);
+        assert_eq!(u.wb_mode, 0u8);
     }
 }

@@ -178,6 +178,11 @@ pub struct InvertParams {
     // Point Color: up to 8 samples.
     #[serde(default)]
     pub pc_samples: Vec<PointColorSample>,
+    /// White-balance application mode: "gain" (post-curve display gain, legacy) or
+    /// "subtractive" (pre-curve density multiply, optical color-head look). Serde
+    /// default "gain" so pre-existing saved edits load exactly as before.
+    #[serde(default = "wb_mode_gain")]
+    pub wb_mode: String,
 }
 
 /// Default identity tone curve: a straight 0→0, 1→1 line.
@@ -186,6 +191,9 @@ pub fn identity_curve() -> Vec<[f32; 2]> {
 }
 fn default_blending() -> f32 {
     50.0
+}
+fn wb_mode_gain() -> String {
+    "gain".to_string()
 }
 
 /// What the frontend gets per image.
