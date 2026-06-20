@@ -20,6 +20,7 @@
   import ConfirmOverwrite from "$lib/roll/ConfirmOverwrite.svelte";
   import BaseView from "$lib/develop/BaseView.svelte";
   import { exportContactSheet } from "$lib/roll/exportSheet";
+  import { pickTileAspect } from "$lib/roll/contactSheet";
   import Viewport from "$lib/viewport/Viewport.svelte";
   import CropView from "$lib/crop/CropView.svelte";
   import CropPanel from "$lib/crop/CropPanel.svelte";
@@ -83,6 +84,24 @@
 
   // --- Film-strip contact sheet helpers -------------------------------------
   const STRIP_SIZE = 6;
+
+  // Tile aspect adapts to the roll's actual frame shape (one camera → one aspect),
+  // so landscape frames fill their tile edge-to-edge with no gaps. Computed from
+  // each frame's effective dims (metadata + rot90 + crop rect).
+  $: tileAspect = (() => {
+    const crops = $cropById;
+    const aspects = $developedFolderImages.map((img) => {
+      const w = img.metadata?.width ?? 0;
+      const h = img.metadata?.height ?? 0;
+      if (!w || !h) return 0;
+      const c = crops[img.id] ?? null;
+      const [ow, oh] = orientDims(w, h, c?.rot90 ?? 0);
+      const rw = c ? c.rect.w : 1;
+      const rh = c ? c.rect.h : 1;
+      return oh * rh > 0 ? (ow * rw) / (oh * rh) : 0;
+    });
+    return pickTileAspect(aspects);
+  })();
 
   // Chunk images into strips of STRIP_SIZE, computing flat sequential frame numbers.
   $: strips = (() => {
@@ -584,7 +603,7 @@
       {:else}
         {#key $rollFilmEdge}
           <div class="sheet-anim" in:fade={{ duration: 180 }}>
-            <div class="strips-container">
+            <div class="strips-container" style="--tile-aspect: {tileAspect}">
               {#if $rollFilmEdge}
                 <!-- ===== FILM-EDGE ON: filmstrip with rebates ===== -->
                 {#each strips as strip, stripIndex}
@@ -893,14 +912,14 @@
   .frame-num.frame-pad { visibility: hidden; }
 
   .frames-row { display: flex; gap: 7px; background: #000; padding: 0 6px; align-items: flex-start; }
-  /* Fixed 3:2 landscape tile (matches TILE_ASPECT in contactSheet.ts). Frames of any
-     orientation fit INSIDE via object-fit:contain, so a portrait crop never inflates
-     the row — uniform row height, Lightroom-style. */
-  .frame-cell { flex: 1; aspect-ratio: 3 / 2; position: relative; background: #000;
+  /* Tiles share one landscape aspect derived from the roll (--tile-aspect, set on
+     .strips-container; fallback 3:2). Landscape frames fill the tile; portrait crops
+     fit INSIDE via object-fit:contain — uniform row height, Lightroom-style. */
+  .frame-cell { flex: 1; aspect-ratio: var(--tile-aspect, 3 / 2); position: relative; background: #000;
     overflow: hidden; padding: 0; border: none; cursor: pointer; display: block;
     appearance: none; -webkit-appearance: none; }
   .frame-cell img { width: 100%; height: 100%; object-fit: contain; object-position: left center; display: block; }
-  .frame-cell-pad { flex: 1; aspect-ratio: 3 / 2; background: transparent; cursor: default; }
+  .frame-cell-pad { flex: 1; aspect-ratio: var(--tile-aspect, 3 / 2); background: transparent; cursor: default; }
 
   .rebate-info-row { display: flex; align-items: center; gap: 14px; height: 24px; padding: 0 12px; }
   .barcode { width: 34px; height: 11px; flex: none;
@@ -923,11 +942,11 @@
   .proof-strip { display: flex; gap: 16px; padding: 0 0 16px; align-items: flex-start; }
   .proof-cell { flex: 1; display: flex; flex-direction: column; gap: 8px; }
   .proof-cell-pad { flex: 1; }
-  /* Fixed 3:2 landscape tile (matches TILE_ASPECT in contactSheet.ts); content
-     letterboxes inside, so portrait frames don't push the row taller. */
+  /* Roll-derived landscape tile (--tile-aspect; fallback 3:2); content letterboxes
+     inside, so portrait frames don't push the row taller. */
   .proof-frame { background: #d8d3c4; padding: 3px; overflow: hidden;
     box-shadow: 0 1px 3px rgba(0,0,0,.5); border: none; cursor: pointer;
-    display: block; width: 100%; aspect-ratio: 3 / 2; box-sizing: border-box;
+    display: block; width: 100%; aspect-ratio: var(--tile-aspect, 3 / 2); box-sizing: border-box;
     appearance: none; -webkit-appearance: none; }
   .proof-frame img { width: 100%; height: 100%; object-fit: contain; object-position: left center; display: block; }
   .proof-caption { text-align: center;

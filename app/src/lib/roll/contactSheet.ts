@@ -8,6 +8,21 @@ export interface SheetLayout { width: number; height: number; cols: number; rows
  *  Roll.svelte's `.frame-cell` / `.proof-frame`. */
 export const TILE_ASPECT = 3 / 2;
 
+/** Choose the contact-sheet tile aspect (w/h) from the roll's frame aspects so
+ *  landscape frames fill their tile with no side gaps. Uses the MEDIAN of
+ *  landscape frames (aspect ≥ 1) — a roll is one camera, so they share a shape;
+ *  the median resists the odd cropped frame. Falls back to all frames, then to
+ *  TILE_ASPECT (empty roll). Portrait frames pillarbox inside the landscape tile. */
+export function pickTileAspect(aspects: number[]): number {
+  const valid = aspects.filter((a) => a > 0 && Number.isFinite(a));
+  const land = valid.filter((a) => a >= 1);
+  const pool = land.length ? land : valid;
+  if (pool.length === 0) return TILE_ASPECT;
+  const s = [...pool].sort((a, b) => a - b);
+  const mid = Math.floor(s.length / 2);
+  return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+}
+
 /** Contain-fit an `iw`×`ih` image inside a `boxW`×`boxH` box. Vertically centered;
  *  horizontal alignment is `alignX` ("left" = flush left, no leading gap; "center").
  *  Keeps the on-screen tiles' `object-position` in sync. Returns the destination

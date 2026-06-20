@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { layoutContactSheet, fitContain, TILE_ASPECT } from "./contactSheet";
+import { layoutContactSheet, fitContain, pickTileAspect, TILE_ASPECT } from "./contactSheet";
 
 describe("layoutContactSheet", () => {
   const opts = { cols: 3, tileW: 100, tileH: 75, gap: 10, margin: 20 };
@@ -85,5 +85,31 @@ describe("fitContain", () => {
 
   it("TILE_ASPECT is 3:2 landscape", () => {
     expect(TILE_ASPECT).toBeCloseTo(1.5);
+  });
+});
+
+describe("pickTileAspect", () => {
+  it("a uniform-aspect roll yields exactly that aspect (frames fill, no gaps)", () => {
+    expect(pickTileAspect([1.5, 1.5, 1.5, 1.5])).toBeCloseTo(1.5);
+    expect(pickTileAspect([1.333, 1.333, 1.333])).toBeCloseTo(1.333);
+  });
+
+  it("uses the median of landscape frames, resisting an odd crop", () => {
+    expect(pickTileAspect([1.3, 1.4, 1.5])).toBeCloseTo(1.4);
+    expect(pickTileAspect([1.3, 1.4, 1.5, 1.6])).toBeCloseTo(1.45); // even → mean of middle two
+  });
+
+  it("ignores portrait frames when any landscape frames exist", () => {
+    // portrait 0.667 present but landscape frames drive the tile
+    expect(pickTileAspect([0.667, 1.5, 0.667, 1.5])).toBeCloseTo(1.5);
+  });
+
+  it("falls back to all frames when the roll is all portrait", () => {
+    expect(pickTileAspect([0.667, 0.75])).toBeCloseTo(0.7085);
+  });
+
+  it("falls back to TILE_ASPECT for an empty / degenerate roll", () => {
+    expect(pickTileAspect([])).toBeCloseTo(TILE_ASPECT);
+    expect(pickTileAspect([0, NaN, Infinity])).toBeCloseTo(TILE_ASPECT);
   });
 });

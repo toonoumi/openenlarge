@@ -7,7 +7,7 @@ import { developedFolderImages } from "$lib/export/eligible";
 import { withEffectiveBase } from "$lib/develop/base";
 import { imageDir } from "$lib/library/folderScope";
 import { draftThumbView } from "./livePreview";
-import { TILE_ASPECT, fitContain } from "./contactSheet";
+import { pickTileAspect, fitContain } from "./contactSheet";
 
 // ─── Layout constants (match on-screen filmstrip) ────────────────────────────
 const STRIP_SIZE = 6;     // frames per strip row
@@ -30,9 +30,6 @@ const PROOF_SHADOW_SIZE = 3;
 const PROOF_PADDING = 3;
 const PROOF_CAPTION_H = 8 + 12; // 8px gap + 12px text line
 
-// Fixed LANDSCAPE tile height — every tile is the same size regardless of the
-// frame's orientation; portrait frames are letterboxed inside (see TILE_ASPECT).
-const FRAME_H = Math.round(FRAME_W / TILE_ASPECT);
 
 // ─── Helper: draw sprocket holes (faint vertical ticks) ─────────────────────
 function drawSprocketBand(
@@ -127,8 +124,14 @@ export async function exportContactSheet(): Promise<void> {
     strips.push({ imgs: slice, nums, padCount: STRIP_SIZE - slice.length });
   }
 
+  // ── Tile aspect from the roll's actual frame shapes (matches on-screen) ───
+  // Landscape frames fill their tile edge-to-edge; every tile is FRAME_H tall.
+  const tileAspect = pickTileAspect(
+    images.map((im) => (im.naturalWidth > 0 && im.naturalHeight > 0 ? im.naturalWidth / im.naturalHeight : 0)),
+  );
+  const FRAME_H = Math.round(FRAME_W / tileAspect);
+
   // ── Compute canvas geometry ───────────────────────────────────────────────
-  // Every strip's frames-row is a fixed FRAME_H tall (uniform tiles).
   // Strip width: 6 frames + gaps + padding on both sides
   const stripContentW = STRIP_SIZE * FRAME_W + (STRIP_SIZE - 1) * FRAME_GAP + 2 * FRAME_PAD;
 
