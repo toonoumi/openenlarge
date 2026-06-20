@@ -64,3 +64,26 @@ describe("rgbToHslSample", () => {
     expect(s.sat).toBeCloseTo(0, 2);
   });
 });
+
+describe("medianRGBA", () => {
+  // RGBA blocks: a run of neutral grain plus one extreme outlier per channel.
+  // The median ignores the outlier the way a mean could not.
+  it("returns the per-channel median and shrugs off a single outlier", async () => {
+    const { medianRGBA } = await import("./colorPick");
+    const px = [
+      [100, 100, 100], [102, 98, 101], [99, 101, 100], [101, 99, 99],
+      [255, 0, 255], // grain spike on R/B, crush on G
+    ];
+    const data = new Uint8Array(px.length * 4);
+    px.forEach((p, i) => { data[i * 4] = p[0]; data[i * 4 + 1] = p[1]; data[i * 4 + 2] = p[2]; data[i * 4 + 3] = 255; });
+    const m = medianRGBA(data)!;
+    expect(m[0]).toBeGreaterThanOrEqual(99); expect(m[0]).toBeLessThanOrEqual(102);
+    expect(m[1]).toBeGreaterThanOrEqual(98); expect(m[1]).toBeLessThanOrEqual(101);
+    expect(m[2]).toBeGreaterThanOrEqual(99); expect(m[2]).toBeLessThanOrEqual(101);
+  });
+
+  it("returns null for an empty block", async () => {
+    const { medianRGBA } = await import("./colorPick");
+    expect(medianRGBA(new Uint8Array(0))).toBeNull();
+  });
+});

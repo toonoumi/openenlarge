@@ -40,6 +40,43 @@ export interface PixelReader {
   readPixel(sx: number, sy: number): [number, number, number] | null;
 }
 
+/** Reads a CLEAN rectangular block of image data for window sampling. */
+export interface RegionReader {
+  readRegion(sx: number, sy: number, w: number, h: number): { data: Uint8Array; w: number; h: number } | null;
+}
+
+/** Per-channel median of an RGBA8 block — robust to film-grain outliers (a single
+ *  pixel can't drag the result the way a mean would). Ignores alpha. Returns
+ *  [r,g,b] bytes, or null for an empty block. */
+export function medianRGBA(data: Uint8Array): [number, number, number] | null {
+  const n = (data.length / 4) | 0;
+  if (n <= 0) return null;
+  const rs = new Uint8Array(n), gs = new Uint8Array(n), bs = new Uint8Array(n);
+  for (let i = 0; i < n; i++) { rs[i] = data[i * 4]; gs[i] = data[i * 4 + 1]; bs[i] = data[i * 4 + 2]; }
+  const mid = (arr: Uint8Array) => { const s = Array.from(arr).sort((a, b) => a - b); return s[(s.length - 1) >> 1]; };
+  return [mid(rs), mid(gs), mid(bs)];
+}
+
+/** Sample a `win`×`win` window of CLEAN pixels centered on the cursor and return
+ *  the per-channel median — a grain-tolerant color for gray-point white balance.
+ *  `cssX`/`cssY` are relative to the CANVAS top-left. Falls back to the single
+ *  center pixel if the region read is unavailable. */
+export function sampleRobust(
+  reader: (PixelReader & RegionReader) | null,
+  canvas: HTMLCanvasElement,
+  cssX: number, cssY: number, win: number,
+): [number, number, number] | null {
+  const c = sampleCoords(canvas, cssX, cssY);
+  if (!c) return null;
+  const half = Math.max(0, (win - 1) >> 1);
+  if (reader) {
+    const blk = reader.readRegion(c.sx - half, c.sy - half, win, win);
+    if (blk) { const m = medianRGBA(blk.data); if (m) return m; }
+    return reader.readPixel(c.sx, c.sy);
+  }
+  return readCanvasPixel(canvas, cssX, cssY);
+}
+
 /** Pick the displayed RGB under the cursor. `cssX`/`cssY` are relative to the
  *  CANVAS element's top-left. When a `reader` (the GL renderer) is supplied the
  *  value comes from a no-overlay readback pass, so the clip-warning overlay can

@@ -2,7 +2,7 @@
   import { t } from "$lib/i18n";
   import { fade } from "svelte/transition";
   import { cubicOut } from "svelte/easing";
-  import { activeId, params, images, folderImages, tool, cropById, activeCrop, dustById, activeDust, deleteTarget, dustRev, developRev, folderBaseByPath, baseSampling, sampledBase, sampledDmax, selectAll, deleteSelectionIds, setActive, previewSrc, clipWarn } from "../store";
+  import { activeId, params, images, folderImages, tool, cropById, activeCrop, dustById, activeDust, deleteTarget, dustRev, developRev, folderBaseByPath, baseSampling, sampledBase, sampledDmax, selectAll, deleteSelectionIds, setActive, previewSrc, clipWarn, hotkeyBindings } from "../store";
   import { get } from "svelte/store";
   import { onMount } from "svelte";
   import { createPreviewPrefetcher } from "../develop/previewPrefetch";
@@ -35,6 +35,8 @@
   import { commitActive, reseedActive } from "../develop/historyStore";
   import { copyDevelopSettings, pasteDevelopSettings } from "../develop/copySettings";
   import { rgbToHslSample } from "../develop/colorPick";
+  import { inTextField, isRangeFocused } from "../keymap/focus";
+  import { matchCombo, selectorParam, normKey, type AdjustParam } from "../keymap/hotkeys";
   import { revealItemInDir } from "@tauri-apps/plugin-opener";
 
   async function revealImage(id: string | null) {
@@ -163,23 +165,22 @@
     cropById.update((m) => ({ ...m, [id]: { ...base, rot90: o.rot90 as 0 | 1 | 2 | 3, flipH: o.flipH, flipV: o.flipV, rect: nr, angle: -base.angle } }));
     commitActive();
   }
-  // True while a form control has focus, so its own arrow-key behaviour wins
-  // (e.g. nudging a slider) instead of stepping the image.
-  function formFocused(): boolean {
-    const a = document.activeElement;
-    const tag = a?.tagName;
-    return tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA";
-  }
-
-  // ---- F3: keyboard adjustment nudges ----
-  // Q/E temp, A/D tint, Z/C exposure (left key lowers, right raises). Each press is a
+  // ---- Keyboard adjustment nudges (hold-selector + ←/→) ----
+  // A held selector key picks a parameter; ← lowers, → raises it. Each press is a
   // coarse step; holding Shift gives the 1/10 fine step. Steps mirror the retuned I2
   // slider ranges. Temp is nudged in mireds (1e6/K) so a press moves the white point
   // by an even perceptual amount across the reciprocal track, then clamped to the same
-  // 2800–10000 K range as the slider. Each nudge marks WB manual (so the auto-reseed
-  // won't clobber it) and commits one undo step.
+  // 2800–10000 K range as the slider. WB nudges mark wb_manual (so the auto-reseed
+  // won't clobber them); every nudge commits one undo step. See lib/keymap/hotkeys.ts
+  // for the default key→parameter map (1·temp, 2·tint, q·exposure, w·contrast,
+  // a·highlights, s·shadows, z·whites, x·blacks) and the user's rebindings.
   const TEMP_MIN = 2800, TEMP_MAX = 10000;
-  const NUDGE = { tempMired: 5, tint: 2, exposure: 0.1 }; // coarse; Shift = ×0.1
+  // Coarse step per parameter (Shift → ×0.1). Temp is in mireds; the ±100 tone
+  // sliders share one step; exposure (±5) is finer.
+  const NUDGE: Record<AdjustParam, number> = {
+    temp: 5, tint: 2, exposure: 0.1,
+    contrast: 2, highlights: 2, shadows: 2, whites: 2, blacks: 2,
+  };
   const clampN = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
   function adjTemp(miredStep: number) {
@@ -206,83 +207,108 @@
     }));
     commitActive();
   }
-
-  /** Handle a Q/E/A/D/Z/C adjustment nudge. Returns true if it consumed the key. */
-  function adjustKey(e: KeyboardEvent): boolean {
-    if (e.metaKey || e.ctrlKey || e.altKey || formFocused()) return false;
-    const f = e.shiftKey ? 0.1 : 1; // Shift → 1/10 fine step
-    switch (e.key.toLowerCase()) {
-      case "q": adjTemp(NUDGE.tempMired * f); break;   // warmer (Kelvin↓)
-      case "e": adjTemp(-NUDGE.tempMired * f); break;  // cooler (Kelvin↑)
-      case "a": adjTint(-NUDGE.tint * f); break;       // toward green
-      case "d": adjTint(NUDGE.tint * f); break;        // toward magenta
-      case "z": adjExposure(-NUDGE.exposure * f); break; // darker
-      case "c": adjExposure(NUDGE.exposure * f); break;  // brighter
-      default: return false;
-    }
-    e.preventDefault();
-    return true;
+  // The ±100 tone sliders (contrast/highlights/shadows/whites/blacks).
+  function adjLinear(key: "contrast" | "highlights" | "shadows" | "whites" | "blacks", delta: number) {
+    params.update((p) => ({ ...p, [key]: clampN(Math.round((p[key] + delta) * 10) / 10, -100, 100) }));
+    commitActive();
   }
 
-  // Arrow keys step through images from anywhere in Develop (not just the filmstrip).
-  function navImages(e: KeyboardEvent): boolean {
-    if (e.metaKey || e.ctrlKey || e.altKey) return false;
-    const arrows = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"];
-    if (!arrows.includes(e.key) || formFocused()) return false;
+  /** Nudge a develop parameter. `dir` = +1 for → (raise), −1 for ← (lower). */
+  function adjustParam(p: AdjustParam, dir: number, fine: boolean) {
+    const step = NUDGE[p] * (fine ? 0.1 : 1) * dir;
+    if (p === "temp") adjTemp(-step);       // → raises Kelvin ⇒ negative mired
+    else if (p === "tint") adjTint(step);
+    else if (p === "exposure") adjExposure(step);
+    else adjLinear(p, step);
+  }
+
+  // ---- Held-key tracking for the adjustment chords ----
+  // A keyup or window blur clears the set so a missed keyup can't leave a selector
+  // "stuck" armed. Typing into a text field never arms a selector.
+  let heldKeys = new Set<string>();
+  function onKeyUp(e: KeyboardEvent) { heldKeys.delete(normKey(e.key)); }
+  function clearHeld() { heldKeys.clear(); }
+  function heldAdjustParam(): AdjustParam | null {
+    const ov = get(hotkeyBindings);
+    for (const k of heldKeys) { const p = selectorParam(k, ov); if (p) return p; }
+    return null;
+  }
+
+  // Flip the active image — draft flip in the crop tool, committed flip elsewhere.
+  function flipActive(axis: "h" | "v") { if ($tool === "crop") onFlip(axis); else flipCommitted(axis); }
+
+  // Step the active image within the folder. Plain arrows defer to a focused
+  // text field / range slider so their native arrow behaviour wins.
+  function stepNav(target: number | "first" | "last", e: KeyboardEvent): boolean {
+    if (inTextField() || isRangeFocused()) return false;
     const list = $folderImages;
     if (list.length === 0) return false;
     let idx = list.findIndex((i) => i.id === $activeId);
     if (idx < 0) idx = 0;
-    if (e.key === "ArrowLeft") idx = Math.max(0, idx - 1);
-    else if (e.key === "ArrowRight") idx = Math.min(list.length - 1, idx + 1);
-    else if (e.key === "ArrowUp") idx = 0;
-    else idx = list.length - 1;
+    if (target === "first") idx = 0;
+    else if (target === "last") idx = list.length - 1;
+    else idx = Math.max(0, Math.min(list.length - 1, idx + target));
     e.preventDefault();
     setActive(list[idx].id);
     return true;
   }
 
-  function onKey(e: KeyboardEvent) {
-    const meta = e.metaKey || e.ctrlKey;
-    if (meta && (e.key === "a" || e.key === "A")) {
-      if (formFocused()) return;
-      e.preventDefault();
-      selectAll();
-      return;
-    }
-    if (meta && e.key === "Backspace") {
-      e.preventDefault();
-      if (!formFocused()) {
-        const ids = deleteSelectionIds();
-        if (ids.length) deleteTarget.set(ids);
+  /** Run a resolved combo action. Returns true if it consumed the key. */
+  function runCombo(id: string, e: KeyboardEvent): boolean {
+    const inCrop = $tool === "crop";
+    switch (id) {
+      case "select.all":
+        if (inTextField()) return false;
+        e.preventDefault(); selectAll(); return true;
+      case "nav.delete": {
+        if (inTextField()) return false;
+        e.preventDefault();
+        const ids = deleteSelectionIds(); if (ids.length) deleteTarget.set(ids);
+        return true;
       }
-      return;
+      case "edit.copySettings":
+        if (inTextField()) return false; // let native text copy win
+        e.preventDefault(); copyDevelopSettings(); return true;
+      case "edit.pasteSettings":
+        if (inTextField()) return false; // let native text paste win
+        e.preventDefault(); pasteDevelopSettings(); return true;
+      case "edit.rotateCCW":
+        e.preventDefault(); if (inCrop) onRotate(-1); else rotateCommitted(-1); return true;
+      case "edit.rotateCW":
+        e.preventDefault(); if (inCrop) onRotate(1); else rotateCommitted(1); return true;
+      case "edit.flipV": e.preventDefault(); flipActive("v"); return true;
+      case "edit.flipH": e.preventDefault(); flipActive("h"); return true;
+      case "nav.prev":  return stepNav(-1, e);
+      case "nav.next":  return stepNav(1, e);
+      case "nav.first": return stepNav("first", e);
+      case "nav.last":  return stepNav("last", e);
+      case "crop.commit":  e.preventDefault(); commitCrop(); tool.set("edit"); return true;
+      case "crop.discard": e.preventDefault(); discardCrop(); return true;
+      case "crop.swap":    e.preventDefault(); onSwap(); return true;
+      // edit.undo / edit.redo are handled globally in +page.svelte.
     }
-    if (meta && (e.key === "]" || e.key === "[")) {
-      e.preventDefault();
-      const dir = e.key === "]" ? 1 : -1;
-      if ($tool === "crop") onRotate(dir); else rotateCommitted(dir);
-      return;
+    return false;
+  }
+
+  function onKey(e: KeyboardEvent) {
+    // Arm the selector set (never while typing, so "1" stays a literal in a field).
+    if (!inTextField()) heldKeys.add(normKey(e.key));
+
+    const inCrop = $tool === "crop";
+
+    // 1) Adjustment chord: a held selector + ←/→ nudges its parameter. Checked
+    //    before combos so a focused slider's native arrow stepping is suppressed.
+    if (!inTextField() && !inCrop && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+      const p = heldAdjustParam();
+      if (p) { adjustParam(p, e.key === "ArrowRight" ? 1 : -1, e.shiftKey); e.preventDefault(); return; }
     }
-    if (meta && (e.key === "c" || e.key === "C")) {
-      if (formFocused()) return; // let native text copy win
-      e.preventDefault();
-      copyDevelopSettings();
-      return;
-    }
-    if (meta && (e.key === "v" || e.key === "V")) {
-      if (formFocused()) return; // let native text paste win
-      e.preventDefault();
-      pasteDevelopSettings();
-      return;
-    }
-    if (navImages(e)) return;
-    if (adjustKey(e)) return;
-    if (e.key === "Escape" && pickTarget) { pickTarget = ""; return; }
-    if ($tool !== "crop") return;
-    if (e.key === "Enter") { commitCrop(); tool.set("edit"); }
-    else if (e.key === "Escape") { discardCrop(); }
-    else if (e.key === "x" || e.key === "X") { onSwap(); }
+
+    // 2) Registered combos (nav / rotate / flip / copy / paste / crop).
+    const id = matchCombo(e, get(hotkeyBindings), inCrop);
+    if (id && runCombo(id, e)) return;
+
+    // 3) Escape cancels an in-progress eyedropper pick.
+    if (e.key === "Escape" && pickTarget) { pickTarget = ""; e.preventDefault(); }
   }
 
   // Committed crop → effective dims + image_crop for the normal Viewport.
@@ -373,13 +399,15 @@
   function toggleWpPick() { pickTarget = pickTarget === "wp" ? "" : "wp"; }
   // Leaving the edit tab cancels an in-progress white-point pick.
   $: if ($tool !== "edit" && pickTarget === "wp") pickTarget = "";
-  async function onPointPick(e: CustomEvent<{ r: number; g: number; b: number; u: number; v: number }>) {
-    const { r, g, b, u, v } = e.detail;
+  async function onPointPick(e: CustomEvent<{ r: number; g: number; b: number; u: number; v: number; rr: number; rg: number; rb: number }>) {
+    const { r, g, b, u, v, rr, rg, rb } = e.detail;
     const target = pickTarget;
     pickTarget = "";
     if (target === "wb") {
       if (!$activeId) return;
-      const wb = await api.grayPointWb(get(params), [r, g, b]);
+      // Use the grain-robust window median (not the single pixel) so a gray-point
+      // pick over grainy film lands a stable Temp/Tint instead of an extreme (D).
+      const wb = await api.grayPointWb(get(params), [rr, rg, rb]);
       // Mark WB user-controlled so a later base/profile change won't auto-reseed over it.
       params.update((p) => ({ ...p, temp: wb.temp, tint: wb.tint, wb_manual: true }));
       reseedActive();
@@ -406,7 +434,7 @@
   }
 </script>
 
-<svelte:window on:keydown={onKey} />
+<svelte:window on:keydown={onKey} on:keyup={onKeyUp} on:blur={clearHeld} />
 
 <div class="layout" on:contextmenu={onContext}>
   <section class="center">

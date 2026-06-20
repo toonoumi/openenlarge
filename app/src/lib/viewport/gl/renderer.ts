@@ -54,6 +54,7 @@ export function float16RenderTargetSupported():
 }
 
 const UNIFORM_NAMES = [
+  "brightness",
   "contrast", "highlights", "shadows", "whites", "blacks",
   "vibrance", "saturation", "texture",
 ] as const;
@@ -543,6 +544,46 @@ export class FinishRenderer {
     gl.readPixels(sx, sy, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     return [px[0], px[1], px[2]];
+  }
+
+  /**
+   * Read a CLEAN (overlay-off) rectangular block of finished-image pixels at
+   * framebuffer coords, clamped to the image. Returns RGBA8 for the `w×h` block,
+   * or null if not drawable. Used to sample a window for a robust (grain-tolerant)
+   * gray-point white-balance pick.
+   */
+  readRegion(sx: number, sy: number, w: number, h: number): { data: Uint8Array; w: number; h: number } | null {
+    const gl = this.gl; if (!gl || !this.hasSource || !this.prog) return null;
+    const fw = this.srcW, fh = this.srcH;
+    const x0 = Math.max(0, Math.min(fw - 1, sx));
+    const y0 = Math.max(0, Math.min(fh - 1, sy));
+    const bw = Math.max(1, Math.min(fw - x0, w));
+    const bh = Math.max(1, Math.min(fh - y0, h));
+
+    if (!this.readFbo) this.readFbo = gl.createFramebuffer();
+    if (!this.readTex || this.readW !== fw || this.readH !== fh) {
+      if (this.readTex) gl.deleteTexture(this.readTex);
+      this.readTex = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, this.readTex);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, fw, fh, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+      this.readW = fw; this.readH = fh;
+    }
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.readFbo);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.readTex, 0);
+    if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      return null;
+    }
+    gl.enable(gl.SCISSOR_TEST);
+    gl.scissor(x0, y0, bw, bh);
+    this.drawFinishPass(fw, fh, /* clipOff */ true);
+    gl.disable(gl.SCISSOR_TEST);
+    const data = new Uint8Array(bw * bh * 4);
+    gl.readPixels(x0, y0, bw, bh, gl.RGBA, gl.UNSIGNED_BYTE, data);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    return { data, w: bw, h: bh };
   }
 
   /**

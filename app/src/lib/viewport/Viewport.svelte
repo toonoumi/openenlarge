@@ -11,7 +11,7 @@
   import { screenRadius, type DustStroke } from "../develop/dust";
   import { marqueeZoom } from "./marquee";
   import { hiTierAction } from "./hiTier";
-  import { pickPixel } from "../develop/colorPick";
+  import { pickPixel, sampleRobust } from "../develop/colorPick";
   import { orientUVMatrix, displayToSourceUV } from "../crop/transforms";
   import { t } from "$lib/i18n";
 
@@ -53,7 +53,7 @@
    *  overlay when this image has no cached fit-view preview yet (first view). */
   export let fallbackThumb = "";
 
-  const dispatch = createEventDispatcher<{ stroke: DustStroke; brush: number; pointpick: { r: number; g: number; b: number; u: number; v: number }; aierased: void; autodusted: void; zoomchange: boolean; marqueedone: void }>();
+  const dispatch = createEventDispatcher<{ stroke: DustStroke; brush: number; pointpick: { r: number; g: number; b: number; u: number; v: number; rr: number; rg: number; rb: number }; aierased: void; autodusted: void; zoomchange: boolean; marqueedone: void }>();
 
   const CAP = 5000;
   const PAD = 60;
@@ -648,9 +648,16 @@
         // oriented image, so map the normalized click back through crop+orient.
         const [u, v] = displayToSourceUV(px / rect.width, py / rect.height, imageCrop, rot90, flipH, flipV);
         // Clean image color (no clip overlay) so a point pick over a clipped
-        // region samples the real pixel, not the warning color (B2).
+        // region samples the real pixel, not the warning color (B2). Alongside the
+        // single center pixel we pass a grain-robust median over a small window
+        // (~4% of the shorter display edge, odd) — gray-point WB uses the robust
+        // value so film grain can't throw Temp/Tint to an extreme (D).
         const rgb = pickPixel(renderer, canvas, px, py);
-        if (rgb) dispatch("pointpick", { r: rgb[0], g: rgb[1], b: rgb[2], u, v });
+        if (rgb) {
+          const win = Math.max(15, Math.round(Math.min(canvas.width, canvas.height) * 0.04)) | 1;
+          const rob = sampleRobust(renderer, canvas, px, py, win) ?? rgb;
+          dispatch("pointpick", { r: rgb[0], g: rgb[1], b: rgb[2], u, v, rr: rob[0], rg: rob[1], rb: rob[2] });
+        }
       }
       return;
     }

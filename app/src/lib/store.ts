@@ -178,6 +178,11 @@ export const tool = writable<Tool>("edit");
 /** OpenAI API key for the AI Enhance tool. Persisted via prefs as `openai_api_key`. */
 export const openaiApiKey = writable<string>("");
 
+/** User overrides for keyboard shortcuts: action id → replacement binding list.
+ *  Defaults live in lib/keymap/hotkeys.ts; this only holds rebindings the user
+ *  made. Persisted via prefs as `hotkey_bindings` (JSON). */
+export const hotkeyBindings = writable<import("./keymap/hotkeys").BindingOverrides>({});
+
 /** Whether the local upscaler runtime+model are installed (re-checked on tool open). */
 export const upscalerInstalled = writable<boolean>(false);
 

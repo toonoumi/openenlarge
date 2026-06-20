@@ -4,10 +4,13 @@
   import { fly } from "svelte/transition";
   import { cubicOut } from "svelte/easing";
   import { hydrate, initPersistence } from "$lib/catalog";
-  import { module, hasImages, images, undevelopedCount, deleteTarget, activeId, selection, applySettingsTarget, telemetryDecided } from "$lib/store";
+  import { module, hasImages, images, undevelopedCount, deleteTarget, activeId, selection, applySettingsTarget, telemetryDecided, hotkeyBindings } from "$lib/store";
   import { applyClipboardTo } from "$lib/develop/copySettings";
   import { noneSelected } from "$lib/selection";
+  import { get } from "svelte/store";
   import { matchUndoRedo } from "$lib/develop/history";
+  import { matchCombo } from "$lib/keymap/hotkeys";
+  import { inTextField } from "$lib/keymap/focus";
   import { commitActive, undoActive, redoActive, seedActive } from "$lib/develop/historyStore";
   import { developAll, deleteImage } from "$lib/workflow";
   import Library from "$lib/tabs/Library.svelte";
@@ -91,22 +94,14 @@
   }
 
   // ⌘Z inside a text field should do the browser's native text undo, not image
-  // undo. Range sliders are <input> too but have no text to undo, so they don't
-  // count here — undo while a slider is focused still affects the image.
-  function inTextField(): boolean {
-    const el = document.activeElement as HTMLElement | null;
-    if (!el) return false;
-    if (el.tagName === "TEXTAREA") return true;
-    if (el.isContentEditable) return true;
-    if (el.tagName === "INPUT") {
-      const t = (el as HTMLInputElement).type;
-      return ["text", "number", "search", "email", "url", "tel", "datetime-local"].includes(t);
-    }
-    return false;
-  }
-
+  // undo. Range sliders are <input> too but have no text to undo, so they keep
+  // affecting the image (inTextField() excludes them — see lib/keymap/focus.ts).
   function onKey(e: KeyboardEvent) {
-    const action = matchUndoRedo(e);
+    // The user's (rebindable) undo/redo bindings win; matchUndoRedo is the fixed
+    // fallback so the Ctrl+Y redo alias keeps working.
+    const id = matchCombo(e, get(hotkeyBindings), false);
+    const action =
+      id === "edit.undo" ? "undo" : id === "edit.redo" ? "redo" : matchUndoRedo(e);
     if (!action) return;
     if (inTextField()) return; // let native text undo win
     e.preventDefault();

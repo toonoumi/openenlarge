@@ -7,7 +7,7 @@ import {
   selectedFolder, gridZoom, module as moduleStore, activeId, folderBaseByPath,
   updateLastCheck, updateSkipVersion, openaiApiKey, omitPreviewJpgs,
   telemetryEnabled, telemetryDecided, rollOverwriteSkip,
-  rollFilmEdge, rollEdgeText, undevelopableIds,
+  rollFilmEdge, rollEdgeText, undevelopableIds, hotkeyBindings,
 } from "./store";
 import { locale } from "./i18n";
 
@@ -79,6 +79,12 @@ export function applySnapshot(snap: CatalogSnapshot): void {
     rollFilmEdge.set(snap.prefs.roll_film_edge !== "false");
   if (typeof snap.prefs.roll_edge_text === "string" && snap.prefs.roll_edge_text)
     rollEdgeText.set(snap.prefs.roll_edge_text);
+  if (typeof snap.prefs.hotkey_bindings === "string" && snap.prefs.hotkey_bindings) {
+    try {
+      const b = JSON.parse(snap.prefs.hotkey_bindings);
+      if (b && typeof b === "object") hotkeyBindings.set(b);
+    } catch { /* skip malformed */ }
+  }
   // Analytics: "on"/"off" = a recorded choice; absent = undecided (the first-run
   // prompt shows and telemetryEnabled stays false until they answer).
   if (snap.prefs.telemetry === "on") { telemetryEnabled.set(true); telemetryDecided.set(true); }
@@ -192,9 +198,10 @@ export function initPersistence(): () => void {
   wireRecord(dustById, dust.save);
   wireRecord(metaById, meta.save);
 
-  let first = { loc: true, sf: true, gz: true, mod: true, aid: true, usv: true, ulc: true, oak: true, opj: true, ros: true, rfe: true, ret: true, uid: true };
+  let first = { loc: true, sf: true, gz: true, mod: true, aid: true, usv: true, ulc: true, oak: true, opj: true, ros: true, rfe: true, ret: true, uid: true, hkb: true };
   locale.subscribe((l) => { if (first.loc) { first.loc = false; return; } prefs.save("locale", l); });
   openaiApiKey.subscribe((k) => { if (first.oak) { first.oak = false; return; } prefs.save("openai_api_key", k); });
+  hotkeyBindings.subscribe((b) => { if (first.hkb) { first.hkb = false; return; } prefs.save("hotkey_bindings", JSON.stringify(b)); });
   omitPreviewJpgs.subscribe((b) => { if (first.opj) { first.opj = false; return; } prefs.save("omit_preview_jpgs", String(b)); });
   rollOverwriteSkip.subscribe((b) => { if (first.ros) { first.ros = false; return; } prefs.save("roll_overwrite_skip", String(b)); });
   rollFilmEdge.subscribe((b) => { if (first.rfe) { first.rfe = false; return; } prefs.save("roll_film_edge", String(b)); });
