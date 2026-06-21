@@ -1,0 +1,99 @@
+<h1>显影 · 基础</h1>
+<p class="lead">「基础」面板是每一次显影决策的起点，涵盖从片基去除、曝光到色调塑形、白平衡与饱和度的完整摄影链路。本页从上至下逐一介绍每个控件——它对照片的作用，以及它在引擎中调整的参数。</p>
+
+<figure><img src="/img/develop.png" alt="OpenEnlarge 显影界面，显示反转后的正片图像，右侧打开「基础」调整面板"><figcaption>显影界面 —— 反转后的正片与右侧的「基础」面板控件。</figcaption></figure>
+
+<h2>反相</h2>
+<p><strong>反相</strong>按钮将当前帧在负片（Cineon 反转）与正片（直通）模式之间切换。正片模式下，扫描图像直接进行显示编码，不经过任何反转，仅施加 <code>exposure</code>（曝光）与白平衡。适用于幻灯片或正片原稿——当你希望跳过反转、直接处理已是正片的来源时。该切换为逐帧设置，可撤销，立即生效。</p>
+
+<h2>胶片配置文件</h2>
+<p><strong>胶片配置文件</strong>菜单（面板中标记为「胶片配置文件」）用于选择预校准的胶片预设，包括柯达 Portra 400、富士 C200、Ektar 100 等。选择配置文件后，引擎读取 <code>stock</code> 参数，应用针对该乳剂特定光谱灵敏度与染料串扰的预对数线性混合矩阵（<code>m_pre</code>）和密度空间解混矩阵（<code>m_post</code>）。未选择配置文件时，两个矩阵均为单位矩阵（中性）。若无匹配你所用胶片的配置，保留「无胶片配置文件」即可。</p>
+
+<h2>曝光</h2>
+<p>曝光是最主要的亮度控件，也是首先应该调整的。它以 EV 档位调整 <code>exposure</code> 参数（滑块范围 −5 至 +5）。在引擎内部，EV 值驱动 <code>print_exposure = 2^EV</code>，用于在色调曲线之前缩放归一化对数密度。提高曝光将色调沿曲线推向高光；降低曝光将色调下拉，而已经溢出的高光仍保持在白点——该控件具有高光保护性，在完整的 ±5 范围内均有响应，不存在死区。</p>
+
+<p>首次显影时会自动运行一次自动曝光，选取一个使关键色调处于合理亮度的值，类似于自动白平衡确定中性点的方式。之后可自由调整；起始值已折入基线，不构成单独的撤销步骤。</p>
+
+<p>当前激活的 Faithful 色调路径使用感光强度 <strong>FAITHFUL_EXPO_K = 1.0</strong>，因此每一 EV 档大约对应一个摄影档的亮度变化。这与旧版 Filmic 路径较弱的 EXPO_K = 0.14 有意不同，后者在明亮内容上会让滑块感觉反应迟钝。</p>
+
+<details class="hood"><summary>深入原理</summary><div class="hood-body">
+<p><strong>曝光机制：</strong>滑块以 EV 记录 <code>exposure</code>。引擎计算 <code>ev = log2(print_exposure)</code>，再得出 <code>expo_gain_f = 2^(FAITHFUL_EXPO_K · ev)</code>，其中 <code>FAITHFUL_EXPO_K = 1.0</code>。输入 Faithful 伽马肩部曲线的有效密度为 <span class="formula">t_eff = d · FAITHFUL_SCALE · expo_gain_f</span>，其中 <code>FAITHFUL_SCALE = 1/0.700</code> 是根据 C400 数字 SDR 参考校准的固定密度刻度。这使色调还原在每一帧上保持冻结且完全一致；逐帧亮度完全由曝光增益负责。</p>
+<p><strong>高光保护：</strong>伽马肩部曲线的渐近肩部平滑压缩接近白点的密度。降低曝光可将过曝色调从肩部拉回曲线体部，恢复丢失的层次——前提是负片中确实存在细节。已饱和的高光（密度远超肩部）会保持接近白点：滑块可以压暗中调而不将白点一并拖低。</p>
+<p><strong>白点与曝光：</strong>Faithful 路径使用固定密度刻度（<code>FAITHFUL_SCALE</code>）而非逐帧 <code>d_max</code>——因此白点不随曝光移动。亮度由滑块负责；白点定位在显影时分析阶段完成。详见 <a href="../science/density.html">密度与对数空间</a> 和 <a href="../science/tone-curve.html">色调曲线</a>。</p>
+</div></details>
+
+<h2>影调 —— 亮度、对比度、高光、阴影、白色、黑色</h2>
+<p>曝光下方是六个创意影调控件，均在反转后正片的显示空间中工作。每个控件映射到 <code>InvertParams</code> / <code>FinishParams</code> 中的一个字段，范围均为 −100 至 +100（0 = 不变）。</p>
+
+<ul>
+  <li><strong>亮度</strong> —— 在色调曲线之前施加的对数密度增益。等量滑块步长产生等量密度变化，而非等量线性增量，因此读起来像平滑的密度抬升或下拉。字段：<code>brightness</code>；增益为 <span class="formula">10^(brightness · BRIGHTNESS_DENSITY_RANGE)</span>，其中 <code>BRIGHTNESS_DENSITY_RANGE = 0.5</code>。</li>
+  <li><strong>对比度</strong> —— 以中性灰（0.5）为轴心的线性 S 型增益。正值扩大暗调与亮调的间距；负值压缩。字段：<code>contrast</code>。</li>
+  <li><strong>高光</strong> —— 作用于色调范围上半段（0.5 以上）的架型权重，在白点处达到峰值。下拉高光可恢复接近溢出的色调；上推高光提亮肩部区域。字段：<code>highlights</code>。</li>
+  <li><strong>阴影</strong> —— 作用于色调范围下半段（0.5 以下）的架型权重，在黑点处达到峰值。提升阴影可开亮暗部色调，不影响中调。字段：<code>shadows</code>。</li>
+  <li><strong>白色</strong> —— 作用于极亮端（幂律权重在接近 1.0 处最强）。上推白色提亮镜面高光；下拉则将其柔和地拉回白点以下。字段：<code>whites</code>。</li>
+  <li><strong>黑色</strong> —— 作用于极暗端（幂律权重在接近 0 处最强）。提升黑色抬高阴影底部，增加一种胶片底基感；降低则加深阴影趋向纯黑。字段：<code>blacks</code>。</li>
+</ul>
+
+<p>六个控件依次叠加：亮度增益 → 色调曲线（白色/黑色端点，再是高光/阴影区域，最后是对比度 S 型增益）。它们在反转核心之后于显示空间中施加，因此无论处理负片还是正片直通帧均保持一致。如需进一步的曲线编辑——逐通道点控曲线与区域参数滑块——请参阅 <a href="tune.html">微调</a>。</p>
+
+<details class="hood"><summary>深入原理</summary><div class="hood-body">
+<p><strong>亮度密度曲线：</strong><span class="formula">gain = 10^(b · 0.5)</span>，其中 <code>b</code> 为 −1..1 范围的滑块值。在极值处（b = ±1），增益约为 ×3.16 / ×0.32（约 ±1.66 档）。GPU 预览与 CPU 导出使用相同常量 <code>BRIGHTNESS_DENSITY_RANGE = 0.5</code>，因此两者完全一致。</p>
+<p><strong>色调曲线顺序（finish.rs）：</strong></p>
+<ol>
+  <li>白色端点：<span class="formula">v += whites · 0.20 · v³</span> —— 接近 1 时最强，在 0 处消失。</li>
+  <li>黑色端点：<span class="formula">v += blacks · 0.20 · (1−v)³</span> —— 接近 0 时最强，在 1 处消失。</li>
+  <li>高光区域：<span class="formula">v += highlights · 0.18 · smoothstep(0.5, 1.0, v)</span> —— 在白点处达到峰值的架型。</li>
+  <li>阴影区域：<span class="formula">v += shadows · 0.18 · (1 − smoothstep(0.0, 0.5, v))</span> —— 在黑点处达到峰值的架型。</li>
+  <li>对比度 S 型增益：<span class="formula">v = 0.5 + (v − 0.5) · (1 + contrast)</span></li>
+</ol>
+<p>高光与阴影的增益上限 0.18 确保即使对立滑块同时推至最大，曲线仍保持单调——不会出现色调反转伪影。</p>
+</div></details>
+
+<h2>白平衡 —— 色温、色调、自动、灰点拾取、彩色头</h2>
+<p>显影中的白平衡通过<strong>色温</strong>（2800–10000 K）和<strong>色调</strong>（绿色/品红轴，−100 至 +100）滑块控制，两者共同决定逐通道的白平衡增益。色温的读数以相对于自动检测到的原始中性点的 ± 偏移量显示，便于查看偏移程度，而非难以直觉理解的绝对开尔文值。</p>
+
+<p>滑块上方有三个一键辅助工具：</p>
+<ul>
+  <li><strong>自动白平衡</strong> —— 对当前帧与片基重新运行灰世界估算，将色温和色调重新设定到检测到的中性点。在更改胶片配置文件或片边颜色后，可用此功能重新定中平衡。</li>
+  <li><strong>灰点拾取器</strong>（十字准星图标）—— 在预览视口中点击一处在最终照片中应为中性灰的区域。引擎测量该像素的值，计算令其中性化所需的白平衡增益，再以此设定色温和色调。增益的施加方式与手动调整色温/色调保持一致：增益模式为曲线后乘法，彩色头模式为曲线前密度缩放。</li>
+  <li><strong>彩色头</strong>开关 —— 在<em>增益</em>（曲线后线性乘法，字段 <code>wb_mode: "gain"</code>）和<em>减色</em>（曲线前密度缩放，字段 <code>wb_mode: "subtractive"</code>）模式之间切换白平衡的施加方式。两者区别详见 <a href="../science/color.html">色彩与白平衡</a>。</li>
+</ul>
+
+<details class="hood"><summary>深入原理</summary><div class="hood-body">
+<p><strong>增益模式：</strong>逐通道白平衡增益作为曲线后乘法施加于正片输出。纯黑（输出 = 0）不受影响：0 × 增益 = 0，因此暗部始终保持中性。</p>
+<p><strong>减色（彩色头）模式：</strong>增益在色调曲线之前作为密度缩放施加：<span class="formula">t_eff = t · gain^CMY_STRENGTH</span>，其中 <code>CMY_STRENGTH = 1.6</code>。等效于更换二向色放大机上的 CMY 滤镜组——色调与色调曲线相互耦合，影响延伸至中调乃至较暗的调子区域。暗部仍精确锚定在黑点（密度 = 0 → 任何滤镜下均为 0）。</p>
+<p><strong>色温范围：</strong>滑块在倒数轨道（每色温倒数等量视觉步长）上跨越 2800–10000 K，步长 0.5 K。自动检测到的中性基线（日光型彩色负片约为 5500 K）是相对 ± 显示的零点。</p>
+<p><strong>色调范围：</strong>−100 至 +100，步长 0.1 单位。细步长可避免在大幅绿色/品红扫描时产生色带。</p>
+</div></details>
+
+<h2>纹理</h2>
+<p>纹理通过非锐化蒙版添加或去除细节对比度。正值锐化（增强精细尺度上的局部对比度）；负值柔化（向图像的低频版本混合）。该控件与分辨率无关：模糊半径随图像短边缩放，使代理预览与全分辨率导出在视觉上呈现相同效果。</p>
+
+<p><strong>注意：</strong>纹理是精细细节的空间效果，在适应窗口缩放级别下无法准确预览——代理分辨率的像素数少于所增强的细节。点击纹理滑块旁的 <strong>100%</strong> 按钮（或使用键盘快捷键）跳转至 1:1 缩放，以查看真实效果。字段：<code>texture</code>，范围 −100 至 +100。</p>
+
+<details class="hood"><summary>深入原理</summary><div class="hood-body">
+<p><strong>非锐化蒙版公式：</strong><span class="formula">out = v + k · (v − blur(v))</span>，其中 <code>blur</code> 为可分离高斯模糊。增益 <code>k</code> 不对称：<code>texture = +1</code> 时，<code>k = USM_POS_GAIN = 2.5</code>；<code>texture = −1</code> 时，<code>k = −USM_NEG_GAIN = −1.0</code>，结果精确等于模糊图像（明显柔化）。中间值线性插值。</p>
+<p><strong>分辨率无关性：</strong>sigma 为 <code>TEXTURE_SIGMA_FRAC = 0.0025</code> 乘以图像短边，在 2560 像素代理上约得 6 像素 sigma。半径上限为 <code>TEXTURE_MAX_RADIUS = 64</code> 像素，防止超大导出时计算量过大。GPU 和 CPU 路径均从各自视口尺寸推导相同的 sigma，因此预览与导出一致。</p>
+</div></details>
+
+<h2>鲜明度 —— 鲜艳度与饱和度</h2>
+<p>鲜艳度与饱和度均用于提升或降低色彩丰富度，但工作方式不同：</p>
+<ul>
+  <li><strong>鲜艳度</strong> —— 优先针对色度较低的暗淡区域。已经鲜艳的颜色获得较小提升，因此推高鲜艳度可丰富平淡的天空与布料，而不会令本已饱满的红色和黄色过度饱和。字段：<code>vibrance</code>。</li>
+  <li><strong>饱和度</strong> —— 对所有色调和色相施加均匀的色度提升。适合整体均衡地丰富色彩。字段：<code>saturation</code>。</li>
+</ul>
+<p>两者均在 <strong>OKLab</strong> 色彩空间中运算，这是一种感知均匀模型——等量数值步长在所有色相上产生视觉上等量的变化。接近中性的色调（灰色）与肤色受到保护，获得较小的提升，因此推高饱和度时不会在本应无色的区域产生色偏，也不会令肤色过饱和。超出色域的结果沿色相线压缩，而非逐通道截断。范围：两者均为 −100 至 +100。感知设计的原理详见 <a href="../science/color.html">色彩与白平衡</a>。</p>
+
+<details class="hood"><summary>深入原理</summary><div class="hood-body">
+<p><strong>OKLab 色度缩放：</strong>像素转换为 OKLab（L, a, b），色度为 <span class="formula">C = √(a² + b²)</span>。综合增益为 <span class="formula">gain = saturation + vibrance · (1 − C/SAT_C_REF)</span>，其中 <code>SAT_C_REF = 0.20</code> 是被视为「完全饱和」的参考色度——低色度像素获得完整的鲜艳度贡献，高色度像素获得的贡献逐渐递减。</p>
+<p><strong>中性色与肤色保护：</strong>增益进一步乘以中性色斜坡（<code>smoothstep(0, SAT_C_NEUTRAL, C)</code>，其中 <code>SAT_C_NEUTRAL = 0.025</code>），在接近中性的色调处将提升归零；并乘以肤色阻尼（在肤色/橙色色相窗口内最大减少 <code>SKIN_DAMP = 0.5</code>）。亮度（L）保持不变，仅缩放 a 和 b 轴。</p>
+<p><strong>色域压缩：</strong>色度缩放后，结果从 OKLab 转换回线性 RGB。若任一通道超出 [0,1]，则沿非彩色点（L, 0, 0）到提升后颜色的直线方向将结果拉回，直至所有通道在色域内——保留色相与亮度，同时避免逐通道截断。</p>
+</div></details>
+
+<h2>HDR 预览</h2>
+<p><strong>HDR</strong> 开关（基础面板标题栏右上角，字段 <code>hdr: boolean</code>）为当前帧启用 HDR 预览渲染。在 HDR 模式下，引擎将 Filmic 路径中标准膝点（<code>HDR_KNEE = 0.8</code>）以上的高光密度扩展至最高 <code>HDR_HEADROOM = 2.5</code> 的范围，使镜面高光和光源在支持 EDR/HDR10 的显示器上可以超越 SDR 白点。导出流程默认仍为 SDR；HDR 仅为预览开关。注意 Faithful 路径在 HDR 模式下绕过外观曲线层，以保留扩展的亮度值。</p>
+
+<h2>重置</h2>
+<p><strong>重置</strong>按钮（基础面板标题栏右上角）将所有基础控件还原至默认值：曝光、亮度、对比度、高光、阴影、白色、黑色、纹理、鲜艳度、饱和度均设为 0，胶片配置文件清空。色温和色调重新从自动白平衡估算中获取，而非设为固定默认值，因此色彩平衡落在图像检测到的中性点，而非任意数字。裁剪、片边颜色和所有微调设置保持不变。</p>
+
+<p class="next"><a href="tune.html">下一篇：微调 →</a></p>

@@ -1,0 +1,99 @@
+<h1>Develop · Basic</h1>
+<p class="lead">The Basic panel is where every develop decision starts. It covers the entire photographic chain from base removal and exposure through tone shaping, white balance, and saturation. This page walks each control from top to bottom — what it does for the photo and what engine parameter it tunes.</p>
+
+<figure><img src="/img/develop.png" alt="OpenEnlarge Develop view with a positive image and the Basic adjustment panel open on the right"><figcaption>The Develop view — the inverted positive with the Basic panel controls on the right.</figcaption></figure>
+
+<h2>Inverse</h2>
+<p>The <strong>Inverse</strong> button flips the current frame between negative (Cineon inversion) and positive (passthrough) mode. In positive mode the scan is display-encoded without any inversion, with only <code>exposure</code> and white balance applied. Use it for slide film or print originals where you want to skip the inversion entirely and work on an already-positive source. The toggle is per-image, undoable, and takes effect immediately.</p>
+
+<h2>Film Profile</h2>
+<p>The <strong>Film Profile</strong> menu (labeled <em>Film Profile</em> in the panel) chooses a pre-calibrated stock preset — Kodak Portra 400, Fuji C200, Ektar 100, and others. Selecting a profile sets the <code>stock</code> parameter; the engine uses that to apply a stock-specific pre-log linear mix (<code>m_pre</code>) and density-space unmix (<code>m_post</code>) that corrects for the spectral sensitivity and dye-crosstalk specific to that emulsion. Without a profile the engine runs both matrices as identity (neutral). If no profile matches your film, leave it at <em>No film profile</em>.</p>
+
+<h2>Exposure</h2>
+<p>Exposure is the primary brightness control and the one to reach for first. It adjusts the <code>exposure</code> parameter in EV stops (slider range −5 to +5). Internally the EV value drives <code>print_exposure = 2^EV</code>, which the engine uses to scale the normalised log-density before the tone curve. Brightening pushes tones up the curve toward white; darkening pulls them down while an already-clipped specular stays at white — the control is highlight-preserving and has no dead zone across the full ±5 range.</p>
+
+<p>Auto-exposure runs once when a frame is first developed, picking a value that places key tones at a sensible brightness, similar to how auto-WB picks a neutral balance. You can adjust freely from there; the starting value is folded into the baseline, not a separate undo step.</p>
+
+<p>The Faithful tone path (the sole active path) uses a photographic exposure sensitivity of <strong>FAITHFUL_EXPO_K = 1.0</strong>, so one EV step moves brightness by roughly one photographic stop. This is intentionally different from the legacy Filmic path's weaker EXPO_K = 0.14, which allowed the slider to feel unresponsive on bright content.</p>
+
+<details class="hood"><summary>Under the hood</summary><div class="hood-body">
+<p><strong>Exposure mechanics:</strong> the slider records <code>exposure</code> in EV. The engine computes <code>ev = log2(print_exposure)</code>, then <code>expo_gain_f = 2^(FAITHFUL_EXPO_K · ev)</code> where <code>FAITHFUL_EXPO_K = 1.0</code>. The effective density fed to the Faithful gamma-shoulder curve is <span class="formula">t_eff = d · FAITHFUL_SCALE · expo_gain_f</span>, where <code>FAITHFUL_SCALE = 1/0.700</code> is a fixed density scale calibrated to the C400 digital-SDR reference. This keeps the tone reproduction frozen and identical on every frame; per-image brightness is entirely the exposure gain's job.</p>
+<p><strong>Highlight-preservation:</strong> the gamma-shoulder curve's asymptotic shoulder compresses near-white density smoothly. Lowering exposure pulls overexposed tones off the shoulder and back into the body of the curve, recovering separation that was lost — provided the negative was not so dense that no detail existed. A saturated specular (density well past the shoulder) stays near white: the slider can darken midtones without dragging white down.</p>
+<p><strong>White point vs. exposure:</strong> the Faithful path uses a fixed density scale (<code>FAITHFUL_SCALE</code>) rather than the per-frame <code>d_max</code> — so the white point does not move with exposure. Brightness is the slider's job; white-point placement happens at develop-time analysis. See <a href="../science/density.html">Density &amp; log space</a> and <a href="../science/tone-curve.html">The tone curve</a> for the underlying model.</p>
+</div></details>
+
+<h2>Tone — Brightness, Contrast, Highlights, Shadows, Whites, Blacks</h2>
+<p>Below Exposure sits a bank of six creative tone controls, all working in display space on the already-inverted positive. Each maps to a field in <code>InvertParams</code> / <code>FinishParams</code> and operates over a range of −100 to +100 (0 = identity).</p>
+
+<ul>
+  <li><strong>Brightness</strong> — a log-curve gain applied before the tone curve. Equal slider steps produce equal density steps rather than equal linear increments, so the control reads as a smooth density lift or drop. The field is <code>brightness</code>; the gain is <span class="formula">10^(brightness · BRIGHTNESS_DENSITY_RANGE)</span> where <code>BRIGHTNESS_DENSITY_RANGE = 0.5</code>.</li>
+  <li><strong>Contrast</strong> — a linear S-gain pivoted at mid-gray (0.5). Positive values widen the spread between darks and lights; negative values compress it. Field: <code>contrast</code>.</li>
+  <li><strong>Highlights</strong> — a shelf weight that acts on the upper half of the tonal range (above 0.5), peaking at white. Pulling highlights down recovers near-clipped tones; pushing them up brightens the shoulder. Field: <code>highlights</code>.</li>
+  <li><strong>Shadows</strong> — a shelf weight acting on the lower half (below 0.5), peaking at black. Lifting shadows opens up dark tones without touching the mids. Field: <code>shadows</code>.</li>
+  <li><strong>Whites</strong> — acts at the extreme bright end (power-law weight strongest near 1.0). Pushing Whites up brightens specular highlights; pulling it down clips them softly back toward white. Field: <code>whites</code>.</li>
+  <li><strong>Blacks</strong> — acts at the extreme dark end (power-law weight strongest near 0). Lifting Blacks raises the shadow floor, adding a film-base lift; lowering it deepens shadows toward pure black. Field: <code>blacks</code>.</li>
+</ul>
+
+<p>The six controls compose in order: Brightness gain → tone curve (Whites/Blacks endpoints, then Highlights/Shadows regions, then Contrast S-gain). They are applied in display space after the inversion core, so they are the same whether you are working on a negative or a positive passthrough frame. For further curve editing — per-channel point curves and region parametric sliders — see <a href="tune.html">Tune</a>.</p>
+
+<details class="hood"><summary>Under the hood</summary><div class="hood-body">
+<p><strong>Brightness density curve:</strong> <span class="formula">gain = 10^(b · 0.5)</span> where <code>b</code> is the slider in −1..1. At the extremes (b = ±1) the gain is approximately ×3.16 / ×0.32 (~±1.66 stops). The GPU preview and CPU export use the same constant <code>BRIGHTNESS_DENSITY_RANGE = 0.5</code> so they match identically.</p>
+<p><strong>Tone curve order (finish.rs):</strong></p>
+<ol>
+  <li>Whites endpoint: <span class="formula">v += whites · 0.20 · v³</span> — strong near 1, vanishes at 0.</li>
+  <li>Blacks endpoint: <span class="formula">v += blacks · 0.20 · (1−v)³</span> — strong near 0, vanishes at 1.</li>
+  <li>Highlights region: <span class="formula">v += highlights · 0.18 · smoothstep(0.5, 1.0, v)</span> — shelf that peaks at white.</li>
+  <li>Shadows region: <span class="formula">v += shadows · 0.18 · (1 − smoothstep(0.0, 0.5, v))</span> — shelf that peaks at black.</li>
+  <li>Contrast S-gain: <span class="formula">v = 0.5 + (v − 0.5) · (1 + contrast)</span></li>
+</ol>
+<p>The gain cap of 0.18 on Highlights and Shadows ensures the curve remains monotonic even when opposing sliders are maxed — no tonal inversion artifacts.</p>
+</div></details>
+
+<h2>White Balance — Temp, Tint, Auto, Gray-point picker, Color head</h2>
+<p>White balance in Develop is applied through the <strong>Temp</strong> (color temperature, 2800–10000 K) and <strong>Tint</strong> (green/magenta axis, −100 to +100) sliders, which together control per-channel WB gains. The readout for Temp shows as a relative ± offset from the auto-detected as-shot neutral, so you can see how far you have drifted rather than an absolute Kelvin value that is hard to interpret on film.</p>
+
+<p>Three one-click helpers sit above the sliders:</p>
+<ul>
+  <li><strong>Auto WB</strong> — re-runs the gray-world estimate for the current frame and base, seeding Temp and Tint to the detected neutral. Use this after changing the film profile or film-edge color to re-center balance.</li>
+  <li><strong>Gray-point picker</strong> (crosshair icon) — click a patch in the viewport that should be neutral in the final photo. The engine measures that pixel's value and computes the WB gains needed to neutralize it, then seeds Temp and Tint from those gains. The gains are applied as a post-curve multiply (Gain mode) or pre-curve density scale (Color head mode), matching how manual Temp/Tint is applied.</li>
+  <li><strong>Color head</strong> toggle — switches the WB application mode between <em>gain</em> (post-curve linear multiply, field <code>wb_mode: "gain"</code>) and <em>subtractive</em> (pre-curve density scale, field <code>wb_mode: "subtractive"</code>). See <a href="../science/color.html">Color &amp; white balance</a> for a full explanation of the difference.</li>
+</ul>
+
+<details class="hood"><summary>Under the hood</summary><div class="hood-body">
+<p><strong>Gain mode:</strong> the per-channel WB gain is applied as a post-curve multiply on the positive output. Pure black (output = 0) is unaffected: 0 × gain = 0, so shadows stay neutral.</p>
+<p><strong>Subtractive (Color head) mode:</strong> the gain is applied as a density scale before the tone curve: <span class="formula">t_eff = t · gain^CMY_STRENGTH</span> where <code>CMY_STRENGTH = 1.6</code>. This is equivalent to changing the CMY filter pack on a dichroic enlarger head — the tint couples to the tone curve and is felt through the midtones and into the lower tonal values. Shadows are still anchored at exact black (density = 0 → 0 for any filter).</p>
+<p><strong>Temp range:</strong> the slider spans 2800–10000 K on a reciprocal track (equal visual increments per stop of color temperature) with 0.5 K steps. The auto-detected neutral baseline (~5500 K for daylight negative film) is the zero-point of the relative ± display.</p>
+<p><strong>Tint range:</strong> −100 to +100 in 0.1-unit steps. Fine stepping avoids the banding a 1-unit step can produce across a gradual green/magenta sweep.</p>
+</div></details>
+
+<h2>Texture</h2>
+<p>Texture adds or removes fine-detail contrast using an unsharp mask. Positive values sharpen (enhance local contrast at fine scales); negative values soften (blend toward a low-frequency version of the image). The control is resolution-independent: the blur radius scales with the shorter image dimension so the effect is perceptually identical between a proxy preview and a full-resolution export.</p>
+
+<p><strong>Important:</strong> Texture is a fine-detail spatial effect and cannot be accurately previewed at Fit zoom — the proxy resolution has fewer pixels than the detail being enhanced. Click the <strong>100%</strong> button next to the Texture slider (or use the keyboard shortcut) to jump to 1:1 zoom so you are seeing the real result. Field: <code>texture</code>, range −100 to +100.</p>
+
+<details class="hood"><summary>Under the hood</summary><div class="hood-body">
+<p><strong>Unsharp mask formula:</strong> <span class="formula">out = v + k · (v − blur(v))</span> where <code>blur</code> is a separable Gaussian. The gain <code>k</code> is asymmetric: at <code>texture = +1</code>, <code>k = USM_POS_GAIN = 2.5</code>; at <code>texture = −1</code>, <code>k = −USM_NEG_GAIN = −1.0</code>, which collapses to exactly the blurred image (clearly soft). Intermediate values interpolate linearly.</p>
+<p><strong>Resolution independence:</strong> sigma is <code>TEXTURE_SIGMA_FRAC = 0.0025</code> of the image's shorter dimension, giving approximately 6 px sigma on a 2560-pixel proxy. The radius is capped at <code>TEXTURE_MAX_RADIUS = 64</code> pixels so very large exports stay bounded. GPU and CPU paths derive the same sigma from their respective viewport size, so preview and export match.</p>
+</div></details>
+
+<h2>Presence — Vibrance and Saturation</h2>
+<p>Vibrance and Saturation both boost or reduce color richness, but they work differently:</p>
+<ul>
+  <li><strong>Vibrance</strong> targets muted, low-chroma areas first. Already-vivid colors receive a smaller boost, so pushing Vibrance enriches flat skies and fabrics without over-saturating the reds and yellows that are already punchy. Field: <code>vibrance</code>.</li>
+  <li><strong>Saturation</strong> applies a uniform chroma boost across all tones and hues. Use it for a more even overall enrichment. Field: <code>saturation</code>.</li>
+</ul>
+<p>Both operate in <strong>OKLab</strong> color space, which is perceptually uniform — equal numerical steps look equal across all hues. Near-neutral tones (grays) and skin hues are protected with a reduced boost, and any out-of-gamut result is compressed along the hue line rather than clipping per channel. Range: −100 to +100 for both. See <a href="../science/color.html">Color &amp; white balance</a> for the perceptual rationale.</p>
+
+<details class="hood"><summary>Under the hood</summary><div class="hood-body">
+<p><strong>OKLab chroma scaling:</strong> the pixel is converted to OKLab (L, a, b), where chroma is <span class="formula">C = √(a² + b²)</span>. The combined gain is <span class="formula">gain = saturation + vibrance · (1 − C/SAT_C_REF)</span> where <code>SAT_C_REF = 0.20</code> is the reference chroma treated as "fully saturated" for the vibrance weight — low-chroma pixels get the full vibrance contribution, high-chroma pixels get progressively less.</p>
+<p><strong>Neutral and skin protection:</strong> the gain is further multiplied by a neutral ramp (<code>smoothstep(0, SAT_C_NEUTRAL, C)</code> with <code>SAT_C_NEUTRAL = 0.025</code>) that brings the boost to zero for near-neutral tones, and by a skin-hue damp (<code>SKIN_DAMP = 0.5</code> peak reduction inside the skin/orange hue window). Luma (L) is held fixed; only the a and b axes are scaled.</p>
+<p><strong>Gamut compression:</strong> after chroma scaling the resulting OKLab value is converted back to linear RGB. If any channel exceeds [0,1], the result is pulled back along the straight line from the achromatic point (L, 0, 0) to the boosted color until all channels are in gamut — preserving hue and lightness while avoiding per-channel clipping.</p>
+</div></details>
+
+<h2>HDR preview</h2>
+<p>The <strong>HDR</strong> toggle (top-right of the Basic panel header, field <code>hdr: boolean</code>) enables an HDR preview rendition for the current frame. In HDR mode the engine expands highlight density above the standard knee (<code>HDR_KNEE = 0.8</code> in the Filmic path) into the range up to <code>HDR_HEADROOM = 2.5</code>, so specular highlights and light sources can exceed SDR white on displays that support EDR/HDR10. The export pipeline stays SDR by default; HDR is a preview-only toggle. Note that the Faithful path's look curve bypasses the look layer in HDR mode to preserve the headroom values.</p>
+
+<h2>Reset</h2>
+<p>The <strong>Reset</strong> button (top-right of the Basic panel header) returns all Basic controls to their defaults: Exposure, Brightness, Contrast, Highlights, Shadows, Whites, Blacks, Texture, Vibrance, Saturation are all set to 0, and Film Profile is cleared. Temp and Tint are re-seeded from the as-shot auto-WB estimate rather than being set to a hard default, so the color balance lands at the image's detected neutral rather than an arbitrary number. Crop, film-edge color, and any Tune settings are left untouched.</p>
+
+<p class="next"><a href="tune.html">Next: Tune →</a></p>
