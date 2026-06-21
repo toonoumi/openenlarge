@@ -1,0 +1,9 @@
+{
+  "dir": "/Users/mohaelder/Desktop/c400",
+  "reference": "/Users/mohaelder/Repos/filmrev/crates/film-bench/benchdata/c400.reference.json",
+  "frames": [
+    { "file": "Capture One Catalog8328.raf", "base_ev": 0.0, "corners": [[3844,3066],[8305,3066],[8305,5924],[3844,5924]] },
+    { "file": "Capture One Catalog8329.raf", "base_ev": 6.0, "corners": [[3937,3259],[8350,3259],[8350,6054],[3937,6054]] },
+    { "file": "Capture One Catalog8330.raf", "base_ev": 9.0, "corners": [[3884,3300],[8504,3300],[8504,6054],[3884,6054]] }
+  ]
+}
