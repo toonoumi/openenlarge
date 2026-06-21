@@ -1,0 +1,129 @@
+<!-- AUTO-GENERATED from /docs-src — do not edit by hand. Run python3 scripts/gen-docs.py -->
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>整卷 — OpenEnlarge Docs</title>
+<meta name="description" content="印样表视图与实时镜像模式 —— 编辑一帧并预览到整卷 —— 以及复制/应用到整卷的分组与片边渲染。">
+<meta name="theme-color" content="#0a0a0c">
+<link rel="icon" href="../../../img/favicon.png">
+<link rel="canonical" href="https://openenlarge.io/docs/zh/tools/roll.html">
+<link rel="alternate" hreflang="en" href="https://openenlarge.io/docs/tools/roll.html">
+<link rel="alternate" hreflang="zh-Hans" href="https://openenlarge.io/docs/zh/tools/roll.html">
+<link rel="alternate" hreflang="x-default" href="https://openenlarge.io/docs/tools/roll.html">
+<meta property="og:type" content="article"><meta property="og:title" content="整卷 — OpenEnlarge Docs"><meta property="og:description" content="印样表视图与实时镜像模式 —— 编辑一帧并预览到整卷 —— 以及复制/应用到整卷的分组与片边渲染。"><meta property="og:url" content="https://openenlarge.io/docs/zh/tools/roll.html"><meta name="twitter:card" content="summary">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "整卷", "description": "印样表视图与实时镜像模式 —— 编辑一帧并预览到整卷 —— 以及复制/应用到整卷的分组与片边渲染。", "inLanguage": "zh-Hans", "url": "https://openenlarge.io/docs/zh/tools/roll.html", "isPartOf": {"@type": "WebSite", "name": "OpenEnlarge", "url": "https://openenlarge.io"}}</script>
+<link rel="stylesheet" href="../../docs.css">
+</head>
+<body>
+<a class="skip" href="#content">跳到正文</a>
+<nav class="docnav"><div class="navbar glass wrap">
+  <a class="brand" href="../../../index.html"><img class="mark" src="../../../img/icon.png" alt=""> OpenEnlarge <span class="brand-docs">文档</span></a>
+  <button class="menu-btn" id="menu-btn" type="button" aria-label="菜单" aria-expanded="false">☰</button>
+  <div class="navlinks">
+    <a href="../../../index.html">主页</a>
+    <a href="https://github.com/mohaelder/openenlarge">GitHub</a>
+    <a class="lang-link" href="../../tools/roll.html">EN</a>
+  </div>
+</div></nav>
+<div class="doclayout wrap">
+  <aside class="sidebar" id="sidebar"><div class="side-sec"><div class="side-h">概览</div>
+<a href="../index.html">文档</a>
+<a href="../workflow.html">工作流程</a>
+</div>
+<div class="side-sec"><div class="side-h">原理</div>
+<a href="../science/negatives.html">彩色负片的原理</a>
+<a href="../science/inversion.html">反转流程</a>
+<a href="../science/density.html">密度与对数空间</a>
+<a href="../science/tone-curve.html">色调曲线（Faithful 风格）</a>
+<a href="../science/color.html">色彩与白平衡</a>
+<a href="../science/base-calibration.html">片基校准</a>
+</div>
+<div class="side-sec"><div class="side-h">工具</div>
+<a href="../tools/develop-basic.html">显影 · 基础</a>
+<a href="../tools/tune.html">微调</a>
+<a href="../tools/crop-dust.html">裁剪与除尘</a>
+<a href="../tools/ai.html">AI 工具</a>
+<a href="../tools/library.html">图库</a>
+<a class="on" href="../tools/roll.html">整卷</a>
+</div></aside>
+  <main class="content" id="content">
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="../index.html">文档</a> <span class="sep">/</span> <span>整卷</span></nav>
+    <article class="prose"><h1>整卷</h1>
+<p class="lead">整卷标签页将当前文件夹中的所有已显影帧以印样表形式展示。在此可对整卷应用统一的色调效果——色调、颜色、裁剪、片基与白点——实时双通道预览会在您移动滑块时立即在每一帧上呈现效果，停止操作后自动持久化。您也可以从<a href="develop-basic.html">显影 · 基础</a>面板复制单帧的显影设置，并按分组应用到整卷。</p>
+
+<h2>印样表</h2>
+<p>印样表占据整卷标签页的主区域。胶片按六帧一行横向排列，每行称为一个<strong>条</strong>，与 35 mm 胶卷的实际条长对应。图块的纵横比会自动适应本卷的实际帧形：通过 <code>contactSheet.ts</code> 中的 <code>pickTileAspect()</code> 计算所有横向帧的中位纵横比，使横向帧恰好填满图块边缘。纵向帧则在同等图块高度内信箱式显示，确保无论方向如何，每行高度保持一致。</p>
+
+<p>点击任意帧，可在全屏<strong>帧预览叠加层</strong>（由 <code>FramePreview.svelte</code> 渲染）中查看该帧——这是一个以全分辨率 GPU 视口展示该帧已提交的显影设置与裁剪的界面。按 <kbd>Esc</kbd> 或点击背景可关闭。叠加层为只读模式：仅展示帧的当前状态，不会打开显影编辑器。</p>
+
+<p>印样表上方工具栏有两个控件。<strong>片边</strong>开关（标签 <code>roll.filmEdge</code>）在胶片条模式与普通印样网格模式之间切换——详见下文<a href="#film-edge-rendering">片边渲染</a>。<strong>导出印样</strong>按钮（标签 <code>roll.export.button</code>）通过系统保存对话框将印样导出为 PNG 文件——详见<a href="export.html">导出 →</a>。</p>
+
+<h2>镜像模式与入口确认</h2>
+<p>打开整卷标签页时，OpenEnlarge 会检查当前文件夹中是否有帧已具备显影编辑（色调/颜色、裁剪、片基或白点）。若存在，将弹出确认对话框——<strong>"覆盖 N 张已编辑的胶片？"</strong>（标签 <code>confirmOverwrite.title</code>）——提示应用整卷设置将替换各帧的独立编辑。点击<strong>全部覆盖</strong>（<code>confirmOverwrite.overwrite</code>）继续，或点击<strong>取消</strong>（<code>confirmOverwrite.cancel</code>）返回图库。勾选<strong>不再询问</strong>（<code>confirmOverwrite.dontAsk</code>）可在后续访问此卷时跳过对话框。若所有帧均无编辑，镜像模式将立即启用，无需显示对话框。</p>
+
+<p>确认后，整卷进入<strong>镜像模式</strong>：对右侧面板中整卷控件的任何更改都会实时映射到印样表中的所有帧。若无冲突，镜像模式在标签页打开时即处于激活状态。</p>
+
+<h2>实时预览与持久化（双通道模型）</h2>
+<p>镜像模式运行两个异步通道：</p>
+
+<p><strong>通道 1——预览</strong>在最后一次滑块移动后 120 ms 触发（防抖处理）。以草稿外观重新渲染每帧的缩略图并立即更新印样表，最多 5 帧并行渲染。印样表中的缩略图随结果到来逐帧替换；尚未更新的帧保持上一次的预览图。此通道不写入磁盘，也不更新任何已存储的编辑。</p>
+
+<p><strong>通道 2——持久化</strong>在最后一次更改后 600 ms 触发。它将草稿外观写入每帧的已存储编辑（<code>editsById</code>），若整卷裁剪已设定则将裁剪几何保存到所有帧，并通过复用通道 1 已渲染的预览图更新目录缩略图——无需二次渲染。两个通道在您实际操作控件之前（<code>rollDraftTouched</code> 为 false）均处于休眠状态，因此仅仅打开整卷标签页不会还原您在显影中针对各帧所做的编辑。</p>
+
+<p>草稿状态在重新进入<em>同一卷</em>时得以保留（切换标签页后滑块位置不丢失），但当活动文件夹切换时会重置为新的默认草稿。</p>
+
+<h2>整卷控件</h2>
+<p>右侧面板（由 <code>RollAdjust.svelte</code> 渲染）标题为<strong>「整卷色调」</strong>（<code>roll.adjust.heading</code>），包含与显影基础面板相同的滑块：色温、色调、曝光、对比度、高光、阴影、白色、黑色、纹理、自然饱和度与饱和度，以及色调曲线。<strong>重置</strong>按钮（<code>basic.reset</code>）将外观恢复默认，同时保留草稿中的片基与白点不变。</p>
+
+<p>标题下方、滑块上方有三个图标工具按钮，分别开启参考帧编辑模式：</p>
+<ul>
+  <li><strong>裁剪</strong>（<code>roll.crop.tool</code>）——在参考帧上打开完整裁剪编辑器；结果应用到所有帧。</li>
+  <li><strong>片基</strong>（<code>roll.base.heading</code>）——在参考帧上打开片基采样模式；采样到的片基应用到所有帧。</li>
+  <li><strong>白点</strong>（<code>roll.wp.heading</code>）——在参考帧上打开白点拾取模式；拾取到的 D-max 值应用到所有帧。</li>
+</ul>
+
+<p>三种模式均采用相同的参考帧编辑布局：所选帧占据主区域，所有帧的横向胶片条沿底部排列，可在不退出模式的情况下切换参考帧；右侧面板显示相应控件，或在片基与白点模式下保持为空（单次拾取后自动关闭）。裁剪模式下，按 <kbd>Enter</kbd> 或点击<strong>裁剪</strong>按钮提交几何设置；按 <kbd>Esc</kbd> 放弃。</p>
+
+<p><strong>曝光的处理方式：</strong>由于显影中的自动亮度功能会为每帧独立求解曝光值，整卷曝光滑块仅在您主动将其从默认值（0 EV）移开时才向所有帧传播。由自动亮度设定的各帧曝光值将被保留，除非您在此处明确覆盖。</p>
+
+<p><strong>复制设置时色温的处理方式：</strong>当您在显影 · 基础面板使用<strong>应用到整卷…</strong>（<code>basic.applyToRoll</code>）并勾选「色调与颜色」分组时，色温会针对每帧重新基准化。源帧的色温被记录为相对于其自身原始中性点的偏移量（即 <code>SettingsSnapshot</code> 中的 <code>tempOffset</code>）；每个目标帧将该偏移量叠加到其自身的原始基准色温上。这意味着复制的「比中性点暖 +1000 K」会在每个目标帧上落地为「比其自身中性点暖 +1000 K」——而非与源帧绝对色温相同。</p>
+
+<h2>复制并应用到整卷</h2>
+<p>您也可以从整卷标签页之外将单帧的显影设置推送到整卷。在<a href="develop-basic.html">显影 · 基础</a>中，点击<strong>应用到整卷…</strong>按钮（<code>basic.applyToRoll</code>）将打开分组选择对话框——<strong>「应用到本胶卷的全部 N 张？」</strong>（<code>confirmApply.rollTitle</code>）——包含五个复选框：</p>
+<ul>
+  <li><strong>色调与颜色</strong>（<code>applyGroups.toneColor</code>）——除片基、白点、曝光、模式、胶片配置、HDR 与正片标志之外的所有显影参数。</li>
+  <li><strong>裁切</strong>（<code>applyGroups.crop</code>）——该帧的完整 <code>CropRect</code>（纵横比、方向、rot90、flipH、flipV、angle、rect），以完全相同的方式应用到每帧。</li>
+  <li><strong>片基</strong>（<code>applyGroups.base</code>）——该帧的 <code>base_override</code> RGB 三元组，应用到所有帧。</li>
+  <li><strong>曝光</strong>（<code>applyGroups.exposure</code>）——该帧的绝对曝光值，应用到所有帧。</li>
+  <li><strong>白点</strong>（<code>applyGroups.whitePoint</code>）——该帧的 <code>d_max_override</code>，应用到所有帧。</li>
+</ul>
+<p>同样的分组选择框也会在图库中将已复制的设置（<kbd>⌘C</kbd> / <kbd>⌘V</kbd>）粘贴到多张图像时出现。单张图像粘贴时默认仅应用「色调与颜色」分组，不显示对话框。应用辅助函数实现于 <code>roll/apply.ts</code>（<code>applyToneColorToAll</code>、<code>applyCropToAll</code>、<code>applyBaseToAll</code>、<code>applyExposureToAll</code>、<code>applyWhitePointToAll</code>），整卷镜像路径与复制/粘贴路径共用同一套函数。</p>
+
+<h2>片边渲染</h2>
+<p><strong>片边</strong>开关在两种印样布局之间切换，切换时带有短暂的淡入淡出动画：</p>
+
+<p><strong>胶片条模式（片边开启）：</strong>每条六帧用胶片片基包裹。帧上方：一行 CSS 渲染的齿孔，随后是等宽字体的顺序帧编号。帧下方：条形码图形、在整条宽度上重复三次的可编辑文字标记，以及方向箭头。文字标记可通过片边开启时工具栏中出现的<strong>片边文字</strong>输入框（<code>roll.edgeText</code>）实时编辑，其占位文字为「片边标记文字」（<code>roll.edgeTextPlaceholder</code>）。片基背景为深色（<code>#131210</code>），帧区域位于黑色行上。</p>
+
+<p><strong>印样网格模式（片边关闭）：</strong>每条六帧以普通行排列。每帧显示在暖白色背景（<code>#d8d3c4</code>）上，带 3 px 内边距和投影，帧下方以等宽字体打印顺序编号。这与传统暗室印样的视觉效果一致。</p>
+
+<p><strong>导出印样</strong>按钮将当前激活的布局（含片边文字）通过 <code>exportSheet.ts</code> 渲染为固定分辨率的 PNG 文件（每个图块帧宽 260 px，每条 6 帧）。导出过程使用 Canvas 2D API 忠实复现屏幕布局中的齿孔、帧编号、条形码、片边文字与箭头元素。</p>
+
+<details class="hood"><summary>深入原理</summary><div class="hood-body">
+<p><strong>草稿状态（<code>roll/draft.ts</code>）：</strong><code>rollDraft</code>（类型为 <code>RollDraft</code> 的 Svelte writable store）持有 <code>params: InvertParams</code> 与 <code>crop: CropRect | null</code>。<code>rollDraftTouched</code> 是一个布尔 store，每次进入整卷标签页时初始值为 <code>false</code>；用户首次触动任意滑块、裁剪、片基采样或白点拾取后置为 <code>true</code>。<code>Roll.svelte</code> 中的双通道预览/持久化响应链（<code>$: if (mirrorEnabled) { schedulePreview($rollDraft); schedulePersist($rollDraft); }</code>）在 <code>rollDraftTouched</code> 为 false 时处于休眠状态。<code>enterRollDraft(folder)</code> 仅在文件夹切换时重置草稿；重新进入同一卷时保留滑块位置。</p>
+<p><strong>实时预览并发（<code>Roll.svelte</code>）：</strong>预览批次最多以 5 个 <code>api.thumbnail()</code> 调用并行运行。单调递增的 <code>previewToken</code> 用于丢弃过时批次，防止慢速渲染覆盖更新结果。<code>requestAnimationFrame</code> 合并循环以最高约 60 次/秒的频率提交累积中的 <code>previewMap</code>。若批次进行中到达新草稿，将排入 <code>previewPending</code>，在当前批次完成后立即启动。</p>
+<p><strong>色调/颜色子集（<code>roll/apply.ts</code>）：</strong><code>toneColorOf(p)</code> 从 <code>InvertParams</code> 对象中去除 <code>EXCLUDE</code> 集合（<code>mode</code>、<code>stock</code>、<code>base_override</code>、<code>d_max_override</code>、<code>hdr</code>、<code>positive</code>、<code>exposure</code>）。这是跨所有帧镜像的「共享外观」；片基、白点、曝光等逐帧校准字段仅在明确勾选时才传播。<code>livePreview.ts</code> 中的 <code>livePreviewParams(draft, frame)</code> 将草稿的色调/颜色子集叠加到每帧自身的参数上，确保预览始终以每帧自身的片基校准来评估外观。</p>
+<p><strong>图块纵横比（<code>contactSheet.ts</code>）：</strong><code>pickTileAspect(aspects)</code> 取所有横向帧（纵横比 ≥ 1）的中位值，若全为纵向或卷为空则回退到全帧或默认 3:2。每帧的有效纵横比在 <code>Roll.svelte</code> 中通过结合原始元数据尺寸 <code>orientDims(w, h, rot90)</code> 与归一化裁剪矩形尺寸（<code>ow*rw / oh*rh</code>）计算得出。</p>
+<p><strong>裁剪后白点重分析（<code>Roll.svelte</code> <code>applyCropAndExit()</code>）：</strong>用户提交整卷裁剪且未手动拾取白点时，该函数通过 <code>api.analyze()</code> 对参考帧的新裁剪重新分析 D-max，并将结果写入草稿。<code>wpManual</code> 标志（用户通过吸管拾取白点后置为 true）会阻止此重分析，在后续裁剪调整中保留用户的主动选择。</p>
+</div></details>
+
+<p class="next"><a href="export.html">下一篇：导出 →</a></p>
+</article>
+    <footer class="docfoot">OpenEnlarge —— 开源胶片扫描编辑器 · MIT 许可</footer>
+  </main>
+  <aside class="toc" id="toc" aria-label="本页目录"><div class="toc-title">本页目录</div><div id="toc-list"></div></aside>
+</div>
+<script src="../../docs.js" defer></script>
+</body>
+</html>
