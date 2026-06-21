@@ -122,6 +122,18 @@ class TestLinks(unittest.TestCase):
             html = pathlib.Path(f).read_text()
             for m in re.findall(r'<img[^>]+src="(/img/[^"]+)"', html):
                 self.assertTrue((web / m.lstrip("/")).exists(), f"{f} -> {m} missing")
+    def test_css_js_asset_refs_resolve(self):
+        # Every stylesheet/script reference must resolve to a real file in EVERY
+        # locale (regression guard: zh pages once linked docs.css one ../ short).
+        import glob, re, pathlib
+        web = ROOT / "web"
+        for f in glob.glob(str(ROOT / "web/docs/**/*.html"), recursive=True):
+            fp = pathlib.Path(f)
+            for m in re.findall(r'(?:href|src)="([^"]+\.(?:css|js))"', fp.read_text()):
+                if m.startswith("http"):
+                    continue
+                target = (web / m.lstrip("/")).resolve() if m.startswith("/") else (fp.parent / m).resolve()
+                self.assertTrue(target.exists(), f"{f} -> {m} (asset {target}) missing")
 
 class TestScienceStructure(unittest.TestCase):
     """Enforce EN+ZH parity invariants for every BUILT science page (pages 7-11 had no per-page tests)."""

@@ -104,7 +104,7 @@ def render_page(nav, strings, slug, locale):
     body = include_figures(content_file(slug, locale).read_text())
     canon, alternates, og, jsonld = seo_blocks(nav, slug, locale)
     root = "../" * depth(slug)               # back to /docs/<locale>/
-    docsroot = root                          # docs.css/js live at locale root
+    docsroot = "../" * (depth(slug) + (0 if locale == "en" else 1))  # docs.css/js live ONLY at web/docs/ (one extra ../ for zh)
     siteroot = "../" * (depth(slug) + (1 if locale == "en" else 2))  # back to /  (… /docs/ or /docs/zh/)
     # locale swap: replace leading ../ chain target with other-locale root
     langswitchhref = (("../" * depth(slug)) + ("zh/" if locale == "en" else "../")) + ("index.html" if slug=="index" else f"{slug}.html")
