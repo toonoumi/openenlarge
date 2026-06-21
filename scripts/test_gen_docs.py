@@ -22,5 +22,26 @@ class TestBuild(unittest.TestCase):
         html = (ROOT / "web/docs/index.html").read_text()
         self.assertIn("OpenEnlarge", html)
 
+class TestLayout(unittest.TestCase):
+    def setUp(self): gen.build()
+    def test_css_emitted(self):
+        self.assertTrue((ROOT / "web/docs/docs.css").exists())
+    def test_one_h1(self):
+        html = (ROOT / "web/docs/index.html").read_text()
+        self.assertEqual(html.count("<h1>"), 1)
+    def test_sidebar_links_real_anchors(self):
+        html = (ROOT / "web/docs/index.html").read_text()
+        self.assertIn('class="sidebar"', html)
+        self.assertIn("Overview", html)
+    def test_canonical_and_hreflang(self):
+        html = (ROOT / "web/docs/index.html").read_text()
+        self.assertIn('rel="canonical" href="https://openenlarge.io/docs/index.html"', html)
+        self.assertIn('hreflang="zh-Hans"', html)
+        self.assertIn('hreflang="x-default"', html)
+    def test_css_uses_tokens(self):
+        css = (ROOT / "web/docs/docs.css").read_text()
+        self.assertIn("#0a0a0c", css)
+        self.assertIn("#f49d4e", css)
+
 if __name__ == "__main__":
     unittest.main()
