@@ -165,6 +165,7 @@ pub(crate) fn default_invert_params() -> InvertParams {
         cm_magenta_lum: 0.0,
         pc_samples: Vec::new(),
         wb_mode: "gain".to_string(),
+        tone_mode: "filmic".to_string(),
     }
 }
 
@@ -231,6 +232,15 @@ pub(crate) fn wb_mode_from(s: &str) -> film_core::WbMode {
     }
 }
 
+/// Parse the wire `tone_mode` string into the engine enum. Unknown values fall back
+/// to `Filmic` (the safe legacy behavior).
+pub(crate) fn tone_mode_from(s: &str) -> film_core::ToneMode {
+    match s {
+        "faithful" => film_core::ToneMode::Faithful,
+        _ => film_core::ToneMode::Filmic,
+    }
+}
+
 pub(crate) fn build_params(p: &InvertParams, base: [f32; 3]) -> InversionParams {
     // One engine: Kodak Cineon (negadoctor). The exposure slider drives print
     // exposure; d_max/paper_* come from InversionParams::Default; WB is set by the
@@ -242,6 +252,7 @@ pub(crate) fn build_params(p: &InvertParams, base: [f32; 3]) -> InversionParams 
         d_max: p.d_max_override.unwrap_or(1.5),
         positive: p.positive,
         wb_mode: wb_mode_from(&p.wb_mode),
+        tone_mode: tone_mode_from(&p.tone_mode),
         ..Default::default()
     }
 }

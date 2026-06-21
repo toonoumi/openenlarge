@@ -184,6 +184,10 @@ pub struct InvertParams {
     /// default "gain" so pre-existing saved edits load exactly as before.
     #[serde(default = "wb_mode_gain")]
     pub wb_mode: String,
+    /// Display tone path: "filmic" (legacy S-curve, default) or "faithful" (gamma+shoulder).
+    /// Serde default "filmic" so pre-existing saved edits load exactly as before.
+    #[serde(default = "tone_mode_filmic")]
+    pub tone_mode: String,
 }
 
 /// Default identity tone curve: a straight 0→0, 1→1 line.
@@ -195,6 +199,9 @@ fn default_blending() -> f32 {
 }
 fn wb_mode_gain() -> String {
     "gain".to_string()
+}
+fn tone_mode_filmic() -> String {
+    "filmic".to_string()
 }
 
 /// What the frontend gets per image.

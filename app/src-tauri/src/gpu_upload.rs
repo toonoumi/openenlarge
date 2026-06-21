@@ -186,6 +186,8 @@ pub struct ResolvedInversion {
     pub positive: bool,
     /// WB mode for the shader: 0 = gain (post-curve), 1 = subtractive (pre-curve).
     pub wb_mode: u8,
+    /// Tone mode for the shader: 0 = filmic (S-curve, default), 1 = faithful (gamma+shoulder).
+    pub tone_mode: u8,
 }
 
 /// Resolve the UI params (+ sampled film base) into GPU uniforms, reusing the
@@ -218,6 +220,10 @@ pub fn resolve_to_uniforms(p: &InvertParams, base: [f32; 3]) -> ResolvedInversio
         wb_mode: match crate::commands::wb_mode_from(&p.wb_mode) {
             film_core::WbMode::Subtractive => 1,
             film_core::WbMode::Gain => 0,
+        },
+        tone_mode: match crate::commands::tone_mode_from(&p.tone_mode) {
+            film_core::ToneMode::Filmic => 0u8,
+            film_core::ToneMode::Faithful => 1u8,
         },
     }
 }
@@ -466,5 +472,16 @@ mod tests {
         p.wb_mode = "gain".to_string();
         let u = resolve_to_uniforms(&p, [0.8, 0.6, 0.4]);
         assert_eq!(u.wb_mode, 0u8);
+    }
+
+    #[test]
+    fn resolve_to_uniforms_maps_tone_mode() {
+        let mut p = sample_invert_params();
+        p.tone_mode = "faithful".to_string();
+        let u = resolve_to_uniforms(&p, [0.8, 0.6, 0.4]);
+        assert_eq!(u.tone_mode, 1u8);
+        p.tone_mode = "filmic".to_string();
+        let u = resolve_to_uniforms(&p, [0.8, 0.6, 0.4]);
+        assert_eq!(u.tone_mode, 0u8);
     }
 }
