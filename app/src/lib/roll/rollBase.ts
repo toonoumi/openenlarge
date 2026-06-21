@@ -40,7 +40,7 @@ export async function ensureRollBase(dir: string, imgs: ImageEntry[]): Promise<v
  * owns the base then), skip folders already based, and run once per dir. */
 export function initRollBaseMigration(): void {
   let lastDir: string | null = null;
-  derived([selectedFolder, folderImages], (v) => v).subscribe(([dir, imgs]) => {
+  derived([selectedFolder, folderImages, developProgress], (v) => v).subscribe(([dir, imgs]) => {
     if (!dir || dir === lastDir) return;
     if (get(developProgress).active) return;            // developAll is handling it
     if (get(folderBaseByPath)[dir]) { lastDir = dir; return; }

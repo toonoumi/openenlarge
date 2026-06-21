@@ -26,6 +26,7 @@
   import AboutModal from "$lib/about/AboutModal.svelte";
   import UpdatePrompt from "$lib/update/UpdatePrompt.svelte";
   import { runAutoCheck } from "$lib/update/updater";
+  import { initRollBaseMigration } from "$lib/roll/rollBase";
   import Icon from "$lib/icons/Icon.svelte";
   import { hasDeveloped } from "$lib/export/eligible";
   import ExportModal from "$lib/export/ExportModal.svelte";
@@ -52,6 +53,7 @@
       hydrated = true;
       track("app_launched"); // no-op unless the user has opted in
     });
+    initRollBaseMigration();
     // Start an undo/redo timeline for each image the moment it becomes active.
     const unseed = activeId.subscribe(() => seedActive());
     return () => { flush?.(); unseed(); };
