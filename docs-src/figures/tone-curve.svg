@@ -27,40 +27,15 @@
   <line x1="64" y1="420" x2="456" y2="28" stroke="#9a9aa2" stroke-width="1" stroke-dasharray="5 4" opacity="0.5"/>
 
   <!-- S-curve: tone curve from (0,0) to (1,1)
-       Curve models: toe (shadow lift/protection), steeper mids, shoulder (highlight rolloff to true white).
-       Key computed points (t → output) for this approximate gamma+shoulder curve:
-         t=0.00 → out=0.000  (pixel 64,420)
-         t=0.10 → out=0.050  (pixel 103.2, 400.4)
-         t=0.20 → out=0.130  (pixel 142.4, 369.0)
-         t=0.30 → out=0.230  (pixel 181.6, 329.6)
-         t=0.40 → out=0.355  (pixel 220.8, 280.8)
-         t=0.50 → out=0.490  (pixel 260.0, 228.1)
-         t=0.60 → out=0.625  (pixel 299.2, 175.0)
-         t=0.70 → out=0.750  (pixel 338.4, 126.0)
-         t=0.80 → out=0.855  (pixel 377.6, 84.4)
-         t=0.90 → out=0.940  (pixel 416.8, 54.5)
-         t=1.00 → out=1.000  (pixel 456, 28)
-       Uses a cubic Bézier: two control points chosen to give:
-         - Shallow start (toe): initial tangent below diagonal
-         - Steep mids: passes above diagonal near midpoint
-         - Soft shoulder: rolls into (1,1) from below
-       Control points (in plot pixels):
-         P0 = (64, 420)  [0,0]
-         C1 = (130, 370) [toe region, gentle rise]
-         C2 = (370, 68)  [pre-shoulder, pulling curve into white]
-         P3 = (456, 28)  [1,1]
-       This single cubic doesn't capture the S well enough, so use a composite of two cubics:
-         Segment 1: (0,0) → (0.5, ~0.49)
-           P0=(64,420), C1=(100,390), C2=(195,235), P3=(260,228)
-         Segment 2: (0.5,~0.49) → (1,1)
-           P0=(260,228), C1=(325,221), C2=(430,60), P3=(456,28)
-       The toe: near t=0.1, output≈0.050 (diagonal would give 0.10) → curve below diagonal = shadow protection
-       The shoulder: near t=0.9, output≈0.940 (diagonal would give 0.90) → curve above diagonal from ~t=0.25
-       The S-shape: below diagonal in shadows, above in mids/highlights, then meets at (1,1)
+       Composite of two cubic Bézier segments.
+       Segment 1: P0=(64,420), C1=(96,400), C2=(150,250), P3=(260,210)
+         toe: initial tangent (64,420)→(96,400) = (32,−20), data slope ≈ 0.63 < 1 (below diagonal)
+         joint at t=0.5: pixel (260,210) → out=(420−210)/392 ≈ 0.536 > 0.5 (above diagonal)
+       Segment 2: P0=(260,210), C1=(340,182), C2=(405,40), P3=(456,28)
+         soft shoulder: terminal tangent (405,40)→(456,28) = (51,−12), data slope ≈ 0.24 < 1 (flattens into white)
+       All y values strictly decreasing (420→400→250→210→182→40→28) → monotonic, no overshoot.
   -->
-  <path d="M 64,420
-            C 104,396 196,232 260,227
-            C 326,222 428,62 456,28"
+  <path d="M 64,420 C 96,400 150,250 260,210 C 340,182 405,40 456,28"
         fill="none" stroke="#f49d4e" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
 
   <!-- Endpoint markers -->
@@ -72,9 +47,9 @@
   <text x="46" y="388" font-family="ui-monospace,monospace" font-size="11" fill="#9a9aa2" text-anchor="end">toe</text>
   <line x1="48" y1="385" x2="110" y2="376" stroke="#9a9aa2" stroke-width="0.8" opacity="0.6"/>
 
-  <!-- Shoulder annotation: near t≈0.82, output≈0.87 → pixel (385.4, 79.2) -->
+  <!-- Shoulder annotation: near t≈0.82, output≈0.87 → pixel (385.4, ~62) on new curve -->
   <text x="456" y="118" font-family="ui-monospace,monospace" font-size="11" fill="#9a9aa2" text-anchor="start">shoulder</text>
-  <line x1="454" y1="113" x2="400" y2="90" stroke="#9a9aa2" stroke-width="0.8" opacity="0.6"/>
+  <line x1="454" y1="113" x2="400" y2="60" stroke="#9a9aa2" stroke-width="0.8" opacity="0.6"/>
 
   <!-- True white annotation at (1,1) corner -->
   <text x="456" y="21" font-family="ui-monospace,monospace" font-size="10" fill="#e8e8ea" text-anchor="end">true white (1.0)</text>
