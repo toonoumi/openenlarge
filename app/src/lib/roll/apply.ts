@@ -19,6 +19,11 @@ export const ALL_GROUPS: readonly SettingGroup[] = [
 export interface SettingsSnapshot {
   params: InvertParams;
   crop: CropRect | null;
+  /** The source's Temp as an offset from its own as-shot neutral (Kelvin). Temp is
+   *  shown relative to each image's as-shot baseline, so to make a copied "+1000"
+   *  land "+1000" on a target (not shift by the baseline difference) we re-base it:
+   *  target.temp = target_as_shot + tempOffset. Undefined → apply temp absolutely. */
+  tempOffset?: number;
 }
 
 /** Per-image film/calibration fields that are NOT part of the shared "look".

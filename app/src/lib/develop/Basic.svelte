@@ -291,8 +291,13 @@
     rollApplyIds = null;
     const id = get(activeId);
     if (!ids || !id) return;
-    const src: SettingsSnapshot = { params: get(params), crop: get(cropById)[id] ?? null };
-    applySelectedTo(ids, src, groups);
+    // Carry Temp as an offset from this frame's as-shot neutral so it lands as the
+    // same relative ± on every frame, not shifted by each frame's own baseline.
+    const src: SettingsSnapshot = {
+      params: get(params), crop: get(cropById)[id] ?? null,
+      tempOffset: get(params).temp - tempBaseline,
+    };
+    void applySelectedTo(ids, src, groups);
   }
 </script>
 
