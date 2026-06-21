@@ -98,7 +98,11 @@
         if (cur?.developed && cur.thumb_stale) await regenStale(cur);
       }
     };
-    await Promise.all(Array.from({ length: Math.min(POOL, list.length) }, worker));
+    try {
+      await Promise.all(Array.from({ length: Math.min(POOL, list.length) }, worker));
+    } catch (e) {
+      console.error('sweepStale failed', e);
+    }
   }
 
   // For every visible developed cell: refresh a stale static thumbnail first, else
