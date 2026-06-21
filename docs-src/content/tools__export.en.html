@@ -1,0 +1,54 @@
+<h1>Export</h1>
+<p class="lead">Export turns your developed images into finished files. The dialog lets you pick a format, set a resolution cap, apply an optional shared crop to every selected image, and resolve filename collisions — all rendered through the same pipeline as the live preview in Develop.</p>
+
+<figure><img src="/img/export.png" alt="OpenEnlarge Export dialog showing the image grid, format controls, and the Export button"><figcaption>The Export dialog — select images in the grid, configure format and resolution, then export.</figcaption></figure>
+
+<h2>Formats</h2>
+<p>The format segmented control at the top of the export panel offers three choices: <strong>JPEG</strong>, <strong>TIFF</strong>, and <strong>PNG</strong>. Each maps to a distinct branch of the <code>ExportFormat</code> interface (<code>kind: "jpeg" | "tiff" | "png"</code>).</p>
+
+<p><strong>JPEG</strong> exposes two sliders. The <strong>Quality</strong> slider (<code>quality</code>, 1–100) controls the JPEG compression level; the default is 90. The <strong>Max size</strong> slider (<code>maxBytes</code>) is an optional file-size ceiling: drag it above zero to cap the output at that many megabytes. When set, the backend re-encodes at progressively lower quality until the file fits. Leaving the slider at zero means unlimited (<code>maxBytes: null</code>).</p>
+
+<p><strong>TIFF</strong> and <strong>PNG</strong> share a <strong>Bit depth</strong> control (<code>bitDepth: 8 | 16</code>). Choosing 16-bit preserves the full precision of the render and is the default. 8-bit halves the file size at the cost of quantization in smooth gradients. The <code>bitDepth</code> field is not set for JPEG exports, where it is always implied 8-bit by the container.</p>
+
+<h2>Resolution</h2>
+<p>The <strong>Resolution</strong> control caps the longest side of the output in pixels. Three preset buttons cover the most common sizes — <strong>Full</strong> (no downscale), <strong>4096 px</strong>, and <strong>2048 px</strong> — plus a <strong>Custom</strong> mode that reveals a free-form pixel input. The chosen value is passed to the backend as <code>resizeLongEdge</code>; the backend scales the image down so its longest edge equals that value, preserving the original aspect ratio. Selecting <strong>Full</strong> (or entering 0) sets <code>resizeLongEdge: null</code> and exports at the native resolution.</p>
+
+<p>The cap is applied after crop and rotation: if a portrait image is cropped to square and then exported at 2048 px, the output is 2048 × 2048. Upscaling is never performed — if the native long edge is already shorter than the cap, the file is exported at native size.</p>
+
+<h2>Batch crop</h2>
+<p>The <strong>Crop selected</strong> toggle in the export panel enables a single shared crop that is applied to every selected image at export time. When the toggle is off, each image uses its own saved crop from the <a href="crop-dust.html">Crop &amp; Dust</a> panel — or no crop at all if none was set.</p>
+
+<p>When you turn the toggle on, a crop preview and the full set of crop controls (aspect ratio presets, rotation, flip, straighten angle) appear. The preview targets the first selected image in display order. The crop is seeded from that image's committed crop if one exists, or from a full-frame default otherwise. Changing which images are selected does not re-seed the draft; the controls remain stable as you adjust the selection.</p>
+
+<p>The resolution logic is handled by <code>resolveCrop</code> in <code>batchCrop.ts</code>: when batch mode is on it returns the shared draft as a committed <code>CropRect</code>; when off it returns each image's own stored <code>CropRect</code> (or <code>null</code> for uncropped images). Per-image saved crops are left completely untouched by the export — the batch crop is not written back to the catalog.</p>
+
+<h2>Collision handling</h2>
+<p>Before writing any file, the export resolves all output paths upfront and checks which ones already exist on disk. For each conflicting filename, a prompt appears with four options:</p>
+<ul>
+  <li><strong>Overwrite</strong> — replace the existing file.</li>
+  <li><strong>Skip</strong> — leave the existing file untouched and omit this image from the export.</li>
+  <li><strong>Keep both</strong> — the backend generates a unique filename (e.g. <code>frame-1.jpg</code> → <code>frame-1 (2).jpg</code>) so both files coexist.</li>
+  <li><strong>Cancel</strong> — abort the entire export run immediately; no files have been written yet at this stage.</li>
+</ul>
+
+<p>When there are multiple conflicts, the prompt shows "Conflict N of M" and an <strong>Apply to all remaining</strong> checkbox. Checking it before dismissing the prompt reuses the chosen action for every subsequent conflict in this run, so a large batch doesn't require repeated manual choices.</p>
+
+<p>Skipped images are not counted in the final "Exported N images" summary; they are reported separately as "N skipped." If every selected image is skipped, the export completes with zero files written and shows the skipped count.</p>
+
+<h2>GPU/CPU export parity</h2>
+<p>Export renders through the <strong>same pipeline as the live preview</strong>. A dedicated offscreen <code>FinishRenderer</code> (the same WebGL shader used by the Develop viewport) runs the full inversion and finish pass — the result is pixel-accurate to what you see on screen. The GPU path is used whenever WebGL is available and the image fits within the device's maximum texture size.</p>
+
+<p>If the GPU path is unavailable — no WebGL support, an oversized image that exceeds the texture limit, or a runtime GL error — the export falls back to the CPU path transparently. The CPU fallback uses the same inversion parameters and produces the same result; it is simply slower for large files. You do not need to take any action to trigger the fallback; it happens automatically.</p>
+
+<p>Export processes up to four images concurrently. The GPU render step is synchronous (atomic per image), so concurrent workers cannot interleave their GPU calls; they overlap only on the async decode and encode steps handled by the backend.</p>
+
+<details class="hood"><summary>Under the hood</summary><div class="hood-body">
+<p><strong>ExportFormat</strong> (defined in <code>api.ts</code>): <code>kind: "jpeg" | "tiff" | "png"</code>; <code>bitDepth?: 8 | 16</code> (TIFF/PNG only); <code>quality?: number</code> (JPEG only, 1–100); <code>maxBytes?: number | null</code> (JPEG only — backend re-encodes at decreasing quality steps until the file is at or below this byte count); <code>resizeLongEdge?: number | null</code> (null or 0 → full resolution).</p>
+<p><strong>Eligible images</strong>: the export dialog lists only the developed images within the current folder scope (<code>developedFolderImages</code> in <code>eligible.ts</code>). Images that have been imported but never opened in Develop are not offered for export. The selection is initialized from the current grid/filmstrip selection restricted to the eligible set; if none of the selected images are eligible, the dialog selects all eligible images.</p>
+<p><strong>Output filename</strong>: <code>outName</code> in <code>naming.ts</code> replaces the source extension with the target format's extension (<code>jpg</code> for JPEG, <code>tiff</code> for TIFF, <code>png</code> for PNG) while keeping the original stem. For example, <code>SCAN_0042.tif</code> exported as JPEG becomes <code>SCAN_0042.jpg</code>.</p>
+<p><strong>GPU export flow</strong>: <code>api.exportBegin</code> decodes the raw on the Rust backend and returns pixel data plus the computed <code>InvertParams</code> uniforms; <code>api.exportPixels</code> transfers the raw pixel buffer; the offscreen <code>FinishRenderer</code> runs <code>renderExport</code> (inversion + finish shaders); <code>api.exportFinish</code> encodes the rendered buffer to the chosen format and writes the file. For 16-bit TIFF/PNG the pixel buffer is a <code>Float32Array</code>; for 8-bit it is a <code>Uint8Array</code>. The CPU fallback (<code>api.exportImage</code>) runs the equivalent pipeline entirely in Rust.</p>
+<p><strong>Concurrency</strong>: a bounded worker pool of 4 (<code>CONCURRENCY = 4</code>) runs exports in parallel. The synchronous GPU render step (<code>renderExport</code>) is never awaited concurrently — each worker claims its next image with a synchronous index increment before any <code>await</code>, so GPU calls from different workers never interleave.</p>
+<p><strong>HDR export</strong>: when <code>wantsHdrExport(kind, params)</code> returns true (gain-map JPEG for HDR tone-mapped content), the GPU/SDR path is skipped entirely and <code>api.exportImageHdr</code> performs a dual-render on the Rust backend. This path is separate from the standard export flow described above.</p>
+</div></details>
+
+<p class="next"><a href="../reference/glossary.html">Next: Glossary →</a></p>

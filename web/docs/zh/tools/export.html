@@ -1,0 +1,115 @@
+<!-- AUTO-GENERATED from /docs-src — do not edit by hand. Run python3 scripts/gen-docs.py -->
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>导出 — OpenEnlarge Docs</title>
+<meta name="description" content="批量导出为 JPEG、TIFF 或 PNG，支持位深、分辨率上限、可选的统一裁剪与文件名冲突处理 —— 通过与实时预览相同的管线渲染。">
+<meta name="theme-color" content="#0a0a0c">
+<link rel="icon" href="../../../img/favicon.png">
+<link rel="canonical" href="https://openenlarge.io/docs/zh/tools/export.html">
+<link rel="alternate" hreflang="en" href="https://openenlarge.io/docs/tools/export.html">
+<link rel="alternate" hreflang="zh-Hans" href="https://openenlarge.io/docs/zh/tools/export.html">
+<link rel="alternate" hreflang="x-default" href="https://openenlarge.io/docs/tools/export.html">
+<meta property="og:type" content="article"><meta property="og:title" content="导出 — OpenEnlarge Docs"><meta property="og:description" content="批量导出为 JPEG、TIFF 或 PNG，支持位深、分辨率上限、可选的统一裁剪与文件名冲突处理 —— 通过与实时预览相同的管线渲染。"><meta property="og:url" content="https://openenlarge.io/docs/zh/tools/export.html"><meta name="twitter:card" content="summary">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "导出", "description": "批量导出为 JPEG、TIFF 或 PNG，支持位深、分辨率上限、可选的统一裁剪与文件名冲突处理 —— 通过与实时预览相同的管线渲染。", "inLanguage": "zh-Hans", "url": "https://openenlarge.io/docs/zh/tools/export.html", "isPartOf": {"@type": "WebSite", "name": "OpenEnlarge", "url": "https://openenlarge.io"}}</script>
+<link rel="stylesheet" href="../../docs.css">
+</head>
+<body>
+<a class="skip" href="#content">跳到正文</a>
+<nav class="docnav"><div class="navbar glass wrap">
+  <a class="brand" href="../../../index.html"><img class="mark" src="../../../img/icon.png" alt=""> OpenEnlarge <span class="brand-docs">文档</span></a>
+  <button class="menu-btn" id="menu-btn" type="button" aria-label="菜单" aria-expanded="false">☰</button>
+  <div class="navlinks">
+    <a href="../../../index.html">主页</a>
+    <a href="https://github.com/mohaelder/openenlarge">GitHub</a>
+    <a class="lang-link" href="../../tools/export.html">EN</a>
+  </div>
+</div></nav>
+<div class="doclayout wrap">
+  <aside class="sidebar" id="sidebar"><div class="side-sec"><div class="side-h">概览</div>
+<a href="../index.html">文档</a>
+<a href="../workflow.html">工作流程</a>
+</div>
+<div class="side-sec"><div class="side-h">原理</div>
+<a href="../science/negatives.html">彩色负片的原理</a>
+<a href="../science/inversion.html">反转流程</a>
+<a href="../science/density.html">密度与对数空间</a>
+<a href="../science/tone-curve.html">色调曲线（Faithful 风格）</a>
+<a href="../science/color.html">色彩与白平衡</a>
+<a href="../science/base-calibration.html">片基校准</a>
+</div>
+<div class="side-sec"><div class="side-h">工具</div>
+<a href="../tools/develop-basic.html">显影 · 基础</a>
+<a href="../tools/tune.html">微调</a>
+<a href="../tools/crop-dust.html">裁剪与除尘</a>
+<a href="../tools/ai.html">AI 工具</a>
+<a href="../tools/library.html">图库</a>
+<a href="../tools/roll.html">整卷</a>
+<a class="on" href="../tools/export.html">导出</a>
+</div></aside>
+  <main class="content" id="content">
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="../index.html">文档</a> <span class="sep">/</span> <span>导出</span></nav>
+    <article class="prose"><h1>导出</h1>
+<p class="lead">导出将已显影的图像转换为成品文件。对话框让你选择格式、设置分辨率上限、为所有所选图像应用可选的统一裁剪，并处理文件名冲突 —— 整个过程通过与显影实时预览相同的管线渲染。</p>
+
+<figure><img src="/img/export.png" alt="OpenEnlarge 导出对话框，显示图像网格、格式控件和导出按钮"><figcaption>导出对话框 —— 在网格中选择图像，配置格式与分辨率，然后导出。</figcaption></figure>
+
+<h2>格式</h2>
+<p>导出面板顶部的格式分段控件提供三种选择：<strong>JPEG</strong>、<strong>TIFF</strong> 和 <strong>PNG</strong>。每种格式对应 <code>ExportFormat</code> 接口的一个分支（<code>kind: "jpeg" | "tiff" | "png"</code>）。</p>
+
+<p><strong>JPEG</strong> 提供两个滑块。<strong>质量</strong>滑块（<code>quality</code>，范围 1–100）控制 JPEG 压缩级别，默认值为 90。<strong>最大文件大小</strong>滑块（<code>maxBytes</code>）是可选的文件大小上限：将其拖动到零以上可将输出限制在指定兆字节以内。设置后，后端会以逐渐降低的质量重新编码，直到文件大小符合要求。将滑块保持在零表示不限制（<code>maxBytes: null</code>）。</p>
+
+<p><strong>TIFF</strong> 和 <strong>PNG</strong> 共享一个<strong>位深度</strong>控件（<code>bitDepth: 8 | 16</code>）。选择 16 位可保留渲染的完整精度，这也是默认值。8 位将文件大小减半，但平滑渐变区域会产生量化误差。JPEG 导出不设置 <code>bitDepth</code> 字段，其位深由容器格式固定为 8 位。</p>
+
+<h2>分辨率</h2>
+<p><strong>分辨率</strong>控件以像素为单位限制输出图像的最长边。三个预设按钮涵盖最常见的尺寸 —— <strong>完整</strong>（不缩小）、<strong>4096 px</strong> 和 <strong>2048 px</strong> —— 另有一个<strong>自定义</strong>模式，展开后显示自由输入框。所选值通过 <code>resizeLongEdge</code> 传递给后端；后端缩小图像，使其最长边等于该值，同时保持原始宽高比。选择<strong>完整</strong>（或输入 0）会将 <code>resizeLongEdge</code> 设为 <code>null</code>，以原生分辨率导出。</p>
+
+<p>该上限在裁剪和旋转之后应用：若将竖幅图像裁剪为正方形后以 2048 px 导出，输出尺寸为 2048 × 2048。不执行放大 —— 如果原生最长边已短于上限，则以原生尺寸导出。</p>
+
+<h2>批量裁剪</h2>
+<p>导出面板中的<strong>裁剪所选</strong>开关启用一个统一裁剪，在导出时应用于每张所选图像。关闭开关时，每张图像使用其在<a href="crop-dust.html">裁剪与除尘</a>面板中保存的裁剪 —— 若未设置则不裁剪。</p>
+
+<p>打开开关后，裁剪预览和完整的裁剪控件（宽高比预设、旋转、翻转、校正角度）随即显示。预览以显示顺序中第一张所选图像为目标。裁剪从该图像已提交的裁剪参数中取种，若无则默认为全幅。更改选中图像不会重新取种；调整选择时控件保持稳定。</p>
+
+<p>分辨率逻辑由 <code>batchCrop.ts</code> 中的 <code>resolveCrop</code> 处理：批量模式开启时返回共享草稿作为已提交的 <code>CropRect</code>；关闭时返回每张图像自身存储的 <code>CropRect</code>（未裁剪图像返回 <code>null</code>）。导出不会将批量裁剪写回目录，每张图像自身保存的裁剪完好无损。</p>
+
+<h2>文件名冲突处理</h2>
+<p>写入任何文件之前，导出会预先解析所有输出路径，并检查哪些路径在磁盘上已存在。对于每个冲突的文件名，会弹出提示并提供四个选项：</p>
+<ul>
+  <li><strong>覆盖</strong> —— 替换已有文件。</li>
+  <li><strong>跳过</strong> —— 保留已有文件，从本次导出中略过该图像。</li>
+  <li><strong>两者都保留</strong> —— 后端生成唯一文件名（例如 <code>frame-1.jpg</code> → <code>frame-1 (2).jpg</code>），两个文件共存。</li>
+  <li><strong>取消</strong> —— 立即中止整个导出，此阶段尚未写入任何文件。</li>
+</ul>
+
+<p>当存在多个冲突时，提示会显示「冲突 N / M」，以及一个<strong>应用于其余所有冲突</strong>复选框。在关闭提示前勾选它，所选操作将应用于本次运行中的所有后续冲突，大批量导出无需反复手动选择。</p>
+
+<p>跳过的图像不计入最终的「已导出 N 张照片」摘要，而是单独报告为「跳过 N 张」。如果所有选中图像均被跳过，导出以零文件写入完成，并显示跳过数量。</p>
+
+<h2>GPU/CPU 导出一致性</h2>
+<p>导出通过<strong>与实时预览相同的管线</strong>渲染。一个专用的离屏 <code>FinishRenderer</code>（即显影视口所用的同一套 WebGL 着色器）执行完整的反转与润色处理 —— 结果与屏幕上所见的内容像素精确一致。只要 WebGL 可用且图像尺寸在设备最大纹理限制以内，均采用 GPU 路径。</p>
+
+<p>若 GPU 路径不可用 —— 无 WebGL 支持、图像超过纹理尺寸限制，或运行时 GL 错误 —— 导出会自动无感回退到 CPU 路径。CPU 回退使用相同的反转参数，产生相同的结果；仅对大文件速度较慢。无需任何手动操作，回退自动触发。</p>
+
+<p>导出最多同时处理四张图像。GPU 渲染步骤是同步的（每张图像原子执行），因此并发工作者的 GPU 调用不会交错；并发仅发生在后端处理的异步解码和编码步骤上。</p>
+
+<details class="hood"><summary>深入原理</summary><div class="hood-body">
+<p><strong>ExportFormat</strong>（定义于 <code>api.ts</code>）：<code>kind: "jpeg" | "tiff" | "png"</code>；<code>bitDepth?: 8 | 16</code>（仅 TIFF/PNG）；<code>quality?: number</code>（仅 JPEG，1–100）；<code>maxBytes?: number | null</code>（仅 JPEG —— 后端以逐步降低质量的方式重新编码，直到文件字节数不超过该值）；<code>resizeLongEdge?: number | null</code>（null 或 0 → 完整分辨率）。</p>
+<p><strong>可导出图像</strong>：导出对话框仅列出当前文件夹范围内已显影的图像（<code>eligible.ts</code> 中的 <code>developedFolderImages</code>）。已导入但从未在显影界面打开的图像不在导出选项中。选择集从当前网格/胶片条选择中初始化，限制在可导出集合内；若所选图像中无可导出项，则默认选中所有可导出图像。</p>
+<p><strong>输出文件名</strong>：<code>naming.ts</code> 中的 <code>outName</code> 将源文件扩展名替换为目标格式的扩展名（JPEG 为 <code>jpg</code>，TIFF 为 <code>tiff</code>，PNG 为 <code>png</code>），保留原始文件名主干。例如，<code>SCAN_0042.tif</code> 导出为 JPEG 后变为 <code>SCAN_0042.jpg</code>。</p>
+<p><strong>GPU 导出流程</strong>：<code>api.exportBegin</code> 在 Rust 后端解码 RAW 文件，返回像素数据和已计算的 <code>InvertParams</code> 统一变量；<code>api.exportPixels</code> 传输原始像素缓冲区；离屏 <code>FinishRenderer</code> 执行 <code>renderExport</code>（反转 + 润色着色器）；<code>api.exportFinish</code> 将渲染结果编码为所选格式并写入文件。16 位 TIFF/PNG 的像素缓冲区为 <code>Float32Array</code>；8 位为 <code>Uint8Array</code>。CPU 回退（<code>api.exportImage</code>）在 Rust 中运行等效管线。</p>
+<p><strong>并发</strong>：有界工作者池大小为 4（<code>CONCURRENCY = 4</code>），并行处理导出。同步 GPU 渲染步骤（<code>renderExport</code>）绝不并发等待 —— 每个工作者在任何 <code>await</code> 之前以同步索引自增领取下一张图像，因此不同工作者的 GPU 调用不会交错。</p>
+<p><strong>HDR 导出</strong>：当 <code>wantsHdrExport(kind, params)</code> 返回 true（适用于 HDR 色调映射内容的增益图 JPEG）时，完全跳过 GPU/SDR 路径，由 <code>api.exportImageHdr</code> 在 Rust 后端执行双重渲染。该路径独立于上述标准导出流程。</p>
+</div></details>
+
+<p class="next"><a href="../reference/glossary.html">下一篇：术语表 →</a></p>
+</article>
+    <footer class="docfoot">OpenEnlarge —— 开源胶片扫描编辑器 · MIT 许可</footer>
+  </main>
+  <aside class="toc" id="toc" aria-label="本页目录"><div class="toc-title">本页目录</div><div id="toc-list"></div></aside>
+</div>
+<script src="../../docs.js" defer></script>
+</body>
+</html>
