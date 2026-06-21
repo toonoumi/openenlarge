@@ -1,0 +1,41 @@
+<h1>Color &amp; white balance</h1>
+<p class="lead">Balancing a color negative means deciding what should be neutral, then adjusting color without shifting black. OpenEnlarge gives you an automatic starting point and precise manual controls to get there.</p>
+
+<h2>Auto white balance</h2>
+<p>When you open a frame, OpenEnlarge runs a <strong>damped gray-world estimate</strong>: it measures the average of each color channel across the image and nudges the balance toward the point where all three channels read equal — neutral gray. The estimate is damped to avoid over-correcting on scenes that are genuinely dominated by a single color (a red door, a field of green grass). The default strength is <strong>0.7</strong>, leaving some of the original scene color intact.</p>
+<p>If the automatic result is not quite right, you have two options: <em>re-pick a gray</em> by clicking a patch that should be neutral in your image, or dial in Temperature and Tint by hand.</p>
+
+<h2>Temperature &amp; Tint</h2>
+<p>The two white balance axes map to familiar photographic concepts:</p>
+<ul>
+  <li><strong>Temperature</strong> — the warm/cool axis, expressed as <em>correlated color temperature</em> in kelvin. Higher values shift the image toward warm amber; lower values shift it toward cool blue. A neutral balance for most daylight negative film falls near <strong>5500 K</strong>.</li>
+  <li><strong>Tint</strong> — the green/magenta axis, orthogonal to temperature. A positive tint shift adds magenta; a negative shift adds green. This corrects for fluorescent casts, reciprocity failures, or the slight green bias some scanners introduce.</li>
+</ul>
+<p>Temperature and Tint together give you full coverage of the chromaticity plane — any neutral can be reached by combining them.</p>
+
+<h2>Gain vs. color head</h2>
+<p>OpenEnlarge offers two fundamentally different ways to apply white balance, toggled in the controls:</p>
+<ul>
+  <li><strong>Gain mode</strong> — balance is applied as a <em>post-curve linear multiply</em>, after the tone curve has already produced a positive image. Because the multiply is linear, pure black (output = 0) is unaffected: 0 × gain = 0, so shadows stay perfectly neutral. This is the von-Kries adaptation model — the same principle used in most digital camera white balance.</li>
+  <li><strong>Color head (subtractive)</strong> — balance is applied as a <em>density offset before the curve</em>, exactly like the CMY dichroic filters on a traditional color enlarger. The tint operates in log density space and modifies how the tone curve shapes each channel. Because density and contrast are coupled in log space, the tint influence is felt not just in the highlights but also through the midtones and into the lower tonal values. Shadows remain anchored at true black, but the character of the tint shifts with the tonal structure of the image.</li>
+</ul>
+<p>The figure below illustrates the difference: the Gain strip keeps the shadow end neutral while warm tint accumulates only in the mids and highlights; the Color head strip shows the tint woven through the midtones earlier and deeper into the tonal range.</p>
+
+<figure><!--FIG:gain-vs-head--><figcaption>Top: Gain (post-curve) — a gradient from true black to warm white; the warm tint appears only in the midtones and highlights while shadows remain neutral. Bottom: Color head (pre-curve) — the warm tint is present earlier and deeper into the tonal range, coupling tint to contrast. Both strips are anchored at true black on the left.</figcaption></figure>
+
+<h2>Saturation in OKLab</h2>
+<p>Vibrance and saturation adjustments in OpenEnlarge operate in the <strong>OKLab</strong> color space — a perceptually uniform model designed so that equal numerical steps produce equal-looking changes across all hues. This has two important practical consequences:</p>
+<ul>
+  <li>A saturation boost of a given amount looks consistent whether you are boosting the blues in a sky, the reds in a sunset, or the greens in foliage — no single hue dominates.</li>
+  <li>Neutral tones (grays) and skin tones are detected and protected: they receive a smaller boost, so pushing saturation does not cast a color onto what should be colorless areas or make skin look oversaturated.</li>
+</ul>
+<p>Gamut roll-off is also applied, compressing highly saturated colors toward the display boundary smoothly rather than clipping them hard.</p>
+
+<details class="hood"><summary>Under the hood</summary><div class="hood-body">
+<p><strong>Auto WB damping:</strong> the gray-world estimate is blended toward no-op at a default strength of <strong>0.7</strong> — meaning 70 % of the full gray-world shift is applied. This avoids the classic gray-world failure mode on non-neutral scenes.</p>
+<p><strong>Color head math:</strong> in subtractive (color-head) mode, the per-channel density is multiplied by <span class="formula">gain<sup>CMY_STRENGTH</sup></span> where <code>CMY_STRENGTH = 1.6</code>. Applied in log density space before the tone curve, this is equivalent to changing the filter pack on an enlarger: the exponent of 1.6 gives the tint a slightly non-linear coupling to density, matching the behavior of real dichroic filters more closely than a plain linear scale. The anchor at pure black is exact: density = 0 (black) maps to 0 × any gain factor = 0.</p>
+<p><strong>Gain mode math:</strong> a straightforward post-curve multiply — the neutral point is anchored at black (0) and stretched linearly toward white. Identical to the von-Kries chromatic adaptation transform when applied per channel.</p>
+<p><strong>Neutral CCT:</strong> the auto-WB target is approximately <strong>5500 K</strong>, consistent with the color temperature of overcast daylight — a common shooting condition for outdoor color negative film.</p>
+</div></details>
+
+<p class="next"><a href="base-calibration.html">Next: base calibration →</a></p>

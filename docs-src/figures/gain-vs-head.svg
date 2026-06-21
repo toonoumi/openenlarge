@@ -1,0 +1,71 @@
+<svg viewBox="0 0 640 260" role="img" aria-label="Two horizontal gradient strips comparing white balance modes. Top strip labeled 'Gain (post-curve)': a gradient from true black on the left to warm white on the right, with the warm tint appearing only in the midtones and highlights while the shadow end remains neutral black — annotated 'shadows neutral'. Bottom strip labeled 'Color head (pre-curve)': a gradient from true black on the left to warm white on the right, but the warm tint is present earlier and deeper into the tonal range, coupled to contrast — annotated 'tint couples to contrast'. Both strips are anchored at true black (left edge) with a marker. The difference shows that gain mode preserves shadow neutrality while the subtractive color head couples tint into the tonal range." xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Gain (post-curve): tint only appears in mids/highlights; shadows stay neutral -->
+    <linearGradient id="grad-gain" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%"   stop-color="#000000"/>
+      <stop offset="18%"  stop-color="#0d0d0d"/>
+      <stop offset="35%"  stop-color="#333330"/>
+      <stop offset="50%"  stop-color="#6e6b5a"/>
+      <stop offset="65%"  stop-color="#b5a882"/>
+      <stop offset="80%"  stop-color="#d9c89a"/>
+      <stop offset="100%" stop-color="#f5e8c8"/>
+    </linearGradient>
+    <!-- Color head (pre-curve): tint coupled into lower tones, present from darker values -->
+    <linearGradient id="grad-head" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%"   stop-color="#000000"/>
+      <stop offset="12%"  stop-color="#0f0d08"/>
+      <stop offset="25%"  stop-color="#2e2618"/>
+      <stop offset="40%"  stop-color="#6b5a30"/>
+      <stop offset="55%"  stop-color="#a8885a"/>
+      <stop offset="72%"  stop-color="#cca96e"/>
+      <stop offset="100%" stop-color="#f0dca8"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="640" height="260" rx="12" fill="#141418"/>
+
+  <!-- === TOP STRIP: Gain (post-curve) === -->
+  <!-- Label above strip -->
+  <text x="36" y="44" font-family="ui-monospace,monospace" font-size="12" fill="#e8e8ea" text-anchor="start" font-weight="600">Gain (post-curve)</text>
+
+  <!-- Gradient bar -->
+  <rect x="36" y="52" width="490" height="54" rx="4" fill="url(#grad-gain)"/>
+
+  <!-- Black-point marker at left edge -->
+  <line x1="36" y1="48" x2="36" y2="110" stroke="#9a9aa2" stroke-width="1.2" opacity="0.7"/>
+  <text x="39" y="120" font-family="ui-monospace,monospace" font-size="10" fill="#9a9aa2" text-anchor="start">black</text>
+
+  <!-- "shadows neutral" annotation — pointing to shadow zone -->
+  <line x1="120" y1="79" x2="120" y2="112" stroke="#9a9aa2" stroke-width="0.8" opacity="0.6"/>
+  <text x="120" y="124" font-family="ui-monospace,monospace" font-size="10" fill="#9a9aa2" text-anchor="middle">shadows neutral</text>
+
+  <!-- Warm-zone annotation -->
+  <line x1="420" y1="52" x2="420" y2="46" stroke="#9a9aa2" stroke-width="0.8" opacity="0.5"/>
+  <text x="420" y="42" font-family="ui-monospace,monospace" font-size="10" fill="#9a9aa2" text-anchor="middle">warm tint in mids/highlights</text>
+
+  <!-- === BOTTOM STRIP: Color head (pre-curve) === -->
+  <!-- Label above strip -->
+  <text x="36" y="162" font-family="ui-monospace,monospace" font-size="12" fill="#e8e8ea" text-anchor="start" font-weight="600">Color head (pre-curve)</text>
+
+  <!-- Gradient bar -->
+  <rect x="36" y="170" width="490" height="54" rx="4" fill="url(#grad-head)"/>
+
+  <!-- Black-point marker -->
+  <line x1="36" y1="166" x2="36" y2="228" stroke="#9a9aa2" stroke-width="1.2" opacity="0.7"/>
+  <text x="39" y="238" font-family="ui-monospace,monospace" font-size="10" fill="#9a9aa2" text-anchor="start">black</text>
+
+  <!-- "tint couples to contrast" annotation — pointing into lower-mid zone -->
+  <line x1="220" y1="197" x2="220" y2="228" stroke="#9a9aa2" stroke-width="0.8" opacity="0.6"/>
+  <text x="220" y="242" font-family="ui-monospace,monospace" font-size="10" fill="#9a9aa2" text-anchor="middle">tint couples to contrast</text>
+
+  <!-- Warm-zone annotation for head -->
+  <line x1="430" y1="170" x2="430" y2="164" stroke="#9a9aa2" stroke-width="0.8" opacity="0.5"/>
+  <text x="430" y="160" font-family="ui-monospace,monospace" font-size="10" fill="#9a9aa2" text-anchor="middle">warm into mids &amp; lower tones</text>
+
+  <!-- Legend / key on the right -->
+  <text x="548" y="79" font-family="ui-monospace,monospace" font-size="10" fill="#9a9aa2" text-anchor="start">0 · · · · · · · 1</text>
+  <text x="548" y="91" font-family="ui-monospace,monospace" font-size="10" fill="#9a9aa2" text-anchor="start">shadow → highlight</text>
+  <text x="548" y="197" font-family="ui-monospace,monospace" font-size="10" fill="#9a9aa2" text-anchor="start">0 · · · · · · · 1</text>
+  <text x="548" y="209" font-family="ui-monospace,monospace" font-size="10" fill="#9a9aa2" text-anchor="start">shadow → highlight</text>
+</svg>
