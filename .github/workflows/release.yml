@@ -155,20 +155,35 @@ jobs:
           gh release download "$TAG" --repo "$GITHUB_REPOSITORY" -D dist --clobber
           ls -lh dist
 
-      - name: Mirror assets to R2 + publish updater manifest
+      - name: Detect channel
+        run: |
+          TAG="${{ github.ref_name }}"
+          if [[ "$TAG" == *-* ]]; then
+            echo "IS_PRERELEASE=true" >> "$GITHUB_ENV"
+          else
+            echo "IS_PRERELEASE=false" >> "$GITHUB_ENV"
+          fi
+
+      - name: Mirror assets to R2
         if: env.AWS_ACCESS_KEY_ID != ''
         run: |
           set -euo pipefail
-          # Mirror every asset except latest.json (uploaded after URL rewrite).
+          # Mirror every asset except latest.json (uploaded after URL rewrite, stable only).
           for f in dist/*; do
             name="$(basename "$f")"
             [ "$name" = "latest.json" ] && continue
             echo "Uploading $name -> s3://$R2_BUCKET/$TAG/$name"
             aws s3 cp "$f" "s3://$R2_BUCKET/$TAG/$name" --endpoint-url "$R2_ENDPOINT"
           done
+
+      - name: Publish stable updater manifest (latest.json)
+        if: env.AWS_ACCESS_KEY_ID != '' && env.IS_PRERELEASE != 'true'
+        run: |
+          set -euo pipefail
           # Rewrite the updater manifest's URLs to the R2 mirror. Signatures sign
           # file content (not URLs), so they stay valid. Publish to the stable root
-          # path (the app's updater endpoint) plus a versioned copy.
+          # path (the app's updater endpoint) plus a versioned copy. Pre-releases
+          # skip this entirely so stable users are never pushed an alpha.
           if [ -f dist/latest.json ]; then
             jq --arg base "$DL_BASE/$TAG/" \
                '.platforms |= with_entries(.value.url = ($base + (.value.url | split("/") | last)))' \
@@ -179,7 +194,7 @@ jobs:
               --endpoint-url "$R2_ENDPOINT" --content-type application/json
           fi
 
-      - name: Build web/releases.json (download-page manifest)
+      - name: Build download-page manifest
         run: |
           set -euo pipefail
           names=$(ls dist)
@@ -188,6 +203,9 @@ jobs:
           win=$(pick '_x64_en-US\.msi$'); [ -n "$win" ] || win=$(pick '\.msi$'); [ -n "$win" ] || win=$(pick '\.exe$')
           lin=$(pick '\.AppImage$')
           url() { [ -n "$1" ] && printf '%s/%s/%s' "$DL_BASE" "$TAG" "$1" || printf ''; }
+          # Stable writes the live download manifest; alpha writes a separate one so
+          # the main download buttons are never repointed at a pre-release.
+          if [ "$IS_PRERELEASE" = "true" ]; then OUT=web/releases-alpha.json; else OUT=web/releases.json; fi
           jq -n --arg tag "$TAG" \
                 --arg mac "$(url "$mac")" --arg win "$(url "$win")" --arg lin "$(url "$lin")" '
             { tag: $tag, assets: (
@@ -195,17 +213,18 @@ jobs:
                 + (if $mac != "" then {macos: $mac} else {} end)
                 + (if $win != "" then {windows: $win} else {} end)
                 + (if $lin != "" then {linux: $lin} else {} end)
-            )}' > web/releases.json
-          echo "Generated web/releases.json:"; cat web/releases.json
+            )}' > "$OUT"
+          echo "OUT_MANIFEST=$OUT" >> "$GITHUB_ENV"
+          echo "Generated $OUT:"; cat "$OUT"
 
-      - name: Commit releases.json
+      - name: Commit manifest
         run: |
           set -euo pipefail
-          if git diff --quiet -- web/releases.json; then echo "releases.json unchanged"; exit 0; fi
+          if git diff --quiet -- "$OUT_MANIFEST"; then echo "$OUT_MANIFEST unchanged"; exit 0; fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add web/releases.json
-          git commit -m "chore(web): release manifest for ${{ github.ref_name }}"
+          git add "$OUT_MANIFEST"
+          git commit -m "chore(web): ${{ github.ref_name }} download manifest"
           git push origin HEAD:main
 
       # Deploy directly (a push made with GITHUB_TOKEN does not trigger
