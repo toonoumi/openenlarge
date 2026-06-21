@@ -5,8 +5,7 @@
   import { get } from "svelte/store";
   import { t } from "$lib/i18n";
   import { developedFolderImages } from "$lib/export/eligible";
-  import { editsById, cropById, images, activeId, setActive, rollOverwriteSkip, module, deleteTarget, developProgress } from "$lib/store";
-  import { autoBrightnessRoll } from "$lib/workflow";
+  import { editsById, cropById, images, activeId, setActive, rollOverwriteSkip, module, deleteTarget } from "$lib/store";
   import { rollReferenceId, resetRollDraft, rollDraft, rollDraftTouched } from "$lib/roll/draft";
   import RollAdjust from "$lib/roll/RollAdjust.svelte";
   import { applyToneColorToAll, applyBaseToAll, applyWhitePointToAll, applyExposureToAll, applyCropToAll, framesWithToneColor, framesWithCrop, framesWithBase, framesWithWhitePoint } from "$lib/roll/apply";
@@ -436,15 +435,6 @@
     wpPicking = true;
   }
 
-  // Auto-brightness the whole roll: each developed frame gets its OWN solved exposure
-  // (a per-image value, not the shared draft look), then refresh the contact sheet so
-  // the new exposures show. Guarded against re-entry while a batch is running.
-  async function autoBrightnessAll() {
-    if (get(developProgress).active) return;
-    await autoBrightnessRoll();
-    runPreviewBatch(get(rollDraft));
-  }
-
   function onBaseSampled(e: CustomEvent<[number, number, number]>) {
     rollDraft.update((d) => ({ ...d, params: { ...d.params, base_override: e.detail } }));
     rollDraftTouched.set(true);
@@ -701,14 +691,6 @@
               <Icon name="pipette" size={20} />
             </button>
             <span class="tool-label">{$t('roll.wp.heading')}</span>
-          </div>
-          <div class="tool">
-            <button class="tool-btn" on:click={autoBrightnessAll}
-                    disabled={$developedFolderImages.length === 0 || $developProgress.active}
-                    aria-label={$t('roll.autoBrightness')}>
-              <Icon name="sun" size={20} />
-            </button>
-            <span class="tool-label">{$t('roll.autoBrightness')}</span>
           </div>
         </div>
       </RollAdjust>
