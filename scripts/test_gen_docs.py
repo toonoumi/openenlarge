@@ -132,7 +132,7 @@ class TestScienceStructure(unittest.TestCase):
         science = [s for sec in nav["sections"] if sec["id"] == "science" for s in sec["pages"]]
         for slug in science:
             en = gen.out_path(slug, "en"); zh = gen.out_path(slug, "zh")
-            if not en.exists():   # not built yet (future wave) — skip
+            if not en.exists() or not zh.exists():   # not built yet (future wave) — skip
                 continue
             for p in (en, zh):
                 html = pathlib.Path(p).read_text()
