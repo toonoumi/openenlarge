@@ -505,6 +505,23 @@ mod tests {
     }
 
     #[test]
+    fn old_engine_version_thumbnail_loads_stale() {
+        let cat = Catalog::open_in_memory().unwrap();
+        let id = cat.upsert_image("/x/a.dng", "a.dng", "{}", "thumb", 0).unwrap();
+        // Stamp a render at an OLDER engine version (current - 1) directly.
+        {
+            let conn = cat.conn.lock().unwrap();
+            conn.execute(
+                "UPDATE images SET thumb_version = ?2 WHERE id = ?1",
+                rusqlite::params![id, (film_core::ENGINE_VERSION as i64) - 1],
+            ).unwrap();
+        }
+        let imgs = cat.load_images(&|_| true).unwrap();
+        let me = imgs.iter().find(|i| i.id == id).unwrap();
+        assert!(me.thumb_stale, "thumbnail rendered by an older engine must load stale");
+    }
+
+    #[test]
     fn app_state_round_trip() {
         let cat = Catalog::open_in_memory().unwrap();
         cat.save_app_state("grid_zoom", "55").unwrap();

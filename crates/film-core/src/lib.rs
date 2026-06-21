@@ -26,4 +26,6 @@ pub use engine::ToneMode;
 ///
 /// History: 1 = filmic display S-curve + auto-WB-seeded develop-time thumbnails
 /// (2026-06-20), replacing the pre-filmic paper encode + neutral-WB thumbnails.
-pub const ENGINE_VERSION: u32 = 1;
+/// 2 = Faithful core + clean-punchy look becomes the sole develop path (Filmic
+/// retired); all prior thumbnails are stale and regenerate on app entry (2026-06-21).
+pub const ENGINE_VERSION: u32 = 2;
