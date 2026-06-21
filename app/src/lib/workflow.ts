@@ -159,10 +159,21 @@ export async function developAll(target: "develop" | "roll" = "develop"): Promis
     try {
       const updated = await api.developImage(id);
       images.update((list) => list.map((i) => (i.id === id ? updated : i)));
-      // First-develop seed: adopt the classifier's verdict only when the image has
-      // no stored edits yet, so re-develop / existing manual overrides are untouched.
-      editsById.update((m) =>
-        m[id] ? m : { ...m, [id]: { ...defaultParams(), positive: updated.positive } });
+      // First-develop seed: adopt the classifier's verdict AND the auto white balance
+      // only when the image has no stored edits yet (re-develop / existing manual
+      // overrides are untouched). The frame is resident right after developing, so
+      // as_shot_wb is cheap here — seeding it for every frame means the WHOLE roll
+      // opens in Develop already balanced, instead of each frame rendering on neutral
+      // WB (a blue cast) until it's individually activated and its own seed runs.
+      if (!get(editsById)[id]) {
+        const seed = { ...defaultParams(), positive: updated.positive };
+        try {
+          const wb = await api.asShotWb(id, withEffectiveBase(seed, imageDir(updated)));
+          seed.temp = wb.temp;
+          seed.tint = wb.tint;
+        } catch { /* not resident yet — Develop's per-image seed retries on activation */ }
+        editsById.update((m) => (m[id] ? m : { ...m, [id]: seed }));
+      }
       if (updated.developed) {
         ok = true;
       } else {
@@ -198,6 +209,44 @@ export async function developAll(target: "develop" | "roll" = "develop"): Promis
   // a free main thread so the dismiss animates instead of snapping.
   await nextPaint();
   developProgress.set({ active: false, done: ids.length, total: ids.length });
+}
+
+// Frames whose WB has already been auto-seeded this session — so the Develop-entry
+// sweep below never re-runs (or clobbers later edits) for an id it has handled.
+const wbSeeded = new Set<string>();
+
+/**
+ * Auto-seed white balance into `editsById` for every developed folder frame that is
+ * still on the neutral default WB. Develop's per-image `seed()` only balances the
+ * ACTIVE frame, so a freshly-developed roll otherwise opens with a blue cast on every
+ * frame until each is individually activated. Running this on Develop entry (and after
+ * develop-all) balances the whole roll up front. Skips frames the user has touched
+ * (manual WB or any non-default temp/tint). Uses the same crop-less estimate as the
+ * develop-time thumbnail bake, so the result matches the baked thumbnail.
+ */
+export async function seedFolderWb(): Promise<void> {
+  const d = defaultParams();
+  for (const f of get(developedFolderImages)) {
+    const id = f.id;
+    if (wbSeeded.has(id)) continue;
+    const cur = get(editsById)[id];
+    // Already seeded/edited (manual WB, or temp/tint moved off the default) → leave it.
+    if (cur && (cur.wb_manual || cur.temp !== d.temp || cur.tint !== d.tint)) {
+      wbSeeded.add(id);
+      continue;
+    }
+    try {
+      const base = cur ?? { ...d, positive: f.positive ?? false };
+      const wb = await api.asShotWb(id, withEffectiveBase(base, imageDir(f)));
+      editsById.update((m) => {
+        const e = m[id] ?? { ...d, positive: f.positive ?? false };
+        if (e.wb_manual) return m; // don't clobber a deliberate WB set meanwhile
+        return { ...m, [id]: { ...e, temp: wb.temp, tint: wb.tint } };
+      });
+      invalidatePreview(id);
+      wbSeeded.add(id);
+    } catch { /* not resident yet — retry on the next Develop entry */ }
+  }
 }
 
 /**

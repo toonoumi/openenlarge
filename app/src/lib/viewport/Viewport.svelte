@@ -425,11 +425,18 @@
   }
 
   // Resolve inversion params (+ sampled base) into GPU uniforms — no fetch of pixels.
+  // Latest-wins: each call takes a monotonic token; a slower stale resolve (e.g. the
+  // mount-time default-WB call, which is slow on first entry because the backend must
+  // ensure_resident/reload the freshly-developed image) must NOT overwrite the gains
+  // from a newer call that resolved first. Without this the default temp/tint (neutral
+  // wb = [1,1,1]) lands last and leaves the frame on a blue cast until a re-render.
+  let invSeq = 0;
   async function refreshInversion() {
     if (!gpuEligible || !id || !renderer) return;
     const curId = id;
+    const myseq = ++invSeq;
     const res = await api.resolvedInversion(id, params);
-    if (id !== curId || !renderer) return;
+    if (myseq !== invSeq || id !== curId || !renderer) return; // superseded by a newer resolve
     renderer.setInversion(toInversionUniforms(res));
   }
 

@@ -8,7 +8,7 @@
   import { createPreviewPrefetcher } from "../develop/previewPrefetch";
   import { imageDir } from "../library/folderScope";
   import { withEffectiveBase } from "../develop/base";
-  import { mergeEnsured } from "../workflow";
+  import { mergeEnsured, seedFolderWb } from "../workflow";
   import { api } from "../api";
   import Filmstrip from "../panels/Filmstrip.svelte";
   import ImageContextMenu from "../overlay/ImageContextMenu.svelte";
@@ -55,6 +55,10 @@
       const { id, spots } = e.payload;
       autodustSpotsById.update((m) => ({ ...m, [id]: (spots ?? []).map(([x, y]) => ({ x, y })) }));
     }).then((u) => { un = u; });
+    // Balance the whole roll's WB up front so every frame opens correct — not just the
+    // active one (Develop's per-image seed only touches the active frame). One-time per
+    // id; skips frames the user has already balanced or edited.
+    seedFolderWb();
     return () => { prefetcher.stop(); un?.(); };
   });
 
