@@ -1,5 +1,6 @@
 mod manifest;
 mod run;
+mod wedge;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
