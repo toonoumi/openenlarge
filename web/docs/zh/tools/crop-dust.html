@@ -1,0 +1,146 @@
+<!-- AUTO-GENERATED from /docs-src — do not edit by hand. Run python3 scripts/gen-docs.py -->
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>裁剪与除尘 — OpenEnlarge Docs</title>
+<meta name="description" content="裁剪、旋转、校正与翻转；以及除尘除痕 —— 手动橡皮擦、红外除尘与本地 AI 修复。">
+<meta name="theme-color" content="#0a0a0c">
+<link rel="icon" href="../../../img/favicon.png">
+<link rel="canonical" href="https://openenlarge.io/docs/zh/tools/crop-dust.html">
+<link rel="alternate" hreflang="en" href="https://openenlarge.io/docs/tools/crop-dust.html">
+<link rel="alternate" hreflang="zh-Hans" href="https://openenlarge.io/docs/zh/tools/crop-dust.html">
+<link rel="alternate" hreflang="x-default" href="https://openenlarge.io/docs/tools/crop-dust.html">
+<meta property="og:type" content="article"><meta property="og:title" content="裁剪与除尘 — OpenEnlarge Docs"><meta property="og:description" content="裁剪、旋转、校正与翻转；以及除尘除痕 —— 手动橡皮擦、红外除尘与本地 AI 修复。"><meta property="og:url" content="https://openenlarge.io/docs/zh/tools/crop-dust.html"><meta name="twitter:card" content="summary">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "裁剪与除尘", "description": "裁剪、旋转、校正与翻转；以及除尘除痕 —— 手动橡皮擦、红外除尘与本地 AI 修复。", "inLanguage": "zh-Hans", "url": "https://openenlarge.io/docs/zh/tools/crop-dust.html", "isPartOf": {"@type": "WebSite", "name": "OpenEnlarge", "url": "https://openenlarge.io"}}</script>
+<link rel="stylesheet" href="../../docs.css">
+</head>
+<body>
+<a class="skip" href="#content">跳到正文</a>
+<nav class="docnav"><div class="navbar glass wrap">
+  <a class="brand" href="../../../index.html"><img class="mark" src="../../../img/icon.png" alt=""> OpenEnlarge <span class="brand-docs">文档</span></a>
+  <button class="menu-btn" id="menu-btn" type="button" aria-label="菜单" aria-expanded="false">☰</button>
+  <div class="navlinks">
+    <a href="../../../index.html">主页</a>
+    <a href="https://github.com/mohaelder/openenlarge">GitHub</a>
+    <a class="lang-link" href="../../tools/crop-dust.html">EN</a>
+  </div>
+</div></nav>
+<div class="doclayout wrap">
+  <aside class="sidebar" id="sidebar"><div class="side-sec"><div class="side-h">概览</div>
+<a href="../index.html">文档</a>
+<a href="../workflow.html">工作流程</a>
+</div>
+<div class="side-sec"><div class="side-h">原理</div>
+<a href="../science/negatives.html">彩色负片的原理</a>
+<a href="../science/inversion.html">反转流程</a>
+<a href="../science/density.html">密度与对数空间</a>
+<a href="../science/tone-curve.html">色调曲线（Faithful 风格）</a>
+<a href="../science/color.html">色彩与白平衡</a>
+<a href="../science/base-calibration.html">片基校准</a>
+</div>
+<div class="side-sec"><div class="side-h">工具</div>
+<a href="../tools/develop-basic.html">显影 · 基础</a>
+<a href="../tools/tune.html">微调</a>
+<a class="on" href="../tools/crop-dust.html">裁剪与除尘</a>
+</div></aside>
+  <main class="content" id="content">
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="../index.html">文档</a> <span class="sep">/</span> <span>裁剪与除尘</span></nav>
+    <article class="prose"><h1>裁剪与除尘</h1>
+<p class="lead">裁剪工具和橡皮擦工具以两个独立面板的形式位于显影工具栏。裁剪面板负责几何变换——纵横比、方向、90° 旋转、精细校正和翻转。橡皮擦面板负责瑕疵去除——手动修复笔刷、红外（IR）自动除尘、AI 修复（MI-GAN）以及本地 AI 灰尘与毛发检测。本页描述的所有功能均在本地运行；图像数据不会上传至任何地方。</p>
+
+<h2>裁剪与变换</h2>
+<p><strong>裁剪</strong>面板在点击显影工具栏中的裁剪工具后打开。图像上的裁剪框是实时的：拖动任意边或角可调整大小，拖动框内可平移。拖动时按住 <kbd>Shift</kbd> 可锁定纵横比。按 <kbd>Enter</kbd>（或点击框外）确认裁剪；按 <kbd>Esc</kbd> 放弃更改。</p>
+
+<p><strong>纵横比</strong>下拉菜单允许将裁剪框约束为固定比例。预设按胶片格式分组：</p>
+<ul>
+  <li><strong>原始</strong> —— 无约束，裁剪框可为任意形状（预设 id <code>"original"</code>，<code>ratio: null</code>）。</li>
+  <li><strong>135</strong> —— 36 × 24（3:2）。</li>
+  <li><strong>120</strong> —— 6 × 4.5（4:3）、6 × 6（1:1）、6 × 7、6 × 8、6 × 9。</li>
+  <li><strong>大画幅</strong> —— 4 × 5、5 × 7、8 × 10。</li>
+  <li><strong>屏幕 · 打印</strong> —— 1 × 1、16 × 9、16 × 10、8.5 × 11。</li>
+</ul>
+<p>选择预设后，裁剪框立即吸附到该比例。若随后手动调整框的大小，纵横比将变为 <code>"custom"</code>（仅在激活时显示于下拉菜单中）。保存在 <code>CropRect</code> 的 <code>aspect</code> 字段中（预设 id 字符串）。</p>
+
+<p><strong>方向</strong>按钮（横向/纵向图标）交换约束比例的宽高——例如将横向 3:2 的框切换为纵向 2:3。当前方向存储于 <code>CropRect</code> 的 <code>orientation: "landscape" | "portrait"</code> 字段。</p>
+
+<p><strong>变换</strong>行包含四个图标按钮：</p>
+<ul>
+  <li><strong>向左旋转</strong>（<kbd>⌘/Ctrl [</kbd>）—— 将图像逆时针旋转 90°。每次点击使 <code>rot90</code> 减 1（模 4）；范围为 0–3 个顺时针四分之一圈。</li>
+  <li><strong>向右旋转</strong>（<kbd>⌘/Ctrl ]</kbd>）—— 顺时针旋转 90°，使 <code>rot90</code> 加 1（模 4）。</li>
+  <li><strong>水平翻转</strong> —— 将图像左右镜像，切换 <code>flipH</code>。</li>
+  <li><strong>垂直翻转</strong> —— 上下镜像，切换 <code>flipV</code>。</li>
+</ul>
+<p>翻转与旋转相互关联：后端按照翻转先于四分之一圈旋转的顺序执行（flip_h → flip_v → rot90 顺时针），因此对已旋转的图像进行翻转时会正确切换对应轴，不影响旋转计数。</p>
+
+<p><strong>校正</strong>滑块提供 −45° 至 +45° 的精细旋转调整，步进 0.1°，双击数值可重置为 0。该值存储于 <code>CropRect</code> 的 <code>angle</code> 字段。它以裁剪框中心为轴对源图像进行亚像素旋转，不影响裁剪框尺寸。</p>
+
+<p><strong>重置</strong>按钮将所有裁剪设置清除为全帧原始状态：<code>rect</code> 恢复为 <code>{x:0, y:0, w:1, h:1}</code>，<code>rot90</code> 归零，<code>flipH</code>/<code>flipV</code> 设为 false，<code>angle</code> 清零，<code>aspect</code> 恢复为 <code>"original"</code>。不影响任何其他显影参数。</p>
+
+<p>每张图像写入磁盘的完整裁剪数据模型（<code>CropRect</code>）包含：<code>rect</code>（归一化矩形，<code>x</code>、<code>y</code>、<code>w</code>、<code>h</code> 各在 0–1 范围内）、<code>aspect</code>（预设 id 字符串）、<code>orientation</code>、<code>rot90</code>（0–3）、<code>flipH</code>（布尔值）、<code>flipV</code>（布尔值）和 <code>angle</code>（度数）。通过 <code>api.saveCrop()</code> 持久化。</p>
+
+<details class="hood"><summary>深入原理</summary><div class="hood-body">
+<p><strong>方向变换顺序（convert.rs）：</strong>后端方向处理流程为 flip_h → flip_v → rot90 顺时针四分之一圈旋转。前端 <code>transforms.ts</code> 与此保持一致，确保 GPU 预览覆盖层与渲染输出完全匹配。当 <code>rot90</code> 为奇数（1 或 3）时，在<em>显示视图</em>上沿某轴翻转，等价于在预旋转图像上沿<em>另一轴</em>翻转，因此 <code>flipOrient()</code> 同时对 <code>rot90 mod 4</code> 取反以保持显示裁剪框对齐：<code>rot90_new = (4 − rot90) % 4</code>，并切换对应的 <code>flipH</code>/<code>flipV</code> 标志。</p>
+<p><strong>归一化矩形数学：</strong><code>rotateRectCW(r)</code> 将 <code>{x, y, w, h}</code> 映射为 <code>{x: 1−y−h, y: x, w: h, h: w}</code>，<code>rotateRectCCW</code> 映射为 <code>{x: y, y: 1−x−w, w: h, h: w}</code>。校正 <code>angle</code> 以裁剪窗口采样前源图像中心为轴旋转，因此裁剪框始终对应旋转后的坐标空间。传递给后端的格式为：<code>image_crop: [x, y, w, h]</code>（归一化四元组）、<code>rot90</code>、<code>flip_h</code>、<code>flip_v</code> 和 <code>angle</code>。</p>
+</div></details>
+
+<h2>手动橡皮擦笔刷</h2>
+<p><strong>橡皮擦</strong>面板从显影工具栏打开。手动笔刷允许在单个灰尘斑点或划痕上涂抹，随即完成修复（或通过 MI-GAN——详见下文）。</p>
+
+<p><strong>笔刷大小</strong>滑块设置归一化到图像宽度的笔刷半径，范围 0.005（极小）至 0.2（大）。显示值为半径占图像宽度的百分比。也可在图像上滚动鼠标滚轮实时调整笔刷大小。每次点击或拖动记录一个 <code>DustStroke</code>：归一化点的折线加半径 <code>r</code>。按 <kbd>⌘Z</kbd>（macOS）撤销最后一笔。笔迹存储于 <code>DustEdits.strokes</code>，通过 <code>api.saveDust()</code> 持久化。</p>
+
+<p>在正常模式下，每次笔迹在松开指针时即在 GPU 预览中实时修复。修复区域以内容感知克隆算法根据周围纹理混合融合。</p>
+
+<p><strong>显示修复点</strong>复选框（字段 <code>showSpots</code>）在每个已提交笔迹的质心处显示橡皮擦图标标记，便于查看并点击删除单个斑点。点击标记可立即删除对应笔迹。</p>
+
+<p><strong>缩放到区域</strong>按钮启动框选缩放：在图像上拖动矩形可将该区域放大以便精细操作。放大后按钮变为<strong>重置视图</strong>以返回全图。</p>
+
+<p><strong>重置</strong>按钮清除所有手动笔迹（<code>DustEdits.strokes → []</code>）并重置 AI 已应用标志。不影响红外去除或自动除尘设置。</p>
+
+<details class="hood"><summary>深入原理</summary><div class="hood-body">
+<p><strong>笔迹模型（dust.ts）：</strong><code>DustStroke</code> 的结构为 <code>{ points: DustPoint[], r: number }</code>，其中每个 <code>DustPoint</code> 为 <code>{ x: number, y: number }</code>（在显示图像归一化坐标空间中，两轴均在 0–1 范围内），<code>r</code> 为归一化到显示图像宽度的笔刷半径。笔迹质心（<code>strokeCentroid()</code>）为所有点的算术平均值，作为修复点标记的锚点。传递给后端的格式：每条笔迹序列化为 <code>{ points: [[x,y], …], r }</code>（二元组，非对象），通过 <code>api.ts</code> 中的 <code>wireDust()</code> 处理。单点删除使用 <code>removeStrokeAt(dust, i)</code>，按索引过滤笔迹数组并清除 <code>aiApplied</code>，使待处理的 MI-GAN 蒙版须重新应用。屏幕像素半径 = <code>r × 图像宽度像素 × 缩放系数</code>。</p>
+</div></details>
+
+<h2>AI 填充（MI-GAN）</h2>
+<p>启用 <strong>AI 填充（MI-GAN）</strong>复选框后，笔刷切换为蒙版模式。笔迹不再实时修复，而是在图像上显示为半透明红色叠加层，精确标示将被修复的区域。满意后点击 <strong>AI 擦除</strong>运行 MI-GAN——一个机器修复模型，根据周围上下文重建蒙版区域的像素。该模型在本地运行，图像数据不会离开您的计算机。</p>
+
+<p><strong>AI 擦除</strong>按钮仅在存在未提交笔迹且当前蒙版尚未应用时可用。处理期间显示旋转指示器并标注"擦除中…"。运行成功后，<code>aiApplied</code> 置为 true，按钮变为非激活状态。添加或删除任意笔迹均会清除 <code>aiApplied</code> 并重新启用按钮，以便对新蒙版应用处理。撤销（<kbd>⌘Z</kbd>）会删除最后一笔并同时清除已应用标志。</p>
+
+<details class="hood"><summary>深入原理</summary><div class="hood-body">
+<p><strong>状态机（dust.ts）：</strong><code>DustEdits.brushMigan</code> 控制 GPU 预览是绘制实时修复还是蒙版叠加层。<code>addStroke()</code> 和 <code>undoStroke()</code> 均会重置 <code>aiApplied = false</code>，确保蒙版在更改后不会显示为"已完成"。"AI 擦除"分发 <code>aiErase</code> 事件，由父视图处理，向 MI-GAN 后端命令传入当前笔迹列表。<code>setBrushMigan()</code> 在模式切换时也会清除 <code>aiApplied</code>。</p>
+</div></details>
+
+<h2>红外（IR）除尘</h2>
+<p>部分专用胶片扫描仪在 R、G、B 三通道之外还额外采集一个近红外通道。由于卤化银颗粒对红外光几乎透明，而灰尘和划痕会强烈散射红外光，因此该通道能以几乎不损失图像质量的方式提供近乎完美的除尘蒙版。</p>
+
+<p>当加载的扫描包含红外平面时，<strong>去除灰尘（红外）</strong>开关可用。点击可开启或关闭红外除尘；当前状态以"开"或"关"标签显示在旁边。红外除尘激活时，<strong>灵敏度</strong>滑块（0–100，默认 50）控制将红外通道用作蒙版的激进程度。值越高去除越多（包括更细小的灰尘），但存在截断颗粒级真实细节的风险；值越低则越保守。两个字段均存储于 <code>DustEdits.irRemoval</code>（<code>enabled</code> 和 <code>sensitivity</code>），并作为 <code>irRemoval</code> 参数传递给后端渲染。</p>
+
+<p>当扫描没有红外通道时，按钮被禁用并显示"即将推出"标签（提示文字为"需要红外扫描通道"）。红外除尘依赖扫描仪：支持 ICE 功能的尼康 Coolscan 及美能达 Scan Multi 扫描仪可生成含红外通道的 TIFF 文件；大多数平台式扫描仪和数码单反扫描不具备此功能。</p>
+
+<details class="hood"><summary>深入原理</summary><div class="hood-body">
+<p><strong>传输格式（api.ts）：</strong>红外状态通过 <code>irRemoval: IrRemoval</code> 参数（<code>{ enabled: boolean, sensitivity: number }</code>）传递给每次渲染调用。后端将红外平面用作修复合成的 Alpha 蒙版，根据红外信号强度按灵敏度值缩放，对重建（无尘）像素与原始像素进行混合。<code>EraserPanel</code> 上的 <code>hasIr</code> 属性由父视图在探测已加载图像的通道数后设置。</p>
+</div></details>
+
+<h2>AI 灰尘与毛发自动去除</h2>
+<p><strong>AI 灰尘与毛发去除</strong>子面板运行本地机器学习检测器，自动查找整张图像中的灰尘斑点和毛发，然后使用与手动 AI 填充相同的 MI-GAN 模型进行修复。所有处理均在本地完成——模型下载一次后存储在您的设备上，图像不会上传。</p>
+
+<p>首次打开此面板时，OpenEnlarge 会检查 AI 模型是否已安装。若未安装，将显示下载提示及大致模型大小（MB）。点击<strong>下载 AI 模型</strong>进行下载，进度条实时显示进度。安装完成后，面板显示<strong>灵敏度</strong>滑块（0–100，默认 50）和<strong>检测并去除</strong>按钮。</p>
+
+<p><strong>灵敏度</strong>滑块控制检测器将像素标记为瑕疵的激进程度。值越高，检测到的斑点越多、越小；值越低，仅标记明显瑕疵。滑块在松开指针时提交（非拖动过程中），触发检测和修复的重新运行。灵敏度存储于 <code>DustEdits.autoDust.sensitivity</code>。</p>
+
+<p>点击<strong>检测并去除</strong>对当前图像运行完整的检测与修复流程。处理期间按钮显示旋转指示器并被禁用。完成后，提示消息报告去除的不重复斑点数量（若图像干净则提示"未发现灰尘"）。切换状态 <code>DustEdits.autoDust.enabled</code> 控制自动修复是否在主预览中显示。自动检测到但希望保留的斑点，可在"显示修复点"叠加层中点击排除——这些排除项存储于 <code>DustEdits.autoDustExclusions</code>。</p>
+
+<details class="hood"><summary>深入原理</summary><div class="hood-body">
+<p><strong>API（api.ts）：</strong><code>api.autodustStatus()</code> 返回 <code>{ installed: boolean, downloadBytes: number }</code>。<code>api.downloadAutodust()</code> 触发模型下载；进度通过 Tauri 事件 <code>autodust://download-progress</code>（<code>{ received, total }</code> 字节）流式传输。检测运行完成后，后端发出 <code>autodust://result</code>，携带 <code>{ count: number }</code>——去除的不重复斑点数。<code>autodustInstalled</code> store（<code>store.ts</code>）在面板挂载间缓存安装状态，避免下载提示重复出现。<code>DustEdits</code> 中的自动除尘状态：<code>autoDust: { enabled: boolean, sensitivity: number }</code>；排除点：<code>autoDustExclusions: DustPoint[]</code>（每个为归一化 <code>{ x, y }</code> 质心，通过 <code>addExclusion()</code> 添加）。</p>
+</div></details>
+
+<p class="next"><a href="ai.html">下一篇：AI 增强 →</a></p>
+</article>
+    <footer class="docfoot">OpenEnlarge —— 开源胶片扫描编辑器 · MIT 许可</footer>
+  </main>
+  <aside class="toc" id="toc" aria-label="本页目录"><div class="toc-title">本页目录</div><div id="toc-list"></div></aside>
+</div>
+<script src="../../docs.js" defer></script>
+</body>
+</html>
