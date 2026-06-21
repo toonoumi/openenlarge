@@ -1,0 +1,28 @@
+<h1>Film-base calibration</h1>
+<p class="lead">Accurate inversion starts with an accurate base. The orange film base is not just background color — it encodes the dye couplers' built-in correction mask, and a wrong base reading is the most common cause of a color cast in the finished positive.</p>
+
+<figure><!--FIG:orange-mask--><figcaption>The orange mask is the reference: OpenEnlarge samples it from the clear film edge, divides it out of the raw scan, and then takes the log — this is how the neutral density value for each pixel is established.</figcaption></figure>
+
+<h2>Sampling the base</h2>
+<p>OpenEnlarge offers two strategies for measuring the base color from the clear film edge or a selected region:</p>
+<ul>
+  <li><strong>Default (robust per-channel)</strong> — the engine computes the <strong>~95th percentile</strong> of pixel values independently for each color channel. Working at the high end of the distribution means a few dust specks or scratches on the leader cannot drag the sample low and introduce a cast. Each channel is sampled separately, so the measured base faithfully tracks the exact orange tint of this particular roll.</li>
+  <li><strong>Coherent mode</strong> — instead of sampling each channel independently, the engine picks a luminance band and averages a single real RGB color from pixels that fall within it. Treating all channels together means the sampled color stays on the actual orange-mask locus even when the sampled region contains a colorful scene element. Use coherent mode when the default per-channel estimate produces a subtle cross-channel cast — for instance when shooting through a subject that overlaps the edge strip.</li>
+</ul>
+
+<h2>Per roll, not per frame</h2>
+<p>The orange mask is a property of the film emulsion and the development chemistry, not of any individual frame. All frames on a roll share the same base color. For this reason, OpenEnlarge encourages you to set the base <em>once per roll or folder</em> and reuse it: use <a href="../tools/develop-basic.html">the film-edge picker</a> to sample the clear leader at the beginning of the strip, then apply that reading to every frame. Re-sampling frame by frame is rarely necessary and can introduce subtle inconsistencies if the sampled region contains subject matter rather than clear film.</p>
+<p>If a roll looks consistently warm or cool after inversion, the first thing to check is whether the base sample was taken from truly clear, unexposed leader. A sample taken from an overexposed frame or a colored frame edge will skew every subsequent inversion on that roll.</p>
+
+<h2>The white point</h2>
+<p>Alongside the base color, the engine also establishes <strong>d_max</strong> — the maximum density on the roll — from the densest sampled area of clear film (the fully transparent leader or rebate). This value anchors the white point: a pixel at d_max density is mapped to paper white in the positive.</p>
+<p>Cropping changes what the engine sees as the densest area. If you crop tightly and exclude the original clear-leader region, the engine re-analyses the remaining pixels to find d_max. Re-analyzing after a crop ensures that the highlights in the cropped image remain correctly placed — the white point does not drift. You do not need to resample the base manually after a crop; the engine handles it automatically.</p>
+
+<details class="hood"><summary>Under the hood</summary><div class="hood-body">
+<p><strong>Density formula:</strong> density is computed as <span class="formula">D = log₁₀(base / scan)</span> — the base is divided out of the raw scan value before the logarithm is taken. Dividing cancels the mask and leaves the net dye density for each channel.</p>
+<p><strong>Default sampling:</strong> for each of the three channels the engine finds the ~<strong>95th percentile</strong> value across the sampled pixels. Using a high percentile rather than the maximum protects against bright dust specks; using a per-channel value allows the sampled color to follow the exact tint of the roll without assuming a fixed orange ratio.</p>
+<p><strong>Coherent sampling:</strong> pixels within a narrow luminance band (typically near the high end of the luminance histogram in the sampled region) are averaged together as a single RGB triplet. Because all three channels are averaged from the same set of pixels, the resulting color lies on the orange-mask locus and avoids the per-channel independence that can produce subtle casts when colorful content appears in the sampled region.</p>
+<p><strong>d_max:</strong> the engine records the <em>densest</em> sampled area of clear film as d_max — equivalently, the pixel with the highest raw value in the clear region. After a crop, the engine re-derives d_max from whatever region of clear film remains visible, keeping the white point stable.</p>
+</div></details>
+
+<p class="next"><a href="../tools/develop-basic.html">Next: the Develop tool →</a></p>

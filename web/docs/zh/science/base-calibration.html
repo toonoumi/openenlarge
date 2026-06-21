@@ -1,0 +1,98 @@
+<!-- AUTO-GENERATED from /docs-src — do not edit by hand. Run python3 scripts/gen-docs.py -->
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>片基校准 — OpenEnlarge Docs</title>
+<meta name="description" content="OpenEnlarge 如何按卷采样橙色片基并确定白点，以及如何手动重新校准。">
+<meta name="theme-color" content="#0a0a0c">
+<link rel="icon" href="../../../img/favicon.png">
+<link rel="canonical" href="https://openenlarge.io/docs/zh/science/base-calibration.html">
+<link rel="alternate" hreflang="en" href="https://openenlarge.io/docs/science/base-calibration.html">
+<link rel="alternate" hreflang="zh-Hans" href="https://openenlarge.io/docs/zh/science/base-calibration.html">
+<link rel="alternate" hreflang="x-default" href="https://openenlarge.io/docs/science/base-calibration.html">
+<meta property="og:type" content="article"><meta property="og:title" content="片基校准 — OpenEnlarge Docs"><meta property="og:description" content="OpenEnlarge 如何按卷采样橙色片基并确定白点，以及如何手动重新校准。"><meta property="og:url" content="https://openenlarge.io/docs/zh/science/base-calibration.html"><meta property="og:image" content="https://openenlarge.io/docs/og/cover.png"><meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "片基校准", "description": "OpenEnlarge 如何按卷采样橙色片基并确定白点，以及如何手动重新校准。", "inLanguage": "zh-Hans", "url": "https://openenlarge.io/docs/zh/science/base-calibration.html", "isPartOf": {"@type": "WebSite", "name": "OpenEnlarge", "url": "https://openenlarge.io"}}</script>
+<link rel="stylesheet" href="../docs.css">
+</head>
+<body>
+<a class="skip" href="#content">跳到正文</a>
+<nav class="docnav"><div class="navbar glass wrap">
+  <a class="brand" href="../../../index.html"><img class="mark" src="../../../img/icon.png" alt=""> OpenEnlarge <span class="brand-docs">文档</span></a>
+  <button class="menu-btn" id="menu-btn" type="button" aria-label="菜单" aria-expanded="false">☰</button>
+  <div class="navlinks">
+    <a href="../../../index.html">主页</a>
+    <a href="https://github.com/mohaelder/openenlarge">GitHub</a>
+    <a class="lang-link" href="../../science/base-calibration.html">EN</a>
+  </div>
+</div></nav>
+<div class="doclayout wrap">
+  <aside class="sidebar" id="sidebar"><div class="side-sec"><div class="side-h">概览</div>
+<a href="../index.html">文档</a>
+<a href="../workflow.html">工作流程</a>
+</div>
+<div class="side-sec"><div class="side-h">原理</div>
+<a href="../science/negatives.html">彩色负片的原理</a>
+<a href="../science/inversion.html">反转流程</a>
+<a href="../science/density.html">密度与对数空间</a>
+<a href="../science/tone-curve.html">色调曲线（Faithful 风格）</a>
+<a href="../science/color.html">色彩与白平衡</a>
+<a class="on" href="../science/base-calibration.html">片基校准</a>
+</div></aside>
+  <main class="content" id="content">
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="../index.html">文档</a> <span class="sep">/</span> <span>片基校准</span></nav>
+    <article class="prose"><h1>片基校准</h1>
+<p class="lead">精确的反转始于精确的片基。橙色片基不只是背景颜色——它承载着染料耦合剂的内置修正掩模，而错误的片基读数是成品正片出现色偏的最常见原因。</p>
+
+<figure><svg viewBox="0 0 640 280" role="img" aria-label="Spectral transmission of the orange film base: red high, green medium, blue low" xmlns="http://www.w3.org/2000/svg">
+  <rect width="640" height="280" rx="12" fill="#141418"/>
+  <g font-family="ui-monospace,monospace" font-size="12" fill="#9a9aa2">
+    <text x="20" y="26">Orange-mask transmission (relative)</text>
+    <line x1="60" y1="230" x2="600" y2="230" stroke="#3a3a42"/>
+    <line x1="60" y1="40" x2="60" y2="230" stroke="#3a3a42"/>
+  </g>
+  <g>
+    <rect x="120" y="70" width="90" height="160" rx="6" fill="#e0573a"/>
+    <rect x="290" y="135" width="90" height="95" rx="6" fill="#6fae5a"/>
+    <rect x="460" y="180" width="90" height="50" rx="6" fill="#5a78c8"/>
+  </g>
+  <g font-family="ui-monospace,monospace" font-size="13" fill="#e8e8ea" text-anchor="middle">
+    <text x="165" y="252">R</text>
+    <text x="335" y="252">G</text>
+    <text x="505" y="252">B</text>
+  </g>
+</svg>
+<figcaption>橙色掩模是参考基准：OpenEnlarge 从胶片的透明边缘采样该掩模，将其从原始扫描数据中除去，然后再取对数——这就是确定每个像素中性密度值的方式。</figcaption></figure>
+
+<h2>采样片基</h2>
+<p>OpenEnlarge 提供两种从透明片边或所选区域测量片基颜色的方式：</p>
+<ul>
+  <li><strong>默认模式（各通道独立稳健采样）</strong>——引擎对每个颜色通道独立计算像素值的 <strong>约第 95 百分位</strong>。取分布高端的值意味着片头上少量灰尘或划痕不会将采样值拉低并引入色偏。各通道分别采样，使测得的片基能忠实追踪该卷胶片特有的橙色偏色。</li>
+  <li><strong>相干模式</strong>——与其各通道独立采样，引擎改为选取一个亮度带，并将落在该亮度带内的像素取平均，得到一个统一的 RGB 色彩。由于三个通道来自同一组像素，采样所得颜色始终位于真实的橙色掩模轨迹上，即便采样区域内含有色彩鲜艳的场景元素也不例外。当默认的各通道采样产生细微的通道间色偏时——例如拍摄主体与片边重叠——可改用相干模式。</li>
+</ul>
+
+<h2>按卷采样，而非按帧</h2>
+<p>橙色掩模是胶片乳剂与冲洗化学过程的特性，而非某一具体画面的特性。同一卷胶片上的所有画面共享相同的片基颜色。因此，OpenEnlarge 建议<em>每卷或每个文件夹</em>只设定一次片基并复用：使用<a href="../tools/develop-basic.html">片边拾取工具</a>从片条开头的透明片头采样，然后将该读数应用于每一帧。逐帧重新采样很少必要，若采样区域含有实际画面内容而非透明胶片，还会引入细微的不一致。</p>
+<p>若一卷胶片反转后整体偏暖或偏冷，首先应检查片基采样是否来自真正透明、未曝光的片头。从过曝画面或带有颜色的片边采样，会使该卷所有后续反转都产生偏色。</p>
+
+<h2>白点</h2>
+<p>除片基颜色外，引擎还会从透明胶片（完全透明的片头或边框）的最高密度采样区域确定 <strong>d_max</strong>——即该卷的最大密度值。这一数值锚定白点：密度等于 d_max 的像素在正片中映射为纸白。</p>
+<p>裁切会改变引擎所能见到的最高密度区域。若裁切较紧，将原始透明片头区域排除在外，引擎会对剩余像素重新分析以确定 d_max。裁切后重新分析可确保裁切图像中的高光位置保持正确——白点不会漂移。裁切后无需手动重新采样片基，引擎会自动处理。</p>
+
+<details class="hood"><summary>深入原理</summary><div class="hood-body">
+<p><strong>密度公式：</strong>密度计算为 <span class="formula">D = log₁₀(base / scan)</span>——在取对数之前，先将片基从原始扫描值中除去。相除消除了掩模，留下每个通道的净染料密度。</p>
+<p><strong>默认采样：</strong>引擎对三个通道分别在采样像素中取约 <strong>第 95 百分位</strong> 值。使用高百分位而非最大值，可防止明亮灰尘点的干扰；逐通道独立取值，则允许采样颜色跟随该卷胶片的精确偏色，而无需假设固定的橙色比例。</p>
+<p><strong>相干采样：</strong>将亮度直方图高端附近一个窄亮度带内的像素作为单一 RGB 三元组取平均。由于三个通道均来自同一组像素，所得颜色位于橙色掩模轨迹上，避免了各通道独立采样在采样区域含有色彩内容时可能产生的细微色偏。</p>
+<p><strong>d_max：</strong>引擎将透明胶片采样区域中<em>密度最高</em>的区域（即透明区域中原始值最高的像素）记录为 d_max。裁切后，引擎从剩余可见的透明胶片区域重新推导 d_max，以保持白点稳定。</p>
+</div></details>
+
+<p class="next"><a href="../tools/develop-basic.html">下一篇：显影工具 →</a></p>
+</article>
+    <footer class="docfoot">OpenEnlarge —— 开源胶片扫描编辑器 · MIT 许可</footer>
+  </main>
+  <aside class="toc" id="toc" aria-label="本页目录"><div class="toc-title">本页目录</div><div id="toc-list"></div></aside>
+</div>
+<script src="../docs.js" defer></script>
+</body>
+</html>
