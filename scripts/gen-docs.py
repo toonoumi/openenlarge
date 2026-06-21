@@ -37,9 +37,10 @@ def depth(slug):  # number of "../" hops from a page back to /docs/<locale>/ roo
     return slug.count("/")
 
 def sidebar_html(nav, strings, locale, active):
+    rset = set(renderable(nav))
     rows = []
     for sec in nav["sections"]:
-        pages = [s for s in sec["pages"] if s in renderable(nav)]
+        pages = [s for s in sec["pages"] if s in rset]
         if not pages: continue
         rows.append(f'<div class="side-sec"><div class="side-h">{html.escape(sec["title"][locale])}</div>')
         for slug in pages:
@@ -99,8 +100,6 @@ def render_page(nav, strings, slug, locale):
     root = "../" * depth(slug)               # back to /docs/<locale>/
     docsroot = root                          # docs.css/js live at locale root
     siteroot = "../" * (depth(slug) + (1 if locale == "en" else 2))  # back to /  (… /docs/ or /docs/zh/)
-    other = "zh" if locale == "en" else "en"
-    langhref = rel_href(slug, slug)  # same page; locale swap handled below
     # locale swap: replace leading ../ chain target with other-locale root
     langswitchhref = (("../" * depth(slug)) + ("zh/" if locale == "en" else "../")) + ("index.html" if slug=="index" else f"{slug}.html")
     repl = {
