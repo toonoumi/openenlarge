@@ -1,13 +1,12 @@
 <script lang="ts">
   import { get } from "svelte/store";
   import { t } from "$lib/i18n";
-  import { params, activeId, images, cropById, folderBaseByPath, baseSampling, sampledBase, sampledDmax, whitePointPinned, preReanalyze, developProgress } from "../store";
+  import { params, activeId, images, cropById, folderBaseByPath, baseSampling, sampledBase, sampledDmax, whitePointPinned, preReanalyze } from "../store";
   import { developedFolderImages } from "../export/eligible";
   import { applySelectedTo } from "./copySettings";
   import type { GroupSelection, SettingsSnapshot } from "../roll/apply";
   import ConfirmApplySettings from "../overlay/ConfirmApplySettings.svelte";
   import { api, defaultParams } from "../api";
-  import { autoBrightnessRoll } from "../workflow";
   import { reseedActive, commitActive } from "./historyStore";
   import { createSeedGuard } from "./seedGuard";
   import { withEffectiveBase } from "./base";
@@ -154,24 +153,6 @@
   }
 
   function autoWb() { seed($activeId, $params.stock, JSON.stringify(effBase), true); }
-
-  // Auto brightness (this image): solve the exposure that lands bright content on a
-  // balanced target via the highlight-preserving filmic curve, then commit it as a
-  // deliberate, undoable look change. Each image measures its own — see whole-roll below.
-  async function autoBrightness() {
-    const id = $activeId;
-    if (!id) return;
-    try {
-      const { exposure } = await api.autoBrightness(id, withEffectiveBase(get(params), dir), imageCrop, geom);
-      params.update((p) => ({ ...p, exposure }));
-      commitActive();
-    } catch { /* not developed yet */ }
-  }
-  // Auto brightness across every developed frame in the roll (per-image values).
-  function autoBrightnessAll() {
-    if ($developProgress.active) return;
-    autoBrightnessRoll();
-  }
 
   // As-shot neutral baseline for the Temp readout. Temp is shown as a relative ±
   // offset from this point (feedback I2: absolute Kelvin is meaningless to the user).
@@ -381,17 +362,6 @@
       <!-- Tone -->
       <div class="sub tonehead">
         <span>{$t('basic.tone')}</span>
-        <span class="wbbtns">
-          <!-- Auto brightness: solves a highlight-preserving exposure. Sparkles = this
-               image; "roll" = every developed frame, each with its own value. -->
-          <button class="auto" title={$t('basic.autoBrightnessTitle')} on:click={autoBrightness}>
-            <Icon name="sun" size={12} />{$t('basic.auto')}
-          </button>
-          <button class="auto roll" title={$t('basic.autoBrightnessAllTitle')}
-                  on:click={autoBrightnessAll} disabled={$developProgress.active}>
-            {$t('basic.autoBrightnessAll')}
-          </button>
-        </span>
       </div>
       <Slider label={$t('basic.exposure')} min={-5} max={5} step={0.01} bind:value={$params.exposure} def={0} format={ev} />
       <Slider label={$t('basic.brightness')} min={-100} max={100} bind:value={$params.brightness} def={0} format={signed} />
@@ -450,14 +420,7 @@
   /* Toggle-on state for .auto buttons (e.g. color-head toggle). */
   .auto.on { color: #fff; border-color: var(--accent); background: rgba(244,157,78,0.18); }
   .wbbtns { display: inline-flex; align-items: center; gap: 6px; }
-  /* Tone header carries the Auto-brightness buttons; .sub gives the label its caps,
-     so the buttons opt out of the inherited uppercase/tracking. */
   .tonehead { display: flex; justify-content: space-between; align-items: center; }
-  .tonehead .auto { display: inline-flex; align-items: center; gap: 4px;
-    padding: 2px 8px 2px 6px; text-transform: none; letter-spacing: 0; }
-  .tonehead .auto:hover { color: var(--text); border-color: var(--accent);
-    background: rgba(244,157,78,0.12); }
-  .tonehead .auto[disabled] { opacity: 0.5; cursor: default; }
   .wbdrop { display: inline-flex; align-items: center; justify-content: center;
     background: transparent; border: 1px solid var(--glass-brd); color: var(--text-dim);
     border-radius: 6px; padding: 2px 6px; cursor: pointer; }
