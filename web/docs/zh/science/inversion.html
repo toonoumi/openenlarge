@@ -1,0 +1,143 @@
+<!-- AUTO-GENERATED from /docs-src — do not edit by hand. Run python3 scripts/gen-docs.py -->
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>反转流程 — OpenEnlarge Docs</title>
+<meta name="description" content="从扫描负片到成品正片，逐级拆解：去除片基、对数密度、平衡、色调、风格、显示编码。">
+<meta name="theme-color" content="#0a0a0c">
+<link rel="icon" href="../../../img/favicon.png">
+<link rel="canonical" href="https://openenlarge.io/docs/zh/science/inversion.html">
+<link rel="alternate" hreflang="en" href="https://openenlarge.io/docs/science/inversion.html">
+<link rel="alternate" hreflang="zh-Hans" href="https://openenlarge.io/docs/zh/science/inversion.html">
+<link rel="alternate" hreflang="x-default" href="https://openenlarge.io/docs/science/inversion.html">
+<meta property="og:type" content="article"><meta property="og:title" content="反转流程 — OpenEnlarge Docs"><meta property="og:description" content="从扫描负片到成品正片，逐级拆解：去除片基、对数密度、平衡、色调、风格、显示编码。"><meta property="og:url" content="https://openenlarge.io/docs/zh/science/inversion.html"><meta property="og:image" content="https://openenlarge.io/docs/og/cover.png"><meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "反转流程", "description": "从扫描负片到成品正片，逐级拆解：去除片基、对数密度、平衡、色调、风格、显示编码。", "inLanguage": "zh-Hans", "url": "https://openenlarge.io/docs/zh/science/inversion.html", "isPartOf": {"@type": "WebSite", "name": "OpenEnlarge", "url": "https://openenlarge.io"}}</script>
+<link rel="stylesheet" href="../docs.css">
+</head>
+<body>
+<a class="skip" href="#content">跳到正文</a>
+<nav class="docnav"><div class="navbar glass wrap">
+  <a class="brand" href="../../../index.html"><img class="mark" src="../../../img/icon.png" alt=""> OpenEnlarge <span class="brand-docs">文档</span></a>
+  <button class="menu-btn" id="menu-btn" type="button" aria-label="菜单" aria-expanded="false">☰</button>
+  <div class="navlinks">
+    <a href="../../../index.html">主页</a>
+    <a href="https://github.com/mohaelder/openenlarge">GitHub</a>
+    <a class="lang-link" href="../../science/inversion.html">EN</a>
+  </div>
+</div></nav>
+<div class="doclayout wrap">
+  <aside class="sidebar" id="sidebar"><div class="side-sec"><div class="side-h">概览</div>
+<a href="../index.html">文档</a>
+<a href="../workflow.html">工作流程</a>
+</div>
+<div class="side-sec"><div class="side-h">原理</div>
+<a href="../science/negatives.html">彩色负片的原理</a>
+<a class="on" href="../science/inversion.html">反转流程</a>
+</div></aside>
+  <main class="content" id="content">
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="../index.html">文档</a> <span class="sep">/</span> <span>反转流程</span></nav>
+    <article class="prose"><h1>反转流程</h1>
+<p class="lead">每个像素都经历相同的逐通道处理链：八个阶段将原始扫描值转化为成品正片。理解每个阶段，就能明白每个滑块究竟在调什么。</p>
+
+<h2>1. 钳制与读取线性扫描值</h2>
+<p>流程从扫描仪输出的原始线性值开始 —— 这个数值与穿透胶片的光量成正比。在后续任何计算之前，数值先被钳制到有效范围；超出范围的数据会污染所有下游计算。</p>
+
+<h2>2. 去除片基</h2>
+<p>胶片的透明边缘并不是中性的 —— 它携带橙色片基。OpenEnlarge 对该橙色片基进行采样，再逐通道将其从每个像素中除去。这一步去掉了片基，仅保留图像的染料密度。参见<a href="base-calibration.html">片基校准</a>。</p>
+
+<h2>3. 转换为密度（对数域）</h2>
+<p>将片基值除以扫描值后取以 10 为底的对数，即可得到<strong>密度</strong>：<span class="formula">D = log₁₀(片基 / 扫描值)</span>。密度被钳制为不小于零，因此透明胶片读数为 D = 0（无染料）。在对数域中工作意味着等量的密度差对应等量的摄影档（stop）——这是胶片的自然单位。参见<a href="density.html">密度与对数域</a>。</p>
+
+<h2>4. 归一化到白点</h2>
+<p>找到负片中各通道的最大密度值 <code>d_max</code>，将密度除以它，即可将全部密度范围映射至 0 → 1：<span class="formula">t = D / d_max</span>。归一化后，<code>t = 0</code> 对应透明胶片（未来的纸基白），<code>t = 1</code> 对应最大密度（未来的深阴影）。</p>
+
+<h2>5. 平衡</h2>
+<p>白平衡将中性点移位，使场景中的灰卡在正片中呈现为灰色。OpenEnlarge 提供两种模式：曲线后的 von-Kries 增益（将各通道除以白点采样值），或模拟放大机彩色头的「减色头」模式 —— 在色调曲线之前对各通道密度施加增益，对应光学放大机的色彩控制方式。参见<a href="color.html">色彩与白平衡</a>。</p>
+
+<h2>6. 色调曲线</h2>
+<p>色调曲线将归一化密度 <code>t</code> 映射为显示亮度。Faithful 曲线采用固定比例的密度-亮度变换，伽马 ≈ 1.590，膝点 ≈ 0.892 以上渐近肩部，且采用与帧无关的密度比例，使整卷胶片的色调保持一致。参见<a href="tone-curve.html">色调曲线</a>。</p>
+
+<h2>7. 风格层</h2>
+<p>一条平缓的归一化 tanh S 形曲线增强中调对比度，并对高光部分进行柔和压缩，不产生过曝截断。风格层锚定在 0 → 0 和 1 → 1，因此不会移动黑点或白点 —— 仅重塑中间调。Faithful SDR 输出的强度固定为 2.0。</p>
+
+<h2>8. 显示编码</h2>
+<p>结果是一个 0–1 范围内的线性光值，可直接输出至屏幕。最终钳制去除超出色域的溢出值，随后将数值交由显示系统处理。流程中不额外应用伽马编码 —— 系统色彩栈会负责处理。</p>
+
+<figure><svg viewBox="0 0 920 160" role="img" aria-label="Eight-stage inversion pipeline: Scan, minus Base, log D, divide by d_max, Balance, Tone, Look, Display — each a rounded rectangle connected left to right by arrows" xmlns="http://www.w3.org/2000/svg">
+  <rect width="920" height="160" rx="12" fill="#141418"/>
+  <!-- Node definitions: x positions for 8 nodes spaced evenly across 920px with padding -->
+  <!-- Node width 80, gap 26, arrow 16 -->
+  <!-- Nodes at x: 12, 118, 224, 330, 436, 542, 648, 754 ; width 80, height 72, cy=44 -->
+  <g font-family="ui-monospace,monospace" font-size="13" fill="#e8e8ea" text-anchor="middle">
+    <!-- Node 1: Scan -->
+    <rect x="12" y="44" width="88" height="72" rx="8" fill="#1e1e26" stroke="#f49d4e" stroke-width="1.5"/>
+    <text x="56" y="83" font-size="12" fill="#f49d4e" font-weight="bold">Scan</text>
+    <text x="56" y="100" font-size="10" fill="#9a9aa2">linear</text>
+    <!-- Arrow 1→2 -->
+    <line x1="100" y1="80" x2="116" y2="80" stroke="#f49d4e" stroke-width="1.5"/>
+    <polygon points="116,76 124,80 116,84" fill="#f49d4e"/>
+    <!-- Node 2: − Base -->
+    <rect x="124" y="44" width="88" height="72" rx="8" fill="#1e1e26" stroke="#f49d4e" stroke-width="1.5"/>
+    <text x="168" y="83" font-size="12" fill="#f49d4e" font-weight="bold">− Base</text>
+    <text x="168" y="100" font-size="10" fill="#9a9aa2">÷ orange mask</text>
+    <!-- Arrow 2→3 -->
+    <line x1="212" y1="80" x2="228" y2="80" stroke="#f49d4e" stroke-width="1.5"/>
+    <polygon points="228,76 236,80 228,84" fill="#f49d4e"/>
+    <!-- Node 3: log D -->
+    <rect x="236" y="44" width="88" height="72" rx="8" fill="#1e1e26" stroke="#f49d4e" stroke-width="1.5"/>
+    <text x="280" y="83" font-size="12" fill="#f49d4e" font-weight="bold">log D</text>
+    <text x="280" y="100" font-size="10" fill="#9a9aa2">density domain</text>
+    <!-- Arrow 3→4 -->
+    <line x1="324" y1="80" x2="340" y2="80" stroke="#f49d4e" stroke-width="1.5"/>
+    <polygon points="340,76 348,80 340,84" fill="#f49d4e"/>
+    <!-- Node 4: ÷ d_max -->
+    <rect x="348" y="44" width="88" height="72" rx="8" fill="#1e1e26" stroke="#f49d4e" stroke-width="1.5"/>
+    <text x="392" y="83" font-size="12" fill="#f49d4e" font-weight="bold">÷ d_max</text>
+    <text x="392" y="100" font-size="10" fill="#9a9aa2">normalize t</text>
+    <!-- Arrow 4→5 -->
+    <line x1="436" y1="80" x2="452" y2="80" stroke="#f49d4e" stroke-width="1.5"/>
+    <polygon points="452,76 460,80 452,84" fill="#f49d4e"/>
+    <!-- Node 5: Balance -->
+    <rect x="460" y="44" width="88" height="72" rx="8" fill="#1e1e26" stroke="#f49d4e" stroke-width="1.5"/>
+    <text x="504" y="83" font-size="12" fill="#f49d4e" font-weight="bold">Balance</text>
+    <text x="504" y="100" font-size="10" fill="#9a9aa2">WB / color head</text>
+    <!-- Arrow 5→6 -->
+    <line x1="548" y1="80" x2="564" y2="80" stroke="#f49d4e" stroke-width="1.5"/>
+    <polygon points="564,76 572,80 564,84" fill="#f49d4e"/>
+    <!-- Node 6: Tone -->
+    <rect x="572" y="44" width="88" height="72" rx="8" fill="#1e1e26" stroke="#f49d4e" stroke-width="1.5"/>
+    <text x="616" y="83" font-size="12" fill="#f49d4e" font-weight="bold">Tone</text>
+    <text x="616" y="100" font-size="10" fill="#9a9aa2">gamma+shoulder</text>
+    <!-- Arrow 6→7 -->
+    <line x1="660" y1="80" x2="676" y2="80" stroke="#f49d4e" stroke-width="1.5"/>
+    <polygon points="676,76 684,80 676,84" fill="#f49d4e"/>
+    <!-- Node 7: Look -->
+    <rect x="684" y="44" width="88" height="72" rx="8" fill="#1e1e26" stroke="#f49d4e" stroke-width="1.5"/>
+    <text x="728" y="83" font-size="12" fill="#f49d4e" font-weight="bold">Look</text>
+    <text x="728" y="100" font-size="10" fill="#9a9aa2">S-curve</text>
+    <!-- Arrow 7→8 -->
+    <line x1="772" y1="80" x2="788" y2="80" stroke="#f49d4e" stroke-width="1.5"/>
+    <polygon points="788,76 796,80 788,84" fill="#f49d4e"/>
+    <!-- Node 8: Display -->
+    <rect x="796" y="44" width="112" height="72" rx="8" fill="#1e1e26" stroke="#f49d4e" stroke-width="1.5"/>
+    <text x="852" y="83" font-size="12" fill="#f49d4e" font-weight="bold">Display</text>
+    <text x="852" y="100" font-size="10" fill="#9a9aa2">clamp → screen</text>
+  </g>
+</svg>
+<figcaption>从左至右的八阶段反转链。每个像素的每个通道都按顺序经过所有阶段。</figcaption></figure>
+
+<details class="hood"><summary>深入原理</summary><div class="hood-body">
+<p>密度公式为 <span class="formula">D = log₁₀(片基 / 扫描值)</span>，钳制为 ≥ 0；一个密度单位约等于 3.32 摄影档。白点归一化为 <span class="formula">t = D / d_max</span>，其中 <code>d_max</code> 为帧内各通道的最大密度值。Faithful 色调曲线使用固定密度比例 <code>FAITHFUL_SCALE = 1 / 0.700 ≈ 1.429</code>：该比例在曲线前施加于原始密度，使其与帧无关 —— 整卷胶片每一帧的色调完全一致。伽马 ≈ 1.590，膝点 ≈ 0.892 以上渐近肩部。风格 S 形曲线为强度 2.0 的归一化 tanh，锚定 0 → 0 和 1 → 1。曝光为以黑点为支点的对数域乘法（每单位约 1 档/EV）。CPU 路径与 GPU（Metal）路径执行完全相同的数学运算，因此应用内的实时预览与导出文件精确一致。</p>
+</div></details>
+
+<p class="next"><a href="density.html">下一篇：密度与对数域 →</a></p>
+</article>
+    <footer class="docfoot">OpenEnlarge —— 开源胶片扫描编辑器 · MIT 许可</footer>
+  </main>
+  <aside class="toc" id="toc" aria-label="本页目录"><div class="toc-title">本页目录</div><div id="toc-list"></div></aside>
+</div>
+<script src="../docs.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,61 @@
+<svg viewBox="0 0 920 160" role="img" aria-label="Eight-stage inversion pipeline: Scan, minus Base, log D, divide by d_max, Balance, Tone, Look, Display — each a rounded rectangle connected left to right by arrows" xmlns="http://www.w3.org/2000/svg">
+  <rect width="920" height="160" rx="12" fill="#141418"/>
+  <!-- Node definitions: x positions for 8 nodes spaced evenly across 920px with padding -->
+  <!-- Node width 80, gap 26, arrow 16 -->
+  <!-- Nodes at x: 12, 118, 224, 330, 436, 542, 648, 754 ; width 80, height 72, cy=44 -->
+  <g font-family="ui-monospace,monospace" font-size="13" fill="#e8e8ea" text-anchor="middle">
+    <!-- Node 1: Scan -->
+    <rect x="12" y="44" width="88" height="72" rx="8" fill="#1e1e26" stroke="#f49d4e" stroke-width="1.5"/>
+    <text x="56" y="83" font-size="12" fill="#f49d4e" font-weight="bold">Scan</text>
+    <text x="56" y="100" font-size="10" fill="#9a9aa2">linear</text>
+    <!-- Arrow 1→2 -->
+    <line x1="100" y1="80" x2="116" y2="80" stroke="#f49d4e" stroke-width="1.5"/>
+    <polygon points="116,76 124,80 116,84" fill="#f49d4e"/>
+    <!-- Node 2: − Base -->
+    <rect x="124" y="44" width="88" height="72" rx="8" fill="#1e1e26" stroke="#f49d4e" stroke-width="1.5"/>
+    <text x="168" y="83" font-size="12" fill="#f49d4e" font-weight="bold">− Base</text>
+    <text x="168" y="100" font-size="10" fill="#9a9aa2">÷ orange mask</text>
+    <!-- Arrow 2→3 -->
+    <line x1="212" y1="80" x2="228" y2="80" stroke="#f49d4e" stroke-width="1.5"/>
+    <polygon points="228,76 236,80 228,84" fill="#f49d4e"/>
+    <!-- Node 3: log D -->
+    <rect x="236" y="44" width="88" height="72" rx="8" fill="#1e1e26" stroke="#f49d4e" stroke-width="1.5"/>
+    <text x="280" y="83" font-size="12" fill="#f49d4e" font-weight="bold">log D</text>
+    <text x="280" y="100" font-size="10" fill="#9a9aa2">density domain</text>
+    <!-- Arrow 3→4 -->
+    <line x1="324" y1="80" x2="340" y2="80" stroke="#f49d4e" stroke-width="1.5"/>
+    <polygon points="340,76 348,80 340,84" fill="#f49d4e"/>
+    <!-- Node 4: ÷ d_max -->
+    <rect x="348" y="44" width="88" height="72" rx="8" fill="#1e1e26" stroke="#f49d4e" stroke-width="1.5"/>
+    <text x="392" y="83" font-size="12" fill="#f49d4e" font-weight="bold">÷ d_max</text>
+    <text x="392" y="100" font-size="10" fill="#9a9aa2">normalize t</text>
+    <!-- Arrow 4→5 -->
+    <line x1="436" y1="80" x2="452" y2="80" stroke="#f49d4e" stroke-width="1.5"/>
+    <polygon points="452,76 460,80 452,84" fill="#f49d4e"/>
+    <!-- Node 5: Balance -->
+    <rect x="460" y="44" width="88" height="72" rx="8" fill="#1e1e26" stroke="#f49d4e" stroke-width="1.5"/>
+    <text x="504" y="83" font-size="12" fill="#f49d4e" font-weight="bold">Balance</text>
+    <text x="504" y="100" font-size="10" fill="#9a9aa2">WB / color head</text>
+    <!-- Arrow 5→6 -->
+    <line x1="548" y1="80" x2="564" y2="80" stroke="#f49d4e" stroke-width="1.5"/>
+    <polygon points="564,76 572,80 564,84" fill="#f49d4e"/>
+    <!-- Node 6: Tone -->
+    <rect x="572" y="44" width="88" height="72" rx="8" fill="#1e1e26" stroke="#f49d4e" stroke-width="1.5"/>
+    <text x="616" y="83" font-size="12" fill="#f49d4e" font-weight="bold">Tone</text>
+    <text x="616" y="100" font-size="10" fill="#9a9aa2">gamma+shoulder</text>
+    <!-- Arrow 6→7 -->
+    <line x1="660" y1="80" x2="676" y2="80" stroke="#f49d4e" stroke-width="1.5"/>
+    <polygon points="676,76 684,80 676,84" fill="#f49d4e"/>
+    <!-- Node 7: Look -->
+    <rect x="684" y="44" width="88" height="72" rx="8" fill="#1e1e26" stroke="#f49d4e" stroke-width="1.5"/>
+    <text x="728" y="83" font-size="12" fill="#f49d4e" font-weight="bold">Look</text>
+    <text x="728" y="100" font-size="10" fill="#9a9aa2">S-curve</text>
+    <!-- Arrow 7→8 -->
+    <line x1="772" y1="80" x2="788" y2="80" stroke="#f49d4e" stroke-width="1.5"/>
+    <polygon points="788,76 796,80 788,84" fill="#f49d4e"/>
+    <!-- Node 8: Display -->
+    <rect x="796" y="44" width="112" height="72" rx="8" fill="#1e1e26" stroke="#f49d4e" stroke-width="1.5"/>
+    <text x="852" y="83" font-size="12" fill="#f49d4e" font-weight="bold">Display</text>
+    <text x="852" y="100" font-size="10" fill="#9a9aa2">clamp → screen</text>
+  </g>
+</svg>
