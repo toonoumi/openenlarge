@@ -14,6 +14,7 @@ window.OE = (function () {
       "nav.roadmap": "Roadmap",
       "nav.download": "Download",
       "nav.blog": "Blog",
+      "nav.docs": "Docs",
       "nav.cta": "Download",
 
       "blog.metaTitle": "Blog — OpenEnlarge",
@@ -121,6 +122,7 @@ window.OE = (function () {
       "nav.roadmap": "路线图",
       "nav.download": "下载",
       "nav.blog": "博客",
+      "nav.docs": "文档",
       "nav.cta": "下载",
 
       "blog.metaTitle": "博客 — OpenEnlarge",
