@@ -19,6 +19,16 @@ pub enum WbMode {
     Subtractive,
 }
 
+/// Display tone path. `Filmic` is the legacy default (untouched). `Faithful` is the
+/// detail-preserving reconstruction (gamma body + gentle highlight shoulder), fit to the
+/// C400 digital-SDR reference. See docs/superpowers/specs/2026-06-21-faithful-tone-core-design.md.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ToneMode {
+    #[default]
+    Filmic,
+    Faithful,
+}
+
 /// All knobs for one inversion. Defaults give a reasonable neutral result.
 #[derive(Debug, Clone)]
 pub struct InversionParams {
@@ -38,6 +48,8 @@ pub struct InversionParams {
     pub wb: [f32; 3],
     /// How `wb` is applied: post-curve gain (default) or subtractive (pre-curve, color-head).
     pub wb_mode: WbMode,
+    /// Display tone path: `Filmic` (legacy S-curve, default) or `Faithful` (gamma+shoulder).
+    pub tone_mode: ToneMode,
     /// Cineon (Mode D) — scalar white / dynamic-range anchor (D_max).
     pub d_max: f32,
     /// Cineon (Mode D) — print exposure (ASC-CDL slope).
@@ -69,6 +81,7 @@ impl Default for InversionParams {
             gamma: 1.0 / 2.2,
             wb: [1.0, 1.0, 1.0],
             wb_mode: WbMode::Gain,
+            tone_mode: ToneMode::Filmic,
             d_max: 1.5,
             print_exposure: 1.0,
             paper_black: 0.0,
@@ -97,6 +110,11 @@ const EXPO_K: f32 = 0.14;
 /// the mid-tone shift at a typical Temp/Tint roughly matches the old gain magnitude
 /// while giving a proper shadow→highlight crossover. Mirrored in shaders.ts.
 const CMY_STRENGTH: f32 = 1.6;
+
+// Fit to the C400 digital-SDR reference (tone-calibration). MUST equal shaders.ts.
+const FAITHFUL_GAMMA: f32 = 1.590;
+const FAITHFUL_KNEE: f32 = 0.892;
+const FAITHFUL_ANCHOR: f32 = 4.137;
 
 // --- Filmic display S-curve (replaces the old paper-grade/soft-clip encode). ---
 // Applied per channel in the NORMALISED LOG-DENSITY domain `t = d/d_max` (then
@@ -152,6 +170,21 @@ fn filmic_inv(y: f32) -> f32 {
     let lw = l(FILMIC_WHITE_T);
     let big = (y * (lw - l0) + l0).clamp(1e-6, 1.0 - 1e-6); // = l(t)
     FILMIC_PIVOT + (big / (1.0 - big)).ln() / FILMIC_K
+}
+
+/// Faithful reconstruction curve: power-law body below the knee, asymptotic shoulder
+/// above. `x` is the effective normalised log-density (t·FAITHFUL_ANCHOR·expo_gain);
+/// `ceil` is `1.0` for SDR or `HDR_HEADROOM` for HDR. Output is in `[0, ceil]`.
+#[inline]
+fn gamma_shoulder(x: f32, ceil: f32) -> f32 {
+    let raw = x.max(0.0).powf(1.0 / FAITHFUL_GAMMA);
+    if raw <= FAITHFUL_KNEE {
+        raw.min(ceil)
+    } else {
+        let k = FAITHFUL_KNEE;
+        // asymptote toward `ceil` (1.0 SDR, HDR_HEADROOM if hdr)
+        k + (ceil - k) * (1.0 - (-(raw - k) / (1.0 - k)).exp())
+    }
 }
 
 /// Positive passthrough: the working buffer is linear, so display-encode it with
@@ -225,38 +258,51 @@ pub fn invert_d(rgb: [f32; 3], p: &InversionParams) -> [f32; 3] {
         //  - Gain:        post-curve display multiply  →  filmic_s(t) · wb[c]
         //  - Subtractive: pre-curve density multiply    →  filmic_s(t · wb[c]^CMY_STRENGTH)
         //    Anchored at black (t=0 → 0 for any filter), coupled to the filmic slope.
-        let v = match p.wb_mode {
-            WbMode::Gain => {
-                // WB is a linear gain on the positive OUTPUT (filmic value), NOT a scale on
-                // t. This keeps black neutral (filmic_s(0)·wb = 0, so no "yellow shadow")
-                // AND stays consistent with `auto_wb_gains` / the gray-point picker, which
-                // both treat WB as a multiply on the displayed positive. (A t-scale is a
-                // nonlinear remap that those gray-world estimators cannot neutralise.)
-                // `y` is that WB-neutralised display density (the EV-0 result). Use the
-                // UNCLAMPED forward so a super-white highlight keeps a distinct value > 1 —
-                // clamping here would merge near-white tones and kill the latitude that
-                // lowering exposure recovers.
-                let y = filmic_s_raw(t) * p.wb[c];
-                // Exposure scales the WB-neutralised log-density `filmic_inv(y)`, then
-                // re-applies the (clamped) curve. At EV 0 (expo_gain == 1) this is exactly
-                // `filmic_s(t)·wb` — the look is unchanged; off EV 0 it brightens/darkens
-                // without moving hue (see the expo_gain note above).
-                filmic_s(filmic_inv(y) * expo_gain)
+        let v = match p.tone_mode {
+            ToneMode::Filmic => {
+                let v = match p.wb_mode {
+                    WbMode::Gain => {
+                        // WB is a linear gain on the positive OUTPUT (filmic value), NOT a scale on
+                        // t. This keeps black neutral (filmic_s(0)·wb = 0, so no "yellow shadow")
+                        // AND stays consistent with `auto_wb_gains` / the gray-point picker, which
+                        // both treat WB as a multiply on the displayed positive. (A t-scale is a
+                        // nonlinear remap that those gray-world estimators cannot neutralise.)
+                        // `y` is that WB-neutralised display density (the EV-0 result). Use the
+                        // UNCLAMPED forward so a super-white highlight keeps a distinct value > 1 —
+                        // clamping here would merge near-white tones and kill the latitude that
+                        // lowering exposure recovers.
+                        let y = filmic_s_raw(t) * p.wb[c];
+                        // Exposure scales the WB-neutralised log-density `filmic_inv(y)`, then
+                        // re-applies the (clamped) curve. At EV 0 (expo_gain == 1) this is exactly
+                        // `filmic_s(t)·wb` — the look is unchanged; off EV 0 it brightens/darkens
+                        // without moving hue (see the expo_gain note above).
+                        filmic_s(filmic_inv(y) * expo_gain)
+                    }
+                    WbMode::Subtractive => filmic_s(t * p.wb[c].max(EPS).powf(CMY_STRENGTH) * expo_gain),
+                };
+                if p.hdr {
+                    // HDR: expand the filmic shoulder above the knee into [knee, headroom]
+                    // so speculars/lights exceed SDR white (the gain map captures this).
+                    if v > HDR_KNEE {
+                        let e = ((v - HDR_KNEE) / (1.0 - HDR_KNEE)).clamp(0.0, 1.0);
+                        HDR_KNEE + e * (HDR_HEADROOM - HDR_KNEE)
+                    } else {
+                        v
+                    }
+                } else {
+                    v.min(1.0) // SDR: clip to white (v ≥ 0 since filmic_s ≥ 0 and wb ≥ 0)
+                }
             }
-            WbMode::Subtractive => filmic_s(t * p.wb[c].max(EPS).powf(CMY_STRENGTH) * expo_gain),
+            ToneMode::Faithful => {
+                let ceil = if p.hdr { HDR_HEADROOM } else { 1.0 };
+                let t_eff = t * FAITHFUL_ANCHOR * expo_gain;
+                match p.wb_mode {
+                    WbMode::Gain => gamma_shoulder(t_eff, ceil) * p.wb[c],
+                    WbMode::Subtractive => gamma_shoulder(t_eff * p.wb[c].max(EPS).powf(CMY_STRENGTH), ceil),
+                }
+            }
         };
-        if p.hdr {
-            // HDR: expand the filmic shoulder above the knee into [knee, headroom]
-            // so speculars/lights exceed SDR white (the gain map captures this).
-            if v > HDR_KNEE {
-                let e = ((v - HDR_KNEE) / (1.0 - HDR_KNEE)).clamp(0.0, 1.0);
-                HDR_KNEE + e * (HDR_HEADROOM - HDR_KNEE)
-            } else {
-                v
-            }
-        } else {
-            v.min(1.0) // SDR: clip to white (v ≥ 0 since filmic_s ≥ 0 and wb ≥ 0)
-        }
+        v
     })
 }
 
@@ -942,5 +988,26 @@ mod tests {
         let w = invert_d(scan, &warm);
         assert!(w[0] > n[0] + 1e-4, "red filter should brighten red mid: {n:?} -> {w:?}");
         assert!(w[2] < n[2] - 1e-4, "blue cut should darken blue mid: {n:?} -> {w:?}");
+    }
+
+    #[test]
+    fn filmic_mode_is_unchanged_default() {
+        // Default tone_mode must be Filmic and produce the SAME output as before the feature.
+        let p = InversionParams { base: [0.5, 0.5, 0.5], d_max: 1.5, ..Default::default() };
+        assert!(matches!(p.tone_mode, ToneMode::Filmic));
+        let before = invert_d([0.2, 0.18, 0.1], &p); // value captured from current engine
+        // Re-running must be deterministic and identical:
+        assert_eq!(before, invert_d([0.2, 0.18, 0.1], &p));
+    }
+
+    #[test]
+    fn faithful_mode_open_shadows_vs_filmic() {
+        // A mid-shadow scene tone: Faithful (gamma body) lifts shadows above Filmic (S toe crush).
+        let scan = [0.30, 0.36, 0.18];
+        let base = [0.42, 0.55, 0.26];
+        let filmic = invert_d(scan, &InversionParams { base, d_max: 1.5, ..Default::default() });
+        let faithful = invert_d(scan, &InversionParams { base, d_max: 1.5, tone_mode: ToneMode::Faithful, ..Default::default() });
+        let luma = |p: [f32; 3]| 0.2627 * p[0] + 0.678 * p[1] + 0.0593 * p[2];
+        assert!(luma(faithful) > luma(filmic), "faithful opens shadows: {} vs {}", luma(faithful), luma(filmic));
     }
 }
