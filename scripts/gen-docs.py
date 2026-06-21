@@ -81,9 +81,15 @@ def seo_blocks(nav, slug, locale):
     og = (f'<meta property="og:type" content="article">'
           f'<meta property="og:title" content="{html.escape(page["title"][locale])} — OpenEnlarge Docs">'
           f'<meta property="og:description" content="{html.escape(page["desc"][locale])}">'
-          f'<meta property="og:url" content="{canon}">'
-          f'<meta property="og:image" content="{SITE}/docs/og/cover.png">'
-          f'<meta name="twitter:card" content="summary_large_image">')
+          f'<meta property="og:url" content="{canon}">')
+    # Only advertise an OG image (and the large-image card) once the asset actually
+    # exists — otherwise every share renders a broken summary_large_image. The
+    # Wave-3 cover drops into docs-src/og/cover.png and lights this up on regen.
+    if (SRC / "og" / "cover.png").exists():
+        og += (f'<meta property="og:image" content="{SITE}/docs/og/cover.png">'
+               f'<meta name="twitter:card" content="summary_large_image">')
+    else:
+        og += '<meta name="twitter:card" content="summary">'
     jsonld = json.dumps({
         "@context": "https://schema.org", "@type": "TechArticle",
         "headline": page["title"][locale], "description": page["desc"][locale],
@@ -159,6 +165,11 @@ def copy_assets():
         src = adir / name
         if src.exists():
             (OUT / name).write_text(src.read_text())
+    # OG share image (binary), if present — Wave 3 drops it at docs-src/og/cover.png.
+    cover = SRC / "og" / "cover.png"
+    if cover.exists():
+        (OUT / "og").mkdir(parents=True, exist_ok=True)
+        (OUT / "og" / "cover.png").write_bytes(cover.read_bytes())
 
 if __name__ == "__main__":
     build()
