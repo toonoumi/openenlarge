@@ -6,6 +6,7 @@
   import { get } from "svelte/store";
   import { onMount } from "svelte";
   import { createPreviewPrefetcher } from "../develop/previewPrefetch";
+  import { initRollBaseMigration } from "../roll/rollBase";
   import { imageDir } from "../library/folderScope";
   import { withEffectiveBase } from "../develop/base";
   import { mergeEnsured } from "../workflow";
@@ -49,6 +50,7 @@
   // filmstrip thumbnail shows the developed look instantly (the Viewport switch overlay
   // reads previewById). Cancels on any interaction; developed images only.
   onMount(() => {
+    initRollBaseMigration();
     const prefetcher = createPreviewPrefetcher();
     let un: (() => void) | null = null;
     listen<{ id: string; count: number; spots: [number, number][] }>("autodust://result", (e) => {
