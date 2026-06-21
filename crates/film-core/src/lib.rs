@@ -1,3 +1,4 @@
+pub mod bench;
 pub mod calibrate;
 pub mod chart;
 pub mod classify;
