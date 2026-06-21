@@ -72,4 +72,23 @@
       // releases.json missing/unreadable: fall back to the GitHub releases page.
       [heroBtn, dlBtn, navBtn].forEach(function (b) { if (b) b.href = LATEST; });
     });
+
+  // Testing channel: reveal the alpha block only when releases-alpha.json exists
+  // and carries assets. Absent/empty => the block stays hidden (default).
+  fetch("./releases-alpha.json", { cache: "no-cache" })
+    .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(function (rel) {
+      var assets = rel.assets || {};
+      if (!assets.macos && !assets.windows && !assets.linux) return; // nothing to show
+      var block = document.getElementById("alpha-block");
+      var btn = document.getElementById("alpha-download");
+      var tagEl = document.getElementById("alpha-tag");
+      if (block) block.style.display = "";
+      if (btn) {
+        btn.href = (os && assets[os]) ? assets[os] : LATEST;
+        if (os) btn.textContent = t("dl.alpha.os." + os, btn.textContent);
+      }
+      if (tagEl && rel.tag) tagEl.textContent = rel.tag;
+    })
+    .catch(function () { /* no alpha published — leave the block hidden */ });
 })();

@@ -101,6 +101,13 @@ window.OE = (function () {
       "dl.os.macos": "Download for macOS",
       "dl.os.windows": "Download for Windows",
       "dl.os.linux": "Download for Linux",
+      "dl.alpha.kicker": "Testing builds",
+      "dl.alpha.h2": "Try an alpha",
+      "dl.alpha.lede": "Unstable pre-release builds for testing. Expect bugs.",
+      "dl.alpha.base": "↓ Download alpha",
+      "dl.alpha.os.macos": "↓ Download alpha for macOS",
+      "dl.alpha.os.windows": "↓ Download alpha for Windows",
+      "dl.alpha.os.linux": "↓ Download alpha for Linux",
 
       "footer.left": "© 2026 OpenEnlarge · <a href=\"https://github.com/mohaelder/openenlarge/blob/main/LICENSE\">MIT</a>",
       "footer.right": "<a href=\"https://github.com/mohaelder/openenlarge\">GitHub</a> · <a href=\"https://github.com/mohaelder/openenlarge/releases/latest\">Releases</a>"
@@ -201,6 +208,13 @@ window.OE = (function () {
       "dl.os.macos": "下载 macOS 版",
       "dl.os.windows": "下载 Windows 版",
       "dl.os.linux": "下载 Linux 版",
+      "dl.alpha.kicker": "测试版",
+      "dl.alpha.h2": "试用 Alpha 版",
+      "dl.alpha.lede": "用于测试的不稳定预发布版本，可能存在问题。",
+      "dl.alpha.base": "↓ 下载 Alpha 版",
+      "dl.alpha.os.macos": "↓ 下载 macOS Alpha 版",
+      "dl.alpha.os.windows": "↓ 下载 Windows Alpha 版",
+      "dl.alpha.os.linux": "↓ 下载 Linux Alpha 版",
 
       "footer.left": "© 2026 OpenEnlarge · <a href=\"https://github.com/mohaelder/openenlarge/blob/main/LICENSE\">MIT</a>",
       "footer.right": "<a href=\"https://github.com/mohaelder/openenlarge\">GitHub</a> · <a href=\"https://github.com/mohaelder/openenlarge/releases/latest\">Releases</a>"
