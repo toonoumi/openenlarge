@@ -52,5 +52,25 @@ class TestJs(unittest.TestCase):
         self.assertIn("toc-list", js)
         self.assertIn("menu-btn", js)
 
+class TestSeo(unittest.TestCase):
+    def setUp(self): gen.build()
+    def test_sitemap(self):
+        sm = (ROOT / "web/docs/sitemap.xml").read_text()
+        self.assertIn("<urlset", sm)
+        self.assertIn("https://openenlarge.io/docs/index.html", sm)
+        self.assertIn('hreflang="zh-Hans"', sm)
+    def test_robots(self):
+        rb = (ROOT / "web/docs/robots.txt").read_text()
+        self.assertIn("Sitemap: https://openenlarge.io/docs/sitemap.xml", rb)
+    def test_jsonld_on_every_page(self):
+        import glob
+        for f in glob.glob(str(ROOT / "web/docs/**/*.html"), recursive=True):
+            html = open(f).read()
+            self.assertIn('application/ld+json', html, f)
+            self.assertIn('property="og:title"', html, f)
+    def test_zh_lang_attr(self):
+        html = (ROOT / "web/docs/zh/index.html").read_text()
+        self.assertIn('<html lang="zh-Hans">', html)
+
 if __name__ == "__main__":
     unittest.main()
