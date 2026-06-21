@@ -58,9 +58,9 @@
     <rect x="460" y="180" width="90" height="50" rx="6" fill="#5a78c8"/>
   </g>
   <g font-family="ui-monospace,monospace" font-size="13" fill="#e8e8ea" text-anchor="middle">
-    <text x="165" y="252">Red</text>
-    <text x="335" y="252">Green</text>
-    <text x="505" y="252">Blue</text>
+    <text x="165" y="252">R</text>
+    <text x="335" y="252">G</text>
+    <text x="505" y="252">B</text>
   </g>
 </svg>
 <figcaption>The orange base transmits red strongly, green moderately, and blue weakly. OpenEnlarge measures this base and removes it before inverting.</figcaption></figure>
@@ -70,7 +70,7 @@
 <p>The relationship between scene exposure and film density is the <strong>Hurter–Driffield (H&amp;D) curve</strong>. It has a gentle <em>toe</em> in the shadows, a straight mid-section, and a <em>shoulder</em> where highlights compress. This shape — not a straight line — is the "film look," and OpenEnlarge's tone curve is designed to invert it faithfully. See <a href="tone-curve.html">the tone curve</a>.</p>
 
 <details class="hood"><summary>Under the hood</summary><div class="hood-body">
-<p>Density is logarithmic: <span class="formula">D = log₁₀(base / scan)</span> One density unit corresponds to about 3.32 photographic stops of scene brightness. Typical orange-mask transmission ratios are roughly R : G : B ≈ 1 : 0.55 : 0.26, which is why the clear base reads as orange.</p>
+<p>Density is logarithmic: <span class="formula">D = log₁₀(base / scan)</span> Here <code>base</code> is the pixel value sampled from the clear film edge and <code>scan</code> is the raw value at each point — dividing cancels the mask and leaves density. One density unit corresponds to about 3.32 photographic stops of scene brightness. Typical orange-mask transmission ratios are roughly R : G : B ≈ 1 : 0.55 : 0.26, which is why the clear base reads as orange.</p>
 </div></details>
 
 <p class="next"><a href="inversion.html">Next: the inversion pipeline →</a></p>

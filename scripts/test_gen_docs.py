@@ -78,13 +78,15 @@ class TestScienceNegatives(unittest.TestCase):
         self.assertTrue((ROOT / "web/docs/science/negatives.html").exists())
         self.assertTrue((ROOT / "web/docs/zh/science/negatives.html").exists())
     def test_figure_inlined(self):
-        html = (ROOT / "web/docs/science/negatives.html").read_text()
-        self.assertIn("<svg", html)            # figure inlined, not a comment
-        self.assertNotIn("<!--FIG:", html)     # placeholder fully replaced
+        for p in ("web/docs/science/negatives.html", "web/docs/zh/science/negatives.html"):
+            html = (ROOT / p).read_text()
+            self.assertIn("<svg", html, p)            # figure inlined, not a comment
+            self.assertNotIn("<!--FIG:", html, p)     # placeholder fully replaced
     def test_hood_block(self):
-        html = (ROOT / "web/docs/science/negatives.html").read_text()
-        self.assertIn('class="hood"', html)
-        self.assertIn("log₁₀", html)
+        for p in ("web/docs/science/negatives.html", "web/docs/zh/science/negatives.html"):
+            html = (ROOT / p).read_text()
+            self.assertIn('class="hood"', html, p)
+            self.assertIn("log₁₀", html, p)
 
 if __name__ == "__main__":
     unittest.main()

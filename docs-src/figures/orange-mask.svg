@@ -11,8 +11,8 @@
     <rect x="460" y="180" width="90" height="50" rx="6" fill="#5a78c8"/>
   </g>
   <g font-family="ui-monospace,monospace" font-size="13" fill="#e8e8ea" text-anchor="middle">
-    <text x="165" y="252">Red</text>
-    <text x="335" y="252">Green</text>
-    <text x="505" y="252">Blue</text>
+    <text x="165" y="252">R</text>
+    <text x="335" y="252">G</text>
+    <text x="505" y="252">B</text>
   </g>
 </svg>
