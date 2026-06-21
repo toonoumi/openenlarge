@@ -346,23 +346,36 @@ Add the strength constant next to `EXPO_K`:
 const float CMY_STRENGTH = 1.6;
 ```
 
-In the `if (u_mode == 3)` block, replace the final `return`:
+**NOTE (base file changed since the plan was written):** `INVERT_FRAG` Mode D was rewritten to apply exposure via a `filmicInv` round-trip after WB, mirroring the current `engine.rs::invert_d` (Task 1 shipped `Subtractive = filmic_s(t * wb^CMY_STRENGTH * expo_gain)`). The current Mode D return reads:
 
 ```glsl
-    return clamp(vec3(filmicS(t.r), filmicS(t.g), filmicS(t.b)) * u_wb, 0.0, 1.0);
+    vec3 y = vec3(filmicSraw(t.r), filmicSraw(t.g), filmicSraw(t.b)) * u_wb;
+    return clamp(vec3(
+      filmicS(filmicInv(y.r) * expo_gain),
+      filmicS(filmicInv(y.g) * expo_gain),
+      filmicS(filmicInv(y.b) * expo_gain)), 0.0, 1.0);
 ```
 
-with:
+Replace exactly those four lines with a `u_wb_mode` branch (Gain arm = the existing code verbatim; Subtractive arm mirrors the shipped Rust `filmic_s(t * wb^CMY_STRENGTH * expo_gain)`):
 
 ```glsl
     // WB mode (mirror engine.rs invert_d):
-    //  0 gain: filmicS(t)·wb   1 subtractive: filmicS(t·wb^CMY_STRENGTH), no post-mul.
+    //  0 gain: WB as post-curve display gain, exposure via the filmicInv round-trip.
+    //  1 subtractive (color head): per-channel density multiply BEFORE the curve,
+    //    folding exposure into the same t-multiply; anchored at black (t=0 → 0).
     vec3 v;
     if (u_wb_mode == 1) {
       vec3 s = pow(max(u_wb, vec3(EPS)), vec3(CMY_STRENGTH));
-      v = vec3(filmicS(t.r * s.r), filmicS(t.g * s.g), filmicS(t.b * s.b));
+      v = vec3(
+        filmicS(t.r * s.r * expo_gain),
+        filmicS(t.g * s.g * expo_gain),
+        filmicS(t.b * s.b * expo_gain));
     } else {
-      v = vec3(filmicS(t.r), filmicS(t.g), filmicS(t.b)) * u_wb;
+      vec3 y = vec3(filmicSraw(t.r), filmicSraw(t.g), filmicSraw(t.b)) * u_wb;
+      v = vec3(
+        filmicS(filmicInv(y.r) * expo_gain),
+        filmicS(filmicInv(y.g) * expo_gain),
+        filmicS(filmicInv(y.b) * expo_gain));
     }
     return clamp(v, 0.0, 1.0);
 ```
