@@ -74,6 +74,18 @@ jobs:
         shell: bash
         run: |
           ARGS="${{ matrix.args }}"
+          TAG="${{ github.ref_name }}"
+          # Channel: a tag containing "-" (e.g. v0.6.0-alpha.1) is a pre-release.
+          # Pre-releases build at the tag's version WITHOUT committing a bump to the
+          # four version files — derive it and pass it via --config (Tauri merges
+          # multiple --config flags, so this composes with the Windows cert config).
+          if [[ "$TAG" == *-* ]]; then
+            echo "IS_PRERELEASE=true" >> "$GITHUB_ENV"
+            VER="${TAG#v}"
+            ARGS="$ARGS --config {\"version\":\"$VER\"}"
+          else
+            echo "IS_PRERELEASE=false" >> "$GITHUB_ENV"
+          fi
           if [ -n "$WIN_CERT_THUMBPRINT" ]; then
             ARGS="$ARGS --config {\"bundle\":{\"windows\":{\"certificateThumbprint\":\"$WIN_CERT_THUMBPRINT\",\"timestampUrl\":\"http://timestamp.digicert.com\",\"digestAlgorithm\":\"sha256\"}}}"
           fi
@@ -106,8 +118,9 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: 'OpenEnlarge ${{ github.ref_name }}'
           releaseBody: 'Download the installer for your OS below. See the README for install notes.'
-          releaseDraft: true
-          prerelease: false
+          # Stable: draft + not prerelease (unchanged). Alpha: auto-published pre-release.
+          releaseDraft: ${{ env.IS_PRERELEASE != 'true' }}
+          prerelease: ${{ env.IS_PRERELEASE == 'true' }}
           args: ${{ env.TAURI_ARGS }}
 
   # After all platforms build, mirror every release asset (installers + updater
