@@ -70,6 +70,20 @@
         const wb = await api.asShotWb(img.id, seed, null, { rot90: 0, flip_h: false, flip_v: false, angle: 0 });
         params = { ...seed, temp: wb.temp, tint: wb.tint };
       }
+      // Auto-expose developed images whose stored exposure is still the default (e.g.
+      // after a catalog migration that zeroed all exposures). Matches the logic in
+      // Basic.svelte seedExposure — so Develop later sees a non-default value and skips
+      // re-solving. Crop is derived from cropById (same path as gridThumbView); geom is
+      // passed minimal (orientation doesn't affect the luminance histogram).
+      if (params.exposure === defaultParams().exposure) {
+        const cropRect = get(cropById)[img.id];
+        const imageCrop: [number, number, number, number] | null =
+          cropRect ? [cropRect.rect.x, cropRect.rect.y, cropRect.rect.w, cropRect.rect.h] : null;
+        const { exposure } = await api.autoBrightness(img.id, params, imageCrop, {});
+        params = { ...params, exposure };
+        // Persist by updating editsById — wireRecord in catalog.ts debounce-saves on change.
+        editsById.update((m) => ({ ...m, [img.id]: { ...(m[img.id] ?? defaultParams()), exposure } }));
+      }
       const view = gridThumbView(get(cropById)[img.id], get(dustById)[img.id], GRID_STATIC_EDGE);
       const url = await api.thumbnail(img.id, params, view);
       await api.saveThumbnail(img.id, url);
