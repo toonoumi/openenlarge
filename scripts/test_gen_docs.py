@@ -71,6 +71,13 @@ class TestSeo(unittest.TestCase):
     def test_zh_lang_attr(self):
         html = (ROOT / "web/docs/zh/index.html").read_text()
         self.assertIn('<html lang="zh-Hans">', html)
+    def test_og_image_asset_exists_when_advertised(self):
+        # If any page advertises the OG share image, the file must actually ship.
+        import glob, re
+        for f in glob.glob(str(ROOT / "web/docs/**/*.html"), recursive=True):
+            for m in re.findall(r'og:image" content="https://openenlarge\.io(/docs/[^"]+)"', open(f).read()):
+                self.assertTrue((ROOT / "web" / m.lstrip("/")).exists(),
+                                f"{f} advertises {m} but it is not shipped")
 
 class TestScienceNegatives(unittest.TestCase):
     def setUp(self): gen.build()
