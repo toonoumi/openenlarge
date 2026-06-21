@@ -6,7 +6,7 @@
     { "file": "EKTAR 100--02.dng", "role": "d_min" },
     { "file": "EKTAR 100--01.dng", "role": "d_max" },
     { "file": "EKTAR 100--13.dng", "role": "color",
-      "corners": [[5160, 2540], [5160, 4126], [6213, 4126], [6213, 2540]] },
+      "corners": [[5165, 2455], [5165, 4105], [6265, 4105], [6265, 2455]] },
     { "file": "EKTAR 100--07.dng", "role": "wedge",
       "corners": [[6450, 2080], [2750, 2080], [2750, 2140], [6450, 2140]],
       "n_steps": 11, "ev_per_step": 1.0, "mid_step": 5 }

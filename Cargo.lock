@@ -502,6 +502,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "film-bench"
+version = "0.1.0"
+dependencies = [
+ "film-core",
+ "image",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "film-cli"
 version = "0.1.0"
 dependencies = [
