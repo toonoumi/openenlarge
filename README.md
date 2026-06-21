@@ -87,6 +87,27 @@ npm run tauri dev
 npm run tauri build
 ```
 
+## Releases
+
+### Cutting an alpha (test) build
+
+Alpha builds are download-only pre-releases — they never touch the stable
+auto-updater or the main download buttons.
+
+1. Push a pre-release tag (no version-file bump needed — the build derives the
+   version from the tag):
+   ```bash
+   git tag v0.6.0-alpha.1
+   git push origin v0.6.0-alpha.1
+   ```
+2. The Release workflow builds all platforms, publishes a GitHub **pre-release**,
+   mirrors installers to `https://download.aako.world/v0.6.0-alpha.1/`, and writes
+   `web/releases-alpha.json` — which makes the website's **"Testing builds"**
+   section appear with the new alpha.
+
+Plain `vX.Y.Z` tags remain the stable flow (draft release, updater + main download
+buttons updated). See `docs/superpowers/specs/2026-06-20-alpha-release-channel-design.md`.
+
 ## CLI usage
 
 The engine also runs headless. From the repo root:
