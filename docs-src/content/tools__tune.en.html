@@ -1,0 +1,83 @@
+<h1>Tune</h1>
+<p class="lead">The Tune panel is where precision tone and color work happens after the Basic panel has set overall exposure and balance. It contains three sections: the Tone Curve editor (master + per-channel point curves and parametric region sliders), Color Grading wheels (3-way plus global), and the Color Mixer (8 hue bands × hue/sat/lum) with Point Color targeting. This page describes every control, the parameter it writes, and the engine math behind it.</p>
+
+<figure><img src="/img/tune.png" alt="OpenEnlarge Tune panel showing the Tone Curve editor, Color Grading wheels, and Color Mixer section"><figcaption>The Tune panel — Tone Curve, Color Grading, and Color Mixer, each collapsible.</figcaption></figure>
+
+<h2>Tone Curve editor</h2>
+<p>The <strong>Tone Curve</strong> section (field group rooted at <code>tc_*</code>) provides a point-curve editor and four parametric region sliders. Together they compose into a single per-channel tone LUT that is applied after the Basic tone controls and OKLab saturation, but before Color Grading.</p>
+
+<p>The <strong>channel selector</strong> at the top of the editor is a row of four colored dots: Master (light gray, <code>tc_curve</code>), Red (<code>tc_red</code>), Green (<code>tc_green</code>), and Blue (<code>tc_blue</code>). Clicking a dot switches the visible and editable curve. In Master mode the background histogram shows all three channels; switching to R, G, or B shows only that channel's histogram. Points on the curve are draggable; the editor displays an in/out readout as you drag. All four curves start as the identity diagonal (0→0, 1→1) and reset to that identity when the Tone Curve Reset button is clicked.</p>
+
+<p>The <strong>White-point picker</strong> (pipette icon, top right of the Tone Curve header) activates a crosshair dropper in the viewport. Click the brightest, fully-exposed film leader — the clear bright strip at the roll edge — to sample that area and reset <code>d_max_override</code> from the measured density. This anchors highlights and contrast without touching the curve points themselves.</p>
+
+<p>Below the curve editor, four <strong>parametric region sliders</strong> let you brighten or darken individual tonal zones without placing control points manually:</p>
+<ul>
+  <li><strong>Highlights</strong> — brightest quarter of the tonal scale, centered near 0.875 in display space. Field: <code>tc_highlights</code>.</li>
+  <li><strong>Lights</strong> — upper-mid quarter, centered near 0.625. Field: <code>tc_lights</code>.</li>
+  <li><strong>Darks</strong> — lower-mid quarter, centered near 0.375. Field: <code>tc_darks</code>.</li>
+  <li><strong>Shadows</strong> — darkest quarter, centered near 0.125. Field: <code>tc_shadows</code>.</li>
+</ul>
+<p>All four region sliders run −100 to +100 (0 = no effect). They act before the point curves in the signal chain. The full pipeline order for the Tone Curve LUT is: parametric regions → master point curve → per-channel point curve. The resulting composed LUT is then applied during finishing after OKLab saturation. See <a href="../science/tone-curve.html">The tone curve</a> for how the Faithful inversion curve fits into the broader pipeline.</p>
+
+<details class="hood"><summary>Under the hood</summary><div class="hood-body">
+<p><strong>Parametric region math (finish.rs):</strong> each region slider value (pre-scaled from −100..100 to −1..1) is applied as a parabolic bump to the input tonal value <code>v</code>:</p>
+<p><span class="formula">v += region_value · REGION_GAIN · max(0, 1 − ((v − center) / REGION_WIDTH)²)</span></p>
+<p>Constants: <code>REGION_GAIN = 0.25</code>, <code>REGION_WIDTH = 0.22</code>, and the four centers are <code>REGION_CENTERS = [0.125, 0.375, 0.625, 0.875]</code> for [shadows, darks, lights, highlights] respectively. The parabolic bump has finite support (zero outside ±REGION_WIDTH of the center) so each slider affects only its own zone and leaves adjacent zones nearly untouched.</p>
+<p><strong>Important distinction from Basic:</strong> the Basic panel's Highlights and Shadows controls use smoothstep shelf weights (<code>v += hl · 0.18 · smoothstep(0.5, 1.0, v)</code>) that are strongest at the extremes and extend across an entire half of the tonal range. The Tune parametric sliders use narrow parabolic bumps centered at four specific tonal positions — they are zone-selective in a fundamentally different way. The Basic controls and Tune regions operate independently and compose additively.</p>
+<p><strong>Composed LUT:</strong> <code>tone_luts()</code> builds three LUTs of size 256. For each input index <code>x</code>: apply the four parametric bumps → look up the master curve → look up the per-channel curve. The three resulting LUTs (R, G, B) are sampled per pixel in the finishing pass, after the OKLab saturation step.</p>
+</div></details>
+
+<h2>Color Grading</h2>
+<p>The <strong>Color Grading</strong> section provides HSL color wheels for tinting and brightening each tonal zone of the image. It is applied after the Tone Curve LUT and before the Color Mixer.</p>
+
+<p>The <strong>mode selector</strong> at the top offers five views: <em>3-way</em> (shows all three wheels simultaneously — Shadows at bottom-left, Midtones large in the center, Highlights at bottom-right), <em>Shadows</em>, <em>Midtones</em>, <em>Highlights</em>, and <em>Global</em> (each as a single large wheel). Switching modes does not change any parameters — it only changes which wheels are visible at once.</p>
+
+<p>Each wheel encodes three values: hue (the angle around the color circle, 0–360°), saturation (the distance from center, 0–100), and luminance (a brightness lift, −100 to +100). The parameters per zone are:</p>
+<ul>
+  <li><strong>Shadows</strong>: <code>cg_sh_hue</code>, <code>cg_sh_sat</code>, <code>cg_sh_lum</code></li>
+  <li><strong>Midtones</strong>: <code>cg_mid_hue</code>, <code>cg_mid_sat</code>, <code>cg_mid_lum</code></li>
+  <li><strong>Highlights</strong>: <code>cg_hi_hue</code>, <code>cg_hi_sat</code>, <code>cg_hi_lum</code></li>
+  <li><strong>Global</strong>: <code>cg_glob_hue</code>, <code>cg_glob_sat</code>, <code>cg_glob_lum</code></li>
+</ul>
+<p>Dragging the puck away from center on any wheel adds a chroma offset toward that hue; a luminance lift above or below zero raises or lowers that zone's brightness. The Global wheel affects all tones simultaneously with no luma masking.</p>
+
+<p>Two sliders below the wheels control how the zones blend into each other:</p>
+<ul>
+  <li><strong>Blending</strong> — <code>cg_blending</code>, range 0–100, default 50. Higher values make the zone masks overlap more, so color pushes cross-fade rather than cut sharply between shadows and highlights. Lower values produce harder, more distinct zone separation.</li>
+  <li><strong>Balance</strong> — <code>cg_balance</code>, range −100 to +100, default 0. Shifts the crossover point between shadows and highlights: negative Balance moves the midpoint toward the shadows (expanding the highlights zone), positive moves it toward highlights (expanding the shadows zone).</li>
+</ul>
+
+<details class="hood"><summary>Under the hood</summary><div class="hood-body">
+<p><strong>Chroma offset:</strong> each wheel's hue + saturation values are converted to a zero-luma RGB push via <code>wheel_offset(hue, sat)</code>: the pure-hue RGB at that angle is computed, its luma is subtracted, and the result is scaled by <code>CG_COLOR_GAIN = 0.5</code>. This gives a chroma-only push that does not shift brightness. The per-zone luminance slider is scaled separately by <code>CG_LUM_GAIN = 0.3</code>.</p>
+<p><strong>Zone masks:</strong> a pixel's luma (<code>l = 0.2126·R + 0.7152·G + 0.0722·B</code>) is measured and used to compute three smoothstep weights: <code>w_sh = 1 − smoothstep(sh_edge − softness, sh_edge + softness, l)</code>, <code>w_hi = smoothstep(hi_edge − softness, hi_edge + softness, l)</code>, and <code>w_mid = clamp(1 − w_sh − w_hi, 0, 1)</code>. The softness is <span class="formula">softness = 0.1 + 0.3 · blending</span> (at default blending = 0.5: softness = 0.25). Zone edges: <span class="formula">sh_edge = 0.33 + balance · 0.25</span> and <span class="formula">hi_edge = 0.66 + balance · 0.25</span>, both pre-scaled from the −100..100 slider range to −1..1.</p>
+<p><strong>Application:</strong> the output for each channel is <code>rgb[c] + w_sh·(sh_off[c] + sh_lum) + w_mid·(mid_off[c] + mid_lum) + w_hi·(hi_off[c] + hi_lum) + (glob_off[c] + glob_lum)</code>. The Global term is always fully weighted (no mask). See <a href="../science/color.html">Color &amp; white balance</a> for the perceptual rationale.</p>
+</div></details>
+
+<h2>Color Mixer</h2>
+<p>The <strong>Color Mixer</strong> section has two tabs: <em>Mixer</em> (the 8-band HSL mixer) and <em>Point Color</em> (sample-driven targeting). The Reset button resets only the active tab.</p>
+
+<p>The Mixer tab divides the hue circle into <strong>eight named bands</strong>: Red, Orange, Yellow, Green, Aqua, Blue, Purple, and Magenta. These correspond to the <code>CM_BANDS</code> constant in the API: <code>["red","orange","yellow","green","aqua","blue","purple","magenta"]</code>. Band parameters are named <code>cm_{band}_{hue|sat|lum}</code>. Four view modes let you adjust one attribute at a time (Hue, Saturation, Luminance) or all three together (All):</p>
+<ul>
+  <li><strong>Hue</strong> — shifts the hue of pixels in that band. A positive value rotates hue clockwise around the color wheel; negative rotates counter-clockwise. Maximum shift is ±30° (the constant <code>CM_HUE_SHIFT_MAX = 30.0</code>).</li>
+  <li><strong>Saturation</strong> — multiplies the saturation of pixels in that band. Positive values enrich, negative desaturate. Near-neutral pixels (saturation below about 0.05–0.20) receive a gated-down effect to prevent noise amplification.</li>
+  <li><strong>Luminance</strong> — shifts the lightness of pixels in that band. At the slider extremes the maximum lift or drop is scaled by <code>CM_LUM_GAIN = 0.25</code>, giving a moderate range.</li>
+</ul>
+<p>All Mixer sliders run −100 to +100, with 0 as the identity. A band's effect fades smoothly to zero as the pixel's hue diverges from the band center, using a cosine falloff over a half-width of <code>CM_FALLOFF_DEG = 50°</code>. Adjacent bands overlap so there are no hard hue boundaries.</p>
+
+<p>The <strong>Point Color</strong> tab provides sample-driven targeting: click the <em>Pick color</em> dropper to activate a crosshair in the viewport, then click any pixel to sample it. Its hue, saturation, and lightness are recorded as a swatch. Up to eight swatches can coexist, stored as the <code>pc_samples</code> array. Selecting a swatch shows five sliders:</p>
+<ul>
+  <li><strong>Hue Shift</strong> (<code>hue_shift</code>) — rotates the hue of matching pixels, up to ±30° at the extremes.</li>
+  <li><strong>Sat. Shift</strong> (<code>sat_shift</code>) — multiplies saturation, same scale as the Mixer's Saturation slider.</li>
+  <li><strong>Lum. Shift</strong> (<code>lum_shift</code>) — lifts or lowers lightness, scaled by <code>CM_LUM_GAIN = 0.25</code>.</li>
+  <li><strong>Variance</strong> (<code>variance</code>, −100 to +100, default 0) — expands or contracts the saturation and luminance tolerance used to match pixels to the sample. Positive values accept a wider spread of saturation and lightness around the sampled value; negative values narrow the acceptance window to pixels that are very close matches.</li>
+  <li><strong>Range</strong> (<code>range</code>, 0–100, default 50) — controls the hue-angle half-width of the selection. At the default (50) the half-width is approximately 32.5°; at the maximum (100) it reaches 60°; at the minimum (0) it narrows to 5°.</li>
+</ul>
+<p>Multiple swatches are order-independent: each sample computes its weight from the unmodified input pixel, and all shifts accumulate before being applied once. Removing a swatch (click its × badge) immediately removes its effect. The Color Mixer and Point Color operate in sequence: Mixer adjusts all pixels band-by-band first, then Point Color operates on the Mixer's output. Both run after Color Grading. See <a href="../science/color.html">Color &amp; white balance</a> for the broader color pipeline context.</p>
+
+<details class="hood"><summary>Under the hood</summary><div class="hood-body">
+<p><strong>Band weight (finish.rs):</strong> for each of the eight bands, the weight for a pixel at hue <code>h</code> is <span class="formula">w = 0.5 · (1 + cos(π · |wrap180(h − center)| / CM_FALLOFF_DEG))</span> when the angular distance is less than 50°, and 0 otherwise. Band centers (degrees): Red = 0, Orange = 30, Yellow = 60, Green = 120, Aqua = 180, Blue = 240, Purple = 280, Magenta = 320.</p>
+<p><strong>Mixer application:</strong> hue shift and the saturation gate are both multiplied by a saturation gate <code>gate = smoothstep(CM_SAT_GATE_LO, CM_SAT_GATE_HI, s)</code> with <code>CM_SAT_GATE_LO = 0.05</code>, <code>CM_SAT_GATE_HI = 0.20</code>, protecting near-neutrals from hue-shift noise. Luminance shift is not gated. Saturation is multiplicative: <code>s_out = s · (1 + weighted_sat_factor)</code>.</p>
+<p><strong>Point Color weight:</strong> a sample at <code>(hue_t, sat_t, lum_t)</code> matches a pixel at <code>(h, s, l)</code> via three independent weights: a hue weight using the same cosine falloff with a range-derived half-width <span class="formula">hw = PC_RANGE_MIN_DEG + (range/100) · (PC_RANGE_MAX_DEG − PC_RANGE_MIN_DEG)</span> where <code>PC_RANGE_MIN_DEG = 5.0°</code> and <code>PC_RANGE_MAX_DEG = 60.0°</code>; a saturation weight <span class="formula">ws = clamp(1 − |s − sat_t| / pc_tol(0.25, variance), 0, 1)</span>; and a luminance weight <span class="formula">wl = clamp(1 − |l − lum_t| / pc_tol(0.25, variance), 0, 1)</span>. The tolerance function is <span class="formula">pc_tol(base, variance) = max(0.02, base · (1 + (variance/100) · 2.0))</span>. The combined weight is <code>w = wh · ws · wl</code>.</p>
+</div></details>
+
+<p class="next"><a href="crop-dust.html">Next: Crop &amp; Dust →</a></p>

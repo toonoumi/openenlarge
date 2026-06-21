@@ -1,0 +1,139 @@
+<!-- AUTO-GENERATED from /docs-src — do not edit by hand. Run python3 scripts/gen-docs.py -->
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>微调 — OpenEnlarge Docs</title>
+<meta name="description" content="精确的色调与色彩：色调曲线编辑器、调色色轮、八段色彩混合器与点色定位 —— 以及各自写入的参数。">
+<meta name="theme-color" content="#0a0a0c">
+<link rel="icon" href="../../../img/favicon.png">
+<link rel="canonical" href="https://openenlarge.io/docs/zh/tools/tune.html">
+<link rel="alternate" hreflang="en" href="https://openenlarge.io/docs/tools/tune.html">
+<link rel="alternate" hreflang="zh-Hans" href="https://openenlarge.io/docs/zh/tools/tune.html">
+<link rel="alternate" hreflang="x-default" href="https://openenlarge.io/docs/tools/tune.html">
+<meta property="og:type" content="article"><meta property="og:title" content="微调 — OpenEnlarge Docs"><meta property="og:description" content="精确的色调与色彩：色调曲线编辑器、调色色轮、八段色彩混合器与点色定位 —— 以及各自写入的参数。"><meta property="og:url" content="https://openenlarge.io/docs/zh/tools/tune.html"><meta name="twitter:card" content="summary">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "微调", "description": "精确的色调与色彩：色调曲线编辑器、调色色轮、八段色彩混合器与点色定位 —— 以及各自写入的参数。", "inLanguage": "zh-Hans", "url": "https://openenlarge.io/docs/zh/tools/tune.html", "isPartOf": {"@type": "WebSite", "name": "OpenEnlarge", "url": "https://openenlarge.io"}}</script>
+<link rel="stylesheet" href="../../docs.css">
+</head>
+<body>
+<a class="skip" href="#content">跳到正文</a>
+<nav class="docnav"><div class="navbar glass wrap">
+  <a class="brand" href="../../../index.html"><img class="mark" src="../../../img/icon.png" alt=""> OpenEnlarge <span class="brand-docs">文档</span></a>
+  <button class="menu-btn" id="menu-btn" type="button" aria-label="菜单" aria-expanded="false">☰</button>
+  <div class="navlinks">
+    <a href="../../../index.html">主页</a>
+    <a href="https://github.com/mohaelder/openenlarge">GitHub</a>
+    <a class="lang-link" href="../../tools/tune.html">EN</a>
+  </div>
+</div></nav>
+<div class="doclayout wrap">
+  <aside class="sidebar" id="sidebar"><div class="side-sec"><div class="side-h">概览</div>
+<a href="../index.html">文档</a>
+<a href="../workflow.html">工作流程</a>
+</div>
+<div class="side-sec"><div class="side-h">原理</div>
+<a href="../science/negatives.html">彩色负片的原理</a>
+<a href="../science/inversion.html">反转流程</a>
+<a href="../science/density.html">密度与对数空间</a>
+<a href="../science/tone-curve.html">色调曲线（Faithful 风格）</a>
+<a href="../science/color.html">色彩与白平衡</a>
+<a href="../science/base-calibration.html">片基校准</a>
+</div>
+<div class="side-sec"><div class="side-h">工具</div>
+<a href="../tools/develop-basic.html">显影 · 基础</a>
+<a class="on" href="../tools/tune.html">微调</a>
+</div></aside>
+  <main class="content" id="content">
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="../index.html">文档</a> <span class="sep">/</span> <span>微调</span></nav>
+    <article class="prose"><h1>微调</h1>
+<p class="lead">「微调」面板是在「基础」面板完成整体曝光与平衡设置之后，进行精确色调与色彩工作的场所。它包含三个部分：色调曲线编辑器（主曲线与逐通道点控曲线，以及参数化区域滑块）、颜色分级色轮（三向色轮与全局色轮），以及颜色混合器（八段色相频段 × 色相/饱和度/明亮度）和点颜色定位。本页逐一描述每个控件、它写入的参数，以及背后的引擎数学原理。</p>
+
+<figure><img src="/img/tune.png" alt="OpenEnlarge 微调面板，展示色调曲线编辑器、颜色分级色轮和颜色混合器部分"><figcaption>微调面板 —— 色调曲线、颜色分级和颜色混合器，各部分均可折叠。</figcaption></figure>
+
+<h2>色调曲线编辑器</h2>
+<p><strong>色调曲线</strong>部分（字段组以 <code>tc_*</code> 为前缀）提供一个点控曲线编辑器和四个参数化区域滑块。两者共同合成单一的逐通道色调查找表，该查找表在「基础」色调控件和 OKLab 饱和度之后、颜色分级之前施加。</p>
+
+<p>编辑器顶部的<strong>通道选择器</strong>是一排四个彩色圆点：主通道（浅灰色，<code>tc_curve</code>）、红色（<code>tc_red</code>）、绿色（<code>tc_green</code>）和蓝色（<code>tc_blue</code>）。点击某个圆点即切换到对应的可视与可编辑曲线。在主通道模式下，背景直方图显示三个通道；切换到 R、G 或 B 后，仅显示该通道的直方图。曲线上的控制点可拖动，拖动时编辑器显示输入/输出读数。四条曲线初始均为对角恒等线（0→0, 1→1），点击色调曲线「重置」按钮后恢复该恒等状态。</p>
+
+<p><strong>白点拾取器</strong>（色调曲线标题栏右侧的吸管图标）激活预览视口中的十字准星吸管。点击最亮、完全曝光的片头——胶卷边缘的透明亮条——对该区域采样，并从测量密度重置 <code>d_max_override</code>。这一操作锚定高光与对比度，不改动任何曲线控制点。</p>
+
+<p>曲线编辑器下方有四个<strong>参数化区域滑块</strong>，无需手动放置控制点即可提亮或压暗特定的影调区间：</p>
+<ul>
+  <li><strong>高光</strong> —— 色调范围最亮的四分之一，在显示空间中心位于约 0.875。字段：<code>tc_highlights</code>。</li>
+  <li><strong>亮部</strong> —— 中上四分之一，中心约 0.625。字段：<code>tc_lights</code>。</li>
+  <li><strong>暗部</strong> —— 中下四分之一，中心约 0.375。字段：<code>tc_darks</code>。</li>
+  <li><strong>阴影</strong> —— 最暗的四分之一，中心约 0.125。字段：<code>tc_shadows</code>。</li>
+</ul>
+<p>四个区域滑块均为 −100 至 +100（0 = 无效果）。它们在信号链中先于点控曲线起作用。色调曲线查找表的完整流程为：参数化区域 → 主点控曲线 → 逐通道点控曲线。合成后的查找表在 OKLab 饱和度之后于修整过程中逐像素施加。Faithful 反转曲线在整体流程中的位置，详见 <a href="../science/tone-curve.html">色调曲线</a>。</p>
+
+<details class="hood"><summary>深入原理</summary><div class="hood-body">
+<p><strong>参数化区域数学（finish.rs）：</strong>每个区域滑块值（从 −100..100 预缩放至 −1..1 单位）以抛物线隆起的形式施加到输入色调值 <code>v</code>：</p>
+<p><span class="formula">v += region_value · REGION_GAIN · max(0, 1 − ((v − center) / REGION_WIDTH)²)</span></p>
+<p>常量：<code>REGION_GAIN = 0.25</code>，<code>REGION_WIDTH = 0.22</code>，四个中心点为 <code>REGION_CENTERS = [0.125, 0.375, 0.625, 0.875]</code>，分别对应 [阴影、暗部、亮部、高光]。抛物线隆起具有有限支撑（在中心点 ±REGION_WIDTH 之外为零），因此每个滑块只影响自身所在区间，几乎不影响相邻区间。</p>
+<p><strong>与「基础」面板的重要区别：</strong>「基础」面板的高光和阴影控件使用 smoothstep 架型权重（<code>v += hl · 0.18 · smoothstep(0.5, 1.0, v)</code>），在极端处最强，且跨越整个半段色调范围。「微调」参数化滑块使用以四个特定色调位置为中心的窄抛物线隆起——两者在本质上是不同的区域选择方式。「基础」控件与「微调」区域独立作用，以叠加方式合成。</p>
+<p><strong>合成查找表：</strong><code>tone_luts()</code> 构建大小为 256 的三张查找表。对每个输入索引 <code>x</code>：依次施加四个参数化隆起 → 查找主曲线 → 查找逐通道曲线。所得三张查找表（R、G、B）在修整过程（OKLab 饱和度步骤之后）逐像素采样。</p>
+</div></details>
+
+<h2>颜色分级</h2>
+<p><strong>颜色分级</strong>部分为图像各影调区间的色调渲染与亮度调整提供 HSL 色轮。它在色调曲线查找表之后、颜色混合器之前施加。</p>
+
+<p>顶部的<strong>模式选择器</strong>提供五种视图：<em>三向</em>（同时显示三个色轮——左下阴影、居中放大的中间调、右下高光），以及单独的<em>阴影</em>、<em>中间调</em>、<em>高光</em>和<em>全局</em>视图（各显示一个放大色轮）。切换模式不改变任何参数，仅控制哪些色轮同时可见。</p>
+
+<p>每个色轮编码三个值：色相（色轮上的角度，0–360°）、饱和度（距中心的距离，0–100）和明亮度（亮度增减，−100 至 +100）。各区间参数为：</p>
+<ul>
+  <li><strong>阴影</strong>：<code>cg_sh_hue</code>、<code>cg_sh_sat</code>、<code>cg_sh_lum</code></li>
+  <li><strong>中间调</strong>：<code>cg_mid_hue</code>、<code>cg_mid_sat</code>、<code>cg_mid_lum</code></li>
+  <li><strong>高光</strong>：<code>cg_hi_hue</code>、<code>cg_hi_sat</code>、<code>cg_hi_lum</code></li>
+  <li><strong>全局</strong>：<code>cg_glob_hue</code>、<code>cg_glob_sat</code>、<code>cg_glob_lum</code></li>
+</ul>
+<p>在任意色轮上将圆点从中心拖开，即向该色相方向添加色度偏移；明亮度高于或低于零时，该区间的亮度随之升高或降低。全局色轮对所有色调同时生效，不受亮度蒙版限制。</p>
+
+<p>色轮下方有两个控制区间融合方式的滑块：</p>
+<ul>
+  <li><strong>混合</strong> —— <code>cg_blending</code>，范围 0–100，默认 50。值越高，区间蒙版重叠越多，阴影与高光之间的色彩推移呈渐变过渡而非硬切。值越低，区间分离越明显。</li>
+  <li><strong>平衡</strong> —— <code>cg_balance</code>，范围 −100 至 +100，默认 0。移动阴影与高光之间的交界点：负值将交界向阴影方向移动（扩大高光区间），正值将交界向高光方向移动（扩大阴影区间）。</li>
+</ul>
+
+<details class="hood"><summary>深入原理</summary><div class="hood-body">
+<p><strong>色度偏移：</strong>每个色轮的色相与饱和度值通过 <code>wheel_offset(hue, sat)</code> 转换为零亮度 RGB 推移：计算该角度对应的纯色相 RGB，减去其亮度，再乘以 <code>CG_COLOR_GAIN = 0.5</code>。这产生不改变亮度的纯色度推移。逐区间明亮度滑块则单独乘以 <code>CG_LUM_GAIN = 0.3</code> 进行缩放。</p>
+<p><strong>区间蒙版：</strong>像素的亮度（<code>l = 0.2126·R + 0.7152·G + 0.0722·B</code>）被测量，并用于计算三个 smoothstep 权重：<code>w_sh = 1 − smoothstep(sh_edge − softness, sh_edge + softness, l)</code>，<code>w_hi = smoothstep(hi_edge − softness, hi_edge + softness, l)</code>，<code>w_mid = clamp(1 − w_sh − w_hi, 0, 1)</code>。柔和度为 <span class="formula">softness = 0.1 + 0.3 · blending</span>（默认 blending = 0.5 时：softness = 0.25）。区间边界：<span class="formula">sh_edge = 0.33 + balance · 0.25</span>，<span class="formula">hi_edge = 0.66 + balance · 0.25</span>，均从 −100..100 滑块范围预缩放至 −1..1。</p>
+<p><strong>施加：</strong>每个通道的输出为 <code>rgb[c] + w_sh·(sh_off[c] + sh_lum) + w_mid·(mid_off[c] + mid_lum) + w_hi·(hi_off[c] + hi_lum) + (glob_off[c] + glob_lum)</code>。全局项始终以完全权重叠加（无蒙版）。感知设计原理详见 <a href="../science/color.html">色彩与白平衡</a>。</p>
+</div></details>
+
+<h2>颜色混合器</h2>
+<p><strong>颜色混合器</strong>部分包含两个标签页：<em>混合器</em>（八段 HSL 混合器）和<em>点颜色</em>（采样驱动的定向调整）。「重置」按钮仅重置当前激活的标签页。</p>
+
+<p>混合器标签页将色相圆分为<strong>八个命名频段</strong>：红色、橙色、黄色、绿色、青色、蓝色、紫色和洋红色。这些对应 API 中的 <code>CM_BANDS</code> 常量：<code>["red","orange","yellow","green","aqua","blue","purple","magenta"]</code>。频段参数命名为 <code>cm_{频段}_{hue|sat|lum}</code>。四种视图模式允许逐属性调整（色相、饱和度、明亮度）或同时调整全部三项（全部）：</p>
+<ul>
+  <li><strong>色相</strong> —— 偏移该频段内像素的色相。正值使色相顺时针旋转，负值逆时针旋转。最大偏移量为 ±30°（常量 <code>CM_HUE_SHIFT_MAX = 30.0</code>）。</li>
+  <li><strong>饱和度</strong> —— 对该频段内像素的饱和度进行乘法调整。正值使色彩更鲜艳，负值使其去饱和。接近中性的像素（饱和度约低于 0.05–0.20）受到门控，效果被减弱，以防止噪点放大。</li>
+  <li><strong>明亮度</strong> —— 偏移该频段内像素的亮度。在滑块极值处，最大提升或压暗由 <code>CM_LUM_GAIN = 0.25</code> 缩放，范围适中。</li>
+</ul>
+<p>所有混合器滑块均为 −100 至 +100，0 为恒等。频段效果随像素色相偏离频段中心而平滑消减，使用半宽为 <code>CM_FALLOFF_DEG = 50°</code> 的余弦衰减。相邻频段互有重叠，不存在硬性色相边界。</p>
+
+<p><strong>点颜色</strong>标签页提供采样驱动的定向调整：点击<em>拾取颜色</em>吸管激活视口中的十字准星，再点击任意像素对其采样，其色相、饱和度和亮度以色样形式记录。最多可同时存在八个色样，存储为 <code>pc_samples</code> 数组。选中某个色样后，将显示五个滑块：</p>
+<ul>
+  <li><strong>色相偏移</strong>（<code>hue_shift</code>）—— 旋转匹配像素的色相，在极值处最大 ±30°。</li>
+  <li><strong>饱和度偏移</strong>（<code>sat_shift</code>）—— 对饱和度进行乘法调整，缩放方式与混合器「饱和度」滑块相同。</li>
+  <li><strong>明亮度偏移</strong>（<code>lum_shift</code>）—— 提升或降低亮度，由 <code>CM_LUM_GAIN = 0.25</code> 缩放。</li>
+  <li><strong>扩散</strong>（<code>variance</code>，−100 至 +100，默认 0）—— 扩大或收窄用于匹配像素与色样的饱和度与亮度容差。正值接受与采样值相差较大的像素；负值将接受范围收窄至非常接近采样值的像素。</li>
+  <li><strong>范围</strong>（<code>range</code>，0–100，默认 50）—— 控制选择范围的色相角半宽。默认值（50）时半宽约为 32.5°；最大值（100）时达 60°；最小值（0）时收窄至 5°。</li>
+</ul>
+<p>多个色样彼此独立、顺序无关：每个色样从未经修改的输入像素计算权重，所有偏移量累加后一次施加。移除某个色样（点击其 × 标记）立即去除其效果。颜色混合器与点颜色依次作用：混合器先对所有像素按频段调整，点颜色再对混合器输出进行处理。两者均在颜色分级之后运行。色彩流程的整体背景详见 <a href="../science/color.html">色彩与白平衡</a>。</p>
+
+<details class="hood"><summary>深入原理</summary><div class="hood-body">
+<p><strong>频段权重（finish.rs）：</strong>对于八个频段中的每一个，色相为 <code>h</code> 的像素权重为 <span class="formula">w = 0.5 · (1 + cos(π · |wrap180(h − center)| / CM_FALLOFF_DEG))</span>（当角距小于 50° 时），否则为 0。频段中心（度数）：红色 = 0、橙色 = 30、黄色 = 60、绿色 = 120、青色 = 180、蓝色 = 240、紫色 = 280、洋红色 = 320。</p>
+<p><strong>混合器施加：</strong>色相偏移和饱和度调整均乘以饱和度门控 <code>gate = smoothstep(CM_SAT_GATE_LO, CM_SAT_GATE_HI, s)</code>（<code>CM_SAT_GATE_LO = 0.05</code>，<code>CM_SAT_GATE_HI = 0.20</code>），保护接近中性的像素不受色相偏移噪声影响。明亮度偏移不受门控。饱和度为乘法调整：<code>s_out = s · (1 + weighted_sat_factor)</code>。</p>
+<p><strong>点颜色权重：</strong>位于 <code>(hue_t, sat_t, lum_t)</code> 的色样与色相为 <code>(h, s, l)</code> 的像素通过三个独立权重匹配：色相权重使用相同的余弦衰减，半宽由范围推导 <span class="formula">hw = PC_RANGE_MIN_DEG + (range/100) · (PC_RANGE_MAX_DEG − PC_RANGE_MIN_DEG)</span>，其中 <code>PC_RANGE_MIN_DEG = 5.0°</code>，<code>PC_RANGE_MAX_DEG = 60.0°</code>；饱和度权重 <span class="formula">ws = clamp(1 − |s − sat_t| / pc_tol(0.25, variance), 0, 1)</span>；明亮度权重 <span class="formula">wl = clamp(1 − |l − lum_t| / pc_tol(0.25, variance), 0, 1)</span>。容差函数为 <span class="formula">pc_tol(base, variance) = max(0.02, base · (1 + (variance/100) · 2.0))</span>。综合权重为 <code>w = wh · ws · wl</code>。</p>
+</div></details>
+
+<p class="next"><a href="crop-dust.html">下一篇：裁剪与去尘 →</a></p>
+</article>
+    <footer class="docfoot">OpenEnlarge —— 开源胶片扫描编辑器 · MIT 许可</footer>
+  </main>
+  <aside class="toc" id="toc" aria-label="本页目录"><div class="toc-title">本页目录</div><div id="toc-list"></div></aside>
+</div>
+<script src="../../docs.js" defer></script>
+</body>
+</html>
