@@ -200,3 +200,31 @@ xlsx ──► load_reference ──► [RefPatch{ev, value, confidence}]×100 �
 
 - `数值`'s true encoding (linear DN vs gamma vs display code). The build proceeds on the
   documented inference; confirming it only sharpens the absolute L\* anchor.
+
+## Amendment (post-build human checkpoint, 2026-06-21)
+
+The original design stitched all 3 frames into one ~17.5 EV transfer. The checkpoint found
+this conflates two goals: the 3 frames are the SAME wedge at different camera exposures
+(+0/+6/+9), so the digital-SDR target (a function of the monitor patch / relative EV) is the
+same set for every frame — stitching by absolute EV makes it sawtooth/non-monotonic, and one
+fixed inversion cannot map a patch's three different negative densities to its single target.
+
+**Resolution (user-approved):** measure tone fidelity **per frame** (each frame independently:
+its 100 patches' output L\* vs the digital-SDR target). The 17.5 EV film **H-D curve** (density
+domain, exposure-normalized) is a **separate, deferred** analysis. The runner now reports
+per-frame baseline + fits.
+
+**Per-frame C400 result (overlay-verified):**
+| frame | baseline rms ΔL\* | fit d_max only | +filmic curve | gamma |
+|---|---|---|---|---|
+| +0 EV (correct exposure) | 34.6 | 12.6 | 7.3 | **4.4** |
+| +6 EV | 24.0 | 11.9 | 6.9 | 8.0 |
+| +9 EV | 32.5 | 14.2 | 10.0 | 8.8 |
+
+**Findings:** (1) the engine is ~2.5 stops too dark on the correctly-exposed frame (target
+L\*95 vs our 38), confirmed against calibrated truth; (2) it is very fixable (d_max alone
+34.6→12.6; +curve →7.3); (3) **a plain gamma transfer beats the filmic S-curve on the +0
+frame (4.4 vs 7.3)** — strong evidence the reconstruction core should use ~gamma, but mixed on
+the over-exposed frames → **verify on more frames/stocks before any engine change** (and the
+filmic shoulder may still belong in the optional film-look layer). No engine change in this
+build (measurement only).
