@@ -181,6 +181,17 @@ export async function developAll(target: "develop" | "roll" = "develop"): Promis
           const { exposure } = await api.autoBrightness(id, withEffectiveBase(seed, imageDir(updated)));
           seed.exposure = exposure;
         } catch { /* not resident yet — the per-image seed retries on activation */ }
+        // Re-measure WB at the SEEDED exposure. as_shot_wb's gray-world estimate runs on
+        // the inverted image, whose print exposure comes from `exposure` (build_params) —
+        // so WB is exposure-dependent. The first pass above measured it at exposure 0;
+        // Frame's per-image seed re-measures at the final exposure and would otherwise shift
+        // the WB (and re-bake the thumbnail) on first activation. Measuring here at the final
+        // exposure stores the value Frame converges to, so the look is frozen after develop.
+        try {
+          const wb2 = await api.asShotWb(id, withEffectiveBase(seed, imageDir(updated)));
+          seed.temp = wb2.temp;
+          seed.tint = wb2.tint;
+        } catch { /* not resident yet — Frame's per-image seed retries on activation */ }
         editsById.update((m) => m[id] ? m : { ...m, [id]: seed });
         // Re-bake the catalog thumbnail at the SEEDED params so the stored thumbnail matches
         // the develop-time seed. Otherwise the backend's DEFAULT-params bake (exposure 0) is
