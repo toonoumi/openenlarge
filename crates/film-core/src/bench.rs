@@ -68,6 +68,13 @@ pub fn score_color(neg: &Image, base: [f32; 3], corners: &[[f32; 2]; 4]) -> Colo
     ];
 
     // As-shipped gains: the engine's own auto-WB on the full inverted frame.
+    // We model WB as a per-channel multiply on the (display-referred) filmic
+    // positive — this is exactly the engine's `WbMode::Gain` at EV 0
+    // (`engine.rs`: `filmic_s_raw(t) * wb[c]`), so for Gain mode it is engine-exact
+    // bar minor divergence at near-white from the engine's filmic round-trip.
+    // It does NOT reproduce `WbMode::Subtractive` (a pre-curve density multiply);
+    // if the app ships Subtractive WB by default, treat as-shipped as an
+    // approximation of, not an exact match to, the develop-view render.
     let ship_gain = auto_wb_gains(&positive);
 
     let apply = |p: [f32; 3], g: [f32; 3]| [p[0] * g[0], p[1] * g[1], p[2] * g[2]];

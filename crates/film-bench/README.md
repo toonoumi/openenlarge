@@ -49,7 +49,7 @@ Define benchmark frames in `benchdata/<roll>.roi.json`:
 - **Color reference:** Canonical ColorChecker Classic 24 (sRGB-8, D65)
 - **Color metric:** CIE ΔE2000 in Lab(D65)
 - **Neutralized ΔE:** WB locked on 6 gray patches (isolates chroma rendering)
-- **As-shipped ΔE:** Engine auto-WB applied
+- **As-shipped ΔE:** Engine auto-WB applied as a `WbMode::Gain` per-channel multiply on the filmic positive (engine-exact for Gain mode; an approximation if the app ships `WbMode::Subtractive`)
 - **Tone reference:** Per-roll film base from `d_min` frame via `sample_base_clearfilm` (rejects blown-lightbox surround; recovers orange mask)
 - **Tone metrics:** mid-gray L*, shadow/highlight latitude (EV), monotonicity
 
