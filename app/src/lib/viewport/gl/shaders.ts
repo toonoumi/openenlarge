@@ -396,6 +396,13 @@ const float CMY_STRENGTH = 1.6;
 const float FAITHFUL_GAMMA  = 1.590;
 const float FAITHFUL_KNEE   = 0.892;
 const float FAITHFUL_SCALE  = 1.0 / 0.700;
+// Look-layer strength -- MUST equal engine.rs LOOK_K (the clean-punchy MEDIUM).
+const float LOOK_K = 2.0;
+// Clean-punchy look curve -- MUST equal engine.rs look_s. Normalized symmetric tanh S on
+// the faithful core SDR value (pivot 0.5, anchored 0->0 / 1->1, soft toe+shoulder).
+float lookS(float v) {
+  return clamp(0.5 + 0.5 * tanh(LOOK_K * (v - 0.5)) / tanh(LOOK_K * 0.5), 0.0, 1.0);
+}
 float gammaShoulder(float x, float ceil_val) {
   float raw = pow(max(x, 0.0), 1.0 / FAITHFUL_GAMMA);
   if (raw <= FAITHFUL_KNEE) return min(raw, ceil_val);
@@ -483,6 +490,8 @@ vec3 invert(vec3 rgbIn) {
       } else {
         v = vec3(gammaShoulder(te.r, ceil_val) * u_wb.r, gammaShoulder(te.g, ceil_val) * u_wb.g, gammaShoulder(te.b, ceil_val) * u_wb.b);
       }
+      // Look layer (SDR; INVERT_FRAG is always SDR). Mirror: engine.rs look_s.
+      v = vec3(lookS(v.r), lookS(v.g), lookS(v.b));
     } else {
       // Filmic: logistic S-curve on WB-neutralised log-density.
       if (u_wb_mode == 1) {
