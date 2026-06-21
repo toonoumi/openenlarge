@@ -5,12 +5,13 @@
   import { get } from "svelte/store";
   import { t } from "$lib/i18n";
   import { developedFolderImages } from "$lib/export/eligible";
-  import { editsById, cropById, images, activeId, setActive, rollOverwriteSkip, module, deleteTarget, selectedFolder } from "$lib/store";
+  import { editsById, cropById, images, activeId, setActive, rollOverwriteSkip, module, deleteTarget, selectedFolder, folderImages } from "$lib/store";
   import { rollReferenceId, enterRollDraft, rollDraft, rollDraftTouched } from "$lib/roll/draft";
   import RollAdjust from "$lib/roll/RollAdjust.svelte";
   import { applyToneColorToAll, applyBaseToAll, applyWhitePointToAll, applyExposureToAll, applyCropToAll, framesWithToneColor, framesWithCrop, framesWithBase, framesWithWhitePoint } from "$lib/roll/apply";
   import { livePreviewParams, draftThumbView } from "$lib/roll/livePreview";
-  import { withEffectiveBase } from "$lib/develop/base";
+  import { withEffectiveBase, setFolderBase } from "$lib/develop/base";
+  import { reseedRollProtectedFree } from "$lib/roll/rollBase";
   import { imageDir } from "$lib/library/folderScope";
   import { api, defaultParams } from "$lib/api";
   import { debounce } from "$lib/catalog";
@@ -310,6 +311,9 @@
   // --- Reference-edit mode (crop / base / wp) ----------------------------------
   type EditMode = "none" | "crop" | "base" | "wp";
   let editMode: EditMode = "none";
+  // When true, a base-mode pick recalibrates the WHOLE roll (setFolderBase + reseed)
+  // rather than writing the draft's base_override. Set by enterRecalibrateBaseMode.
+  let baseRecalibrate = false;
   // Whether a wp-pick click is currently being processed (disarm after one pick).
   let wpPicking = false;
   let refId: string | null = null;
@@ -425,6 +429,19 @@
     if (!id) return;
     refId = id;
     setActive(id);
+    baseRecalibrate = false;
+    editMode = "base";
+  }
+
+  // Recalibrate-roll-base: same rebate picker (BaseView) as the draft Film Base tool,
+  // but on commit it sets the WHOLE roll's stored base + reseeds protected-free frames,
+  // instead of writing the draft's base_override. Routed from RollAdjust's button.
+  function enterRecalibrateBaseMode() {
+    const id = get(activeId) ?? $developedFolderImages[0]?.id ?? null;
+    if (!id) return;
+    refId = id;
+    setActive(id);
+    baseRecalibrate = true;
     editMode = "base";
   }
 
@@ -437,7 +454,20 @@
     wpPicking = true;
   }
 
-  function onBaseSampled(e: CustomEvent<[number, number, number]>) {
+  async function onBaseSampled(e: CustomEvent<[number, number, number]>) {
+    if (baseRecalibrate) {
+      // Whole-roll recalibrate: BaseView already sampled the rebate via sampleBaseAt,
+      // so e.detail IS the measured base. Set it as the roll/folder default and reseed
+      // every protected-free frame (frames with base_override / wb_manual are skipped).
+      const dir = get(selectedFolder);
+      const base = e.detail;
+      baseRecalibrate = false;
+      exitEditMode();
+      if (!dir) return;
+      setFolderBase(dir, base);
+      await reseedRollProtectedFree(get(folderImages));
+      return;
+    }
     rollDraft.update((d) => ({ ...d, params: { ...d.params, base_override: e.detail } }));
     rollDraftTouched.set(true);
     exitEditMode();
@@ -498,6 +528,7 @@
     // NOTE: do NOT call this from crop mode — use applyCropAndExit or discardCropAndExit.
     editMode = "none";
     wpPicking = false;
+    baseRecalibrate = false;
     refId = null;
   }
 
@@ -668,7 +699,7 @@
     </div>
 
     <aside class="panel">
-      <RollAdjust>
+      <RollAdjust on:recalibrateRollBase={enterRecalibrateBaseMode}>
         <!-- Change A+D: tool row rendered in slot between heading and sliders -->
         <div class="tool-row">
           <div class="tool">

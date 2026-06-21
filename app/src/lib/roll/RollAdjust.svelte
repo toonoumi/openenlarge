@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { createEventDispatcher } from "svelte";
   import { t } from "$lib/i18n";
   import Slider from "$lib/develop/Slider.svelte";
   import TonalCurve from "$lib/develop/TonalCurve.svelte";
@@ -7,6 +8,7 @@
   import { defaultParams } from "$lib/api";
 
   const ps = draftParamsStore();
+  const dispatch = createEventDispatcher<{ recalibrateRollBase: void }>();
 
   function markWbManual() { ps.update((p) => ({ ...p, wb_manual: true })); }
   function resetLook() {
@@ -20,6 +22,11 @@
     <button class="reset" on:click={resetLook}>{$t('basic.reset')}</button>
   </div>
   <slot />
+
+  <!-- Roll-scoped manual recalibrate: pick a clean rebate on the reference frame to
+       set the WHOLE roll's film base and reseed every protected-free frame. Routed to
+       Roll.svelte via the recalibrateRollBase event (mirrors the slot tool-row channel). -->
+  <button class="recal" on:click={() => dispatch("recalibrateRollBase")}>{$t('roll.recalibrateBase')}</button>
 
   <!-- These rows are copied VERBATIM from Basic.svelte (lines ~248-272), with only
        `$params` swapped for `$ps`. Same label keys / min / max / step / scale /
@@ -48,4 +55,8 @@
   .reset { background: transparent; border: 1px solid var(--glass-brd); color: var(--text-dim);
     border-radius: 6px; padding: 2px 8px; font-size: 11px; cursor: pointer; }
   .reset:hover { color: var(--text); }
+  .recal { background: var(--glass-hi); border: 1px solid var(--glass-brd); color: var(--text);
+    border-radius: 8px; padding: 7px 12px; font-size: 12px; font-weight: 600; cursor: pointer;
+    transition: background 0.15s, border-color 0.15s; }
+  .recal:hover { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.18); }
 </style>
