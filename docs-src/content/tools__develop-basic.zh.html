@@ -37,7 +37,7 @@
 <p>六个控件依次叠加：亮度增益 → 色调曲线（白色/黑色端点，再是高光/阴影区域，最后是对比度 S 型增益）。它们在反转核心之后于显示空间中施加，因此无论处理负片还是正片直通帧均保持一致。如需进一步的曲线编辑——逐通道点控曲线与区域参数滑块——请参阅 <a href="tune.html">微调</a>。</p>
 
 <details class="hood"><summary>深入原理</summary><div class="hood-body">
-<p><strong>亮度密度曲线：</strong><span class="formula">gain = 10^(b · 0.5)</span>，其中 <code>b</code> 为 −1..1 范围的滑块值。在极值处（b = ±1），增益约为 ×3.16 / ×0.32（约 ±1.66 档）。GPU 预览与 CPU 导出使用相同常量 <code>BRIGHTNESS_DENSITY_RANGE = 0.5</code>，因此两者完全一致。</p>
+<p><strong>亮度密度曲线：</strong><span class="formula">gain = 10^(b · 0.5)</span>，其中 <code>b</code> 为亮度滑块值，从其 −100..100 的 UI 范围预缩放至 −1..1。在极值处（b = ±1），增益约为 ×3.16 / ×0.32（约 ±1.66 档）。GPU 预览与 CPU 导出使用相同常量 <code>BRIGHTNESS_DENSITY_RANGE = 0.5</code>，因此两者完全一致。</p>
 <p><strong>色调曲线顺序（finish.rs）：</strong></p>
 <ol>
   <li>白色端点：<span class="formula">v += whites · 0.20 · v³</span> —— 接近 1 时最强，在 0 处消失。</li>
@@ -91,7 +91,7 @@
 </div></details>
 
 <h2>HDR 预览</h2>
-<p><strong>HDR</strong> 开关（基础面板标题栏右上角，字段 <code>hdr: boolean</code>）为当前帧启用 HDR 预览渲染。在 HDR 模式下，引擎将 Filmic 路径中标准膝点（<code>HDR_KNEE = 0.8</code>）以上的高光密度扩展至最高 <code>HDR_HEADROOM = 2.5</code> 的范围，使镜面高光和光源在支持 EDR/HDR10 的显示器上可以超越 SDR 白点。导出流程默认仍为 SDR；HDR 仅为预览开关。注意 Faithful 路径在 HDR 模式下绕过外观曲线层，以保留扩展的亮度值。</p>
+<p><strong>HDR</strong> 开关（基础面板标题栏右上角，字段 <code>hdr: boolean</code>）为当前帧启用 HDR 预览渲染。在 Faithful 路径（OpenEnlarge 唯一启用的色调路径）下，HDR 模式将色调曲线的输出上限提升至 <code>HDR_HEADROOM = 2.5</code>：曲线肩部拟合至这一抬高的上限，而非 SDR 白点（1.0），使镜面高光和光源在支持 EDR/HDR10 的显示器上可以超越 SDR 白点。HDR 模式下绕过风格层，以保留这些亮度余量值。导出流程默认仍为 SDR；HDR 仅为预览开关。（<code>HDR_KNEE</code> 属于已停用的 Filmic 路径，此处不适用。）</p>
 
 <h2>重置</h2>
 <p><strong>重置</strong>按钮（基础面板标题栏右上角）将所有基础控件还原至默认值：曝光、亮度、对比度、高光、阴影、白色、黑色、纹理、鲜艳度、饱和度均设为 0，胶片配置文件清空。色温和色调重新从自动白平衡估算中获取，而非设为固定默认值，因此色彩平衡落在图像检测到的中性点，而非任意数字。裁剪、片边颜色和所有微调设置保持不变。</p>

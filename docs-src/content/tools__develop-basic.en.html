@@ -37,7 +37,7 @@
 <p>The six controls compose in order: Brightness gain → tone curve (Whites/Blacks endpoints, then Highlights/Shadows regions, then Contrast S-gain). They are applied in display space after the inversion core, so they are the same whether you are working on a negative or a positive passthrough frame. For further curve editing — per-channel point curves and region parametric sliders — see <a href="tune.html">Tune</a>.</p>
 
 <details class="hood"><summary>Under the hood</summary><div class="hood-body">
-<p><strong>Brightness density curve:</strong> <span class="formula">gain = 10^(b · 0.5)</span> where <code>b</code> is the slider in −1..1. At the extremes (b = ±1) the gain is approximately ×3.16 / ×0.32 (~±1.66 stops). The GPU preview and CPU export use the same constant <code>BRIGHTNESS_DENSITY_RANGE = 0.5</code> so they match identically.</p>
+<p><strong>Brightness density curve:</strong> <span class="formula">gain = 10^(b · 0.5)</span> where <code>b</code> is the Brightness slider value pre-scaled from its −100..100 UI range to −1..1. At the extremes (b = ±1) the gain is approximately ×3.16 / ×0.32 (~±1.66 stops). The GPU preview and CPU export use the same constant <code>BRIGHTNESS_DENSITY_RANGE = 0.5</code> so they match identically.</p>
 <p><strong>Tone curve order (finish.rs):</strong></p>
 <ol>
   <li>Whites endpoint: <span class="formula">v += whites · 0.20 · v³</span> — strong near 1, vanishes at 0.</li>
@@ -91,7 +91,7 @@
 </div></details>
 
 <h2>HDR preview</h2>
-<p>The <strong>HDR</strong> toggle (top-right of the Basic panel header, field <code>hdr: boolean</code>) enables an HDR preview rendition for the current frame. In HDR mode the engine expands highlight density above the standard knee (<code>HDR_KNEE = 0.8</code> in the Filmic path) into the range up to <code>HDR_HEADROOM = 2.5</code>, so specular highlights and light sources can exceed SDR white on displays that support EDR/HDR10. The export pipeline stays SDR by default; HDR is a preview-only toggle. Note that the Faithful path's look curve bypasses the look layer in HDR mode to preserve the headroom values.</p>
+<p>The <strong>HDR</strong> toggle (top-right of the Basic panel header, field <code>hdr: boolean</code>) enables an HDR preview rendition for the current frame. On the Faithful path — OpenEnlarge's sole active tone path — HDR mode raises the tone curve's output ceiling to <code>HDR_HEADROOM = 2.5</code>: the curve's shoulder is fitted toward this raised ceiling instead of SDR white (1.0), so specular highlights and light sources can exceed SDR white on displays that support EDR/HDR10. The look layer is bypassed in HDR mode to preserve those headroom values. The export pipeline stays SDR by default; HDR is a preview-only toggle. (<code>HDR_KNEE</code> belongs to the dormant Filmic path and does not apply here.)</p>
 
 <h2>Reset</h2>
 <p>The <strong>Reset</strong> button (top-right of the Basic panel header) returns all Basic controls to their defaults: Exposure, Brightness, Contrast, Highlights, Shadows, Whites, Blacks, Texture, Vibrance, Saturation are all set to 0, and Film Profile is cleared. Temp and Tint are re-seeded from the as-shot auto-WB estimate rather than being set to a hard default, so the color balance lands at the image's detected neutral rather than an arbitrary number. Crop, film-edge color, and any Tune settings are left untouched.</p>
