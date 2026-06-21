@@ -249,6 +249,46 @@ export async function seedFolderWb(): Promise<void> {
   }
 }
 
+// Frames whose exposure has already been auto-seeded this session — mirrors wbSeeded so
+// the Develop/Roll-entry sweep never re-runs (or clobbers later edits) for a handled id.
+const expFolderSeeded = new Set<string>();
+
+/**
+ * Auto-seed exposure into `editsById` for every developed folder frame still on the
+ * default exposure. The Tune editor's per-image `seedExposure` only solves the ACTIVE
+ * frame, so the Develop (Roll) contact sheet otherwise shows every un-tuned frame at the
+ * default (un-auto-exposed) exposure until each is individually opened in Tune. Running
+ * this on Develop/Tune entry auto-exposes the whole roll up front (the per-image solve
+ * via `auto_brightness`, honoring each frame's crop/orientation). Skips frames the user
+ * has touched (exposure moved off the default). Mirrors `seedFolderWb`.
+ */
+export async function seedFolderExposure(): Promise<void> {
+  const d = defaultParams();
+  for (const f of get(developedFolderImages)) {
+    const id = f.id;
+    if (expFolderSeeded.has(id)) continue;
+    const cur = get(editsById)[id];
+    // Already seeded/edited (exposure moved off the default) → leave it.
+    if (cur && cur.exposure !== d.exposure) { expFolderSeeded.add(id); continue; }
+    try {
+      const base = cur ?? { ...d, positive: f.positive ?? false };
+      const c = get(cropById)[id] ?? null;
+      const crop = c
+        ? ([c.rect.x, c.rect.y, c.rect.w, c.rect.h] as [number, number, number, number])
+        : null;
+      const geom = c ? { rot90: c.rot90, flip_h: c.flipH, flip_v: c.flipV, angle: c.angle } : {};
+      const { exposure } = await api.autoBrightness(id, withEffectiveBase(base, imageDir(f)), crop, geom);
+      editsById.update((m) => {
+        const e = m[id] ?? { ...d, positive: f.positive ?? false };
+        if (e.exposure !== d.exposure) return m; // don't clobber an exposure set meanwhile
+        return { ...m, [id]: { ...e, exposure } };
+      });
+      invalidatePreview(id);
+      expFolderSeeded.add(id);
+    } catch { /* not resident yet — retry on the next entry */ }
+  }
+}
+
 /**
  * Delete an image: forget it in the backend (optionally trashing the file), then
  * drop it from every per-image store. If it was the active image, select the next

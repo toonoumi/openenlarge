@@ -8,7 +8,7 @@
   import { createPreviewPrefetcher } from "../develop/previewPrefetch";
   import { imageDir } from "../library/folderScope";
   import { withEffectiveBase } from "../develop/base";
-  import { mergeEnsured, seedFolderWb } from "../workflow";
+  import { mergeEnsured, seedFolderWb, seedFolderExposure } from "../workflow";
   import { api } from "../api";
   import Filmstrip from "../panels/Filmstrip.svelte";
   import ImageContextMenu from "../overlay/ImageContextMenu.svelte";
@@ -59,6 +59,9 @@
     // active one (Develop's per-image seed only touches the active frame). One-time per
     // id; skips frames the user has already balanced or edited.
     seedFolderWb();
+    // Likewise auto-expose the whole roll up front (per-image seedExposure only solves the
+    // active frame), so the contact sheet + every frame open correctly exposed.
+    seedFolderExposure();
     return () => { prefetcher.stop(); un?.(); };
   });
 
