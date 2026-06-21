@@ -1,0 +1,90 @@
+<!-- AUTO-GENERATED from /docs-src — do not edit by hand. Run python3 scripts/gen-docs.py -->
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>常见问题 — OpenEnlarge Docs</title>
+<meta name="description" content="关于 OpenEnlarge 的常见问题 —— 为何采用密度域反转、色偏与片基、除尘选项、AI 的保真度，以及导出是否与预览一致。">
+<meta name="theme-color" content="#0a0a0c">
+<link rel="icon" href="../../../img/favicon.png">
+<link rel="canonical" href="https://openenlarge.io/docs/zh/reference/faq.html">
+<link rel="alternate" hreflang="en" href="https://openenlarge.io/docs/reference/faq.html">
+<link rel="alternate" hreflang="zh-Hans" href="https://openenlarge.io/docs/zh/reference/faq.html">
+<link rel="alternate" hreflang="x-default" href="https://openenlarge.io/docs/reference/faq.html">
+<meta property="og:type" content="article"><meta property="og:title" content="常见问题 — OpenEnlarge Docs"><meta property="og:description" content="关于 OpenEnlarge 的常见问题 —— 为何采用密度域反转、色偏与片基、除尘选项、AI 的保真度，以及导出是否与预览一致。"><meta property="og:url" content="https://openenlarge.io/docs/zh/reference/faq.html"><meta name="twitter:card" content="summary">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "常见问题", "description": "关于 OpenEnlarge 的常见问题 —— 为何采用密度域反转、色偏与片基、除尘选项、AI 的保真度，以及导出是否与预览一致。", "inLanguage": "zh-Hans", "url": "https://openenlarge.io/docs/zh/reference/faq.html", "isPartOf": {"@type": "WebSite", "name": "OpenEnlarge", "url": "https://openenlarge.io"}}</script>
+<link rel="stylesheet" href="../../docs.css">
+</head>
+<body>
+<a class="skip" href="#content">跳到正文</a>
+<nav class="docnav"><div class="navbar glass wrap">
+  <a class="brand" href="../../../index.html"><img class="mark" src="../../../img/icon.png" alt=""> OpenEnlarge <span class="brand-docs">文档</span></a>
+  <button class="menu-btn" id="menu-btn" type="button" aria-label="菜单" aria-expanded="false">☰</button>
+  <div class="navlinks">
+    <a href="../../../index.html">主页</a>
+    <a href="https://github.com/mohaelder/openenlarge">GitHub</a>
+    <a class="lang-link" href="../../reference/faq.html">EN</a>
+  </div>
+</div></nav>
+<div class="doclayout wrap">
+  <aside class="sidebar" id="sidebar"><div class="side-sec"><div class="side-h">概览</div>
+<a href="../index.html">文档</a>
+<a href="../workflow.html">工作流程</a>
+</div>
+<div class="side-sec"><div class="side-h">原理</div>
+<a href="../science/negatives.html">彩色负片的原理</a>
+<a href="../science/inversion.html">反转流程</a>
+<a href="../science/density.html">密度与对数空间</a>
+<a href="../science/tone-curve.html">色调曲线（Faithful 风格）</a>
+<a href="../science/color.html">色彩与白平衡</a>
+<a href="../science/base-calibration.html">片基校准</a>
+</div>
+<div class="side-sec"><div class="side-h">工具</div>
+<a href="../tools/develop-basic.html">显影 · 基础</a>
+<a href="../tools/tune.html">微调</a>
+<a href="../tools/crop-dust.html">裁剪与除尘</a>
+<a href="../tools/ai.html">AI 工具</a>
+<a href="../tools/library.html">图库</a>
+<a href="../tools/roll.html">整卷</a>
+<a href="../tools/export.html">导出</a>
+</div>
+<div class="side-sec"><div class="side-h">参考</div>
+<a href="../reference/glossary.html">术语表</a>
+<a class="on" href="../reference/faq.html">常见问题</a>
+</div></aside>
+  <main class="content" id="content">
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="../index.html">文档</a> <span class="sep">/</span> <span>常见问题</span></nav>
+    <article class="prose"><h1>常见问题</h1>
+<p class="lead">关于 OpenEnlarge、其反转引擎与各项工具的常见问题 —— 附有深入阅读的链接。</p>
+
+<h2>为什么采用密度域反转，而不是直接翻转一条色调曲线？</h2>
+<p>在 RGB 空间中仅仅翻转色调曲线来反转负片，会把每个通道当作独立的亮度值来处理 —— 无法去除橙色遮罩，色调范围的压缩与扩展也缺乏摄影依据。OpenEnlarge 在<strong>光学密度</strong>空间中工作：它采样透明片边来测量橙色片基，逐通道将其从每个像素中除去，再用 <span class="formula">D = log₁₀(片基 / 扫描值)</span> 将结果转换为密度。由于密度是对数量，等量的滑块步长对应等量的摄影档，片基去除在物理上也是精确的。色调曲线随后在这个感知线性的空间中施加，而非在任意的 RGB 空间中。参见 <a href="../science/inversion.html">反转流程</a> 和 <a href="../science/density.html">密度与对数空间</a>，了解逐级拆解。</p>
+
+<h2>我的扫描有色偏 —— 原因是什么，如何修复？</h2>
+<p>最常见的原因是片基采样不准确。橙色遮罩的颜色并不固定 —— 它因感光乳剂批次和冲洗化学品而异，即使采样误差很小，也会使各通道密度产生差异，导致整卷胶片出现偏暖、偏冷或交叉色偏。修复方法是从真正透明的未曝光导片头重新采样片基：在整卷标签页或 <a href="../tools/develop-basic.html">显影 · 基础</a> 面板中打开<strong>片基</strong>工具，将吸管置于胶片条的透明边缘，然后将新读数应用到整卷。第二个常见原因是白平衡：片基校准正确后，可用色温和色调滑块消除残余色偏。参见 <a href="../science/base-calibration.html">片基校准</a>，了解采样工作原理以及为何采样必须来自透明导片头。</p>
+
+<h2>红外除尘与 AI 除尘工具 —— 应该用哪个？</h2>
+<p>只要您的扫描仪捕获了专用红外通道（尼康 Coolscan、美能达 Scan Multi 带 ICE 等），请优先使用<strong>红外除尘</strong>。红外通道能以近乎完美的精度识别灰尘和划痕，因为银盐颗粒对红外光几乎透明，而灰尘会强烈散射 —— 由此产生的掩模精确且不损失图像质量。如果您的扫描没有红外通道（大多数平台和单反扫描），请使用<strong>AI 灰尘与毛发去除</strong>工具，它在本地运行机器学习检测器，随后调用 MI-GAN 修复。对于零散的污点，也可用<strong>橡皮擦画笔</strong>手动涂抹。三种方式均在本机运行，不上传图像。参见 <a href="../tools/crop-dust.html">裁剪与除尘</a>，了解每种工具的详细说明及选择建议。</p>
+
+<h2>AI 增强为何"不保真"？我的图像会被上传到网络吗？</h2>
+<p><strong>AI 增强</strong>本质上是一种创意工具，而非还原工具：它将您的预览图像发送至 <strong>OpenAI API</strong>，由模型重新诠释内容以减少噪点和划痕。由于生成式模型可能虚构原始扫描中并不存在的细节，结果并不是负片的像素级忠实还原。这是 OpenEnlarge 中唯一一处会将图像数据传出本机的功能，且需要您自己的 OpenAI API 密钥。相比之下，<strong>色调匹配</strong>和<strong>超分辨率放大</strong>均完全在本地运行 —— 任何图像数据都不会上传，结果也是确定性的。若注重隐私或保真度，请使用本地工具。参见 <a href="../tools/ai.html">AI 工具</a>，了解每项工具的详细对比及运行位置。</p>
+
+<h2>导出的文件与预览一致吗？</h2>
+<p>一致。导出通过与实时显影预览<strong>相同的管线</strong>渲染：相同的反转算法、相同的色调曲线、相同的完成阶段，应用于全分辨率原始文件。一个专用的离屏渲染器（与显影视口使用相同的 WebGL 着色器）运行完整的反转与完成链；导出的像素与 1:1 预览完全一致。若 WebGL 不可用或图像超出 GPU 纹理限制，导出会自动回退到 CPU 路径，以 Rust 运行相同的计算并产生相同的结果。唯一的例外是 HDR 导出，它使用仅针对 HDR 增益图 JPEG 的独立 GPU 路径。参见 <a href="../tools/export.html">导出</a>，了解格式选项、GPU/CPU 回退机制及分辨率上限的应用方式。</p>
+
+<h2>片基是按卷还是按帧处理 —— OpenEnlarge 采用哪种方式？</h2>
+<p>OpenEnlarge 默认采用<strong>按卷</strong>的片基处理方式。橙色遮罩是感光乳剂和冲洗化学品的属性 —— 同一卷胶片的每一帧都相同。从透明导片头（通常是胶片条未曝光的头部）采样一次片基并应用到所有帧，比逐帧采样更准确：逐帧采样若采自非纯透明区域，则可能混入主体颜色。整卷标签页中的<strong>片基</strong>参考编辑模式正是为此工作流设计的 —— 采样一次，全卷应用。如有需要，仍可在显影面板中为个别帧单独覆盖片基。参见 <a href="../science/base-calibration.html">片基校准</a> 和 <a href="../tools/roll.html">整卷</a> 工具，了解如何设置并应用全卷片基。</p>
+
+<h2>可以导入哪些文件格式？</h2>
+<p>OpenEnlarge 支持 <code>JPG</code>、<code>JPEG</code>、<code>PNG</code>、<code>DNG</code>、<code>TIF</code>、<code>TIFF</code>、<code>RAF</code>、<code>RW2</code>、<code>NEF</code>、<code>ARW</code>、<code>CR2</code>、<code>CR3</code>、<code>3FR</code>、<code>ORF</code> 和 <code>RAW</code>（不区分大小写）。导入时，扩展名不在此列表中的文件会被静默跳过。最常见的工作流是导入专业胶片扫描仪输出的多通道 TIFF 文件，这类文件可能还携带用于除尘的红外通道。参见 <a href="../tools/library.html">图库</a>，了解导入流程、文件夹与胶卷的对应关系，以及缩略图的生成与自动更新机制。</p>
+
+<p class="next"><a href="../index.html">← 返回文档首页</a></p>
+</article>
+    <footer class="docfoot">OpenEnlarge —— 开源胶片扫描编辑器 · MIT 许可</footer>
+  </main>
+  <aside class="toc" id="toc" aria-label="本页目录"><div class="toc-title">本页目录</div><div id="toc-list"></div></aside>
+</div>
+<script src="../../docs.js" defer></script>
+</body>
+</html>
