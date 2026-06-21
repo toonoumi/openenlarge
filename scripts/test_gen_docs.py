@@ -88,5 +88,57 @@ class TestScienceNegatives(unittest.TestCase):
             self.assertIn('class="hood"', html, p)
             self.assertIn("log₁₀", html, p)
 
+class TestLinks(unittest.TestCase):
+    def setUp(self): gen.build()
+    def test_internal_links_resolve_or_are_declared(self):
+        import glob, re, pathlib
+        web = ROOT / "web"
+        nav = gen.load_nav()
+        # All output paths the generator WOULD produce for every declared slug, both locales —
+        # a forward link to a declared-but-unbuilt page is allowed; anything else must exist.
+        # Collect all declared slugs from sections (superset of nav["pages"] —
+        # Wave 2/3 slugs appear in sections but may not yet have a "pages" entry).
+        expected = set()
+        declared = set(nav["pages"])
+        for sec in nav["sections"]:
+            declared.update(sec["pages"])
+        for slug in declared:
+            for lc in ("en", "zh"):
+                expected.add(gen.out_path(slug, lc).resolve())
+        for f in glob.glob(str(ROOT / "web/docs/**/*.html"), recursive=True):
+            fp = pathlib.Path(f)
+            html = fp.read_text()
+            for m in re.findall(r'href="([^"#:]+\.html)"', html):
+                if m.startswith("/"):
+                    target = (web / m.lstrip("/")).resolve()
+                else:
+                    target = (fp.parent / m).resolve()
+                ok = target.exists() or target in expected
+                self.assertTrue(ok, f"{f} -> {m} (resolved {target}) is neither built nor a declared nav page")
+    def test_img_refs_exist(self):
+        import glob, re, pathlib
+        web = ROOT / "web"
+        for f in glob.glob(str(ROOT / "web/docs/**/*.html"), recursive=True):
+            html = pathlib.Path(f).read_text()
+            for m in re.findall(r'<img[^>]+src="(/img/[^"]+)"', html):
+                self.assertTrue((web / m.lstrip("/")).exists(), f"{f} -> {m} missing")
+
+class TestScienceStructure(unittest.TestCase):
+    """Enforce EN+ZH parity invariants for every BUILT science page (pages 7-11 had no per-page tests)."""
+    def setUp(self): gen.build()
+    def test_built_science_pages_have_hood_and_figure_both_locales(self):
+        import pathlib
+        nav = gen.load_nav()
+        science = [s for sec in nav["sections"] if sec["id"] == "science" for s in sec["pages"]]
+        for slug in science:
+            en = gen.out_path(slug, "en"); zh = gen.out_path(slug, "zh")
+            if not en.exists():   # not built yet (future wave) — skip
+                continue
+            for p in (en, zh):
+                html = pathlib.Path(p).read_text()
+                self.assertIn('class="hood"', html, f"{p} missing hood block")
+                self.assertIn("<svg", html, f"{p} missing inlined figure")
+                self.assertNotIn("<!--FIG:", html, f"{p} has unreplaced figure placeholder")
+
 if __name__ == "__main__":
     unittest.main()
