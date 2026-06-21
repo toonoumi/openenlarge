@@ -1,0 +1,14 @@
+{
+  "en": {
+    "brand": "OpenEnlarge", "docs": "Docs", "onThisPage": "On this page",
+    "site": "Home", "github": "GitHub", "download": "Download",
+    "langSwitch": "中文", "footer": "OpenEnlarge — open-source film scan editor · MIT licensed",
+    "skip": "Skip to content", "menu": "Menu"
+  },
+  "zh": {
+    "brand": "OpenEnlarge", "docs": "文档", "onThisPage": "本页目录",
+    "site": "主页", "github": "GitHub", "download": "下载",
+    "langSwitch": "EN", "footer": "OpenEnlarge —— 开源胶片扫描编辑器 · MIT 许可",
+    "skip": "跳到正文", "menu": "菜单"
+  }
+}

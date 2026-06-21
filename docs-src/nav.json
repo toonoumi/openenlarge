@@ -1,0 +1,16 @@
+{
+  "sections": [
+    { "id": "overview", "title": {"en": "Overview", "zh": "概览"},
+      "pages": ["index", "workflow"] },
+    { "id": "science", "title": {"en": "The Science", "zh": "原理"},
+      "pages": ["science/negatives","science/inversion","science/density","science/tone-curve","science/color","science/base-calibration"] },
+    { "id": "tools", "title": {"en": "Tools", "zh": "工具"},
+      "pages": ["tools/develop-basic","tools/tune","tools/crop-dust","tools/ai","tools/library","tools/roll","tools/export"] },
+    { "id": "reference", "title": {"en": "Reference", "zh": "参考"},
+      "pages": ["reference/glossary","reference/faq"] }
+  ],
+  "pages": {
+    "index":    {"slug":"index","section":"overview","title":{"en":"Documentation","zh":"文档"},"desc":{"en":"Understand how OpenEnlarge inverts film scans through real density-domain chemistry, and what every tool does.","zh":"了解 OpenEnlarge 如何通过真实的密度域化学原理反转胶片扫描，以及每个工具的作用。"}},
+    "workflow": {"slug":"workflow","section":"overview","title":{"en":"The workflow","zh":"工作流程"},"desc":{"en":"Import, Develop, Tune, Roll and Export — how a roll moves through OpenEnlarge.","zh":"导入、显影、微调、整卷与导出 —— 一卷胶片在 OpenEnlarge 中的流转方式。"}}
+  }
+}

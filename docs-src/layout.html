@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="{{HTMLLANG}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{TITLE}} — OpenEnlarge Docs</title>
+<meta name="description" content="{{DESC}}">
+<meta name="theme-color" content="#0a0a0c">
+<link rel="icon" href="{{ROOT}}img/favicon.png">
+<link rel="canonical" href="{{CANONICAL}}">
+{{ALTERNATES}}
+{{OG}}
+{{JSONLD}}
+<link rel="stylesheet" href="{{DOCSROOT}}docs.css">
+</head>
+<body>
+<a class="skip" href="#content">{{S_skip}}</a>
+<nav class="docnav"><div class="navbar glass wrap">
+  <a class="brand" href="{{SITEROOT}}index.html"><img class="mark" src="{{ROOT}}img/icon.png" alt=""> {{S_brand}} <span class="brand-docs">{{S_docs}}</span></a>
+  <button class="menu-btn" id="menu-btn" type="button" aria-label="{{S_menu}}" aria-expanded="false">☰</button>
+  <div class="navlinks">
+    <a href="{{SITEROOT}}index.html">{{S_site}}</a>
+    <a href="https://github.com/mohaelder/openenlarge">{{S_github}}</a>
+    <a class="lang-link" href="{{LANGSWITCHHREF}}">{{S_langSwitch}}</a>
+  </div>
+</div></nav>
+<div class="doclayout wrap">
+  <aside class="sidebar" id="sidebar">{{SIDEBAR}}</aside>
+  <main class="content" id="content">
+    <nav class="crumbs" aria-label="Breadcrumb">{{CRUMBS}}</nav>
+    <article class="prose">{{BODY}}</article>
+    <footer class="docfoot">{{S_footer}}</footer>
+  </main>
+  <aside class="toc" id="toc" aria-label="{{S_onThisPage}}"><div class="toc-title">{{S_onThisPage}}</div><div id="toc-list"></div></aside>
+</div>
+<script src="{{DOCSROOT}}docs.js" defer></script>
+</body>
+</html>
