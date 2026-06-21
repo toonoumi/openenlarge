@@ -76,6 +76,7 @@ pub fn run(manifest_path: &str, out_dir: &str) -> Result<(), String> {
             ("scale_only", fit_tone(&points, FitMode::ScaleOnly)),
             ("scale_curve", fit_tone(&points, FitMode::ScaleCurve)),
             ("gamma", fit_tone(&points, FitMode::Gamma)),
+            ("gamma_shoulder", fit_tone(&points, FitMode::GammaShoulder)),
         ];
 
         // JSON object for this frame
@@ -87,6 +88,7 @@ pub fn run(manifest_path: &str, out_dir: &str) -> Result<(), String> {
             let curve = match fr.transfer {
                 Transfer::Filmic { k, pivot, white_t } => format!("\"filmic\", \"k\": {k:.3}, \"pivot\": {pivot:.3}, \"white_t\": {white_t:.3}"),
                 Transfer::Gamma { gamma } => format!("\"gamma\", \"gamma\": {gamma:.3}"),
+                Transfer::GammaShoulder { gamma, knee } => format!("\"gamma_shoulder\", \"gamma\": {gamma:.3}, \"knee\": {knee:.3}"),
             };
             json.push_str(&format!(
                 "      {{ \"mode\": {:?}, \"residual_rms\": {:.3}, \"recommended_d_max\": {:.3}, \"transfer\": {} }}{}\n",
