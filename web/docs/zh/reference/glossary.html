@@ -1,0 +1,137 @@
+<!-- AUTO-GENERATED from /docs-src — do not edit by hand. Run python3 scripts/gen-docs.py -->
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>术语表 — OpenEnlarge Docs</title>
+<meta name="description" content="OpenEnlarge 引擎常量与本文档中所用胶片摄影术语的速查表。">
+<meta name="theme-color" content="#0a0a0c">
+<link rel="icon" href="../../../img/favicon.png">
+<link rel="canonical" href="https://openenlarge.io/docs/zh/reference/glossary.html">
+<link rel="alternate" hreflang="en" href="https://openenlarge.io/docs/reference/glossary.html">
+<link rel="alternate" hreflang="zh-Hans" href="https://openenlarge.io/docs/zh/reference/glossary.html">
+<link rel="alternate" hreflang="x-default" href="https://openenlarge.io/docs/reference/glossary.html">
+<meta property="og:type" content="article"><meta property="og:title" content="术语表 — OpenEnlarge Docs"><meta property="og:description" content="OpenEnlarge 引擎常量与本文档中所用胶片摄影术语的速查表。"><meta property="og:url" content="https://openenlarge.io/docs/zh/reference/glossary.html"><meta name="twitter:card" content="summary">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "术语表", "description": "OpenEnlarge 引擎常量与本文档中所用胶片摄影术语的速查表。", "inLanguage": "zh-Hans", "url": "https://openenlarge.io/docs/zh/reference/glossary.html", "isPartOf": {"@type": "WebSite", "name": "OpenEnlarge", "url": "https://openenlarge.io"}}</script>
+<link rel="stylesheet" href="../../docs.css">
+</head>
+<body>
+<a class="skip" href="#content">跳到正文</a>
+<nav class="docnav"><div class="navbar glass wrap">
+  <a class="brand" href="../../../index.html"><img class="mark" src="../../../img/icon.png" alt=""> OpenEnlarge <span class="brand-docs">文档</span></a>
+  <button class="menu-btn" id="menu-btn" type="button" aria-label="菜单" aria-expanded="false">☰</button>
+  <div class="navlinks">
+    <a href="../../../index.html">主页</a>
+    <a href="https://github.com/mohaelder/openenlarge">GitHub</a>
+    <a class="lang-link" href="../../reference/glossary.html">EN</a>
+  </div>
+</div></nav>
+<div class="doclayout wrap">
+  <aside class="sidebar" id="sidebar"><div class="side-sec"><div class="side-h">概览</div>
+<a href="../index.html">文档</a>
+<a href="../workflow.html">工作流程</a>
+</div>
+<div class="side-sec"><div class="side-h">原理</div>
+<a href="../science/negatives.html">彩色负片的原理</a>
+<a href="../science/inversion.html">反转流程</a>
+<a href="../science/density.html">密度与对数空间</a>
+<a href="../science/tone-curve.html">色调曲线（Faithful 风格）</a>
+<a href="../science/color.html">色彩与白平衡</a>
+<a href="../science/base-calibration.html">片基校准</a>
+</div>
+<div class="side-sec"><div class="side-h">工具</div>
+<a href="../tools/develop-basic.html">显影 · 基础</a>
+<a href="../tools/tune.html">微调</a>
+<a href="../tools/crop-dust.html">裁剪与除尘</a>
+<a href="../tools/ai.html">AI 工具</a>
+<a href="../tools/library.html">图库</a>
+<a href="../tools/roll.html">整卷</a>
+<a href="../tools/export.html">导出</a>
+</div>
+<div class="side-sec"><div class="side-h">参考</div>
+<a class="on" href="../reference/glossary.html">术语表</a>
+</div></aside>
+  <main class="content" id="content">
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="../index.html">文档</a> <span class="sep">/</span> <span>术语表</span></nav>
+    <article class="prose"><h1>术语表</h1>
+<p class="lead">OpenEnlarge 引擎常量与本文档中所用胶片摄影术语的速查表。所有数值直接取自源码；链接指向对应概念的详细说明页面。</p>
+
+<h2>引擎常量与参数</h2>
+<dl>
+  <dt><code>ENGINE_VERSION</code> = 3</dt>
+  <dd>单调递增的整数，印在每张已烘焙缩略图上。应用加载目录时，若缩略图携带的版本号较旧，后台扫描会重新生成，确保网格始终反映最新的渲染算法。第 3 版引入了摄影式 Faithful 曝光（<code>FAITHFUL_EXPO_K = 1.0</code>）。</dd>
+
+  <dt><code>d_max</code></dt>
+  <dd>负片中发现的最高光学密度 —— 通常从未曝光的片头或最浓的暗部采样。用于归一化 <span class="formula">t = D / d_max</span>，使最浓的点在进入色调曲线前映射为 1.0。在 Faithful 路径中，<code>d_max</code> 仅用于分析；实际色调尺度由固定的 <code>FAITHFUL_SCALE</code> 设定。参见 <a href="../science/density.html">密度与对数空间</a>。</dd>
+
+  <dt><code>FAITHFUL_SCALE</code> = 1 / 0.700 ≈ 1.429</dt>
+  <dd>在施加 Faithful 伽马-肩部曲线之前对密度进行预缩放的固定系数：<span class="formula">t_eff = D · FAITHFUL_SCALE · expo_gain</span>。该值以 C400 数字 SDR 参考为基准校准，使正确曝光的负片无需逐帧调整即可填满色调范围 —— 这正是整卷胶片色调保持一致的原因。参见 <a href="../science/tone-curve.html">色调曲线</a>。</dd>
+
+  <dt><code>FAITHFUL_GAMMA</code> ≈ 1.590</dt>
+  <dd>Faithful 曲线趾部至中调区域的幂律指数：<span class="formula">out = t<sup>γ</sup></span>，其中 γ = 1.590。大于 1 的值在保持趾部柔和的同时产生中调对比（即"质感"）。参见 <a href="../science/tone-curve.html">色调曲线</a>。</dd>
+
+  <dt><code>FAITHFUL_KNEE</code> ≈ 0.892</dt>
+  <dd>Faithful 曲线从幂律主体过渡至柔和渐近肩部的归一化输入值。高于此值后，曲线缓缓弯向输出 = 1.0，保护镜面高光不被硬截断。参见 <a href="../science/tone-curve.html">色调曲线</a>。</dd>
+
+  <dt><code>LOOK_K</code> = 2.0</dt>
+  <dd>叠加在 Faithful 色调曲线之上的归一化 tanh 风格层强度。该层锚定为 0 → 0、1 → 1；<code>LOOK_K = 2.0</code> 在不移动黑白点的前提下增加了干净的 S 形对比度推进。Faithful 路径中始终生效。参见 <a href="../science/tone-curve.html">色调曲线</a>。</dd>
+
+  <dt><code>CMY_STRENGTH</code> = 1.6</dt>
+  <dd>减色（彩色头）白平衡模式中使用的指数：<span class="formula">t_eff = t · gain<sup>CMY_STRENGTH</sup></span>。1.6 这一值使密度空间中的色调产生轻微非线性耦合，比简单的线性缩放更贴近真实二向色放大机滤镜的行为。参见 <a href="../science/color.html">色彩与白平衡</a>。</dd>
+
+  <dt><code>EXPO_K</code> = 0.14 <em>（旧 Filmic 路径，已停用）</em></dt>
+  <dd>旧 Filmic 路径使用的曝光灵敏度。在 0.14 时，每一 EV 档仅使亮度变化约 10%，导致滑块反应迟钝。源码中保留作历史参考；当前活跃的 Faithful 路径改用 <code>FAITHFUL_EXPO_K</code>。</dd>
+
+  <dt><code>FAITHFUL_EXPO_K</code> = 1.0</dt>
+  <dd>Faithful 路径的曝光灵敏度。每一 EV 档使亮度变化约一个摄影档 —— <span class="formula">expo_gain = 2<sup>FAITHFUL_EXPO_K · EV</sup></span> —— 使自动曝光能够收敛至合理结果，滑块在 ±5 范围内响应自然。</dd>
+
+  <dt>自动白平衡强度 ≈ 0.7</dt>
+  <dd>灰世界白平衡估算与无操作状态以强度 0.7 混合，即施加完整灰世界偏移量的 70%。这避免了在单一颜色主导的场景下矫枉过正。参见 <a href="../science/color.html">色彩与白平衡</a>。</dd>
+
+  <dt>中性色温 ≈ 5500 K</dt>
+  <dd>自动白平衡估算器的目标相关色温 —— 与阴天日光一致，是彩色负片户外拍摄最常见的光照条件。在色温滑块上显示为相对零点。参见 <a href="../science/color.html">色彩与白平衡</a>。</dd>
+</dl>
+
+<h2>胶片与摄影术语</h2>
+<dl>
+  <dt>密度（<em>D</em>）</dt>
+  <dd>衡量胶片层阻光程度的对数量。由扫描图计算：<span class="formula">D = log₁₀(片基 / 扫描值)</span>，其中 <code>片基</code> 为片边透明区域的像素值。D = 0 为完全透明；D = 1 仅透过十分之一的入射光。参见 <a href="../science/density.html">密度与对数空间</a>。</dd>
+
+  <dt>摄影档（光圈档）</dt>
+  <dd>光量加倍或减半的单位。在密度尺度上，每档对应 log₁₀(2) ≈ 0.301 密度单位，故 1 密度单位约跨越 3.32 档。在密度空间中工作，使等量滑块步长在整个色调范围内产生等量的感知变化。参见 <a href="../science/density.html">密度与对数空间</a>。</dd>
+
+  <dt>橙色片基（橙色遮罩）</dt>
+  <dd>饱和于彩色负片基底层的暖橙色染料。它补偿了青色与品红染料层中不必要的吸收，从而在冲印时提升色彩准确性。数字反转中，将每个像素除以采样的片基颜色来去除橙色遮罩：<span class="formula">D = log₁₀(片基 / 扫描值)</span>。参见 <a href="../science/negatives.html">彩色负片的原理</a>。</dd>
+
+  <dt>H&amp;D 曲线（Hurter–Driffield 特性曲线）</dt>
+  <dd>感光乳剂光学密度与对数曝光量的关系曲线图，定义了乳剂的感光度、反差（伽马）、趾部与肩部。Faithful 色调曲线在将负片密度映射为正片显示输出时，呼应了相纸 H&amp;D 曲线的形态 —— 趾部保护、中调质感、柔和肩部。参见 <a href="../science/tone-curve.html">色调曲线</a>。</dd>
+
+  <dt>趾部</dt>
+  <dd>H&amp;D 曲线低密度端，此处斜率低于主直线段。在 OpenEnlarge 的 Faithful 曲线中，趾部将近黑密度略微上抬，以保护暗部细节而非将其压死。参见 <a href="../science/tone-curve.html">色调曲线</a>。</dd>
+
+  <dt>肩部</dt>
+  <dd>H&amp;D 曲线高密度端，斜率在此弯曲并渐近于最大密度。Faithful 曲线的肩部 —— 在 <code>FAITHFUL_KNEE ≈ 0.892</code> 处过渡 —— 将近白密度平滑压入输出 = 1.0，避免高光硬截断。参见 <a href="../science/tone-curve.html">色调曲线</a>。</dd>
+
+  <dt>片边（片基边缘）</dt>
+  <dd>胶片条上帧与帧之间的透明或半透明边缘区域 —— 通常是负片最薄的部分。OpenEnlarge 采样片边以确定片基颜色，并建立最亮可能的密度参考。也称为导片头或胶片边缘。参见 <a href="../science/base-calibration.html">片基校准</a>。</dd>
+
+  <dt>印样表（接触印样）</dt>
+  <dd>以小尺寸展示整卷胶片全部帧的校样印片，传统上将整条负片直接覆在相纸上通过放大机曝光制作。OpenEnlarge 中的整卷视图是数字印样表：所有帧并排显示，便于在确定显影方案前比较曝光与构图。参见 <a href="../tools/roll.html">整卷</a> 工具。</dd>
+
+  <dt>白点</dt>
+  <dd>映射为输出 = 1.0（纸基白）的密度值。在 Faithful 路径中，白点由固定系数 <code>FAITHFUL_SCALE = 1 / 0.700</code> 而非逐帧的 <code>d_max</code> 确定，以保持整卷色调一致。片基校准通过调整用于计算密度的基底参考，间接影响白点的落点。参见 <a href="../science/density.html">密度与对数空间</a>和 <a href="../science/base-calibration.html">片基校准</a>。</dd>
+
+  <dt>片基</dt>
+  <dd>胶片条的透明醋酸纤维或聚酯支撑层。彩色负片的片基携带橙色遮罩染料。采样片基（在透明片边处）得到计算密度所需的 <code>base</code> 参考值：<span class="formula">D = log₁₀(片基 / 扫描值)</span>。参见 <a href="../science/negatives.html">彩色负片的原理</a>和 <a href="../science/base-calibration.html">片基校准</a>。</dd>
+</dl>
+
+<p class="next"><a href="faq.html">下一篇：常见问题 →</a></p>
+</article>
+    <footer class="docfoot">OpenEnlarge —— 开源胶片扫描编辑器 · MIT 许可</footer>
+  </main>
+  <aside class="toc" id="toc" aria-label="本页目录"><div class="toc-title">本页目录</div><div id="toc-list"></div></aside>
+</div>
+<script src="../../docs.js" defer></script>
+</body>
+</html>

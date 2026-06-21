@@ -1,0 +1,73 @@
+<h1>Glossary</h1>
+<p class="lead">A quick-reference of OpenEnlarge's engine constants and the film-photography terms used throughout these docs. Values are taken directly from source; links point to the page where each concept is explained in full.</p>
+
+<h2>Engine constants &amp; parameters</h2>
+<dl>
+  <dt><code>ENGINE_VERSION</code> = 3</dt>
+  <dd>Monotonically increasing integer stamped on every baked thumbnail. When the app loads a catalog whose thumbnails carry an older version, a background sweep regenerates them so the grid always reflects the current rendering math. Version 3 introduced photographic Faithful exposure (<code>FAITHFUL_EXPO_K = 1.0</code>).</dd>
+
+  <dt><code>d_max</code></dt>
+  <dd>The highest optical density found in a negative — usually sampled from the unexposed film leader or the densest shadow. Used in the normalization <span class="formula">t = D / d_max</span> so that the densest point maps to 1.0 going into the tone curve. On the Faithful path <code>d_max</code> is used only for analysis; the tone scale is set by the fixed <code>FAITHFUL_SCALE</code> instead. See <a href="../science/density.html">Density &amp; log space</a>.</dd>
+
+  <dt><code>FAITHFUL_SCALE</code> = 1 / 0.700 ≈ 1.429</dt>
+  <dd>Fixed density pre-scale applied before the Faithful gamma-shoulder curve: <span class="formula">t_eff = D · FAITHFUL_SCALE · expo_gain</span>. Calibrated to the C400 digital-SDR reference so that a correctly exposed negative fills the tonal range without needing per-frame rescaling. This is what keeps every frame in a roll on the same tonal ruler. See <a href="../science/tone-curve.html">The tone curve</a>.</dd>
+
+  <dt><code>FAITHFUL_GAMMA</code> ≈ 1.590</dt>
+  <dd>Power-law exponent of the Faithful curve's toe-to-midtone region: <span class="formula">out = t<sup>γ</sup></span> with γ = 1.590. Values greater than 1 produce midtone contrast (the "snap") while keeping the toe soft. See <a href="../science/tone-curve.html">The tone curve</a>.</dd>
+
+  <dt><code>FAITHFUL_KNEE</code> ≈ 0.892</dt>
+  <dd>The normalized input value at which the Faithful curve transitions from the power-law body into the soft asymptotic shoulder. Above this point the curve rolls over gently toward output = 1.0, protecting specular highlights from hard clipping. See <a href="../science/tone-curve.html">The tone curve</a>.</dd>
+
+  <dt><code>LOOK_K</code> = 2.0</dt>
+  <dd>Strength of the normalized tanh look layer applied on top of the Faithful tone curve. The layer is anchored so that 0 → 0 and 1 → 1; <code>LOOK_K = 2.0</code> adds a clean S-shaped contrast push without shifting the black or white points. Always active on the Faithful path. See <a href="../science/tone-curve.html">The tone curve</a>.</dd>
+
+  <dt><code>CMY_STRENGTH</code> = 1.6</dt>
+  <dd>Exponent used in the subtractive (Color head) white-balance mode: <span class="formula">t_eff = t · gain<sup>CMY_STRENGTH</sup></span>. The value 1.6 gives the density-space tint a slightly non-linear coupling that matches the behavior of real dichroic enlarger filters more closely than a plain linear scale. See <a href="../science/color.html">Color &amp; white balance</a>.</dd>
+
+  <dt><code>EXPO_K</code> = 0.14 <em>(legacy Filmic path, dormant)</em></dt>
+  <dd>Exposure sensitivity used on the legacy Filmic path. At 0.14 one EV step moved brightness by only ~10 %, making the slider feel unresponsive. Kept in source for historical reference; the active Faithful path uses <code>FAITHFUL_EXPO_K</code> instead.</dd>
+
+  <dt><code>FAITHFUL_EXPO_K</code> = 1.0</dt>
+  <dd>Exposure sensitivity on the Faithful path. One EV step moves brightness by approximately one photographic stop — <span class="formula">expo_gain = 2<sup>FAITHFUL_EXPO_K · EV</sup></span> — so auto-exposure can reach a sensible result and the slider responds naturally across its ±5 range.</dd>
+
+  <dt>Auto-WB strength ≈ 0.7</dt>
+  <dd>The gray-world white-balance estimate is blended with a no-op at strength 0.7, meaning 70 % of the full gray-world shift is applied. This avoids over-correcting on scenes that are genuinely dominated by a single color. See <a href="../science/color.html">Color &amp; white balance</a>.</dd>
+
+  <dt>Neutral CCT ≈ 5500 K</dt>
+  <dd>The target correlated color temperature for the auto-WB estimator — consistent with overcast daylight, the most common shooting condition for outdoor color negative film. Displayed as the relative zero-point on the Temperature slider. See <a href="../science/color.html">Color &amp; white balance</a>.</dd>
+</dl>
+
+<h2>Film &amp; photography terms</h2>
+<dl>
+  <dt>Density (<em>D</em>)</dt>
+  <dd>A logarithmic measure of how much a film layer blocks light. Computed from the scan as <span class="formula">D = log₁₀(base / scan)</span>, where <code>base</code> is the pixel value at the clear film edge. D = 0 is fully transparent; D = 1 transmits one-tenth of incident light. See <a href="../science/density.html">Density &amp; log space</a>.</dd>
+
+  <dt>Stop (photographic stop)</dt>
+  <dd>A doubling or halving of light. On the density scale, one stop equals log₁₀(2) ≈ 0.301 density units, so 1 density unit spans approximately 3.32 stops. Working in density keeps equal slider steps perceptually equal regardless of tonal region. See <a href="../science/density.html">Density &amp; log space</a>.</dd>
+
+  <dt>Orange mask</dt>
+  <dd>The warm orange dye that saturates the base layer of a color negative. It compensates for unwanted absorption in the cyan and magenta dye layers, improving color accuracy when printed. In digital inversion the orange mask is removed by dividing each pixel by the sampled film-base color: <span class="formula">D = log₁₀(base / scan)</span>. See <a href="../science/negatives.html">How color negatives work</a>.</dd>
+
+  <dt>H&amp;D curve (Hurter–Driffield characteristic curve)</dt>
+  <dd>The plot of optical density versus log-exposure for a photographic emulsion. It defines the emulsion's sensitivity, contrast (gamma), toe, and shoulder. The Faithful tone curve mirrors the H&amp;D shape of photographic paper — toe protection, midtone snap, soft shoulder — when mapping negative density to a positive display output. See <a href="../science/tone-curve.html">The tone curve</a>.</dd>
+
+  <dt>Toe</dt>
+  <dd>The low-density end of the H&amp;D curve where the slope is shallower than the main straight-line portion. In OpenEnlarge's Faithful curve the toe lifts near-black densities slightly so shadow detail is protected rather than crushed. See <a href="../science/tone-curve.html">The tone curve</a>.</dd>
+
+  <dt>Shoulder</dt>
+  <dd>The high-density end of the H&amp;D curve where the slope rolls over and the curve asymptotes toward maximum density. The Faithful curve's shoulder — transitioning at <code>FAITHFUL_KNEE ≈ 0.892</code> — compresses near-white densities smoothly into output = 1.0, avoiding hard highlight clipping. See <a href="../science/tone-curve.html">The tone curve</a>.</dd>
+
+  <dt>Rebate</dt>
+  <dd>The clear or semi-clear edge of a film strip between frames — typically the thinnest area of the negative. OpenEnlarge samples the rebate to determine the film-base color and to establish the brightest possible density reference. Also called the film leader or film edge. See <a href="../science/base-calibration.html">Film-base calibration</a>.</dd>
+
+  <dt>Contact sheet</dt>
+  <dd>A proof print showing all frames of a roll at small scale, traditionally made by placing the negative strip in contact with paper under an enlarger. The Roll view in OpenEnlarge is a digital contact sheet: all frames are shown together, letting you compare exposure and composition before committing to individual develops. See the <a href="../tools/roll.html">Roll</a> tool.</dd>
+
+  <dt>White point</dt>
+  <dd>The density value that maps to output = 1.0 (paper white). On the Faithful path the white point is set by the fixed scale <code>FAITHFUL_SCALE = 1 / 0.700</code> rather than per-frame <code>d_max</code>, keeping tone consistent across a roll. Film-base calibration adjusts the base reference used to compute density, which indirectly sets where white lands. See <a href="../science/density.html">Density &amp; log space</a> and <a href="../science/base-calibration.html">Film-base calibration</a>.</dd>
+
+  <dt>Film base</dt>
+  <dd>The transparent acetate or polyester support layer of a film strip. For color negatives it carries the orange-mask dye. Sampling the film base (at the clear rebate) provides the <code>base</code> reference value used to compute density: <span class="formula">D = log₁₀(base / scan)</span>. See <a href="../science/negatives.html">How color negatives work</a> and <a href="../science/base-calibration.html">Film-base calibration</a>.</dd>
+</dl>
+
+<p class="next"><a href="faq.html">Next: FAQ →</a></p>
