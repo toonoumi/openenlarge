@@ -12,7 +12,7 @@
 <p>A <strong>photographic stop</strong> is a doubling or halving of light: one stop more means twice as many photons. On the density scale, each stop corresponds to a fixed increment of log₁₀(2) ≈ 0.301. Flipping that around, one density unit spans 1 / 0.301 ≈ <strong>3.32 stops</strong>.</p>
 <p>This is why density is the right domain for image editing. In raw linear light, shadows and highlights cover wildly different numerical ranges — a one-stop change in bright areas is numerically huge, but tiny in dark areas. In density space, every stop is the same size everywhere. Equal slider steps deliver equal perceptual changes across the entire tonal range.</p>
 
-<figure><!--FIG:density-map--><figcaption>Geometric light values (1, 2, 4, 8, 16 — each a doubling, i.e. one stop) collapse to evenly-spaced steps on the density axis. The curve is the log₁₀ relationship; the equal horizontal spacing on y shows why density is the photographer's native unit.</figcaption></figure>
+<figure><!--FIG:density-map--><figcaption>Geometric light values (1, 2, 4, 8, 16 — each a doubling, i.e. one stop) fall on a straight line when the x-axis is already stop-spaced. Each stop adds the same ~0.30 of optical density (D = 0.0 → 0.3 → 0.6 → 0.9 → 1.2), confirming that equal density steps are equal photographic stops.</figcaption></figure>
 
 <h2>The white point (d_max)</h2>
 <p>The densest point of a negative corresponds to the brightest part of the scene — or to the completely unexposed leader at the edge. OpenEnlarge calls this density <code>d_max</code>. It is found per channel from the film being developed, and it anchors the normalization step:</p>
