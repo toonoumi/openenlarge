@@ -1,0 +1,84 @@
+<!-- AUTO-GENERATED from /docs-src — do not edit by hand. Run python3 scripts/gen-docs.py -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How color negatives work — OpenEnlarge Docs</title>
+<meta name="description" content="The orange mask, the three dye layers, and the Hurter–Driffield curve that turn light into density on film.">
+<meta name="theme-color" content="#0a0a0c">
+<link rel="icon" href="../../img/favicon.png">
+<link rel="canonical" href="https://openenlarge.io/docs/science/negatives.html">
+<link rel="alternate" hreflang="en" href="https://openenlarge.io/docs/science/negatives.html">
+<link rel="alternate" hreflang="zh-Hans" href="https://openenlarge.io/docs/zh/science/negatives.html">
+<link rel="alternate" hreflang="x-default" href="https://openenlarge.io/docs/science/negatives.html">
+<meta property="og:type" content="article"><meta property="og:title" content="How color negatives work — OpenEnlarge Docs"><meta property="og:description" content="The orange mask, the three dye layers, and the Hurter–Driffield curve that turn light into density on film."><meta property="og:url" content="https://openenlarge.io/docs/science/negatives.html"><meta property="og:image" content="https://openenlarge.io/docs/og/cover.png"><meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "How color negatives work", "description": "The orange mask, the three dye layers, and the Hurter–Driffield curve that turn light into density on film.", "inLanguage": "en", "url": "https://openenlarge.io/docs/science/negatives.html", "isPartOf": {"@type": "WebSite", "name": "OpenEnlarge", "url": "https://openenlarge.io"}}</script>
+<link rel="stylesheet" href="../docs.css">
+</head>
+<body>
+<a class="skip" href="#content">Skip to content</a>
+<nav class="docnav"><div class="navbar glass wrap">
+  <a class="brand" href="../../index.html"><img class="mark" src="../../img/icon.png" alt=""> OpenEnlarge <span class="brand-docs">Docs</span></a>
+  <button class="menu-btn" id="menu-btn" type="button" aria-label="Menu" aria-expanded="false">☰</button>
+  <div class="navlinks">
+    <a href="../../index.html">Home</a>
+    <a href="https://github.com/mohaelder/openenlarge">GitHub</a>
+    <a class="lang-link" href="../zh/science/negatives.html">中文</a>
+  </div>
+</div></nav>
+<div class="doclayout wrap">
+  <aside class="sidebar" id="sidebar"><div class="side-sec"><div class="side-h">Overview</div>
+<a href="../index.html">Documentation</a>
+<a href="../workflow.html">The workflow</a>
+</div>
+<div class="side-sec"><div class="side-h">The Science</div>
+<a class="on" href="../science/negatives.html">How color negatives work</a>
+</div></aside>
+  <main class="content" id="content">
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="../index.html">Docs</a> <span class="sep">/</span> <span>How color negatives work</span></nav>
+    <article class="prose"><h1>How color negatives work</h1>
+<p class="lead">A developed color negative is not a picture — it is a measurement. Each point on the film stores how much light hit it, recorded as <strong>density</strong> on three dye layers, behind an orange mask.</p>
+
+<h2>Three dye layers</h2>
+<p>Color film has stacked emulsion layers sensitive to blue, green, and red light. After development each layer carries a complementary dye — yellow, magenta, and cyan. More scene light means more dye, means more density. That inversion (bright scene → dark negative) is why negatives look "backwards."</p>
+
+<h2>Why the base is orange</h2>
+<p>The magenta and cyan dyes are imperfect — they absorb some light they shouldn't. To compensate, color-negative film adds an <strong>orange mask</strong>: a built-in colored base that corrects the dyes for accurate printing. That is why the clear, unexposed edge of the film is orange, not transparent.</p>
+<figure><svg viewBox="0 0 640 280" role="img" aria-label="Spectral transmission of the orange film base: red high, green medium, blue low" xmlns="http://www.w3.org/2000/svg">
+  <rect width="640" height="280" rx="12" fill="#141418"/>
+  <g font-family="ui-monospace,monospace" font-size="12" fill="#9a9aa2">
+    <text x="20" y="26">Orange-mask transmission (relative)</text>
+    <line x1="60" y1="230" x2="600" y2="230" stroke="#3a3a42"/>
+    <line x1="60" y1="40" x2="60" y2="230" stroke="#3a3a42"/>
+  </g>
+  <g>
+    <rect x="120" y="70" width="90" height="160" rx="6" fill="#e0573a"/>
+    <rect x="290" y="135" width="90" height="95" rx="6" fill="#6fae5a"/>
+    <rect x="460" y="180" width="90" height="50" rx="6" fill="#5a78c8"/>
+  </g>
+  <g font-family="ui-monospace,monospace" font-size="13" fill="#e8e8ea" text-anchor="middle">
+    <text x="165" y="252">Red</text>
+    <text x="335" y="252">Green</text>
+    <text x="505" y="252">Blue</text>
+  </g>
+</svg>
+<figcaption>The orange base transmits red strongly, green moderately, and blue weakly. OpenEnlarge measures this base and removes it before inverting.</figcaption></figure>
+<p>OpenEnlarge samples the base color from the film and divides it out — this is the first step of inversion. See <a href="base-calibration.html">film-base calibration</a>.</p>
+
+<h2>The H&amp;D characteristic curve</h2>
+<p>The relationship between scene exposure and film density is the <strong>Hurter–Driffield (H&amp;D) curve</strong>. It has a gentle <em>toe</em> in the shadows, a straight mid-section, and a <em>shoulder</em> where highlights compress. This shape — not a straight line — is the "film look," and OpenEnlarge's tone curve is designed to invert it faithfully. See <a href="tone-curve.html">the tone curve</a>.</p>
+
+<details class="hood"><summary>Under the hood</summary><div class="hood-body">
+<p>Density is logarithmic: <span class="formula">D = log₁₀(base / scan)</span> One density unit corresponds to about 3.32 photographic stops of scene brightness. Typical orange-mask transmission ratios are roughly R : G : B ≈ 1 : 0.55 : 0.26, which is why the clear base reads as orange.</p>
+</div></details>
+
+<p class="next"><a href="inversion.html">Next: the inversion pipeline →</a></p>
+</article>
+    <footer class="docfoot">OpenEnlarge — open-source film scan editor · MIT licensed</footer>
+  </main>
+  <aside class="toc" id="toc" aria-label="On this page"><div class="toc-title">On this page</div><div id="toc-list"></div></aside>
+</div>
+<script src="../docs.js" defer></script>
+</body>
+</html>

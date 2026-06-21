@@ -72,5 +72,19 @@ class TestSeo(unittest.TestCase):
         html = (ROOT / "web/docs/zh/index.html").read_text()
         self.assertIn('<html lang="zh-Hans">', html)
 
+class TestScienceNegatives(unittest.TestCase):
+    def setUp(self): gen.build()
+    def test_page_built_both_locales(self):
+        self.assertTrue((ROOT / "web/docs/science/negatives.html").exists())
+        self.assertTrue((ROOT / "web/docs/zh/science/negatives.html").exists())
+    def test_figure_inlined(self):
+        html = (ROOT / "web/docs/science/negatives.html").read_text()
+        self.assertIn("<svg", html)            # figure inlined, not a comment
+        self.assertNotIn("<!--FIG:", html)     # placeholder fully replaced
+    def test_hood_block(self):
+        html = (ROOT / "web/docs/science/negatives.html").read_text()
+        self.assertIn('class="hood"', html)
+        self.assertIn("log₁₀", html)
+
 if __name__ == "__main__":
     unittest.main()

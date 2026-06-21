@@ -1,0 +1,84 @@
+<!-- AUTO-GENERATED from /docs-src — do not edit by hand. Run python3 scripts/gen-docs.py -->
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>彩色负片的原理 — OpenEnlarge Docs</title>
+<meta name="description" content="橙色片基、三层染料，以及将光转化为胶片密度的 Hurter–Driffield 特性曲线。">
+<meta name="theme-color" content="#0a0a0c">
+<link rel="icon" href="../../../img/favicon.png">
+<link rel="canonical" href="https://openenlarge.io/docs/zh/science/negatives.html">
+<link rel="alternate" hreflang="en" href="https://openenlarge.io/docs/science/negatives.html">
+<link rel="alternate" hreflang="zh-Hans" href="https://openenlarge.io/docs/zh/science/negatives.html">
+<link rel="alternate" hreflang="x-default" href="https://openenlarge.io/docs/science/negatives.html">
+<meta property="og:type" content="article"><meta property="og:title" content="彩色负片的原理 — OpenEnlarge Docs"><meta property="og:description" content="橙色片基、三层染料，以及将光转化为胶片密度的 Hurter–Driffield 特性曲线。"><meta property="og:url" content="https://openenlarge.io/docs/zh/science/negatives.html"><meta property="og:image" content="https://openenlarge.io/docs/og/cover.png"><meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "彩色负片的原理", "description": "橙色片基、三层染料，以及将光转化为胶片密度的 Hurter–Driffield 特性曲线。", "inLanguage": "zh-Hans", "url": "https://openenlarge.io/docs/zh/science/negatives.html", "isPartOf": {"@type": "WebSite", "name": "OpenEnlarge", "url": "https://openenlarge.io"}}</script>
+<link rel="stylesheet" href="../docs.css">
+</head>
+<body>
+<a class="skip" href="#content">跳到正文</a>
+<nav class="docnav"><div class="navbar glass wrap">
+  <a class="brand" href="../../../index.html"><img class="mark" src="../../../img/icon.png" alt=""> OpenEnlarge <span class="brand-docs">文档</span></a>
+  <button class="menu-btn" id="menu-btn" type="button" aria-label="菜单" aria-expanded="false">☰</button>
+  <div class="navlinks">
+    <a href="../../../index.html">主页</a>
+    <a href="https://github.com/mohaelder/openenlarge">GitHub</a>
+    <a class="lang-link" href="../../science/negatives.html">EN</a>
+  </div>
+</div></nav>
+<div class="doclayout wrap">
+  <aside class="sidebar" id="sidebar"><div class="side-sec"><div class="side-h">概览</div>
+<a href="../index.html">文档</a>
+<a href="../workflow.html">工作流程</a>
+</div>
+<div class="side-sec"><div class="side-h">原理</div>
+<a class="on" href="../science/negatives.html">彩色负片的原理</a>
+</div></aside>
+  <main class="content" id="content">
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="../index.html">文档</a> <span class="sep">/</span> <span>彩色负片的原理</span></nav>
+    <article class="prose"><h1>彩色负片的原理</h1>
+<p class="lead">显影后的彩色负片并不是一张图片，而是一次测量。胶片上的每一点都以<strong>密度</strong>的形式，记录下照射其上的光量 —— 分布在三层染料上，并覆盖一层橙色片基。</p>
+
+<h2>三层染料</h2>
+<p>彩色胶片由叠放的乳剂层组成，分别对蓝、绿、红光敏感。显影后每层生成互补染料 —— 黄、品红、青。场景光越强，染料越多，密度越高。正是这种反转（明亮场景 → 深色负片）让负片看起来「相反」。</p>
+
+<h2>片基为何偏橙</h2>
+<p>品红与青染料并不完美 —— 它们会吸收一些本不该吸收的光。为补偿，彩色负片加入一层<strong>橙色片基</strong>：一种内置的有色基底，用于校正染料以获得准确的印放效果。这正是胶片未曝光的透明边缘呈橙色而非完全透明的原因。</p>
+<figure><svg viewBox="0 0 640 280" role="img" aria-label="Spectral transmission of the orange film base: red high, green medium, blue low" xmlns="http://www.w3.org/2000/svg">
+  <rect width="640" height="280" rx="12" fill="#141418"/>
+  <g font-family="ui-monospace,monospace" font-size="12" fill="#9a9aa2">
+    <text x="20" y="26">Orange-mask transmission (relative)</text>
+    <line x1="60" y1="230" x2="600" y2="230" stroke="#3a3a42"/>
+    <line x1="60" y1="40" x2="60" y2="230" stroke="#3a3a42"/>
+  </g>
+  <g>
+    <rect x="120" y="70" width="90" height="160" rx="6" fill="#e0573a"/>
+    <rect x="290" y="135" width="90" height="95" rx="6" fill="#6fae5a"/>
+    <rect x="460" y="180" width="90" height="50" rx="6" fill="#5a78c8"/>
+  </g>
+  <g font-family="ui-monospace,monospace" font-size="13" fill="#e8e8ea" text-anchor="middle">
+    <text x="165" y="252">Red</text>
+    <text x="335" y="252">Green</text>
+    <text x="505" y="252">Blue</text>
+  </g>
+</svg>
+<figcaption>橙色片基对红光透过强、绿光中等、蓝光弱。OpenEnlarge 会先测量并去除该片基，再进行反转。</figcaption></figure>
+<p>OpenEnlarge 从胶片中采样片基颜色并将其除去 —— 这是反转的第一步。参见<a href="base-calibration.html">片基校准</a>。</p>
+
+<h2>H&amp;D 特性曲线</h2>
+<p>场景曝光与胶片密度之间的关系即 <strong>Hurter–Driffield（H&amp;D）特性曲线</strong>。它在暗部有平缓的<em>趾部</em>，中段近似直线，高光处则有压缩的<em>肩部</em>。正是这种形状（而非直线）构成了「胶片质感」，OpenEnlarge 的色调曲线正是为忠实地反转它而设计。参见<a href="tone-curve.html">色调曲线</a>。</p>
+
+<details class="hood"><summary>深入原理</summary><div class="hood-body">
+<p>密度是对数量：<span class="formula">D = log₁₀(片基 / 扫描值)</span> 一个密度单位约对应 3.32 个摄影档（stop）的场景亮度。典型橙色片基的透过比约为 R : G : B ≈ 1 : 0.55 : 0.26，因此透明片基呈现橙色。</p>
+</div></details>
+
+<p class="next"><a href="inversion.html">下一篇：反转流程 →</a></p>
+</article>
+    <footer class="docfoot">OpenEnlarge —— 开源胶片扫描编辑器 · MIT 许可</footer>
+  </main>
+  <aside class="toc" id="toc" aria-label="本页目录"><div class="toc-title">本页目录</div><div id="toc-list"></div></aside>
+</div>
+<script src="../docs.js" defer></script>
+</body>
+</html>
