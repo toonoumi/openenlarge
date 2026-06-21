@@ -13,7 +13,6 @@
   import { withEffectiveBase } from "$lib/develop/base";
   import { imageDir } from "$lib/library/folderScope";
   import { api, defaultParams } from "$lib/api";
-  import { seedFolderExposure } from "../workflow";
   import { debounce } from "$lib/catalog";
   import { rollFilmEdge, rollEdgeText } from "$lib/store";
   import FramePreview from "$lib/roll/FramePreview.svelte";
@@ -42,10 +41,6 @@
   onMount(() => {
     resetRollDraft();
     wpManual = false;
-    // Auto-expose the whole roll up front so the contact sheet shows every frame correctly
-    // exposed — not just the ones already opened in Tune (per-image seedExposure). One-time
-    // per id; skips frames the user has moved off the default exposure. Mirrors seedFolderWb.
-    seedFolderExposure();
 
     // Compute conflicts: union of frames with any edits across the developed folder.
     const frames = get(developedFolderImages);

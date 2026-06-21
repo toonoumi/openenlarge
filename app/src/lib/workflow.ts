@@ -172,6 +172,14 @@ export async function developAll(target: "develop" | "roll" = "develop"): Promis
           seed.temp = wb.temp;
           seed.tint = wb.tint;
         } catch { /* not resident yet — Develop's per-image seed retries on activation */ }
+        // Seed exposure ONCE here too (the frame is resident, so auto_brightness is cheap),
+        // measured on the WB-seeded look — so the whole roll opens correctly exposed in
+        // Develop/Roll/Tune without each frame needing to be individually activated. Persists
+        // via editsById; never re-runs (later entries see a non-default exposure and skip).
+        try {
+          const { exposure } = await api.autoBrightness(id, withEffectiveBase(seed, imageDir(updated)));
+          seed.exposure = exposure;
+        } catch { /* not resident yet — the per-image / folder seed retries on activation */ }
         editsById.update((m) => (m[id] ? m : { ...m, [id]: seed }));
       }
       if (updated.developed) {
