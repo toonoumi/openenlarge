@@ -371,6 +371,7 @@ uniform int u_mode;           // 0=B 1=C 2=Naive 3=D
 uniform bool u_raw;           // true → output the scan (display gamma), no inversion
 uniform bool u_positive;      // true → positive passthrough (no inversion), WB+exposure only
 uniform int u_wb_mode;        // 0 = gain (post-curve), 1 = subtractive (pre-curve)
+uniform int u_tone_mode;      // 0 = filmic (default), 1 = faithful (gamma+shoulder)
 // Geometry: output→source UV mapping. The output is the crop sub-rect of the
 // (straightened) oriented image, so we invert the backend's source→output order
 // (orient → straighten → crop) by going crop → un-straighten → un-orient.
@@ -386,6 +387,17 @@ const float LOG10 = 0.30102999566; // 1/log2(10): log10(x) = log2(x)*LOG10
 const float EXPO_K = 0.14;
 // Subtractive WB strength — MUST equal engine.rs CMY_STRENGTH.
 const float CMY_STRENGTH = 1.6;
+
+// Faithful reconstruction curve + exposure anchor — MUST equal engine.rs.
+const float FAITHFUL_GAMMA  = 1.590;
+const float FAITHFUL_KNEE   = 0.892;
+const float FAITHFUL_ANCHOR = 4.137;
+float gammaShoulder(float x, float ceil_val) {
+  float raw = pow(max(x, 0.0), 1.0 / FAITHFUL_GAMMA);
+  if (raw <= FAITHFUL_KNEE) return min(raw, ceil_val);
+  float k = FAITHFUL_KNEE;
+  return k + (ceil_val - k) * (1.0 - exp(-(raw - k) / (1.0 - k)));
+}
 
 // Filmic display S-curve — MUST equal engine.rs FILMIC_K/FILMIC_PIVOT/FILMIC_WHITE_T
 // and filmic_s(). Logistic on normalised log-density, rescaled so filmicS(0)==0
@@ -454,18 +466,33 @@ vec3 invert(vec3 rgbIn) {
     //  1 subtractive (color head): per-channel density multiply BEFORE the curve,
     //    folding exposure into the same t-multiply; anchored at black (t=0 → 0).
     vec3 v;
-    if (u_wb_mode == 1) {
-      vec3 s = pow(max(u_wb, vec3(EPS)), vec3(CMY_STRENGTH));
-      v = vec3(
-        filmicS(t.r * s.r * expo_gain),
-        filmicS(t.g * s.g * expo_gain),
-        filmicS(t.b * s.b * expo_gain));
+    if (u_tone_mode == 1) {
+      // Faithful: gamma body + soft shoulder. INVERT_FRAG is the SDR path
+      // (final clamp below), so ceil = 1.0 here — matches the engine's SDR Faithful;
+      // HDR is handled by the separate gain-map path exactly as for Filmic.
+      vec3 te = t * FAITHFUL_ANCHOR * expo_gain;
+      float ceil_val = 1.0;
+      if (u_wb_mode == 1) {
+        vec3 s = pow(max(u_wb, vec3(EPS)), vec3(CMY_STRENGTH));
+        v = vec3(gammaShoulder(te.r * s.r, ceil_val), gammaShoulder(te.g * s.g, ceil_val), gammaShoulder(te.b * s.b, ceil_val));
+      } else {
+        v = vec3(gammaShoulder(te.r, ceil_val) * u_wb.r, gammaShoulder(te.g, ceil_val) * u_wb.g, gammaShoulder(te.b, ceil_val) * u_wb.b);
+      }
     } else {
-      vec3 y = vec3(filmicSraw(t.r), filmicSraw(t.g), filmicSraw(t.b)) * u_wb;
-      v = vec3(
-        filmicS(filmicInv(y.r) * expo_gain),
-        filmicS(filmicInv(y.g) * expo_gain),
-        filmicS(filmicInv(y.b) * expo_gain));
+      // Filmic: logistic S-curve on WB-neutralised log-density.
+      if (u_wb_mode == 1) {
+        vec3 s = pow(max(u_wb, vec3(EPS)), vec3(CMY_STRENGTH));
+        v = vec3(
+          filmicS(t.r * s.r * expo_gain),
+          filmicS(t.g * s.g * expo_gain),
+          filmicS(t.b * s.b * expo_gain));
+      } else {
+        vec3 y = vec3(filmicSraw(t.r), filmicSraw(t.g), filmicSraw(t.b)) * u_wb;
+        v = vec3(
+          filmicS(filmicInv(y.r) * expo_gain),
+          filmicS(filmicInv(y.g) * expo_gain),
+          filmicS(filmicInv(y.b) * expo_gain));
+      }
     }
     return clamp(v, 0.0, 1.0);
   }
