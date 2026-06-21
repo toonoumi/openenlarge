@@ -122,6 +122,24 @@ class TestLinks(unittest.TestCase):
             html = pathlib.Path(f).read_text()
             for m in re.findall(r'<img[^>]+src="(/img/[^"]+)"', html):
                 self.assertTrue((web / m.lstrip("/")).exists(), f"{f} -> {m} missing")
+    def test_en_zh_structural_parity(self):
+        # Every built page must have the same in-prose structure across locales:
+        # equal <h2> count and the identical ordered set of content link targets.
+        import re
+        nav = gen.load_nav()
+        def article(html):
+            m = re.search(r'<article class="prose">(.*?)</article>', html, re.S)
+            return m.group(1) if m else ""
+        for slug in nav["pages"]:
+            en = gen.out_path(slug, "en"); zh = gen.out_path(slug, "zh")
+            if not en.exists() or not zh.exists():
+                continue
+            ea, za = article(en.read_text()), article(zh.read_text())
+            self.assertEqual(ea.count("<h2"), za.count("<h2"),
+                             f"{slug}: h2 count EN={ea.count('<h2')} != ZH={za.count('<h2')}")
+            el = re.findall(r'href="([^"]+\.html)"', ea)
+            zl = re.findall(r'href="([^"]+\.html)"', za)
+            self.assertEqual(el, zl, f"{slug}: in-prose link set differs EN={el} ZH={zl}")
     def test_css_js_asset_refs_resolve(self):
         # Every stylesheet/script reference must resolve to a real file in EVERY
         # locale (regression guard: zh pages once linked docs.css one ../ short).
