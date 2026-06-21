@@ -80,4 +80,4 @@
 <p><strong>Point Color weight:</strong> a sample at <code>(hue_t, sat_t, lum_t)</code> matches a pixel at <code>(h, s, l)</code> via three independent weights: a hue weight using the same cosine falloff with a range-derived half-width <span class="formula">hw = PC_RANGE_MIN_DEG + (range/100) · (PC_RANGE_MAX_DEG − PC_RANGE_MIN_DEG)</span> where <code>PC_RANGE_MIN_DEG = 5.0°</code> and <code>PC_RANGE_MAX_DEG = 60.0°</code>; a saturation weight <span class="formula">ws = clamp(1 − |s − sat_t| / pc_tol(0.25, variance), 0, 1)</span>; and a luminance weight <span class="formula">wl = clamp(1 − |l − lum_t| / pc_tol(0.25, variance), 0, 1)</span>. The tolerance function is <span class="formula">pc_tol(base, variance) = max(0.02, base · (1 + (variance/100) · 2.0))</span>. The combined weight is <code>w = wh · ws · wl</code>.</p>
 </div></details>
 
-<p class="next"><a href="crop-dust.html">Next: Crop &amp; Dust →</a></p>
+<p class="next"><a href="crop-dust.html">Next: Crop &amp; dust →</a></p>

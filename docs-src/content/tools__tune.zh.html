@@ -80,4 +80,4 @@
 <p><strong>点颜色权重：</strong>位于 <code>(hue_t, sat_t, lum_t)</code> 的色样与色相为 <code>(h, s, l)</code> 的像素通过三个独立权重匹配：色相权重使用相同的余弦衰减，半宽由范围推导 <span class="formula">hw = PC_RANGE_MIN_DEG + (range/100) · (PC_RANGE_MAX_DEG − PC_RANGE_MIN_DEG)</span>，其中 <code>PC_RANGE_MIN_DEG = 5.0°</code>，<code>PC_RANGE_MAX_DEG = 60.0°</code>；饱和度权重 <span class="formula">ws = clamp(1 − |s − sat_t| / pc_tol(0.25, variance), 0, 1)</span>；明亮度权重 <span class="formula">wl = clamp(1 − |l − lum_t| / pc_tol(0.25, variance), 0, 1)</span>。容差函数为 <span class="formula">pc_tol(base, variance) = max(0.02, base · (1 + (variance/100) · 2.0))</span>。综合权重为 <code>w = wh · ws · wl</code>。</p>
 </div></details>
 
-<p class="next"><a href="crop-dust.html">下一篇：裁剪与去尘 →</a></p>
+<p class="next"><a href="crop-dust.html">下一篇：裁剪与除尘 →</a></p>
