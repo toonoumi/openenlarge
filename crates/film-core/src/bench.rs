@@ -27,7 +27,7 @@ pub struct ColorReport {
 
 fn score_from_deltas(deltas: Vec<f32>) -> ColorScore {
     let mut sorted = deltas.clone();
-    sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Greater));
     let n = sorted.len().max(1);
     let mean = sorted.iter().sum::<f32>() / n as f32;
     let max = sorted.last().copied().unwrap_or(0.0);
@@ -180,6 +180,11 @@ mod tests {
         assert!(rep.as_shipped.mean.is_finite());
         // A flat frame has neutral grays, so neutralized gains ≈ 1 and the score is finite.
         assert!(rep.neutralized.max >= rep.neutralized.mean);
+        assert_eq!(
+            rep.neutralized_chroma_only.per_patch.len(),
+            24 - crate::colorchecker::NEUTRAL_INDICES.len(),
+            "chroma-only score must exclude the 6 neutral patches"
+        );
     }
 
     #[test]
@@ -195,10 +200,11 @@ mod tests {
         }
         let neg = Image { width: w, height: h, pixels: px, ir: None };
         // 5 steps across the width; brighter scene (more density) is on the LEFT (low transmission).
-        let corners = [[0.0, 0.0], [100.0, 0.0], [100.0, 20.0], [0.0, 20.0]];
+        let corners = [[100.0, 0.0], [0.0, 0.0], [0.0, 20.0], [100.0, 20.0]];
         let rep = score_tone(&neg, [1.0, 1.0, 1.0], &corners, 5, 1.0, 2, 0);
         assert_eq!(rep.lstar.len(), 5);
         assert!(rep.lstar.iter().all(|v| v.is_finite()));
         assert!(rep.mid_gray_l.is_finite());
+        assert!(rep.monotonic, "expected a monotone ramp to report monotonic=true");
     }
 }
