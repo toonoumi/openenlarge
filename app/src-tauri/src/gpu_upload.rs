@@ -221,10 +221,8 @@ pub fn resolve_to_uniforms(p: &InvertParams, base: [f32; 3]) -> ResolvedInversio
             film_core::WbMode::Subtractive => 1,
             film_core::WbMode::Gain => 0,
         },
-        tone_mode: match crate::commands::tone_mode_from(&p.tone_mode) {
-            film_core::ToneMode::Filmic => 0u8,
-            film_core::ToneMode::Faithful => 1u8,
-        },
+        // Faithful is the sole path (Filmic retired) — always 1, ignore the wire value.
+        tone_mode: 1u8,
     }
 }
 
@@ -475,13 +473,13 @@ mod tests {
     }
 
     #[test]
-    fn resolve_to_uniforms_maps_tone_mode() {
-        let mut p = sample_invert_params();
-        p.tone_mode = "faithful".to_string();
-        let u = resolve_to_uniforms(&p, [0.8, 0.6, 0.4]);
-        assert_eq!(u.tone_mode, 1u8);
+    fn resolve_to_uniforms_forces_faithful_tone() {
+        let mut p = sample_invert_params(); // existing helper in this test module
         p.tone_mode = "filmic".to_string();
         let u = resolve_to_uniforms(&p, [0.8, 0.6, 0.4]);
-        assert_eq!(u.tone_mode, 0u8);
+        assert_eq!(u.tone_mode, 1u8, "tone_mode must be forced Faithful (1) even for 'filmic'");
+        p.tone_mode = "faithful".to_string();
+        let u2 = resolve_to_uniforms(&p, [0.8, 0.6, 0.4]);
+        assert_eq!(u2.tone_mode, 1u8, "tone_mode stays Faithful (1)");
     }
 }

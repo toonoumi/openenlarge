@@ -234,6 +234,8 @@ pub(crate) fn wb_mode_from(s: &str) -> film_core::WbMode {
 
 /// Parse the wire `tone_mode` string into the engine enum. Unknown values fall back
 /// to `Filmic` (the safe legacy behavior).
+// Kept for tests and back-compat; the production chokepoints now hard-code Faithful.
+#[allow(dead_code)]
 pub(crate) fn tone_mode_from(s: &str) -> film_core::ToneMode {
     match s {
         "faithful" => film_core::ToneMode::Faithful,
@@ -252,7 +254,9 @@ pub(crate) fn build_params(p: &InvertParams, base: [f32; 3]) -> InversionParams 
         d_max: p.d_max_override.unwrap_or(1.5),
         positive: p.positive,
         wb_mode: wb_mode_from(&p.wb_mode),
-        tone_mode: tone_mode_from(&p.tone_mode),
+        // Faithful is the sole develop/tune path; ignore any stored `tone_mode` (Filmic
+        // is retired from the app). See docs/superpowers/specs/2026-06-21-faithful-look-layer-sole-path-design.md.
+        tone_mode: film_core::ToneMode::Faithful,
         ..Default::default()
     }
 }
@@ -3104,6 +3108,14 @@ mod tests {
         p.wb_mode = "subtractive".to_string();
         let ip = build_params(&p, [0.8, 0.6, 0.4]);
         assert_eq!(ip.wb_mode, film_core::WbMode::Subtractive);
+    }
+
+    #[test]
+    fn build_params_forces_faithful_tone_mode() {
+        let mut p = crate::commands_test_support::sample_invert_params();
+        p.tone_mode = "filmic".to_string();
+        let ip = build_params(&p, [0.8, 0.6, 0.4]);
+        assert!(matches!(ip.tone_mode, film_core::ToneMode::Faithful), "build_params must force Faithful");
     }
 }
 
