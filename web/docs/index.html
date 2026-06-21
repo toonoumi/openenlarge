@@ -30,11 +30,23 @@
 <div class="doclayout wrap">
   <aside class="sidebar" id="sidebar"><div class="side-sec"><div class="side-h">Overview</div>
 <a class="on" href="index.html">Documentation</a>
+<a href="workflow.html">The workflow</a>
 </div></aside>
   <main class="content" id="content">
     <nav class="crumbs" aria-label="Breadcrumb"><a href="index.html">Docs</a></nav>
     <article class="prose"><h1>OpenEnlarge Documentation</h1>
-<p class="lead">OpenEnlarge inverts color-negative film scans in the <strong>density domain</strong> — using the same Beer–Lambert chemistry a darkroom enlarger relies on, not a flipped tone curve.</p>
+<p class="lead">OpenEnlarge inverts color-negative film scans in the <strong>density domain</strong> — the same Beer–Lambert chemistry a darkroom enlarger relies on, not a flipped tone curve. These docs explain the science and every tool.</p>
+
+<h2>Start here</h2>
+<ul>
+  <li><a href="science/inversion.html">How inversion works</a> — scan → density → positive, stage by stage.</li>
+  <li><a href="science/negatives.html">Why negatives are orange</a> — the film base and the H&amp;D curve.</li>
+  <li><a href="tools/develop-basic.html">What am I tuning?</a> — every Develop slider, demystified.</li>
+  <li><a href="workflow.html">The workflow</a> — from import to export.</li>
+</ul>
+
+<h2>The idea in one paragraph</h2>
+<p>A color negative stores the scene as <em>density</em> on three dye layers, behind an orange mask. OpenEnlarge measures that density in logarithmic space, removes the mask, reconstructs the positive with a film-faithful tone curve, and only then applies your edits. Because the math matches the physics of film and paper, colors land where they should — across a whole roll, consistently.</p>
 </article>
     <footer class="docfoot">OpenEnlarge — open-source film scan editor · MIT licensed</footer>
   </main>

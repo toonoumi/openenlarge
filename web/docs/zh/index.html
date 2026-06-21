@@ -30,11 +30,23 @@
 <div class="doclayout wrap">
   <aside class="sidebar" id="sidebar"><div class="side-sec"><div class="side-h">概览</div>
 <a class="on" href="index.html">文档</a>
+<a href="workflow.html">工作流程</a>
 </div></aside>
   <main class="content" id="content">
     <nav class="crumbs" aria-label="Breadcrumb"><a href="index.html">文档</a></nav>
     <article class="prose"><h1>OpenEnlarge 文档</h1>
-<p class="lead">OpenEnlarge 在<strong>密度域</strong>中反转彩色负片扫描 —— 采用与暗房放大机相同的比尔–朗伯（Beer–Lambert）化学原理，而非简单地翻转色调曲线。</p>
+<p class="lead">OpenEnlarge 在<strong>密度域</strong>中反转彩色负片扫描 —— 采用与暗房放大机相同的比尔–朗伯化学原理，而非简单地翻转色调曲线。本文档讲解其原理与每一个工具。</p>
+
+<h2>从这里开始</h2>
+<ul>
+  <li><a href="science/inversion.html">反转原理</a> —— 扫描 → 密度 → 正片，逐步拆解。</li>
+  <li><a href="science/negatives.html">负片为何偏橙</a> —— 片基与 H&amp;D 特性曲线。</li>
+  <li><a href="tools/develop-basic.html">我在调整什么？</a> —— 逐一解释每个显影滑块。</li>
+  <li><a href="workflow.html">工作流程</a> —— 从导入到导出。</li>
+</ul>
+
+<h2>一句话原理</h2>
+<p>彩色负片以<em>密度</em>形式将场景记录在三层染料上，并覆盖一层橙色片基。OpenEnlarge 在对数空间中测量该密度、去除片基、用忠于胶片的色调曲线重建正片，然后才应用你的调整。由于运算符合胶片与相纸的物理特性，颜色得以准确还原 —— 并在整卷胶片中保持一致。</p>
 </article>
     <footer class="docfoot">OpenEnlarge —— 开源胶片扫描编辑器 · MIT 许可</footer>
   </main>
