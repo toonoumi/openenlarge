@@ -13,6 +13,7 @@
   import { withEffectiveBase } from "$lib/develop/base";
   import { imageDir } from "$lib/library/folderScope";
   import { api, defaultParams } from "$lib/api";
+  import { seedFolderExposure } from "../workflow";
   import { debounce } from "$lib/catalog";
   import { rollFilmEdge, rollEdgeText } from "$lib/store";
   import FramePreview from "$lib/roll/FramePreview.svelte";
@@ -42,6 +43,9 @@
     // Keep the roll-wide slider values across re-entry to the same roll (start fresh on a
     // folder change); inert until the user edits, so it never re-applies/reverts per-frame edits.
     enterRollDraft(get(selectedFolder));
+    // Auto-expose the whole roll up front (once per folder) so the contact sheet opens
+    // correctly exposed without tuning each frame. Folder-guarded — never re-fires on re-entry.
+    seedFolderExposure();
     wpManual = false;
 
     // Compute conflicts: union of frames with any edits across the developed folder.

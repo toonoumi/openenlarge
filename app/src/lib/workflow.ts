@@ -1,5 +1,5 @@
 import { get } from "svelte/store";
-import { images, activeId, module, developProgress, editsById, cropById, dustById, folderImages, invalidatePreview, undevelopableIds } from "./store";
+import { images, activeId, module, developProgress, editsById, cropById, dustById, folderImages, invalidatePreview, undevelopableIds, selectedFolder } from "./store";
 import { api, defaultParams, type ImageEntry } from "./api";
 import { dropHistory, reseedActive } from "./develop/historyStore";
 import { track } from "./telemetry";
@@ -259,41 +259,55 @@ export async function seedFolderWb(): Promise<void> {
 
 // Frames whose exposure has already been auto-seeded this session — mirrors wbSeeded so
 // the Develop/Roll-entry sweep never re-runs (or clobbers later edits) for a handled id.
-const expFolderSeeded = new Set<string>();
+// Folders whose exposure has been fully auto-seeded this session, plus an in-flight lock.
+// Together they make the (slow, sequential) seed run EXACTLY ONCE per roll to completion —
+// so re-entering Develop/Roll never re-fires it and leftover frames don't trickle in.
+const exposureSeededFolders = new Set<string>();
+let exposureSeedInFlight = false;
 
 /**
  * Auto-seed exposure into `editsById` for every developed folder frame still on the
  * default exposure. The Tune editor's per-image `seedExposure` only solves the ACTIVE
  * frame, so the Develop (Roll) contact sheet otherwise shows every un-tuned frame at the
- * default (un-auto-exposed) exposure until each is individually opened in Tune. Running
- * this on Develop/Tune entry auto-exposes the whole roll up front (the per-image solve
- * via `auto_brightness`, honoring each frame's crop/orientation). Skips frames the user
- * has touched (exposure moved off the default). Mirrors `seedFolderWb`.
+ * default (un-auto-exposed) exposure. This solves the whole roll up front (per-image
+ * `auto_brightness`, honoring crop/orientation). Skips frames the user moved off default.
+ *
+ * Runs ONCE per folder per session: the `exposureSeededFolders` guard (marked only after a
+ * clean full pass) stops re-seeding on re-entry, and `exposureSeedInFlight` stops a second
+ * call (e.g. Tune→Roll mid-pass) from racing the first. Mirrors `seedFolderWb`.
  */
 export async function seedFolderExposure(): Promise<void> {
-  const d = defaultParams();
-  for (const f of get(developedFolderImages)) {
-    const id = f.id;
-    if (expFolderSeeded.has(id)) continue;
-    const cur = get(editsById)[id];
-    // Already seeded/edited (exposure moved off the default) → leave it.
-    if (cur && cur.exposure !== d.exposure) { expFolderSeeded.add(id); continue; }
-    try {
-      const base = cur ?? { ...d, positive: f.positive ?? false };
-      const c = get(cropById)[id] ?? null;
-      const crop = c
-        ? ([c.rect.x, c.rect.y, c.rect.w, c.rect.h] as [number, number, number, number])
-        : null;
-      const geom = c ? { rot90: c.rot90, flip_h: c.flipH, flip_v: c.flipV, angle: c.angle } : {};
-      const { exposure } = await api.autoBrightness(id, withEffectiveBase(base, imageDir(f)), crop, geom);
-      editsById.update((m) => {
-        const e = m[id] ?? { ...d, positive: f.positive ?? false };
-        if (e.exposure !== d.exposure) return m; // don't clobber an exposure set meanwhile
-        return { ...m, [id]: { ...e, exposure } };
-      });
-      invalidatePreview(id);
-      expFolderSeeded.add(id);
-    } catch { /* not resident yet — retry on the next entry */ }
+  const key = get(selectedFolder) ?? "";
+  if (exposureSeededFolders.has(key) || exposureSeedInFlight) return;
+  const frames = get(developedFolderImages);
+  if (frames.length === 0) return; // nothing developed yet — retry on a later entry
+  exposureSeedInFlight = true;
+  try {
+    const d = defaultParams();
+    let anyFailed = false;
+    for (const f of frames) {
+      const id = f.id;
+      const cur = get(editsById)[id];
+      if (cur && cur.exposure !== d.exposure) continue; // already set (user or a prior seed)
+      try {
+        const base = cur ?? { ...d, positive: f.positive ?? false };
+        const c = get(cropById)[id] ?? null;
+        const crop = c
+          ? ([c.rect.x, c.rect.y, c.rect.w, c.rect.h] as [number, number, number, number])
+          : null;
+        const geom = c ? { rot90: c.rot90, flip_h: c.flipH, flip_v: c.flipV, angle: c.angle } : {};
+        const { exposure } = await api.autoBrightness(id, withEffectiveBase(base, imageDir(f)), crop, geom);
+        editsById.update((m) => {
+          const e = m[id] ?? { ...d, positive: f.positive ?? false };
+          if (e.exposure !== d.exposure) return m; // don't clobber a value set meanwhile
+          return { ...m, [id]: { ...e, exposure } };
+        });
+        invalidatePreview(id);
+      } catch { anyFailed = true; /* not resident yet — don't mark the folder done */ }
+    }
+    if (!anyFailed) exposureSeededFolders.add(key);
+  } finally {
+    exposureSeedInFlight = false;
   }
 }
 
