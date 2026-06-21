@@ -1,4 +1,5 @@
 pub mod calibrate;
+pub mod chart;
 pub mod classify;
 pub mod color;
 pub mod colorchecker;
