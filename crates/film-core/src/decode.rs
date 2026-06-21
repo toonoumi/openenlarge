@@ -76,6 +76,112 @@ pub fn decode_tiff(path: &Path) -> Result<Image, DecodeError> {
     })
 }
 
+/// Rewrite TIFF `IFD` (type 13) entries to `LONG` (type 4) in an in-memory
+/// TIFF/DNG buffer so rawler can follow the file's SubIFD pointers.
+///
+/// # Why this exists
+/// Some DNG writers — notably **Capture One on Windows** — encode the `SubIFDs`
+/// pointer (tag 330) using TIFF data type **13 (IFD)** rather than the far more
+/// common type **4 (LONG)**. The two are byte-for-byte identical on the wire:
+/// both are 32-bit unsigned offsets. But rawler 0.7's IFD parser only follows a
+/// SubIFD pointer whose entry decodes to `Long`/`Unknown`/`Undefined`; a type-13
+/// entry falls through to a 1-byte `Unknown`, so the 32-bit offset is truncated
+/// to its low byte, the real (full-resolution, uncompressed) raw IFD is never
+/// parsed, and decoding fails with the misleading `Unsupported DNG compression`
+/// (the only IFD rawler then sees is the reduced-resolution preview).
+///
+/// Rewriting the 2-byte type field of every type-13 entry to type 4 fixes this
+/// losslessly. It is a no-op for files that don't use type 13, and the leading
+/// `II`/`MM` + magic-42 guard makes it a safe no-op for non-TIFF containers
+/// (e.g. Fujifilm `.raf`, which is not a bare TIFF at offset 0).
+fn normalize_ifd_pointer_types(buf: &mut [u8]) {
+    #[inline]
+    fn rd_u16(b: &[u8], o: usize, le: bool) -> u16 {
+        let v = [b[o], b[o + 1]];
+        if le {
+            u16::from_le_bytes(v)
+        } else {
+            u16::from_be_bytes(v)
+        }
+    }
+    #[inline]
+    fn rd_u32(b: &[u8], o: usize, le: bool) -> u32 {
+        let v = [b[o], b[o + 1], b[o + 2], b[o + 3]];
+        if le {
+            u32::from_le_bytes(v)
+        } else {
+            u32::from_be_bytes(v)
+        }
+    }
+
+    if buf.len() < 8 {
+        return;
+    }
+    let le = match &buf[0..2] {
+        b"II" => true,
+        b"MM" => false,
+        _ => return, // not a classic TIFF container
+    };
+    if rd_u16(buf, 2, le) != 42 {
+        return; // BigTIFF (43) or non-TIFF: different layout, leave untouched
+    }
+
+    // SubIFDs (330) and ExifIFD (34665) are the pointer tags rawler itself
+    // recurses into; following them is enough to reach every raw IFD.
+    const SUB_IFDS: u16 = 330;
+    const EXIF_IFD: u16 = 34665;
+
+    let mut stack: Vec<usize> = vec![rd_u32(buf, 4, le) as usize];
+    let mut visited = std::collections::HashSet::new();
+    let mut budget = 512usize; // bound work on malformed/looping files
+
+    while let Some(mut off) = stack.pop() {
+        // Walk this IFD and any chained IFDs (the trailing next-IFD pointer).
+        while off != 0 {
+            if budget == 0 || !visited.insert(off) || off + 2 > buf.len() {
+                break;
+            }
+            budget -= 1;
+            let n = rd_u16(buf, off, le) as usize;
+            let end = off + 2 + n * 12; // entries, followed by next-IFD u32
+            if end + 4 > buf.len() {
+                break;
+            }
+            for i in 0..n {
+                let e = off + 2 + i * 12;
+                let tag = rd_u16(buf, e, le);
+                if rd_u16(buf, e + 2, le) == 13 {
+                    // IFD (13) -> LONG (4); identical 4-byte unsigned offset.
+                    let four = if le { 4u16.to_le_bytes() } else { 4u16.to_be_bytes() };
+                    buf[e + 2] = four[0];
+                    buf[e + 3] = four[1];
+                }
+                if tag == SUB_IFDS || tag == EXIF_IFD {
+                    let count = rd_u32(buf, e + 4, le) as usize;
+                    if count <= 1 {
+                        let v = rd_u32(buf, e + 8, le) as usize;
+                        if v != 0 {
+                            stack.push(v);
+                        }
+                    } else {
+                        // >1 offsets are stored out-of-line at the value offset.
+                        let vo = rd_u32(buf, e + 8, le) as usize;
+                        for k in 0..count {
+                            if vo + k * 4 + 4 <= buf.len() {
+                                let v = rd_u32(buf, vo + k * 4, le) as usize;
+                                if v != 0 {
+                                    stack.push(v);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            off = rd_u32(buf, end, le) as usize;
+        }
+    }
+}
+
 /// Decode a camera RAW file (Fujifilm `.raf`, `.dng`, or any rawler-supported
 /// format) into a demosaiced, linear-light RGB `Image`.
 ///
@@ -104,10 +210,20 @@ pub fn decode_tiff(path: &Path) -> Result<Image, DecodeError> {
 pub fn decode_raw(path: &Path) -> Result<Image, DecodeError> {
     use rawler::imgop::develop::Intermediate;
     use rawler::imgop::develop::{ProcessingStep, RawDevelop};
+    use std::sync::Arc;
 
     // Step 1: decode the raw file into a mosaic RawImage (integer u16 data,
     // not yet demosaiced).
-    let raw = rawler::decode_file(path).map_err(|e| DecodeError::Raw(e.to_string()))?;
+    //
+    // We read the bytes ourselves and run `normalize_ifd_pointer_types` before
+    // handing them to rawler (see that function for why). This is the same data
+    // `rawler::decode_file` would mmap; routing through an in-memory buffer lets
+    // us patch a TIFF-encoding quirk that otherwise makes some DNGs undecodable.
+    let mut bytes = std::fs::read(path)?;
+    normalize_ifd_pointer_types(&mut bytes);
+    let source = rawler::rawsource::RawSource::new_from_shared_vec(Arc::new(bytes)).with_path(path);
+    let raw = rawler::decode(&source, &rawler::decoders::RawDecodeParams::default())
+        .map_err(|e| DecodeError::Raw(e.to_string()))?;
 
     // Step 2: develop with only linear steps (no WB, no colour matrix, no gamma).
     let develop = RawDevelop {
@@ -217,6 +333,41 @@ mod tests {
         // 128/255 sRGB ≈ 0.50196 encodes to ≈ 0.2159 linear.
         let mid = srgb_to_linear(128.0 / 255.0);
         assert!((mid - 0.2159).abs() < 1e-3, "got {mid}");
+    }
+
+    #[test]
+    fn normalize_rewrites_type13_subifds_to_long() {
+        // Minimal little-endian TIFF: header + one IFD with a single SubIFDs
+        // entry (tag 330) encoded as TIFF type 13 (IFD) — the Capture One quirk.
+        let mut buf = Vec::new();
+        buf.extend_from_slice(b"II"); // little-endian
+        buf.extend_from_slice(&42u16.to_le_bytes()); // magic
+        buf.extend_from_slice(&8u32.to_le_bytes()); // first IFD at offset 8
+        // IFD @ 8: 1 entry
+        buf.extend_from_slice(&1u16.to_le_bytes()); // entry count
+        buf.extend_from_slice(&330u16.to_le_bytes()); // tag = SubIFDs
+        buf.extend_from_slice(&13u16.to_le_bytes()); // type = 13 (IFD)
+        buf.extend_from_slice(&1u32.to_le_bytes()); // count = 1
+        buf.extend_from_slice(&0u32.to_le_bytes()); // value/offset (0 = no recurse)
+        buf.extend_from_slice(&0u32.to_le_bytes()); // next IFD = 0
+
+        let type_field = 8 + 2 + 2; // header(8) + count(2) + tag(2)
+        assert_eq!(u16::from_le_bytes([buf[type_field], buf[type_field + 1]]), 13);
+        normalize_ifd_pointer_types(&mut buf);
+        assert_eq!(
+            u16::from_le_bytes([buf[type_field], buf[type_field + 1]]),
+            4,
+            "type-13 SubIFDs entry should be rewritten to type-4 LONG"
+        );
+    }
+
+    #[test]
+    fn normalize_is_noop_on_non_tiff() {
+        // A non-TIFF magic (e.g. Fujifilm RAF) must be left untouched.
+        let mut buf = b"FUJIFILMCCD-RAW \x00\x01\x02\x03".to_vec();
+        let before = buf.clone();
+        normalize_ifd_pointer_types(&mut buf);
+        assert_eq!(buf, before);
     }
 
     #[test]
