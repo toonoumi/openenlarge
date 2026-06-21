@@ -28,4 +28,7 @@ pub use engine::ToneMode;
 /// (2026-06-20), replacing the pre-filmic paper encode + neutral-WB thumbnails.
 /// 2 = Faithful core + clean-punchy look becomes the sole develop path (Filmic
 /// retired); all prior thumbnails are stale and regenerate on app entry (2026-06-21).
-pub const ENGINE_VERSION: u32 = 2;
+/// 3 = Faithful exposure made photographic (FAITHFUL_EXPO_K=1.0) so auto-exposure can
+/// actually land; stale exposures are reset by the catalog migration and the grid
+/// re-solves auto-exposure on entry (2026-06-21).
+pub const ENGINE_VERSION: u32 = 3;

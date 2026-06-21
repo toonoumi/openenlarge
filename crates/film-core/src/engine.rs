@@ -106,6 +106,14 @@ const HDR_HEADROOM: f32 = 2.5;
 /// free of the dead zone the old eff_d_max clamp produced past ~EV+3. Mirrored
 /// verbatim in shaders.ts (INVERT_FRAG).
 const EXPO_K: f32 = 0.14;
+/// Faithful-path exposure sensitivity (replaces EXPO_K for `tone_mode == Faithful`). The
+/// faithful core renders the bright content near white, so auto-exposure must pull it down by
+/// several stops; at EXPO_K=0.14 that needed −4…−11 EV (the auto-exposure clamp can't reach,
+/// and the slider barely moves). At 1.0, one EV ≈ one photographic stop on the density scale,
+/// so auto-exposure lands every frame within ~±1.5 EV (inside the ±3 clamp, slider free to
+/// tune both ways). Measured on the C400/Ektar + user SF frames. Filmic keeps EXPO_K (dormant).
+/// MUST equal shaders.ts.
+const FAITHFUL_EXPO_K: f32 = 1.0;
 /// Subtractive WB strength: gain `g` → density scale `g^CMY_STRENGTH` on `t`. Tuned so
 /// the mid-tone shift at a typical Temp/Tint roughly matches the old gain magnitude
 /// while giving a proper shadow→highlight crossover. Mirrored in shaders.ts.
@@ -322,7 +330,11 @@ pub fn invert_d(rgb: [f32; 3], p: &InversionParams) -> [f32; 3] {
                 // Faithful uses a FIXED density scale on the raw density `d` (NOT the
                 // per-frame `t = d/d_max`): a frozen, faithful transfer identical on every
                 // frame. See FAITHFUL_SCALE. (`t` above is still used by the Filmic arm.)
-                let t_eff = d * FAITHFUL_SCALE * expo_gain;
+                // Faithful exposure uses FAITHFUL_EXPO_K (photographic ~1 stop/EV), not the
+                // weak shared EXPO_K — so auto-exposure + the slider can actually move
+                // brightness. (`expo_gain` above is the EXPO_K one, used by the Filmic arm.)
+                let expo_gain_f = 2f32.powf(FAITHFUL_EXPO_K * ev);
+                let t_eff = d * FAITHFUL_SCALE * expo_gain_f;
                 let core = match p.wb_mode {
                     WbMode::Gain => gamma_shoulder(t_eff, ceil) * p.wb[c],
                     WbMode::Subtractive => gamma_shoulder(t_eff * p.wb[c].max(EPS).powf(CMY_STRENGTH), ceil),
@@ -1061,6 +1073,26 @@ mod tests {
         let bright = [10f32.powf(-0.85); 3]; // d ≈ 0.85 — a bright midtone/highlight
         let out = invert_d(bright, &InversionParams { base, d_max: 1.5, tone_mode: ToneMode::Faithful, ..Default::default() });
         assert!(out[0] < 0.999, "bright tone must keep highlight headroom, not blow to white: {}", out[0]);
+    }
+
+    #[test]
+    fn faithful_exposure_is_photographic_strength() {
+        // Faithful exposure must move brightness meaningfully via FAITHFUL_EXPO_K (~1 stop/EV),
+        // NOT the weak shared EXPO_K=0.14 (~9%/stop). Regression for the "auto-exposure stuck at
+        // the -3 clamp, slider can't pull it down" bug: at EXPO_K=0.14 one stop barely moved the
+        // image, so auto-exposure needed -4..-11 EV it could never reach. One EV down must now
+        // darken a midtone by a real, visible amount.
+        let base = [1.0, 1.0, 1.0];
+        let mid = [10f32.powf(-0.45); 3]; // a midtone (d ≈ 0.45)
+        let at = |ev: f32| {
+            invert_d(mid, &InversionParams {
+                base, d_max: 1.5, tone_mode: ToneMode::Faithful,
+                print_exposure: 2f32.powf(ev), ..Default::default()
+            })[0]
+        };
+        let (e0, em1) = (at(0.0), at(-1.0));
+        assert!(em1 < e0, "EV-1 must darken: {e0} -> {em1}");
+        assert!(e0 - em1 > 0.10, "one stop must move brightness a real amount (not ~0.02): {e0} -> {em1}");
     }
 
     #[test]

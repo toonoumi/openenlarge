@@ -385,6 +385,10 @@ const float EPS = 1e-5;
 const float LOG10 = 0.30102999566; // 1/log2(10): log10(x) = log2(x)*LOG10
 // Exposure → t-multiply (pivot at black) — MUST equal engine.rs EXPO_K.
 const float EXPO_K = 0.14;
+// Faithful-path exposure sensitivity (photographic ~1 stop/EV) — MUST equal engine.rs
+// FAITHFUL_EXPO_K. Replaces the weak shared EXPO_K for the faithful branch so auto-exposure
+// + the slider actually move brightness.
+const float FAITHFUL_EXPO_K = 1.0;
 // Subtractive WB strength — MUST equal engine.rs CMY_STRENGTH.
 const float CMY_STRENGTH = 1.6;
 
@@ -482,7 +486,10 @@ vec3 invert(vec3 rgbIn) {
       // (final clamp below), so ceil = 1.0 here — matches the engine's SDR Faithful;
       // HDR is handled by the separate gain-map path exactly as for Filmic.
       // FIXED scale on raw density d (NOT per-frame t = d/u_d_max) — mirrors engine.rs.
-      vec3 te = d * FAITHFUL_SCALE * expo_gain;
+      // Faithful exposure uses FAITHFUL_EXPO_K (photographic), not the weak shared EXPO_K
+      // (which only drives the Filmic arm). Mirror: engine.rs expo_gain_f.
+      float expoGainF = exp2(FAITHFUL_EXPO_K * ev);
+      vec3 te = d * FAITHFUL_SCALE * expoGainF;
       float ceil_val = 1.0;
       if (u_wb_mode == 1) {
         vec3 s = pow(max(u_wb, vec3(EPS)), vec3(CMY_STRENGTH));

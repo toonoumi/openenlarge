@@ -55,7 +55,7 @@ pub struct Catalog {
     conn: Mutex<Connection>,
 }
 
-const SCHEMA_VERSION: i64 = 3;
+const SCHEMA_VERSION: i64 = 4;
 
 impl Catalog {
     /// Open (creating if absent) the catalog at `db_path`. Enables WAL and migrates.
@@ -339,6 +339,20 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
         // curve) instead of showing the old look until each image is opened.
         add_column_if_missing(conn, "images", "thumb_version", "INTEGER NOT NULL DEFAULT 0")?;
     }
+    if version < 4 {
+        // Reset every stored `exposure` to 0. The Faithful exposure response changed from
+        // the weak shared EXPO_K (0.14) to a photographic FAITHFUL_EXPO_K (1.0), so the old
+        // auto-seeded slider values (mostly the −3 clamp) now mean ~8× too dark. Zeroing them
+        // makes each image re-solve auto-exposure at the new strength (grid sweep on entry +
+        // seedExposure on develop). Other params are preserved. JSON1 is built into SQLite.
+        conn.execute_batch(
+            "UPDATE edits
+             SET params_json = json_set(params_json, '$.exposure', 0)
+             WHERE params_json IS NOT NULL
+               AND json_valid(params_json)
+               AND json_extract(params_json, '$.exposure') IS NOT NULL;",
+        )?;
+    }
     conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;
     Ok(())
 }
@@ -362,6 +376,27 @@ fn add_column_if_missing(conn: &Connection, table: &str, col: &str, decl: &str) 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn migration_resets_stale_exposure_but_keeps_other_params() {
+        let cat = Catalog::open_in_memory().unwrap();
+        {
+            let conn = cat.conn.lock().unwrap();
+            // Simulate a pre-v4 edit carrying a stale auto-seeded exposure plus other params.
+            conn.execute(
+                "INSERT INTO edits (image_id, params_json) VALUES ('x', ?1)",
+                [r#"{"exposure":-3.0,"black":0.1,"temp":5500}"#],
+            )
+            .unwrap();
+            conn.pragma_update(None, "user_version", 3i64).unwrap(); // pretend we're pre-v4
+            migrate(&conn).unwrap(); // the v<4 step resets exposure
+        }
+        let edits = cat.load_edits().unwrap();
+        let p = edits.iter().find(|e| e.image_id == "x").unwrap().params.clone().unwrap();
+        assert_eq!(p.get("exposure").unwrap().as_f64().unwrap(), 0.0, "stale exposure reset to 0");
+        assert_eq!(p.get("black").unwrap().as_f64().unwrap(), 0.1, "other params preserved");
+        assert_eq!(p.get("temp").unwrap().as_f64().unwrap(), 5500.0, "other params preserved");
+    }
 
     #[test]
     fn open_creates_schema_at_current_version() {
