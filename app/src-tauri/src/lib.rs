@@ -141,6 +141,7 @@ pub fn run() {
             commands::resolved_inversion,
             commands::sample_base_at,
             commands::auto_base_info,
+            commands::roll_base,
             commands::analyze,
             commands::analyze_white_point,
             commands::ai_enhance_image,

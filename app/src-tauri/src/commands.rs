@@ -2556,6 +2556,65 @@ pub fn auto_base_info(id: String, session: State<Session>) -> Result<AutoBaseInf
     Ok(AutoBaseInfo { base: dev.base, confidence: dev.base_confidence })
 }
 
+/// Aggregate a roll's per-frame auto bases into one robust roll base: the
+/// per-channel median of the frames whose rebate detector cleared
+/// `REBATE_CONFIDENCE`. Returns `None` if no frame is confident (rebate-less roll
+/// → caller falls back to per-image auto base). Per-channel (not vector) median is
+/// deliberate: it rejects a single pink/blue outlier channel independently.
+pub(crate) fn aggregate_roll_base(samples: &[([f32; 3], f32)]) -> Option<[f32; 3]> {
+    use film_core::calibrate::REBATE_CONFIDENCE;
+    let confident: Vec<[f32; 3]> = samples
+        .iter()
+        .filter(|(_, c)| *c >= REBATE_CONFIDENCE)
+        .map(|(b, _)| *b)
+        .collect();
+    if confident.is_empty() {
+        return None;
+    }
+    let mut out = [0.0f32; 3];
+    for (ch, slot) in out.iter_mut().enumerate() {
+        let mut col: Vec<f32> = confident.iter().map(|b| b[ch]).collect();
+        col.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let n = col.len();
+        *slot = if n % 2 == 1 {
+            col[n / 2]
+        } else {
+            (col[n / 2 - 1] + col[n / 2]) / 2.0
+        };
+    }
+    Some(out)
+}
+
+/// The aggregated roll base + how many confident frames fed it. `None` from
+/// `roll_base` (serialized as JSON `null`) means no confident rebate in the roll.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct RollBase {
+    pub base: [f32; 3],
+    pub frames_used: u32,
+}
+
+/// Compute one robust base for a whole roll by aggregating the already-stored
+/// per-frame `dev.base`/`dev.base_confidence` (no re-decode/re-sample). Frames that
+/// can't be made resident are skipped. Returns `null` when no frame is confident.
+#[tauri::command]
+pub fn roll_base(ids: Vec<String>, session: State<Session>) -> Result<Option<RollBase>, String> {
+    let mut samples: Vec<([f32; 3], f32)> = Vec::with_capacity(ids.len());
+    for id in &ids {
+        if ensure_resident(&session, id).is_err() {
+            continue;
+        }
+        let images = session.images.lock().unwrap();
+        if let Some(dev) = images.get(id).and_then(|img| img.developed.as_ref()) {
+            samples.push((dev.base, dev.base_confidence));
+        }
+    }
+    let frames_used = samples
+        .iter()
+        .filter(|(_, c)| *c >= film_core::calibrate::REBATE_CONFIDENCE)
+        .count() as u32;
+    Ok(aggregate_roll_base(&samples).map(|base| RollBase { base, frames_used }))
+}
+
 /// Result of `analyze`: the auto-derived Cineon black point for the image area.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct Analysis {
@@ -3116,6 +3175,74 @@ mod tests {
         p.tone_mode = "filmic".to_string();
         let ip = build_params(&p, [0.8, 0.6, 0.4]);
         assert!(matches!(ip.tone_mode, film_core::ToneMode::Faithful), "build_params must force Faithful");
+    }
+
+    #[test]
+    fn aggregate_roll_base_per_channel_median_of_confident() {
+        let hi = film_core::calibrate::REBATE_CONFIDENCE + 0.1;
+        let samples = [
+            ([0.40, 0.22, 0.13], hi),
+            ([0.44, 0.24, 0.15], hi),
+            ([0.42, 0.23, 0.14], hi),
+        ];
+        let out = aggregate_roll_base(&samples).expect("confident frames present");
+        assert!((out[0] - 0.42).abs() < 1e-6, "r median: {}", out[0]);
+        assert!((out[1] - 0.23).abs() < 1e-6, "g median: {}", out[1]);
+        assert!((out[2] - 0.14).abs() < 1e-6, "b median: {}", out[2]);
+    }
+
+    #[test]
+    fn aggregate_roll_base_drops_sub_threshold_frames() {
+        let hi = film_core::calibrate::REBATE_CONFIDENCE + 0.1;
+        let lo = film_core::calibrate::REBATE_CONFIDENCE - 0.1;
+        let samples = [
+            ([0.40, 0.22, 0.13], hi),
+            ([0.99, 0.10, 0.95], lo), // blue/pink outlier, low confidence → dropped
+            ([0.42, 0.23, 0.14], hi),
+        ];
+        let out = aggregate_roll_base(&samples).expect("two confident frames");
+        // Median of the two confident frames only; the low-confidence outlier never counts.
+        assert!((out[0] - 0.41).abs() < 1e-6, "r: {}", out[0]);
+        assert!((out[2] - 0.135).abs() < 1e-6, "b: {}", out[2]);
+    }
+
+    #[test]
+    fn aggregate_roll_base_outlier_does_not_move_median() {
+        let hi = film_core::calibrate::REBATE_CONFIDENCE + 0.1;
+        // One confident-but-pink frame among good ones; median rejects it.
+        let samples = [
+            ([0.40, 0.22, 0.13], hi),
+            ([0.41, 0.23, 0.14], hi),
+            ([0.42, 0.24, 0.15], hi),
+            ([0.90, 0.10, 0.80], hi), // pink outlier
+            ([0.43, 0.25, 0.16], hi),
+        ];
+        let out = aggregate_roll_base(&samples).expect("confident frames");
+        assert!((out[0] - 0.42).abs() < 1e-6, "r median unmoved: {}", out[0]);
+        assert!(out[2] < 0.2, "b median not pulled high by outlier: {}", out[2]);
+    }
+
+    #[test]
+    fn aggregate_roll_base_even_count_averages_middle_two() {
+        let hi = film_core::calibrate::REBATE_CONFIDENCE + 0.1;
+        let samples = [([0.40, 0.20, 0.10], hi), ([0.44, 0.24, 0.14], hi)];
+        let out = aggregate_roll_base(&samples).expect("two frames");
+        assert!((out[0] - 0.42).abs() < 1e-6, "r: {}", out[0]);
+    }
+
+    #[test]
+    fn aggregate_roll_base_none_when_no_confident_frames() {
+        let lo = film_core::calibrate::REBATE_CONFIDENCE - 0.1;
+        let samples = [([0.40, 0.22, 0.13], lo), ([0.42, 0.23, 0.14], lo)];
+        assert!(aggregate_roll_base(&samples).is_none());
+    }
+
+    #[test]
+    fn aggregate_roll_base_single_confident_frame() {
+        let hi = film_core::calibrate::REBATE_CONFIDENCE + 0.1;
+        let samples = [([0.40, 0.22, 0.13], hi)];
+        let out = aggregate_roll_base(&samples).expect("one frame");
+        assert_eq!(out, [0.40, 0.22, 0.13]);
     }
 }
 
