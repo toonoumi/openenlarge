@@ -114,7 +114,16 @@ const CMY_STRENGTH: f32 = 1.6;
 // Fit to the C400 digital-SDR reference (tone-calibration). MUST equal shaders.ts.
 const FAITHFUL_GAMMA: f32 = 1.590;
 const FAITHFUL_KNEE: f32 = 0.892;
-const FAITHFUL_ANCHOR: f32 = 4.137;
+/// Faithful FIXED density scale = 1/recommended_d_max from the C400 GammaShoulder fit
+/// (recommended d_max 0.700). The faithful core multiplies the RAW film density `d` by this
+/// CONSTANT — it deliberately does NOT use the per-frame `p.d_max`. Because
+/// `d = log10(base/scan)` already cancels scan/lightbox brightness, a fixed scale gives a
+/// frozen, faithful tone reproduction that is identical on every frame; per-image brightness
+/// is auto-exposure's job (the safeguard). The earlier `(d/d_max)·ANCHOR` form coupled the
+/// effective scale to the per-frame d_max (= 4.137/d_max), so it only matched the calibration
+/// on the one frame whose d_max happened to be 2.896 and blew highlights on every other frame
+/// (default d_max 1.5 → ~2× too bright). MUST equal shaders.ts.
+const FAITHFUL_SCALE: f32 = 1.0 / 0.700;
 
 // --- Filmic display S-curve (replaces the old paper-grade/soft-clip encode). ---
 // Applied per channel in the NORMALISED LOG-DENSITY domain `t = d/d_max` (then
@@ -173,7 +182,7 @@ fn filmic_inv(y: f32) -> f32 {
 }
 
 /// Faithful reconstruction curve: power-law body below the knee, asymptotic shoulder
-/// above. `x` is the effective normalised log-density (t·FAITHFUL_ANCHOR·expo_gain);
+/// above. `x` is the effective scaled density (d·FAITHFUL_SCALE·expo_gain);
 /// `ceil` is `1.0` for SDR or `HDR_HEADROOM` for HDR. Output is in `[0, ceil]`.
 #[inline]
 fn gamma_shoulder(x: f32, ceil: f32) -> f32 {
@@ -295,7 +304,10 @@ pub fn invert_d(rgb: [f32; 3], p: &InversionParams) -> [f32; 3] {
             }
             ToneMode::Faithful => {
                 let ceil = if p.hdr { HDR_HEADROOM } else { 1.0 };
-                let t_eff = t * FAITHFUL_ANCHOR * expo_gain;
+                // Faithful uses a FIXED density scale on the raw density `d` (NOT the
+                // per-frame `t = d/d_max`): a frozen, faithful transfer identical on every
+                // frame. See FAITHFUL_SCALE. (`t` above is still used by the Filmic arm.)
+                let t_eff = d * FAITHFUL_SCALE * expo_gain;
                 match p.wb_mode {
                     WbMode::Gain => gamma_shoulder(t_eff, ceil) * p.wb[c],
                     WbMode::Subtractive => gamma_shoulder(t_eff * p.wb[c].max(EPS).powf(CMY_STRENGTH), ceil),
@@ -998,6 +1010,34 @@ mod tests {
         let before = invert_d([0.2, 0.18, 0.1], &p); // value captured from current engine
         // Re-running must be deterministic and identical:
         assert_eq!(before, invert_d([0.2, 0.18, 0.1], &p));
+    }
+
+    #[test]
+    fn faithful_is_independent_of_per_frame_d_max() {
+        // Root-cause regression for the highlight-blowout bug. The faithful core uses a
+        // FIXED density scale, NOT per-frame d_max. The old `(d/d_max)·ANCHOR` form made the
+        // effective scale 4.137/d_max, matching the C400 calibration only on the one frame
+        // whose d_max was 2.896 and blowing highlights everywhere else (default d_max 1.5 →
+        // ~2× too bright). Faithful output MUST be identical across any d_max for one negative.
+        let base = [0.42, 0.55, 0.26];
+        let p = |dm: f32| InversionParams { base, d_max: dm, tone_mode: ToneMode::Faithful, ..Default::default() };
+        for scan in [[0.08f32, 0.09, 0.05], [0.20, 0.25, 0.12], [0.34, 0.44, 0.21]] {
+            let (a, b, c) = (invert_d(scan, &p(0.60)), invert_d(scan, &p(1.50)), invert_d(scan, &p(2.896)));
+            for ch in 0..3 {
+                assert!((a[ch] - b[ch]).abs() < 1e-6 && (b[ch] - c[ch]).abs() < 1e-6, "faithful must ignore d_max (ch {ch}): {a:?} {b:?} {c:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn faithful_highlight_does_not_blow_at_default_d_max() {
+        // A bright scene tone (dense negative) at the engine DEFAULT d_max (1.5) must NOT clip
+        // to pure white — it should land in the gamma body / gentle shoulder like the calibrated
+        // harness render. The pre-fix engine (anchor/d_max) pushed this to ~1.0.
+        let base = [1.0, 1.0, 1.0];
+        let bright = [10f32.powf(-0.85); 3]; // d ≈ 0.85 — a bright midtone/highlight
+        let out = invert_d(bright, &InversionParams { base, d_max: 1.5, tone_mode: ToneMode::Faithful, ..Default::default() });
+        assert!(out[0] < 0.99, "bright tone must keep highlight headroom, not blow to white: {}", out[0]);
     }
 
     #[test]

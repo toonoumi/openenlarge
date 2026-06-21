@@ -388,10 +388,14 @@ const float EXPO_K = 0.14;
 // Subtractive WB strength — MUST equal engine.rs CMY_STRENGTH.
 const float CMY_STRENGTH = 1.6;
 
-// Faithful reconstruction curve + exposure anchor — MUST equal engine.rs.
+// Faithful reconstruction curve + FIXED density scale — MUST equal engine.rs.
+// FAITHFUL_SCALE = 1/recommended_d_max (0.700) from the C400 fit. The faithful core
+// scales the RAW density d by this CONSTANT (NOT the per-frame u_d_max): a frozen,
+// faithful transfer identical on every frame. (The old (d/d_max)*ANCHOR form coupled the
+// scale to per-frame d_max and blew highlights on any frame whose d_max != 2.896.)
 const float FAITHFUL_GAMMA  = 1.590;
 const float FAITHFUL_KNEE   = 0.892;
-const float FAITHFUL_ANCHOR = 4.137;
+const float FAITHFUL_SCALE  = 1.0 / 0.700;
 float gammaShoulder(float x, float ceil_val) {
   float raw = pow(max(x, 0.0), 1.0 / FAITHFUL_GAMMA);
   if (raw <= FAITHFUL_KNEE) return min(raw, ceil_val);
@@ -470,7 +474,8 @@ vec3 invert(vec3 rgbIn) {
       // Faithful: gamma body + soft shoulder. INVERT_FRAG is the SDR path
       // (final clamp below), so ceil = 1.0 here — matches the engine's SDR Faithful;
       // HDR is handled by the separate gain-map path exactly as for Filmic.
-      vec3 te = t * FAITHFUL_ANCHOR * expo_gain;
+      // FIXED scale on raw density d (NOT per-frame t = d/u_d_max) — mirrors engine.rs.
+      vec3 te = d * FAITHFUL_SCALE * expo_gain;
       float ceil_val = 1.0;
       if (u_wb_mode == 1) {
         vec3 s = pow(max(u_wb, vec3(EPS)), vec3(CMY_STRENGTH));
