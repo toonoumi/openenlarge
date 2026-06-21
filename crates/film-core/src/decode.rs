@@ -290,6 +290,100 @@ pub fn decode_raw(path: &Path) -> Result<Image, DecodeError> {
     })
 }
 
+/// Extract a camera RAW file's EMBEDDED preview as a linear-light RGB `Image`,
+/// downscaled so its long edge is ≤ `max_edge`, without a full decode/demosaic.
+///
+/// # Why
+/// The LIGHT import path needs a cheap thumbnail so a freshly-imported, not-yet-
+/// developed RAW shows a real picture in the Library grid instead of a black
+/// placeholder. Most camera/scanner RAWs embed a JPEG preview; we ask rawler for
+/// it via `full_image` (the most widely-implemented across formats), then
+/// `thumbnail_image`. This is best-effort: some decoders (notably Olympus `.orf`)
+/// expose no embedded preview at all, in which case the caller falls back to
+/// `decode_tiff` or a full `decode_raw`.
+///
+/// # Color
+/// Only 8-bit previews are accepted — those are reliably sRGB-encoded JPEGs, so —
+/// exactly like [`decode_ldr`] — we apply the sRGB EOTF to land in the pipeline's
+/// linear-light domain. (A rare 16-bit / float preview SubIFD has an ambiguous
+/// transfer function `srgb_to_linear` would misread, so we reject it and let the
+/// caller fall back.) The caller re-applies display gamma when encoding the
+/// thumbnail (`to_png_b64(.., true)`); the encoder's 1/2.2 curve is a close — not
+/// exact — inverse of the sRGB EOTF, the same near-neutral round-trip
+/// [`decode_ldr`] uses for JPEG/PNG thumbnails.
+///
+/// # Robustness
+/// We read + `normalize_ifd_pointer_types` the bytes ourselves (same as
+/// [`decode_raw`]) so Capture One DNGs — whose preview lives behind a type-13
+/// SubIFD pointer — still resolve. rawler can *panic* on malformed input (the
+/// app's release profile deliberately avoids `panic = "abort"` for this), so the
+/// decode runs inside `catch_unwind`. Returns `Err` when there is no usable
+/// embedded preview.
+///
+/// EXIF orientation is not applied (consistent with [`decode_raw`]), so a portrait
+/// frame's preview may appear rotated until it is developed.
+pub fn decode_raw_preview(path: &Path, max_edge: u32) -> Result<Image, DecodeError> {
+    use rawler::decoders::RawDecodeParams;
+    use rawler::rawsource::RawSource;
+    use std::sync::Arc;
+
+    let mut bytes = std::fs::read(path)?;
+    normalize_ifd_pointer_types(&mut bytes);
+    let pb = path.to_path_buf();
+
+    // rawler decoders can panic on malformed files — contain it so a single bad
+    // file can't crash import. Constructing the source/decoder inside the closure
+    // keeps the `UnwindSafe` bound on captures (owned `bytes` + `pb`) only.
+    let dynimg = std::panic::catch_unwind(move || -> Option<::image::DynamicImage> {
+        let source = RawSource::new_from_shared_vec(Arc::new(bytes)).with_path(&pb);
+        let decoder = rawler::get_decoder(&source).ok()?;
+        let params = RawDecodeParams::default();
+        decoder
+            .full_image(&source, &params)
+            .ok()
+            .flatten()
+            // `preview_image` has no concrete override in rawler 0.7.2 (only the
+            // default `Ok(None)` impl), so this branch is a no-op today — kept for
+            // forward-compat if a future version implements it per-decoder.
+            .or_else(|| decoder.preview_image(&source, &params).ok().flatten())
+            .or_else(|| decoder.thumbnail_image(&source, &params).ok().flatten())
+    })
+    .map_err(|_| DecodeError::Raw("decoder panicked extracting preview".into()))?
+    .ok_or_else(|| DecodeError::Raw("no embedded preview".into()))?;
+
+    // Accept only 8-bit previews (reliably sRGB JPEGs). 16-bit / float preview
+    // SubIFDs have an ambiguous transfer function; defer them to the caller.
+    match &dynimg {
+        ::image::DynamicImage::ImageRgb8(_)
+        | ::image::DynamicImage::ImageRgba8(_)
+        | ::image::DynamicImage::ImageLuma8(_)
+        | ::image::DynamicImage::ImageLumaA8(_) => {}
+        _ => return Err(DecodeError::Raw("non-8-bit embedded preview".into())),
+    }
+
+    // Downscale BEFORE linearizing so the per-pixel sRGB EOTF (a `powf`) runs over
+    // the small thumbnail, not the full-res (multi-megapixel) embedded JPEG.
+    let small = dynimg.thumbnail(max_edge, max_edge);
+    let rgb = small.to_rgb32f(); // normalized [0,1] f32, alpha dropped
+    let (w, h) = (rgb.width() as usize, rgb.height() as usize);
+    let pixels: Vec<[f32; 3]> = rgb
+        .pixels()
+        .map(|p| {
+            [
+                srgb_to_linear(p[0]),
+                srgb_to_linear(p[1]),
+                srgb_to_linear(p[2]),
+            ]
+        })
+        .collect();
+    Ok(Image {
+        width: w,
+        height: h,
+        pixels,
+        ir: None,
+    })
+}
+
 /// Decode a gamma-encoded LDR image (JPEG / PNG) into a linear-light RGB `Image`.
 ///
 /// Unlike camera RAW and scanner TIFFs — which the pipeline treats as already
@@ -385,6 +479,22 @@ mod tests {
         assert!(img.ir.is_none());
         assert!((img.pixels[0][0] - 0.0).abs() < 1e-6);
         assert!((img.pixels[1][0] - 1.0).abs() < 1e-6);
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn decode_raw_preview_errs_gracefully_on_non_raw() {
+        // A plain PNG is not a camera RAW with an embedded preview. The extractor
+        // must return Err (so import falls back to decode_tiff / placeholder) and
+        // never panic out of `catch_unwind`.
+        let mut buf: ::image::RgbImage = ::image::ImageBuffer::new(2, 2);
+        buf.put_pixel(0, 0, ::image::Rgb([10, 20, 30]));
+        let dir = std::env::temp_dir();
+        let path = dir.join("filmrev_decode_raw_preview_test.png");
+        buf.save(&path).unwrap();
+
+        assert!(decode_raw_preview(&path, 320).is_err());
 
         let _ = std::fs::remove_file(&path);
     }
