@@ -54,6 +54,71 @@ pub fn output_lstar(scan: [f32; 3], base: [f32; 3], scale: f32, tr: &Transfer) -
     srgbf_to_lab(out)[0]
 }
 
+/// Confidence weight for a patch at absolute scene EV. The C400/Ektar density onset is
+/// ~−5 EV; below it the negative holds little real information (the reference tags those
+/// patches with >0.3 EV error), so weight ramps from 1.0 at/above −5 EV down to ~0.05 by
+/// −9 EV. This keeps deep-shadow noise from dominating the metrics/fit.
+pub fn ev_weight(abs_ev: f32) -> f32 {
+    let (lo, hi) = (-9.0f32, -5.0f32);
+    let x = ((abs_ev - lo) / (hi - lo)).clamp(0.0, 1.0);
+    let s = x * x * (3.0 - 2.0 * x); // smoothstep
+    0.05 + 0.95 * s
+}
+
+/// One stitched wedge sample: the raw negative patch, its frame's base, the digital-SDR
+/// target L*, the confidence weight, and the absolute scene EV (for reporting).
+pub struct TonePoint {
+    pub scan: [f32; 3],
+    pub base: [f32; 3],
+    pub target_l: f32,
+    pub weight: f32,
+    pub abs_ev: f32,
+}
+
+pub struct ToneMetrics {
+    /// Confidence-weighted RMS of (our L* − target L*).
+    pub rms_dl: f32,
+    pub max_dl: f32,
+    /// Fraction of (unweighted) patches within ΔL* < 5 of target.
+    pub frac_within5: f32,
+    /// Is our rendered L* monotone non-decreasing with scene EV (points pre-sorted by EV)?
+    pub monotonic: bool,
+}
+
+/// Deviation of our rendered transfer (at `scale`, `tr`) from the digital-SDR target.
+pub fn transfer_metrics(points: &[TonePoint], scale: f32, tr: &Transfer) -> ToneMetrics {
+    let mut sw = 0.0f32;
+    let mut swe2 = 0.0f32;
+    let mut max_dl = 0.0f32;
+    let mut within = 0usize;
+    // Sort by EV for the monotonicity check without mutating the caller's slice.
+    let mut idx: Vec<usize> = (0..points.len()).collect();
+    idx.sort_by(|&a, &b| points[a].abs_ev.partial_cmp(&points[b].abs_ev).unwrap());
+    let mut prev_l = f32::NEG_INFINITY;
+    let mut monotonic = true;
+    for &i in &idx {
+        let p = &points[i];
+        let our = output_lstar(p.scan, p.base, scale, tr);
+        let dl = our - p.target_l;
+        sw += p.weight;
+        swe2 += p.weight * dl * dl;
+        max_dl = max_dl.max(dl.abs());
+        if dl.abs() < 5.0 {
+            within += 1;
+        }
+        if our < prev_l - 1.0 {
+            monotonic = false;
+        }
+        prev_l = our;
+    }
+    ToneMetrics {
+        rms_dl: (swe2 / sw.max(1e-6)).sqrt(),
+        max_dl,
+        frac_within5: within as f32 / points.len().max(1) as f32,
+        monotonic,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -91,5 +156,37 @@ mod tests {
         let thin = output_lstar([0.40, 0.52, 0.24], base, 1.0 / 1.5, &tr);  // dark scene
         assert!(dense > thin, "dense neg should render brighter: {dense} vs {thin}");
         assert!((0.0..=100.0).contains(&dense) && (0.0..=100.0).contains(&thin));
+    }
+
+    #[test]
+    fn ev_weight_downweights_deep_shadows() {
+        assert!((ev_weight(0.0) - 1.0).abs() < 1e-6, "bright = full weight");
+        assert!((ev_weight(-4.0) - 1.0).abs() < 1e-6, "above onset = full weight");
+        assert!(ev_weight(-9.0) < 0.1, "deep shadow = low weight");
+        assert!(ev_weight(-7.0) < ev_weight(-5.0), "monotone down into shadows");
+    }
+
+    #[test]
+    fn metrics_zero_error_when_target_equals_output() {
+        let base = [0.42, 0.55, 0.26];
+        let tr = Transfer::default_filmic();
+        let scale = 1.0 / 1.2;
+        // Build points whose target_l IS our output at this scale → zero deviation.
+        let scans = [[0.06, 0.07, 0.035], [0.15, 0.18, 0.09], [0.35, 0.45, 0.22]];
+        let pts: Vec<TonePoint> = scans
+            .iter()
+            .enumerate()
+            .map(|(i, &scan)| TonePoint {
+                scan,
+                base,
+                target_l: output_lstar(scan, base, scale, &tr),
+                weight: 1.0,
+                abs_ev: -(i as f32),
+            })
+            .collect();
+        let m = transfer_metrics(&pts, scale, &tr);
+        assert!(m.rms_dl < 1e-4, "rms should be ~0, got {}", m.rms_dl);
+        assert!(m.max_dl < 1e-4);
+        assert!((m.frac_within5 - 1.0).abs() < 1e-6);
     }
 }
