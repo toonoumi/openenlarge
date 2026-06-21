@@ -1,0 +1,182 @@
+<!-- AUTO-GENERATED from /docs-src — do not edit by hand. Run python3 scripts/gen-docs.py -->
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>色调曲线（Faithful 风格） — OpenEnlarge Docs</title>
+<meta name="description" content="OpenEnlarge 如何用「伽马 + 肩部」曲线重建正片，带来纯净的白、柔和的高光，以及整卷一致的色调。">
+<meta name="theme-color" content="#0a0a0c">
+<link rel="icon" href="../../../img/favicon.png">
+<link rel="canonical" href="https://openenlarge.io/docs/zh/science/tone-curve.html">
+<link rel="alternate" hreflang="en" href="https://openenlarge.io/docs/science/tone-curve.html">
+<link rel="alternate" hreflang="zh-Hans" href="https://openenlarge.io/docs/zh/science/tone-curve.html">
+<link rel="alternate" hreflang="x-default" href="https://openenlarge.io/docs/science/tone-curve.html">
+<meta property="og:type" content="article"><meta property="og:title" content="色调曲线（Faithful 风格） — OpenEnlarge Docs"><meta property="og:description" content="OpenEnlarge 如何用「伽马 + 肩部」曲线重建正片，带来纯净的白、柔和的高光，以及整卷一致的色调。"><meta property="og:url" content="https://openenlarge.io/docs/zh/science/tone-curve.html"><meta property="og:image" content="https://openenlarge.io/docs/og/cover.png"><meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "色调曲线（Faithful 风格）", "description": "OpenEnlarge 如何用「伽马 + 肩部」曲线重建正片，带来纯净的白、柔和的高光，以及整卷一致的色调。", "inLanguage": "zh-Hans", "url": "https://openenlarge.io/docs/zh/science/tone-curve.html", "isPartOf": {"@type": "WebSite", "name": "OpenEnlarge", "url": "https://openenlarge.io"}}</script>
+<link rel="stylesheet" href="../docs.css">
+</head>
+<body>
+<a class="skip" href="#content">跳到正文</a>
+<nav class="docnav"><div class="navbar glass wrap">
+  <a class="brand" href="../../../index.html"><img class="mark" src="../../../img/icon.png" alt=""> OpenEnlarge <span class="brand-docs">文档</span></a>
+  <button class="menu-btn" id="menu-btn" type="button" aria-label="菜单" aria-expanded="false">☰</button>
+  <div class="navlinks">
+    <a href="../../../index.html">主页</a>
+    <a href="https://github.com/mohaelder/openenlarge">GitHub</a>
+    <a class="lang-link" href="../../science/tone-curve.html">EN</a>
+  </div>
+</div></nav>
+<div class="doclayout wrap">
+  <aside class="sidebar" id="sidebar"><div class="side-sec"><div class="side-h">概览</div>
+<a href="../index.html">文档</a>
+<a href="../workflow.html">工作流程</a>
+</div>
+<div class="side-sec"><div class="side-h">原理</div>
+<a href="../science/negatives.html">彩色负片的原理</a>
+<a href="../science/inversion.html">反转流程</a>
+<a href="../science/density.html">密度与对数空间</a>
+<a class="on" href="../science/tone-curve.html">色调曲线（Faithful 风格）</a>
+</div></aside>
+  <main class="content" id="content">
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="../index.html">文档</a> <span class="sep">/</span> <span>色调曲线（Faithful 风格）</span></nav>
+    <article class="prose"><h1>色调曲线（Faithful 风格）</h1>
+<p class="lead">若仅用直线将密度值取反，得到的图像往往显得苍白、平淡且生硬。OpenEnlarge 改为施加一条符合胶片特性的 S 形曲线，以保护暗部细节、增强中调层次，并将高光柔和地收束至纯净的白。</p>
+
+<h2>趾部、中调、肩部</h2>
+<p>Faithful 曲线的形态呼应了经典的 Hurter–Driffield（H&amp;D）特性曲线 —— 即描述相纸对光线响应方式的曲线。它具有三个鲜明的区段：</p>
+<ul>
+  <li><strong>趾部</strong> —— 靠近黑位，曲线斜率低于对角线。极暗的值被略微上抬，从而保护暗部细节，而不是将其压死。</li>
+  <li><strong>中调</strong> —— 斜率最陡的区域，曲线上升速度快于对角线。绝大多数被摄体落在这里，更高的对比度赋予画面深度与质感。</li>
+  <li><strong>肩部</strong> —— 靠近白位，曲线缓缓弯曲收口。镜面高光与亮部区域被平滑压入高调范围，而不是生硬地截断为死白。</li>
+</ul>
+<p>S 形曲线由伽马（γ）约 <strong>1.590</strong> 参数化，肩部渐近于膝点约 <strong>0.892</strong>。输出被钳制于 [0, 1]，用于 SDR 显示。</p>
+
+<h2>纯净的白</h2>
+<p>曲线有一个微妙但至关重要的特性：当<strong>输入 = 1.0</strong> 时，<strong>输出恰好 = 1.0</strong>。这意味着负片中密度最大的点 —— 通常对应场景中最亮的高光 —— 会被映射到完整的纸基白，而不是被压在某个灰色上限处。许多简单的色调映射方案会将高光钳制在灰色天花板下；Faithful 曲线则不然。镜面反光、窗口光、直射阳光下的皮肤，都能达到真正的白。</p>
+<p>这一白点锚定在图中清晰可见：S 曲线精确地终结于坐标图的右上角。</p>
+
+<figure><svg viewBox="0 0 480 480" role="img" aria-label="Tone curve plot: input density (normalized t) on the x-axis, output on the y-axis, both from 0 to 1. A faint diagonal reference line runs from (0,0) to (1,1). The S-curve starts at (0,0), rises through a gentle toe in the shadow region where the curve is shallower than the diagonal, steepens through the midtones where contrast is highest, then rolls into a soft shoulder in the highlight region before reaching exactly (1,1) — true white — at the top-right corner. The curve is monotonically increasing and stays within [0,1]." xmlns="http://www.w3.org/2000/svg">
+  <rect width="480" height="480" rx="12" fill="#141418"/>
+
+  <!-- Chart area margins: left 64, right 24, top 28, bottom 60 -->
+  <!-- Plot area: x 64..456, y 28..420 — width 392, height 392 (square) -->
+  <!-- x maps: 0→64, 1→456 (width 392) -->
+  <!-- y maps: 0→420 (bottom), 1→28 (top) (height 392, inverted) -->
+  <!-- pixel_x = 64 + t * 392 -->
+  <!-- pixel_y = 420 - t * 392 -->
+
+  <!-- Gridlines at 0.25, 0.5, 0.75 -->
+  <!-- x gridlines -->
+  <line x1="64"  y1="28" x2="64"  y2="420" stroke="#9a9aa2" stroke-width="0.5" opacity="0.35"/>
+  <line x1="162" y1="28" x2="162" y2="420" stroke="#9a9aa2" stroke-width="0.5" opacity="0.25"/>
+  <line x1="260" y1="28" x2="260" y2="420" stroke="#9a9aa2" stroke-width="0.5" opacity="0.25"/>
+  <line x1="358" y1="28" x2="358" y2="420" stroke="#9a9aa2" stroke-width="0.5" opacity="0.25"/>
+  <line x1="456" y1="28" x2="456" y2="420" stroke="#9a9aa2" stroke-width="0.5" opacity="0.35"/>
+
+  <!-- y gridlines -->
+  <line x1="64" y1="420" x2="456" y2="420" stroke="#9a9aa2" stroke-width="0.5" opacity="0.35"/>
+  <line x1="64" y1="322" x2="456" y2="322" stroke="#9a9aa2" stroke-width="0.5" opacity="0.25"/>
+  <line x1="64" y1="224" x2="456" y2="224" stroke="#9a9aa2" stroke-width="0.5" opacity="0.25"/>
+  <line x1="64" y1="126" x2="456" y2="126" stroke="#9a9aa2" stroke-width="0.5" opacity="0.25"/>
+  <line x1="64" y1="28"  x2="456" y2="28"  stroke="#9a9aa2" stroke-width="0.5" opacity="0.35"/>
+
+  <!-- Diagonal reference line (y=x): from plot (0,0)=(64,420) to plot (1,1)=(456,28) -->
+  <line x1="64" y1="420" x2="456" y2="28" stroke="#9a9aa2" stroke-width="1" stroke-dasharray="5 4" opacity="0.5"/>
+
+  <!-- S-curve: tone curve from (0,0) to (1,1)
+       Curve models: toe (shadow lift/protection), steeper mids, shoulder (highlight rolloff to true white).
+       Key computed points (t → output) for this approximate gamma+shoulder curve:
+         t=0.00 → out=0.000  (pixel 64,420)
+         t=0.10 → out=0.050  (pixel 103.2, 400.4)
+         t=0.20 → out=0.130  (pixel 142.4, 369.0)
+         t=0.30 → out=0.230  (pixel 181.6, 329.6)
+         t=0.40 → out=0.355  (pixel 220.8, 280.8)
+         t=0.50 → out=0.490  (pixel 260.0, 228.1)
+         t=0.60 → out=0.625  (pixel 299.2, 175.0)
+         t=0.70 → out=0.750  (pixel 338.4, 126.0)
+         t=0.80 → out=0.855  (pixel 377.6, 84.4)
+         t=0.90 → out=0.940  (pixel 416.8, 54.5)
+         t=1.00 → out=1.000  (pixel 456, 28)
+       Uses a cubic Bézier: two control points chosen to give:
+         - Shallow start (toe): initial tangent below diagonal
+         - Steep mids: passes above diagonal near midpoint
+         - Soft shoulder: rolls into (1,1) from below
+       Control points (in plot pixels):
+         P0 = (64, 420)  [0,0]
+         C1 = (130, 370) [toe region, gentle rise]
+         C2 = (370, 68)  [pre-shoulder, pulling curve into white]
+         P3 = (456, 28)  [1,1]
+       This single cubic doesn't capture the S well enough, so use a composite of two cubics:
+         Segment 1: (0,0) → (0.5, ~0.49)
+           P0=(64,420), C1=(100,390), C2=(195,235), P3=(260,228)
+         Segment 2: (0.5,~0.49) → (1,1)
+           P0=(260,228), C1=(325,221), C2=(430,60), P3=(456,28)
+       The toe: near t=0.1, output≈0.050 (diagonal would give 0.10) → curve below diagonal = shadow protection
+       The shoulder: near t=0.9, output≈0.940 (diagonal would give 0.90) → curve above diagonal from ~t=0.25
+       The S-shape: below diagonal in shadows, above in mids/highlights, then meets at (1,1)
+  -->
+  <path d="M 64,420
+            C 104,396 196,232 260,227
+            C 326,222 428,62 456,28"
+        fill="none" stroke="#f49d4e" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Endpoint markers -->
+  <circle cx="64"  cy="420" r="3.5" fill="#f49d4e"/>
+  <circle cx="456" cy="28"  r="3.5" fill="#f49d4e"/>
+
+  <!-- Toe annotation: near t≈0.15, output≈0.08 → pixel (122.8, 388.6) -->
+  <!-- Arrow from label to curve point ~(118, 391) -->
+  <text x="46" y="388" font-family="ui-monospace,monospace" font-size="11" fill="#9a9aa2" text-anchor="end">toe</text>
+  <line x1="48" y1="385" x2="110" y2="376" stroke="#9a9aa2" stroke-width="0.8" opacity="0.6"/>
+
+  <!-- Shoulder annotation: near t≈0.82, output≈0.87 → pixel (385.4, 79.2) -->
+  <text x="456" y="118" font-family="ui-monospace,monospace" font-size="11" fill="#9a9aa2" text-anchor="start">shoulder</text>
+  <line x1="454" y1="113" x2="400" y2="90" stroke="#9a9aa2" stroke-width="0.8" opacity="0.6"/>
+
+  <!-- True white annotation at (1,1) corner -->
+  <text x="456" y="21" font-family="ui-monospace,monospace" font-size="10" fill="#e8e8ea" text-anchor="end">true white (1.0)</text>
+
+  <!-- X-axis tick labels -->
+  <text x="64"  y="438" font-family="ui-monospace,monospace" font-size="11" fill="#9a9aa2" text-anchor="middle">0</text>
+  <text x="162" y="438" font-family="ui-monospace,monospace" font-size="11" fill="#9a9aa2" text-anchor="middle">0.25</text>
+  <text x="260" y="438" font-family="ui-monospace,monospace" font-size="11" fill="#9a9aa2" text-anchor="middle">0.5</text>
+  <text x="358" y="438" font-family="ui-monospace,monospace" font-size="11" fill="#9a9aa2" text-anchor="middle">0.75</text>
+  <text x="456" y="438" font-family="ui-monospace,monospace" font-size="11" fill="#9a9aa2" text-anchor="middle">1</text>
+
+  <!-- X-axis label -->
+  <text x="260" y="456" font-family="ui-monospace,monospace" font-size="11" fill="#e8e8ea" text-anchor="middle">input density  (normalized t)</text>
+
+  <!-- Y-axis tick labels -->
+  <text x="58" y="424" font-family="ui-monospace,monospace" font-size="11" fill="#9a9aa2" text-anchor="end">0</text>
+  <text x="58" y="326" font-family="ui-monospace,monospace" font-size="11" fill="#9a9aa2" text-anchor="end">0.25</text>
+  <text x="58" y="228" font-family="ui-monospace,monospace" font-size="11" fill="#9a9aa2" text-anchor="end">0.5</text>
+  <text x="58" y="130" font-family="ui-monospace,monospace" font-size="11" fill="#9a9aa2" text-anchor="end">0.75</text>
+  <text x="58" y="32"  font-family="ui-monospace,monospace" font-size="11" fill="#9a9aa2" text-anchor="end">1</text>
+
+  <!-- Y-axis label -->
+  <text x="14" y="224" font-family="ui-monospace,monospace" font-size="11" fill="#e8e8ea" text-anchor="middle" transform="rotate(-90,14,224)">output</text>
+
+  <!-- Diagonal label -->
+  <text x="320" y="148" font-family="ui-monospace,monospace" font-size="10" fill="#9a9aa2" text-anchor="start" transform="rotate(-45,320,148)" opacity="0.7">linear ref</text>
+</svg>
+<figcaption>横轴为输入密度（归一化 t，0–1），纵轴为输出（0–1）。虚线对角线为线性参考。S 曲线从 (0, 0) 出发，在暗部低于对角线（趾部 —— 保护暗部），在中调高于对角线（提升对比度），然后在高光区缓缓弯曲（肩部），最终精确到达 (1, 1) —— 纯净的白。</figcaption></figure>
+
+<h2>整卷一致的色调</h2>
+<p>OpenEnlarge 在计算色调曲线时采用<strong>固定密度尺度</strong> —— <code>1 / 0.700 ≈ 1.429</code> —— 而非对每一帧各自测量的密度进行归一化。这意味着整卷胶片中的每一帧都在同一把色调标尺上被解读。稍微欠曝的一帧和稍微过曝的另一帧，都会经过相同的曲线形态；只有每帧单独的<em>曝光</em>滑块会作出相应补偿。最终效果是：一卷街拍作品一同冲晒时，看起来颇为统一 —— 天空保持一致的白，暗部从帧到帧维持相同的深度。</p>
+<p>这与暗房打印师的工作方式如出一辙：在放大机上为整卷胶片统一定好一个曝光时间，再对单张进行局部遮挡与加光处理 —— 全局色调映射固定不变，局部修正叠加其上。</p>
+
+<details class="hood"><summary>深入原理</summary><div class="hood-body">
+<p>Faithful 色调曲线是带软渐近肩部的幂律函数：在趾部至中调区域满足 <span class="formula">out = t<sup>γ</sup></span>，然后过渡至渐近于膝点约 <strong>0.892</strong> 的肩部，伽马（γ）约为 <strong>1.590</strong>。在曲线施加之前，原始密度会先乘以固定系数 <span class="formula">FAITHFUL_SCALE = 1 / 0.700 ≈ 1.429</span>；该系数与具体帧无关，从而保证整卷色调的一致性。只有每帧的曝光（对数域乘法）会随该帧的亮度单独调整。</p>
+<p>基础曲线之上还叠加了可选的<strong>风格层</strong>：一条归一化的 tanh S 形曲线，强度为 <strong>2.0</strong>，锚定为 0 映射至 0、1 映射至 1。它在不改变黑白点的前提下额外增加一层 S 形对比度。在当前的 Faithful 路径中，风格层始终生效。</p>
+</div></details>
+
+<p class="next"><a href="color.html">下一篇：色彩与白平衡 →</a></p>
+</article>
+    <footer class="docfoot">OpenEnlarge —— 开源胶片扫描编辑器 · MIT 许可</footer>
+  </main>
+  <aside class="toc" id="toc" aria-label="本页目录"><div class="toc-title">本页目录</div><div id="toc-list"></div></aside>
+</div>
+<script src="../docs.js" defer></script>
+</body>
+</html>

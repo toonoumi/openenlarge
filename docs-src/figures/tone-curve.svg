@@ -1,0 +1,104 @@
+<svg viewBox="0 0 480 480" role="img" aria-label="Tone curve plot: input density (normalized t) on the x-axis, output on the y-axis, both from 0 to 1. A faint diagonal reference line runs from (0,0) to (1,1). The S-curve starts at (0,0), rises through a gentle toe in the shadow region where the curve is shallower than the diagonal, steepens through the midtones where contrast is highest, then rolls into a soft shoulder in the highlight region before reaching exactly (1,1) — true white — at the top-right corner. The curve is monotonically increasing and stays within [0,1]." xmlns="http://www.w3.org/2000/svg">
+  <rect width="480" height="480" rx="12" fill="#141418"/>
+
+  <!-- Chart area margins: left 64, right 24, top 28, bottom 60 -->
+  <!-- Plot area: x 64..456, y 28..420 — width 392, height 392 (square) -->
+  <!-- x maps: 0→64, 1→456 (width 392) -->
+  <!-- y maps: 0→420 (bottom), 1→28 (top) (height 392, inverted) -->
+  <!-- pixel_x = 64 + t * 392 -->
+  <!-- pixel_y = 420 - t * 392 -->
+
+  <!-- Gridlines at 0.25, 0.5, 0.75 -->
+  <!-- x gridlines -->
+  <line x1="64"  y1="28" x2="64"  y2="420" stroke="#9a9aa2" stroke-width="0.5" opacity="0.35"/>
+  <line x1="162" y1="28" x2="162" y2="420" stroke="#9a9aa2" stroke-width="0.5" opacity="0.25"/>
+  <line x1="260" y1="28" x2="260" y2="420" stroke="#9a9aa2" stroke-width="0.5" opacity="0.25"/>
+  <line x1="358" y1="28" x2="358" y2="420" stroke="#9a9aa2" stroke-width="0.5" opacity="0.25"/>
+  <line x1="456" y1="28" x2="456" y2="420" stroke="#9a9aa2" stroke-width="0.5" opacity="0.35"/>
+
+  <!-- y gridlines -->
+  <line x1="64" y1="420" x2="456" y2="420" stroke="#9a9aa2" stroke-width="0.5" opacity="0.35"/>
+  <line x1="64" y1="322" x2="456" y2="322" stroke="#9a9aa2" stroke-width="0.5" opacity="0.25"/>
+  <line x1="64" y1="224" x2="456" y2="224" stroke="#9a9aa2" stroke-width="0.5" opacity="0.25"/>
+  <line x1="64" y1="126" x2="456" y2="126" stroke="#9a9aa2" stroke-width="0.5" opacity="0.25"/>
+  <line x1="64" y1="28"  x2="456" y2="28"  stroke="#9a9aa2" stroke-width="0.5" opacity="0.35"/>
+
+  <!-- Diagonal reference line (y=x): from plot (0,0)=(64,420) to plot (1,1)=(456,28) -->
+  <line x1="64" y1="420" x2="456" y2="28" stroke="#9a9aa2" stroke-width="1" stroke-dasharray="5 4" opacity="0.5"/>
+
+  <!-- S-curve: tone curve from (0,0) to (1,1)
+       Curve models: toe (shadow lift/protection), steeper mids, shoulder (highlight rolloff to true white).
+       Key computed points (t → output) for this approximate gamma+shoulder curve:
+         t=0.00 → out=0.000  (pixel 64,420)
+         t=0.10 → out=0.050  (pixel 103.2, 400.4)
+         t=0.20 → out=0.130  (pixel 142.4, 369.0)
+         t=0.30 → out=0.230  (pixel 181.6, 329.6)
+         t=0.40 → out=0.355  (pixel 220.8, 280.8)
+         t=0.50 → out=0.490  (pixel 260.0, 228.1)
+         t=0.60 → out=0.625  (pixel 299.2, 175.0)
+         t=0.70 → out=0.750  (pixel 338.4, 126.0)
+         t=0.80 → out=0.855  (pixel 377.6, 84.4)
+         t=0.90 → out=0.940  (pixel 416.8, 54.5)
+         t=1.00 → out=1.000  (pixel 456, 28)
+       Uses a cubic Bézier: two control points chosen to give:
+         - Shallow start (toe): initial tangent below diagonal
+         - Steep mids: passes above diagonal near midpoint
+         - Soft shoulder: rolls into (1,1) from below
+       Control points (in plot pixels):
+         P0 = (64, 420)  [0,0]
+         C1 = (130, 370) [toe region, gentle rise]
+         C2 = (370, 68)  [pre-shoulder, pulling curve into white]
+         P3 = (456, 28)  [1,1]
+       This single cubic doesn't capture the S well enough, so use a composite of two cubics:
+         Segment 1: (0,0) → (0.5, ~0.49)
+           P0=(64,420), C1=(100,390), C2=(195,235), P3=(260,228)
+         Segment 2: (0.5,~0.49) → (1,1)
+           P0=(260,228), C1=(325,221), C2=(430,60), P3=(456,28)
+       The toe: near t=0.1, output≈0.050 (diagonal would give 0.10) → curve below diagonal = shadow protection
+       The shoulder: near t=0.9, output≈0.940 (diagonal would give 0.90) → curve above diagonal from ~t=0.25
+       The S-shape: below diagonal in shadows, above in mids/highlights, then meets at (1,1)
+  -->
+  <path d="M 64,420
+            C 104,396 196,232 260,227
+            C 326,222 428,62 456,28"
+        fill="none" stroke="#f49d4e" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Endpoint markers -->
+  <circle cx="64"  cy="420" r="3.5" fill="#f49d4e"/>
+  <circle cx="456" cy="28"  r="3.5" fill="#f49d4e"/>
+
+  <!-- Toe annotation: near t≈0.15, output≈0.08 → pixel (122.8, 388.6) -->
+  <!-- Arrow from label to curve point ~(118, 391) -->
+  <text x="46" y="388" font-family="ui-monospace,monospace" font-size="11" fill="#9a9aa2" text-anchor="end">toe</text>
+  <line x1="48" y1="385" x2="110" y2="376" stroke="#9a9aa2" stroke-width="0.8" opacity="0.6"/>
+
+  <!-- Shoulder annotation: near t≈0.82, output≈0.87 → pixel (385.4, 79.2) -->
+  <text x="456" y="118" font-family="ui-monospace,monospace" font-size="11" fill="#9a9aa2" text-anchor="start">shoulder</text>
+  <line x1="454" y1="113" x2="400" y2="90" stroke="#9a9aa2" stroke-width="0.8" opacity="0.6"/>
+
+  <!-- True white annotation at (1,1) corner -->
+  <text x="456" y="21" font-family="ui-monospace,monospace" font-size="10" fill="#e8e8ea" text-anchor="end">true white (1.0)</text>
+
+  <!-- X-axis tick labels -->
+  <text x="64"  y="438" font-family="ui-monospace,monospace" font-size="11" fill="#9a9aa2" text-anchor="middle">0</text>
+  <text x="162" y="438" font-family="ui-monospace,monospace" font-size="11" fill="#9a9aa2" text-anchor="middle">0.25</text>
+  <text x="260" y="438" font-family="ui-monospace,monospace" font-size="11" fill="#9a9aa2" text-anchor="middle">0.5</text>
+  <text x="358" y="438" font-family="ui-monospace,monospace" font-size="11" fill="#9a9aa2" text-anchor="middle">0.75</text>
+  <text x="456" y="438" font-family="ui-monospace,monospace" font-size="11" fill="#9a9aa2" text-anchor="middle">1</text>
+
+  <!-- X-axis label -->
+  <text x="260" y="456" font-family="ui-monospace,monospace" font-size="11" fill="#e8e8ea" text-anchor="middle">input density  (normalized t)</text>
+
+  <!-- Y-axis tick labels -->
+  <text x="58" y="424" font-family="ui-monospace,monospace" font-size="11" fill="#9a9aa2" text-anchor="end">0</text>
+  <text x="58" y="326" font-family="ui-monospace,monospace" font-size="11" fill="#9a9aa2" text-anchor="end">0.25</text>
+  <text x="58" y="228" font-family="ui-monospace,monospace" font-size="11" fill="#9a9aa2" text-anchor="end">0.5</text>
+  <text x="58" y="130" font-family="ui-monospace,monospace" font-size="11" fill="#9a9aa2" text-anchor="end">0.75</text>
+  <text x="58" y="32"  font-family="ui-monospace,monospace" font-size="11" fill="#9a9aa2" text-anchor="end">1</text>
+
+  <!-- Y-axis label -->
+  <text x="14" y="224" font-family="ui-monospace,monospace" font-size="11" fill="#e8e8ea" text-anchor="middle" transform="rotate(-90,14,224)">output</text>
+
+  <!-- Diagonal label -->
+  <text x="320" y="148" font-family="ui-monospace,monospace" font-size="10" fill="#9a9aa2" text-anchor="start" transform="rotate(-45,320,148)" opacity="0.7">linear ref</text>
+</svg>

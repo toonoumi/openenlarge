@@ -1,0 +1,28 @@
+<h1>The tone curve (the Faithful look)</h1>
+<p class="lead">A naive inversion — flipping density values with a straight line — produces images that look pale, flat, and harsh. OpenEnlarge instead applies a film-faithful S-shaped curve that protects shadow detail, adds mid-tone punch, and rolls highlights gently into a true white.</p>
+
+<h2>Toe, mid, shoulder</h2>
+<p>The Faithful curve mirrors the shape of the classic Hurter–Driffield (H&amp;D) characteristic curve that describes how photographic paper responds to light. It has three distinct zones:</p>
+<ul>
+  <li><strong>Toe</strong> — near black, the curve is shallower than a straight line. Very dark values are lifted slightly so shadow detail is protected rather than crushed.</li>
+  <li><strong>Midtones</strong> — the steepest region, where the curve rises faster than the linear diagonal. This is where most subject matter lives, and the added contrast gives the image its sense of depth and snap.</li>
+  <li><strong>Shoulder</strong> — near white, the curve rolls over gently. Speculars and bright areas are compressed into the upper range without clipping hard to a flat, blown-out white.</li>
+</ul>
+<p>The S-shape is parameterized by a gamma of approximately <strong>1.590</strong>, with the shoulder asymptoting at a knee of approximately <strong>0.892</strong>. Output is clamped to [0, 1] for SDR display.</p>
+
+<h2>True white</h2>
+<p>One subtle but important property: the curve reaches exactly <strong>output = 1.0</strong> at <strong>input = 1.0</strong>. This means the densest point of the negative — typically the brightest highlight in the scene — maps all the way to paper white, not to a mid-grey cap. Many simpler tone mappings leave highlights compressed into a grey ceiling; the Faithful curve does not. Specular highlights, window light, and skin in direct sun can all reach genuine white.</p>
+<p>This true-white anchor is visible in the figure: the S-curve ends precisely at the top-right corner of the plot.</p>
+
+<figure><!--FIG:tone-curve--><figcaption>Input density (normalized t, 0–1) versus output (0–1). The dashed diagonal is a linear reference. The S-curve starts at (0, 0), dips below the diagonal in the shadows (toe — shadow protection), rises above it through the midtones (contrast), then rolls over into a soft shoulder before reaching exactly (1, 1) — true white.</figcaption></figure>
+
+<h2>Consistent across the roll</h2>
+<p>OpenEnlarge uses a <strong>fixed density scale</strong> — <code>1 / 0.700 ≈ 1.429</code> — when computing the tone curve, rather than normalizing to each frame's own measured density. This means every frame in a roll is interpreted on the same tonal ruler. One frame that was slightly under-exposed and another that was slightly over-exposed will both be passed through the same curve shape; only the per-frame <em>exposure</em> slider adapts to compensate. The result is that a roll of street photographs all printed together looks cohesive: the sky stays a consistent white, the shadows maintain the same depth from frame to frame.</p>
+<p>This is the same discipline a darkroom printer uses when they dial in a single exposure time for a whole roll on the enlarger, then dodge and burn individual frames — the global tone mapping is fixed, and local corrections are applied on top.</p>
+
+<details class="hood"><summary>Under the hood</summary><div class="hood-body">
+<p>The Faithful tone curve is a power-law with a soft asymptotic shoulder: <span class="formula">out = t<sup>γ</sup></span> in the toe-to-mid region, transitioning into a shoulder that asymptotes at knee ≈ <strong>0.892</strong>, with gamma (γ) ≈ <strong>1.590</strong>. The raw density is pre-scaled by the fixed factor <span class="formula">FAITHFUL_SCALE = 1 / 0.700 ≈ 1.429</span> before the curve is applied; this scale is frame-independent, ensuring consistent tone across an entire roll. Only the per-frame exposure (a log-space multiply) adapts to the individual frame's brightness.</p>
+<p>On top of the base curve sits the optional <strong>Look layer</strong>: a normalized tanh S-curve with strength <strong>2.0</strong>, anchored so that 0 maps to 0 and 1 maps to 1. This adds an additional S-shaped contrast push without shifting the black or white points. In the current Faithful path the Look layer is always applied.</p>
+</div></details>
+
+<p class="next"><a href="color.html">Next: color &amp; white balance →</a></p>
