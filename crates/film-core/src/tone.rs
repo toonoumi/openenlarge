@@ -119,6 +119,83 @@ pub fn transfer_metrics(points: &[TonePoint], scale: f32, tr: &Transfer) -> Tone
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+pub enum FitMode {
+    /// Fit only the density scale (≡ d_max/exposure), keep the default filmic curve.
+    ScaleOnly,
+    /// Fit the density scale AND the filmic curve constants (k, pivot, white_t).
+    ScaleCurve,
+    /// Replace the filmic curve with a plain gamma; fit the scale + gamma (the
+    /// "no S-curve" alternative, to settle filmic-vs-gamma).
+    Gamma,
+}
+
+pub struct FitResult {
+    pub scale: f32,
+    pub transfer: Transfer,
+    pub residual_rms: f32,
+}
+
+fn weighted_rms(points: &[TonePoint], scale: f32, tr: &Transfer) -> f32 {
+    let mut sw = 0.0f32;
+    let mut swe2 = 0.0f32;
+    for p in points {
+        let dl = output_lstar(p.scan, p.base, scale, tr) - p.target_l;
+        sw += p.weight;
+        swe2 += p.weight * dl * dl;
+    }
+    (swe2 / sw.max(1e-6)).sqrt()
+}
+
+/// Greedy coordinate descent over the active parameters for the mode.
+/// Parameter vector: [scale, a, b, c] where (a,b,c) = (k,pivot,white_t) for Filmic
+/// or (gamma, _, _) for Gamma. Inactive params stay at their seed.
+pub fn fit_tone(points: &[TonePoint], mode: FitMode) -> FitResult {
+    // Seed + which params are active + how to build a Transfer from the vector.
+    let (mut p, active): ([f32; 4], [bool; 4]) = match mode {
+        FitMode::ScaleOnly => ([1.0 / 1.5, 5.0, 0.44, 1.05], [true, false, false, false]),
+        FitMode::ScaleCurve => ([1.0 / 1.5, 5.0, 0.44, 1.05], [true, true, true, true]),
+        FitMode::Gamma => ([1.0 / 1.5, 2.2, 0.0, 0.0], [true, true, false, false]),
+    };
+    let build = |p: &[f32; 4]| -> Transfer {
+        match mode {
+            FitMode::Gamma => Transfer::Gamma { gamma: p[1].max(0.2) },
+            _ => Transfer::Filmic { k: p[1].max(0.5), pivot: p[2], white_t: p[3].max(0.2) },
+        }
+    };
+    let cost = |p: &[f32; 4]| weighted_rms(points, p[0].max(1e-3), &build(p));
+
+    let mut steps = [0.20f32, 0.6, 0.04, 0.06]; // per-param initial step
+    let mut best = cost(&p);
+    for _ in 0..2000 {
+        let mut improved = false;
+        for j in 0..4 {
+            if !active[j] {
+                continue;
+            }
+            for dir in [steps[j], -steps[j]] {
+                let mut cand = p;
+                cand[j] += dir;
+                let c = cost(&cand);
+                if c < best {
+                    best = c;
+                    p = cand;
+                    improved = true;
+                }
+            }
+        }
+        if !improved {
+            for s in steps.iter_mut() {
+                *s *= 0.5;
+            }
+            if steps[0] < 1e-4 {
+                break;
+            }
+        }
+    }
+    FitResult { scale: p[0].max(1e-3), transfer: build(&p), residual_rms: best }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -188,5 +265,31 @@ mod tests {
         assert!(m.rms_dl < 1e-4, "rms should be ~0, got {}", m.rms_dl);
         assert!(m.max_dl < 1e-4);
         assert!((m.frac_within5 - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn fit_recovers_known_scale() {
+        let base = [0.42, 0.55, 0.26];
+        let tr = Transfer::default_filmic();
+        let true_scale = 1.0 / 0.9; // the scale we'll hide in the targets
+        // Spread of negative patches across the range.
+        let scans = [
+            [0.05, 0.06, 0.03], [0.10, 0.12, 0.06], [0.18, 0.22, 0.11],
+            [0.26, 0.33, 0.16], [0.34, 0.44, 0.21], [0.40, 0.52, 0.25],
+        ];
+        let pts: Vec<TonePoint> = scans
+            .iter()
+            .enumerate()
+            .map(|(i, &scan)| TonePoint {
+                scan,
+                base,
+                target_l: output_lstar(scan, base, true_scale, &tr),
+                weight: 1.0,
+                abs_ev: -(i as f32),
+            })
+            .collect();
+        let fit = fit_tone(&pts, FitMode::ScaleOnly);
+        assert!(fit.residual_rms < 0.2, "should fit near-exactly: {}", fit.residual_rms);
+        assert!((fit.scale - true_scale).abs() < 0.05, "recover scale: {} vs {true_scale}", fit.scale);
     }
 }
