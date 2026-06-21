@@ -174,7 +174,7 @@
     on:trash={() => runDelete(true)}
     on:cancel={() => deleteTarget.set([])} />
 {/if}
-{#if $applySettingsTarget.length > 1}
+{#if $applySettingsTarget.length >= 1}
   <ConfirmApplySettings
     title={$t('confirmApply.title', { count: $applySettingsTarget.length, plural: $applySettingsTarget.length === 1 ? '' : 's' })}
     sub={$t('confirmApply.sub')}

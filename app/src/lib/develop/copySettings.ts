@@ -43,8 +43,7 @@ export function pasteDevelopSettings(): void {
   if (!get(settingsClipboard)) { showToast(translate("toast.copyFirst")); return; }
   const ids = deleteSelectionIds();
   if (!ids.length) return;
-  if (ids.length === 1) applyClipboardTo(ids);
-  else applySettingsTarget.set(ids); // open ConfirmApplySettings
+  applySettingsTarget.set(ids); // open the picker dialog (single or multi target)
 }
 
 /** Merge the selected groups of a source snapshot onto every target, preserving
