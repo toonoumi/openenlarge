@@ -1,12 +1,12 @@
 import { get } from "svelte/store";
 import { images, activeId, module, developProgress, editsById, cropById, dustById, folderImages, invalidatePreview, undevelopableIds } from "./store";
-import { api, defaultParams, type ImageEntry } from "./api";
+import { api, defaultParams, type ImageEntry, type InvertParams } from "./api";
 import { dropHistory, reseedActive } from "./develop/historyStore";
 import { track } from "./telemetry";
 import { showToast } from "./toast";
 import { translate } from "./i18n";
 import { developedFolderImages } from "./export/eligible";
-import { withEffectiveBase } from "./develop/base";
+import { withEffectiveBase, setFolderBase } from "./develop/base";
 import { imageDir } from "./library/folderScope";
 import { gridThumbView, GRID_STATIC_EDGE } from "./library/gridHiRes";
 
@@ -143,6 +143,40 @@ export async function autoBrightnessRoll(): Promise<void> {
   showToast(translate("toast.autoBrightnessDone", { count: Object.keys(solved).length }));
 }
 
+/** Seed one developed frame's look against its EFFECTIVE base (per-image override →
+ * roll/folder base → backend auto): auto-WB, optional auto-exposure, then re-WB at the
+ * final exposure (WB is exposure-dependent — see the 2026-06-21 freeze fix), and bake the
+ * catalog thumbnail. `solveExposure=false` keeps the frame's existing exposure (used by the
+ * migration / roll recalibrate, where only the base changed). Writes editsById + saves the
+ * thumbnail. Overwrites temp/tint, so callers must skip protected frames themselves. */
+export async function seedFrame(id: string, img: ImageEntry, solveExposure: boolean): Promise<void> {
+  const dir = imageDir(img);
+  const prior = get(editsById)[id];
+  const seed: InvertParams = prior ? { ...prior } : { ...defaultParams(), positive: img.positive };
+  try {
+    const wb = await api.asShotWb(id, withEffectiveBase(seed, dir));
+    seed.temp = wb.temp; seed.tint = wb.tint; seed.wb_manual = false;
+  } catch { return; /* not resident — per-image seed retries on activation */ }
+  if (solveExposure) {
+    try {
+      const { exposure } = await api.autoBrightness(id, withEffectiveBase(seed, dir));
+      seed.exposure = exposure;
+    } catch { /* not resident */ }
+    try {
+      const wb2 = await api.asShotWb(id, withEffectiveBase(seed, dir));
+      seed.temp = wb2.temp; seed.tint = wb2.tint;
+    } catch { /* not resident */ }
+  }
+  editsById.update((m) => ({ ...m, [id]: seed }));
+  try {
+    const params = withEffectiveBase(get(editsById)[id] ?? seed, dir);
+    const view = gridThumbView(get(cropById)[id], get(dustById)[id], GRID_STATIC_EDGE);
+    const url = await api.thumbnail(id, params, view);
+    await api.saveThumbnail(id, url);
+    images.update((list) => list.map((i) => (i.id === id ? { ...i, thumbnail: url, thumb_stale: false } : i)));
+  } catch { /* not resident — re-bakes on first view */ }
+}
+
 /** Develop every not-yet-developed image IN THE SELECTED FOLDER sequentially,
  * updating progress, then switch to the target module. Resolves when done. */
 export async function developAll(target: "develop" | "roll" = "develop"): Promise<void> {
@@ -155,71 +189,20 @@ export async function developAll(target: "develop" | "roll" = "develop"): Promis
   // leaves a permanent badge with no feedback) surfaces to the user.
   const failures: string[] = [];
   const nameOf = (id: string) => get(images).find((i) => i.id === id)?.file_name ?? id;
+
+  // Phase 1: develop every frame (decode + sample its base). No seeding yet — the
+  // roll base needs every frame's sample first.
+  const developed: ImageEntry[] = [];
   for (const id of ids) {
     let ok = false;
     try {
       const updated = await api.developImage(id);
       images.update((list) => list.map((i) => (i.id === id ? updated : i)));
-      // First-develop seed: adopt the classifier's verdict AND the auto white balance
-      // only when the image has no stored edits yet (re-develop / existing manual
-      // overrides are untouched). The frame is resident right after developing, so
-      // as_shot_wb is cheap here — seeding it for every frame means the WHOLE roll
-      // opens in Develop already balanced, instead of each frame rendering on neutral
-      // WB (a blue cast) until it's individually activated and its own seed runs.
-      if (!get(editsById)[id]) {
-        const seed = { ...defaultParams(), positive: updated.positive };
-        try {
-          const wb = await api.asShotWb(id, withEffectiveBase(seed, imageDir(updated)));
-          seed.temp = wb.temp;
-          seed.tint = wb.tint;
-        } catch { /* not resident yet — Develop's per-image seed retries on activation */ }
-        // Seed exposure ONCE here too (the frame is resident, so auto_brightness is cheap),
-        // measured on the WB-seeded look — so the whole roll opens correctly exposed in
-        // Develop/Roll/Frame without each frame needing to be individually activated. Persists
-        // via editsById; never re-runs (later entries see a non-default exposure and skip).
-        try {
-          const { exposure } = await api.autoBrightness(id, withEffectiveBase(seed, imageDir(updated)));
-          seed.exposure = exposure;
-        } catch { /* not resident yet — the per-image seed retries on activation */ }
-        // Re-measure WB at the SEEDED exposure. as_shot_wb's gray-world estimate runs on
-        // the inverted image, whose print exposure comes from `exposure` (build_params) —
-        // so WB is exposure-dependent. The first pass above measured it at exposure 0;
-        // Frame's per-image seed re-measures at the final exposure and would otherwise shift
-        // the WB (and re-bake the thumbnail) on first activation. Measuring here at the final
-        // exposure stores the value Frame converges to, so the look is frozen after develop.
-        try {
-          const wb2 = await api.asShotWb(id, withEffectiveBase(seed, imageDir(updated)));
-          seed.temp = wb2.temp;
-          seed.tint = wb2.tint;
-        } catch { /* not resident yet — Frame's per-image seed retries on activation */ }
-        editsById.update((m) => m[id] ? m : { ...m, [id]: seed });
-        // Re-bake the catalog thumbnail at the SEEDED params so the stored thumbnail matches
-        // the develop-time seed. Otherwise the backend's DEFAULT-params bake (exposure 0) is
-        // what's stored, and the contact sheet/grid re-renders to the seeded look on EVERY
-        // entry — the "re-auto-exposes on Roll re-entry" churn. The frame is resident here, so
-        // this reuses the just-decoded buffer.
-        try {
-          const params = withEffectiveBase(get(editsById)[id] ?? seed, imageDir(updated));
-          const view = gridThumbView(get(cropById)[id], get(dustById)[id], GRID_STATIC_EDGE);
-          const url = await api.thumbnail(id, params, view);
-          await api.saveThumbnail(id, url);
-          images.update((list) => list.map((i) => (i.id === id ? { ...i, thumbnail: url, thumb_stale: false } : i)));
-        } catch { /* not resident — the thumbnail re-bakes on first view instead */ }
-      }
-      if (updated.developed) {
-        ok = true;
-      } else {
-        // Developed without throwing but still not flagged developed → a different bug
-        // (e.g. the backend couldn't write/confirm the cache). Surface it too.
-        failures.push(`${nameOf(id)}: develop returned but not marked developed`);
-        console.error("develop returned developed=false", id, nameOf(id));
-      }
+      if (updated.developed) { developed.push(updated); ok = true; }
+      else { failures.push(`${nameOf(id)}: develop returned but not marked developed`); console.error("develop returned developed=false", id, nameOf(id)); }
     } catch (e) {
-      failures.push(`${nameOf(id)}: ${e}`);
-      console.error("develop failed", id, nameOf(id), e);
+      failures.push(`${nameOf(id)}: ${e}`); console.error("develop failed", id, nameOf(id), e);
     }
-    // Track undevelopable frames so a corrupt/undecodable file stops pinning the
-    // badge: mark on failure, clear on success (so a fixed/replaced file recovers).
     undevelopableIds.update((s) => {
       const has = s.has(id);
       if (ok && has) { const n = new Set(s); n.delete(id); return n; }
@@ -228,6 +211,23 @@ export async function developAll(target: "develop" | "roll" = "develop"): Promis
     });
     developProgress.update((p) => ({ ...p, done: p.done + 1 }));
   }
+
+  // Phase 1.5: compute + set the roll base BEFORE any WB seed, so WB seeds against it.
+  // `withEffectiveBase` (used inside seedFrame) then prefers this folder base automatically.
+  if (developed.length > 0) {
+    const dir = imageDir(developed[0]);
+    try {
+      const rb = await api.rollBase(developed.map((i) => i.id));
+      if (rb) setFolderBase(dir, rb.base);
+    } catch (e) { console.error("rollBase failed", dir, e); }
+  }
+
+  // Phase 2: seed each freshly-developed frame against the roll base (only if it has no
+  // stored edits yet — re-develop / manual overrides are untouched).
+  for (const updated of developed) {
+    if (!get(editsById)[updated.id]) await seedFrame(updated.id, updated, true);
+  }
+
   if (failures.length > 0) {
     showToast(translate("toast.developFailed", { count: failures.length, detail: failures[0] }), 8000);
   }

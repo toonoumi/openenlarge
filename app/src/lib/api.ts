@@ -330,6 +330,9 @@ export const api = {
   autoBaseInfo: (id: string) =>
     invoke<{ base: [number, number, number]; confidence: number }>("auto_base_info", { id }),
 
+  rollBase: (ids: string[]) =>
+    invoke<{ base: [number, number, number]; frames_used: number } | null>("roll_base", { ids }),
+
   // ---- GPU export (offscreen invert+finish through the preview shader) ----
   /** Decode+bake full-res, stash the half-float bytes, return dims + inversion uniforms. */
   exportBegin: (id: string, params: InvertParams, spec: BakeSpec, maxEdge: number) =>
