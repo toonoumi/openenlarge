@@ -1,0 +1,175 @@
+<!-- AUTO-GENERATED from /docs-src — do not edit by hand. Run python3 scripts/gen-docs.py -->
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>密度与对数空间 — OpenEnlarge Docs</title>
+<meta name="description" content="为什么 OpenEnlarge 在光学密度与对数空间中运算、什么是摄影档，以及 d_max 白点如何确定。">
+<meta name="theme-color" content="#0a0a0c">
+<link rel="icon" href="../../../img/favicon.png">
+<link rel="canonical" href="https://openenlarge.io/docs/zh/science/density.html">
+<link rel="alternate" hreflang="en" href="https://openenlarge.io/docs/science/density.html">
+<link rel="alternate" hreflang="zh-Hans" href="https://openenlarge.io/docs/zh/science/density.html">
+<link rel="alternate" hreflang="x-default" href="https://openenlarge.io/docs/science/density.html">
+<meta property="og:type" content="article"><meta property="og:title" content="密度与对数空间 — OpenEnlarge Docs"><meta property="og:description" content="为什么 OpenEnlarge 在光学密度与对数空间中运算、什么是摄影档，以及 d_max 白点如何确定。"><meta property="og:url" content="https://openenlarge.io/docs/zh/science/density.html"><meta property="og:image" content="https://openenlarge.io/docs/og/cover.png"><meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "密度与对数空间", "description": "为什么 OpenEnlarge 在光学密度与对数空间中运算、什么是摄影档，以及 d_max 白点如何确定。", "inLanguage": "zh-Hans", "url": "https://openenlarge.io/docs/zh/science/density.html", "isPartOf": {"@type": "WebSite", "name": "OpenEnlarge", "url": "https://openenlarge.io"}}</script>
+<link rel="stylesheet" href="../docs.css">
+</head>
+<body>
+<a class="skip" href="#content">跳到正文</a>
+<nav class="docnav"><div class="navbar glass wrap">
+  <a class="brand" href="../../../index.html"><img class="mark" src="../../../img/icon.png" alt=""> OpenEnlarge <span class="brand-docs">文档</span></a>
+  <button class="menu-btn" id="menu-btn" type="button" aria-label="菜单" aria-expanded="false">☰</button>
+  <div class="navlinks">
+    <a href="../../../index.html">主页</a>
+    <a href="https://github.com/mohaelder/openenlarge">GitHub</a>
+    <a class="lang-link" href="../../science/density.html">EN</a>
+  </div>
+</div></nav>
+<div class="doclayout wrap">
+  <aside class="sidebar" id="sidebar"><div class="side-sec"><div class="side-h">概览</div>
+<a href="../index.html">文档</a>
+<a href="../workflow.html">工作流程</a>
+</div>
+<div class="side-sec"><div class="side-h">原理</div>
+<a href="../science/negatives.html">彩色负片的原理</a>
+<a href="../science/inversion.html">反转流程</a>
+<a class="on" href="../science/density.html">密度与对数空间</a>
+</div></aside>
+  <main class="content" id="content">
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="../index.html">文档</a> <span class="sep">/</span> <span>密度与对数空间</span></nav>
+    <article class="prose"><h1>密度与对数空间</h1>
+<p class="lead">胶片对光的响应不是线性的，而是<em>对数式</em>的。正因如此，光学密度而非原始亮度才是胶片反转的自然域：等量的密度差对应等量的摄影档（stop），OpenEnlarge 中的每一个滑块都在这个空间内工作。</p>
+
+<h2>光学密度</h2>
+<p>密度衡量的是胶片层对光的阻挡程度。让光穿过胶片，若只有十分之一到达另一侧，则该层的透过率为 0.1。比尔–朗伯定律将透过率与密度联系起来：</p>
+<p><span class="formula">T = 10<sup>−D</sup></span></p>
+<p>密度 D = 1 的胶片透过率恰好为 T = 0.1（入射光的十分之一）；D = 2 时为 T = 0.01。每增加一个整数密度单位，阻光量就增大十倍 —— 这种十倍关系与对数自然对应。OpenEnlarge 直接从扫描值计算密度：</p>
+<p><span class="formula">D = log₁₀(片基 / 扫描值)</span></p>
+<p>其中 <code>片基</code> 为从透明胶片边缘采样的像素值，<code>扫描值</code> 为各点的原始值。相除消除橙色片基；取对数将结果转化为密度，并钳制为不小于零，使透明胶片读数为 D = 0。</p>
+
+<h2>什么是「摄影档」？</h2>
+<p><strong>摄影档（stop）</strong>是光量的加倍或减半：多一档即光子数量翻倍。在密度尺度上，每一档对应固定的增量 log₁₀(2) ≈ 0.301。反过来说，一个密度单位涵盖 1 / 0.301 ≈ <strong>3.32 档</strong>。</p>
+<p>这正是密度域适合图像编辑的原因。在原始线性光中，暗部与高光覆盖的数值范围天差地别 —— 亮区同样一档的变化数值极大，而暗区却极小。在密度空间中，每一档的大小处处相同。等量的滑块移动在整个影调范围内带来等量的感知变化。</p>
+
+<figure><svg viewBox="0 0 640 320" role="img" aria-label="Graph showing that geometric light values (1, 2, 4, 8, 16 — each doubling a stop) map to evenly-spaced density steps on the y-axis. The logarithmic curve rises steeply at low light and flattens at high light, demonstrating that equal density increments represent equal photographic stops." xmlns="http://www.w3.org/2000/svg">
+  <rect width="640" height="320" rx="12" fill="#141418"/>
+
+  <!-- Chart area margins: left 70, right 24, top 24, bottom 56 -->
+  <!-- Plot area: x 70..616, y 24..264 — width 546, height 240 -->
+
+  <!-- Stop gridlines: x positions for light values 1,2,4,8,16 mapped logarithmically
+       log2(1)=0, log2(2)=1, log2(4)=2, log2(8)=3, log2(16)=4
+       x = 70 + (log2(v)/4) * 546
+       v=1 → x=70, v=2 → x=206.5, v=4 → x=343, v=8 → x=479.5, v=16 → x=616
+  -->
+
+  <!-- Horizontal density gridlines: y positions for D=0,1,2,3,4 evenly spaced
+       y = 264 - (D/4)*240
+       D=0 → y=264, D=1 → y=204, D=2 → y=144, D=3 → y=84, D=4 → y=24
+  -->
+
+  <!-- Vertical stop gridlines (light values) -->
+  <line x1="70"    y1="24" x2="70"    y2="264" stroke="#9a9aa2" stroke-width="0.5" opacity="0.4"/>
+  <line x1="206.5" y1="24" x2="206.5" y2="264" stroke="#9a9aa2" stroke-width="0.5" opacity="0.4"/>
+  <line x1="343"   y1="24" x2="343"   y2="264" stroke="#9a9aa2" stroke-width="0.5" opacity="0.4"/>
+  <line x1="479.5" y1="24" x2="479.5" y2="264" stroke="#9a9aa2" stroke-width="0.5" opacity="0.4"/>
+  <line x1="616"   y1="24" x2="616"   y2="264" stroke="#9a9aa2" stroke-width="0.5" opacity="0.4"/>
+
+  <!-- Horizontal density gridlines -->
+  <line x1="70" y1="264" x2="616" y2="264" stroke="#9a9aa2" stroke-width="0.5" opacity="0.4"/>
+  <line x1="70" y1="204" x2="616" y2="204" stroke="#9a9aa2" stroke-width="0.5" opacity="0.4"/>
+  <line x1="70" y1="144" x2="616" y2="144" stroke="#9a9aa2" stroke-width="0.5" opacity="0.4"/>
+  <line x1="70" y1="84"  x2="616" y2="84"  stroke="#9a9aa2" stroke-width="0.5" opacity="0.4"/>
+  <line x1="70" y1="24"  x2="616" y2="24"  stroke="#9a9aa2" stroke-width="0.5" opacity="0.4"/>
+
+  <!-- Stop connector lines: each +1 stop on x = +1 density step on y (equal spacing)
+       Highlight the equal-step property with dashed connectors from grid intersections
+  -->
+  <!-- Connecting dots at stop intersections (v=1,D=0), (v=2,D=1), (v=4,D=2), (v=8,D=3), (v=16,D=4) -->
+  <circle cx="70"    cy="264" r="4" fill="#f49d4e"/>
+  <circle cx="206.5" cy="204" r="4" fill="#f49d4e"/>
+  <circle cx="343"   cy="144" r="4" fill="#f49d4e"/>
+  <circle cx="479.5" cy="84"  r="4" fill="#f49d4e"/>
+  <circle cx="616"   cy="24"  r="4" fill="#f49d4e"/>
+
+  <!-- The logarithmic curve y = 264 - (log2(t) / 4)*240 for t from 1..16
+       Sampled at integer and half-stop positions for a smooth polyline.
+       t values: 1, 1.41, 2, 2.83, 4, 5.66, 8, 11.31, 16
+       x = 70 + (log2(t)/4)*546
+       y = 264 - (log2(t)/4)*240
+       (1,0):     x=70,    y=264
+       (1.41,.5): x=138.3, y=234
+       (2,1):     x=206.5, y=204
+       (2.83,1.5):x=274.8, y=174
+       (4,2):     x=343,   y=144
+       (5.66,2.5):x=411.3, y=114
+       (8,3):     x=479.5, y=84
+       (11.31,3.5):x=547.8,y=54
+       (16,4):    x=616,   y=24
+  -->
+  <polyline
+    points="70,264 138.3,234 206.5,204 274.8,174 343,144 411.3,114 479.5,84 547.8,54 616,24"
+    fill="none" stroke="#f49d4e" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- "1 stop" bracket annotations between v=1→2 and v=2→4 on x-axis -->
+  <!-- Between x=70 and x=206.5, below y=264 -->
+  <line x1="70"    y1="275" x2="70"    y2="282" stroke="#9a9aa2" stroke-width="1"/>
+  <line x1="206.5" y1="275" x2="206.5" y2="282" stroke="#9a9aa2" stroke-width="1"/>
+  <line x1="70"    y1="278" x2="206.5" y2="278" stroke="#9a9aa2" stroke-width="1"/>
+  <text x="138.3" y="295" font-family="ui-monospace,monospace" font-size="10" fill="#9a9aa2" text-anchor="middle">+1 stop</text>
+
+  <!-- Between x=206.5 and x=343, same level -->
+  <line x1="206.5" y1="275" x2="206.5" y2="282" stroke="#9a9aa2" stroke-width="1"/>
+  <line x1="343"   y1="275" x2="343"   y2="282" stroke="#9a9aa2" stroke-width="1"/>
+  <line x1="206.5" y1="278" x2="343"   y2="278" stroke="#9a9aa2" stroke-width="1"/>
+  <text x="274.8" y="295" font-family="ui-monospace,monospace" font-size="10" fill="#9a9aa2" text-anchor="middle">+1 stop</text>
+
+  <!-- Y-axis density labels -->
+  <text x="60" y="268" font-family="ui-monospace,monospace" font-size="11" fill="#9a9aa2" text-anchor="end">D 0</text>
+  <text x="60" y="208" font-family="ui-monospace,monospace" font-size="11" fill="#9a9aa2" text-anchor="end">D 1</text>
+  <text x="60" y="148" font-family="ui-monospace,monospace" font-size="11" fill="#9a9aa2" text-anchor="end">D 2</text>
+  <text x="60" y="88"  font-family="ui-monospace,monospace" font-size="11" fill="#9a9aa2" text-anchor="end">D 3</text>
+  <text x="60" y="28"  font-family="ui-monospace,monospace" font-size="11" fill="#9a9aa2" text-anchor="end">D 4</text>
+
+  <!-- Y-axis label -->
+  <text x="14" y="144" font-family="ui-monospace,monospace" font-size="11" fill="#e8e8ea" text-anchor="middle" transform="rotate(-90,14,144)">density (log₁₀)</text>
+
+  <!-- X-axis light value labels -->
+  <text x="70"    y="310" font-family="ui-monospace,monospace" font-size="11" fill="#9a9aa2" text-anchor="middle">1</text>
+  <text x="206.5" y="310" font-family="ui-monospace,monospace" font-size="11" fill="#9a9aa2" text-anchor="middle">2</text>
+  <text x="343"   y="310" font-family="ui-monospace,monospace" font-size="11" fill="#9a9aa2" text-anchor="middle">4</text>
+  <text x="479.5" y="310" font-family="ui-monospace,monospace" font-size="11" fill="#9a9aa2" text-anchor="middle">8</text>
+  <text x="616"   y="310" font-family="ui-monospace,monospace" font-size="11" fill="#9a9aa2" text-anchor="middle">16</text>
+
+  <!-- X-axis label -->
+  <text x="343" y="316" font-family="ui-monospace,monospace" font-size="11" fill="#e8e8ea" text-anchor="middle" dy="0">linear light (stops ×2)</text>
+
+  <!-- Callout: "equal density steps" annotation on right side -->
+  <!-- Bracket for equal y spacing on right side, D=0→1 -->
+  <line x1="624" y1="264" x2="630" y2="264" stroke="#9a9aa2" stroke-width="1"/>
+  <line x1="624" y1="204" x2="630" y2="204" stroke="#9a9aa2" stroke-width="1"/>
+  <line x1="627" y1="264" x2="627" y2="204" stroke="#9a9aa2" stroke-width="1"/>
+  <text x="636" y="237" font-family="ui-monospace,monospace" font-size="9" fill="#9a9aa2" text-anchor="start">equal</text>
+</svg>
+<figcaption>几何级数的光量值（1、2、4、8、16 —— 每次翻倍即一档）在密度轴上折叠为等间距的步长。曲线即 log₁₀ 关系；纵轴上均匀的水平间距正说明密度为何是摄影师的原生单位。</figcaption></figure>
+
+<h2>白点（d_max）</h2>
+<p>负片中密度最大的点对应场景中最亮的部分——或胶片边缘完全未曝光的片头。OpenEnlarge 将此密度值称为 <code>d_max</code>。它按通道从待显影的胶片中求取，并锚定归一化步骤：</p>
+<p><span class="formula">t = D / d_max</span></p>
+<p>经此除法后，<code>t = 0</code> 对应负片最薄处（场景最深阴影），<code>t = 1</code> 对应负片最厚处（纸基白）。后续所有操作——色调曲线、风格层、平衡——均作用于归一化后的 <code>t</code>。参见<a href="base-calibration.html">确定白点</a>，了解如何正确设置 <code>d_max</code>。</p>
+
+<details class="hood"><summary>深入原理</summary><div class="hood-body">
+<p>密度公式为 <span class="formula">D = log₁₀(片基 / 扫描值)</span>，钳制为 ≥ 0；<code>片基</code> 从透明胶片边缘采样，<code>扫描值</code> 为原始像素值。一个密度单位约等于 3.32 摄影档（因为 log₁₀(2) ≈ 0.301，1 / 0.301 ≈ 3.32）。白点归一化为 <span class="formula">t = D / d_max</span>，其中 <code>d_max</code> 为各通道负片的最大密度值。OpenEnlarge 中的曝光是以黑点为支点的对数域乘法 —— 在 Faithful 模式下，曝光滑块每移动一单位约对应 1 档/EV。</p>
+</div></details>
+
+<p class="next"><a href="tone-curve.html">下一篇：色调曲线 →</a></p>
+</article>
+    <footer class="docfoot">OpenEnlarge —— 开源胶片扫描编辑器 · MIT 许可</footer>
+  </main>
+  <aside class="toc" id="toc" aria-label="本页目录"><div class="toc-title">本页目录</div><div id="toc-list"></div></aside>
+</div>
+<script src="../docs.js" defer></script>
+</body>
+</html>
