@@ -348,6 +348,11 @@
                   on:click={() => { params.update((p) => ({ ...p, wb_mode: p.wb_mode === 'subtractive' ? 'gain' : 'subtractive' })); commitActive(); }}>
             {$t('basic.colorHead')}
           </button>
+          <button class="auto" class:on={$params.tone_mode === 'faithful'}
+                  title={$t('basic.toneModeTitle')} aria-pressed={$params.tone_mode === 'faithful'}
+                  on:click={() => { params.update((p) => ({ ...p, tone_mode: p.tone_mode === 'faithful' ? 'filmic' : 'faithful' })); commitActive(); }}>
+            {$t('basic.toneMode')}
+          </button>
         </span>
       </div>
       <!-- Temp: tightened film range (2800–10000 K) on the reciprocal track so the
