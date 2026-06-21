@@ -43,5 +43,14 @@ class TestLayout(unittest.TestCase):
         self.assertIn("#0a0a0c", css)
         self.assertIn("#f49d4e", css)
 
+class TestJs(unittest.TestCase):
+    def setUp(self): gen.build()
+    def test_js_emitted(self):
+        self.assertTrue((ROOT / "web/docs/docs.js").exists())
+    def test_js_builds_toc(self):
+        js = (ROOT / "web/docs/docs.js").read_text()
+        self.assertIn("toc-list", js)
+        self.assertIn("menu-btn", js)
+
 if __name__ == "__main__":
     unittest.main()
