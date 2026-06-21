@@ -83,6 +83,14 @@ jobs:
             echo "IS_PRERELEASE=true" >> "$GITHUB_ENV"
             VER="${TAG#v}"
             ARGS="$ARGS --config {\"version\":\"$VER\"}"
+            # The MSI/WiX target rejects non-numeric pre-release identifiers
+            # ("alpha.1") — ProductVersion must be numeric major.minor.build.
+            # NSIS has no such restriction, so build Windows pre-releases as NSIS
+            # only. Stable (numeric version) still ships msi + nsis. Alpha is
+            # download-only, so the NSIS .exe is all testers need.
+            if [ "${{ matrix.platform }}" = "windows-latest" ]; then
+              ARGS="$ARGS --bundles nsis"
+            fi
           else
             echo "IS_PRERELEASE=false" >> "$GITHUB_ENV"
           fi
