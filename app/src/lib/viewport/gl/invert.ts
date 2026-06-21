@@ -55,6 +55,6 @@ export function toInversionUniforms(r: ResolvedInversion): InversionUniforms {
     soft_clip: r.soft_clip,
     positive: r.positive,
     wb_mode: r.wb_mode,
-    tone_mode: r.tone_mode ?? 0,
+    tone_mode: 1, // Faithful is the sole path (Filmic retired) — ignore stored value
   };
 }

@@ -462,8 +462,6 @@ label.multiple,"Multiple adjustments","多项调整","src/lib/develop/history.ts
 label.edit,"Edit","编辑","src/lib/develop/history.ts","undo label"
 basic.colorHead,"Color head","彩色头","src/lib/develop/Basic.svelte","toggle"
 basic.colorHeadTitle,"Subtractive CMY color-head white balance (toggle)","减色 CMY 彩色头白平衡（切换）","src/lib/develop/Basic.svelte","tooltip"
-basic.toneMode,"Faithful tone","忠实影调","src/lib/develop/Basic.svelte","toggle"
-basic.toneModeTitle,"Faithful tone: gamma+shoulder transfer curve instead of filmic S-curve (toggle)","忠实影调：使用伽马+肩部传递曲线而非胶片 S 曲线（切换）","src/lib/develop/Basic.svelte","tooltip"
 export.overwriteTitle,"File already exists","文件已存在","src/lib/export/ExportModal.svelte","heading"
 export.overwriteBody,"“{name}” already exists in this folder.","“{name}” 已存在于此文件夹中。","src/lib/export/ExportModal.svelte","paragraph"
 export.overwriteProgress,"Conflict {index} of {count}","冲突 {index} / {count}","src/lib/export/ExportModal.svelte","label"
