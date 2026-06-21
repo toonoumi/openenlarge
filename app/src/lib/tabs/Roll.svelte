@@ -5,8 +5,8 @@
   import { get } from "svelte/store";
   import { t } from "$lib/i18n";
   import { developedFolderImages } from "$lib/export/eligible";
-  import { editsById, cropById, images, activeId, setActive, rollOverwriteSkip, module, deleteTarget } from "$lib/store";
-  import { rollReferenceId, resetRollDraft, rollDraft, rollDraftTouched } from "$lib/roll/draft";
+  import { editsById, cropById, images, activeId, setActive, rollOverwriteSkip, module, deleteTarget, selectedFolder } from "$lib/store";
+  import { rollReferenceId, enterRollDraft, rollDraft, rollDraftTouched } from "$lib/roll/draft";
   import RollAdjust from "$lib/roll/RollAdjust.svelte";
   import { applyToneColorToAll, applyBaseToAll, applyWhitePointToAll, applyExposureToAll, applyCropToAll, framesWithToneColor, framesWithCrop, framesWithBase, framesWithWhitePoint } from "$lib/roll/apply";
   import { livePreviewParams, draftThumbView } from "$lib/roll/livePreview";
@@ -39,7 +39,9 @@
 
   // Fresh roll draft each time the section opens (seed from defaults per spec).
   onMount(() => {
-    resetRollDraft();
+    // Keep the roll-wide slider values across re-entry to the same roll (start fresh on a
+    // folder change); inert until the user edits, so it never re-applies/reverts per-frame edits.
+    enterRollDraft(get(selectedFolder));
     wpManual = false;
 
     // Compute conflicts: union of frames with any edits across the developed folder.

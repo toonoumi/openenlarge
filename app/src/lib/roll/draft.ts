@@ -22,8 +22,24 @@ export const rollDraftTouched: Writable<boolean> = writable(false);
  * null = the contact-sheet grid is showing. */
 export const rollReferenceId: Writable<string | null> = writable<string | null>(null);
 
-/** Reset the draft to a fresh default look (called on entering Develop). */
+/** Reset the draft to a fresh default look. */
 export function resetRollDraft(): void {
   rollDraft.set({ params: defaultParams(), crop: null });
+  rollDraftTouched.set(false);
+}
+
+/** The folder the current draft belongs to, so a different roll gets a fresh draft. */
+let draftFolder: string | null = null;
+
+/** Enter the Develop/Roll section for `folder`. Keeps the roll draft's slider values
+ * across re-entry to the SAME roll (so a roll-wide adjustment stays visible on the
+ * sliders instead of snapping back to 0), but starts fresh when the folder changes.
+ * Always marks the draft inert (`touched=false`) so the preview/persist passes don't
+ * re-apply it until the user actually moves a control. */
+export function enterRollDraft(folder: string | null): void {
+  if (folder !== draftFolder) {
+    rollDraft.set({ params: defaultParams(), crop: null });
+    draftFolder = folder;
+  }
   rollDraftTouched.set(false);
 }
