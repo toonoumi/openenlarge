@@ -1,0 +1,10 @@
+[package]
+name = "film-bench"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+film-core = { path = "../film-core" }
+image = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
