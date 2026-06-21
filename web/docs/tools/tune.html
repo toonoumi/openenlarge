@@ -115,7 +115,7 @@
 <p>The <strong>Point Color</strong> tab provides sample-driven targeting: click the <em>Pick color</em> dropper to activate a crosshair in the viewport, then click any pixel to sample it. Its hue, saturation, and lightness are recorded as a swatch. Up to eight swatches can coexist, stored as the <code>pc_samples</code> array. Selecting a swatch shows five sliders:</p>
 <ul>
   <li><strong>Hue Shift</strong> (<code>hue_shift</code>) — rotates the hue of matching pixels, up to ±30° at the extremes.</li>
-  <li><strong>Sat. Shift</strong> (<code>sat_shift</code>) — multiplies saturation, same scale as the Mixer's Saturation slider.</li>
+  <li><strong>Sat. Shift</strong> (<code>sat_shift</code>) — multiplies saturation on the same −100..100 scale as the Mixer's Saturation, but without the Mixer's near-neutral saturation gate, so it acts on the targeted pixels directly.</li>
   <li><strong>Lum. Shift</strong> (<code>lum_shift</code>) — lifts or lowers lightness, scaled by <code>CM_LUM_GAIN = 0.25</code>.</li>
   <li><strong>Variance</strong> (<code>variance</code>, −100 to +100, default 0) — expands or contracts the saturation and luminance tolerance used to match pixels to the sample. Positive values accept a wider spread of saturation and lightness around the sampled value; negative values narrow the acceptance window to pixels that are very close matches.</li>
   <li><strong>Range</strong> (<code>range</code>, 0–100, default 50) — controls the hue-angle half-width of the selection. At the default (50) the half-width is approximately 32.5°; at the maximum (100) it reaches 60°; at the minimum (0) it narrows to 5°.</li>

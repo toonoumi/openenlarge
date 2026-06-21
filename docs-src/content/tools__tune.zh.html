@@ -67,7 +67,7 @@
 <p><strong>点颜色</strong>标签页提供采样驱动的定向调整：点击<em>拾取颜色</em>吸管激活视口中的十字准星，再点击任意像素对其采样，其色相、饱和度和亮度以色样形式记录。最多可同时存在八个色样，存储为 <code>pc_samples</code> 数组。选中某个色样后，将显示五个滑块：</p>
 <ul>
   <li><strong>色相偏移</strong>（<code>hue_shift</code>）—— 旋转匹配像素的色相，在极值处最大 ±30°。</li>
-  <li><strong>饱和度偏移</strong>（<code>sat_shift</code>）—— 对饱和度进行乘法调整，缩放方式与混合器「饱和度」滑块相同。</li>
+  <li><strong>饱和度偏移</strong>（<code>sat_shift</code>）—— 在与混合器「饱和度」相同的 −100..100 范围内对饱和度进行乘法调整，但不施加混合器的近中性饱和度门控，因此直接作用于所选像素。</li>
   <li><strong>明亮度偏移</strong>（<code>lum_shift</code>）—— 提升或降低亮度，由 <code>CM_LUM_GAIN = 0.25</code> 缩放。</li>
   <li><strong>扩散</strong>（<code>variance</code>，−100 至 +100，默认 0）—— 扩大或收窄用于匹配像素与色样的饱和度与亮度容差。正值接受与采样值相差较大的像素；负值将接受范围收窄至非常接近采样值的像素。</li>
   <li><strong>范围</strong>（<code>range</code>，0–100，默认 50）—— 控制选择范围的色相角半宽。默认值（50）时半宽约为 32.5°；最大值（100）时达 60°；最小值（0）时收窄至 5°。</li>
