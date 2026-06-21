@@ -16,6 +16,9 @@ pub enum Transfer {
     Filmic { k: f32, pivot: f32, white_t: f32 },
     /// A plain gamma alternative (no S-curve): `t.clamp(0,1)^(1/gamma)`.
     Gamma { gamma: f32 },
+    /// Faithful reconstruction curve: gamma body (straight in log-density) + a smooth
+    /// asymptotic highlight shoulder above `knee` (graceful specular rolloff, no hard clip).
+    GammaShoulder { gamma: f32, knee: f32 },
 }
 
 impl Transfer {
@@ -34,6 +37,15 @@ pub fn apply_transfer(t: f32, tr: &Transfer) -> f32 {
             ((l(t) - l0) / (lw - l0)).clamp(0.0, 1.0)
         }
         Transfer::Gamma { gamma } => t.clamp(0.0, 1.0).powf(1.0 / gamma),
+        Transfer::GammaShoulder { gamma, knee } => {
+            let raw = t.max(0.0).powf(1.0 / gamma);
+            if raw <= knee {
+                raw
+            } else {
+                let k = knee;
+                (k + (1.0 - k) * (1.0 - (-(raw - k) / (1.0 - k)).exp())).min(0.999999)
+            }
+        }
     }
 }
 
@@ -128,6 +140,8 @@ pub enum FitMode {
     /// Replace the filmic curve with a plain gamma; fit the scale + gamma (the
     /// "no S-curve" alternative, to settle filmic-vs-gamma).
     Gamma,
+    /// Fit the gamma body + shoulder knee (the faithful reconstruction curve).
+    GammaShoulder,
 }
 
 pub struct FitResult {
@@ -156,10 +170,15 @@ pub fn fit_tone(points: &[TonePoint], mode: FitMode) -> FitResult {
         FitMode::ScaleOnly => ([1.0 / 1.5, 5.0, 0.44, 1.05], [true, false, false, false]),
         FitMode::ScaleCurve => ([1.0 / 1.5, 5.0, 0.44, 1.05], [true, true, true, true]),
         FitMode::Gamma => ([1.0 / 1.5, 2.2, 0.0, 0.0], [true, true, false, false]),
+        FitMode::GammaShoulder => ([1.0 / 1.5, 2.4, 0.8, 0.0], [true, true, true, false]),
     };
     let build = |p: &[f32; 4]| -> Transfer {
         match mode {
             FitMode::Gamma => Transfer::Gamma { gamma: p[1].max(0.2) },
+            FitMode::GammaShoulder => Transfer::GammaShoulder {
+                gamma: p[1].max(0.5),
+                knee: p[2].clamp(0.05, 0.98),
+            },
             _ => Transfer::Filmic { k: p[1].max(0.5), pivot: p[2], white_t: p[3].max(0.2) },
         }
     };
@@ -291,5 +310,50 @@ mod tests {
         let fit = fit_tone(&pts, FitMode::ScaleOnly);
         assert!(fit.residual_rms < 0.2, "should fit near-exactly: {}", fit.residual_rms);
         assert!((fit.scale - true_scale).abs() < 0.05, "recover scale: {} vs {true_scale}", fit.scale);
+    }
+
+    #[test]
+    fn gamma_shoulder_anchors_and_monotone() {
+        let gs = Transfer::GammaShoulder { gamma: 2.4, knee: 0.8 };
+        assert!(apply_transfer(0.0, &gs).abs() < 1e-6, "t=0 -> 0");
+        // monotone non-decreasing across a wide range incl. above-white
+        let mut prev = -1.0;
+        for i in 0..=60 {
+            let v = apply_transfer(i as f32 / 30.0, &gs); // t up to 2.0
+            assert!(v >= prev - 1e-6, "monotone at {i}: {v} < {prev}");
+            assert!(v <= 1.0 + 1e-6, "shoulder asymptotes <= 1: {v}");
+            prev = v;
+        }
+        // shoulder: a large t approaches but never reaches 1.0
+        assert!(apply_transfer(50.0, &gs) > 0.95 && apply_transfer(50.0, &gs) < 1.0);
+    }
+
+    #[test]
+    fn gamma_shoulder_c1_continuous_at_knee() {
+        let (gamma, knee) = (2.4f32, 0.8f32);
+        let gs = Transfer::GammaShoulder { gamma, knee };
+        // t where raw == knee:  raw = t^(1/gamma) = knee  =>  t = knee^gamma
+        let t_knee = knee.powf(gamma);
+        let h = 1e-3;
+        let below = (apply_transfer(t_knee, &gs) - apply_transfer(t_knee - h, &gs)) / h;
+        let above = (apply_transfer(t_knee + h, &gs) - apply_transfer(t_knee, &gs)) / h;
+        assert!((below - above).abs() < 0.05, "slope continuous at knee: {below} vs {above}");
+    }
+
+    #[test]
+    fn fit_gamma_shoulder_recovers() {
+        let base = [0.42, 0.55, 0.26];
+        let tr = Transfer::GammaShoulder { gamma: 2.2, knee: 0.85 };
+        let scans = [
+            [0.05, 0.06, 0.03], [0.12, 0.14, 0.07], [0.20, 0.25, 0.12],
+            [0.30, 0.38, 0.18], [0.38, 0.49, 0.24], [0.42, 0.54, 0.26],
+        ];
+        let pts: Vec<TonePoint> = scans.iter().enumerate().map(|(i, &scan)| TonePoint {
+            scan, base, target_l: output_lstar(scan, base, 1.0 / 1.0, &tr),
+            weight: 1.0, abs_ev: -(i as f32),
+        }).collect();
+        let fit = fit_tone(&pts, FitMode::GammaShoulder);
+        assert!(fit.residual_rms < 0.5, "gamma-shoulder fit converges: {}", fit.residual_rms);
+        assert!(matches!(fit.transfer, Transfer::GammaShoulder { .. }));
     }
 }
