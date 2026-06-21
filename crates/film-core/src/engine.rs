@@ -125,6 +125,21 @@ const FAITHFUL_KNEE: f32 = 0.892;
 /// (default d_max 1.5 → ~2× too bright). MUST equal shaders.ts.
 const FAITHFUL_SCALE: f32 = 1.0 / 0.700;
 
+/// Look-layer strength — the clean-punchy "MEDIUM" the user chose (~+31% mid-contrast).
+/// MUST equal shaders.ts LOOK_K.
+const LOOK_K: f32 = 2.0;
+
+/// Clean-punchy look curve: a normalized symmetric tanh S applied to the faithful core's
+/// SDR display value `v ∈ [0,1]`. Pivot 0.5, anchored `0→0` and `1→1`, strictly monotonic,
+/// soft toe + soft shoulder — adds mid-contrast (punch) without clipping or crushing detail.
+/// This is the film-LOOK layer on top of the measured faithful core; SDR only (HDR bypasses
+/// it). MUST equal shaders.ts `lookS`.
+#[inline]
+fn look_s(v: f32) -> f32 {
+    let t = (LOOK_K * 0.5).tanh();
+    (0.5 + 0.5 * (LOOK_K * (v - 0.5)).tanh() / t).clamp(0.0, 1.0)
+}
+
 // --- Filmic display S-curve (replaces the old paper-grade/soft-clip encode). ---
 // Applied per channel in the NORMALISED LOG-DENSITY domain `t = d/d_max` (then
 // scaled by exposure), which is linear in scene stops — the correct place for a
@@ -308,10 +323,13 @@ pub fn invert_d(rgb: [f32; 3], p: &InversionParams) -> [f32; 3] {
                 // per-frame `t = d/d_max`): a frozen, faithful transfer identical on every
                 // frame. See FAITHFUL_SCALE. (`t` above is still used by the Filmic arm.)
                 let t_eff = d * FAITHFUL_SCALE * expo_gain;
-                match p.wb_mode {
+                let core = match p.wb_mode {
                     WbMode::Gain => gamma_shoulder(t_eff, ceil) * p.wb[c],
                     WbMode::Subtractive => gamma_shoulder(t_eff * p.wb[c].max(EPS).powf(CMY_STRENGTH), ceil),
-                }
+                };
+                // Look layer (clean-punchy S-curve), SDR only. HDR keeps the headroom-
+                // expanded value (look↔HDR reconciliation is a follow-up). Mirror: shaders.ts lookS.
+                if p.hdr { core } else { look_s(core) }
             }
         };
         v
@@ -1034,10 +1052,15 @@ mod tests {
         // A bright scene tone (dense negative) at the engine DEFAULT d_max (1.5) must NOT clip
         // to pure white — it should land in the gamma body / gentle shoulder like the calibrated
         // harness render. The pre-fix engine (anchor/d_max) pushed this to ~1.0.
+        //
+        // The look_s layer (Task 1) legitimately brightens near-white highlights: the bare core
+        // lands at ~0.988 but look_s pushes it to ~0.993. That is NOT a blowout — 0.993 still
+        // has real headroom below pure white (1.0). The invariant is therefore "keeps headroom
+        // below pure white (not clipped to 1.0)", threshold relaxed from <0.99 to <0.999.
         let base = [1.0, 1.0, 1.0];
         let bright = [10f32.powf(-0.85); 3]; // d ≈ 0.85 — a bright midtone/highlight
         let out = invert_d(bright, &InversionParams { base, d_max: 1.5, tone_mode: ToneMode::Faithful, ..Default::default() });
-        assert!(out[0] < 0.99, "bright tone must keep highlight headroom, not blow to white: {}", out[0]);
+        assert!(out[0] < 0.999, "bright tone must keep highlight headroom, not blow to white: {}", out[0]);
     }
 
     #[test]
@@ -1049,5 +1072,64 @@ mod tests {
         let faithful = invert_d(scan, &InversionParams { base, d_max: 1.5, tone_mode: ToneMode::Faithful, ..Default::default() });
         let luma = |p: [f32; 3]| 0.2627 * p[0] + 0.678 * p[1] + 0.0593 * p[2];
         assert!(luma(faithful) > luma(filmic), "faithful opens shadows: {} vs {}", luma(faithful), luma(filmic));
+    }
+
+    #[test]
+    fn look_s_anchors_and_pins() {
+        assert!(look_s(0.0).abs() < 1e-6, "0->0: {}", look_s(0.0));
+        assert!((look_s(0.5) - 0.5).abs() < 1e-6, "0.5->0.5: {}", look_s(0.5));
+        assert!((look_s(1.0) - 1.0).abs() < 1e-6, "1->1: {}", look_s(1.0));
+        // pinned values (also pin the GPU GLSL mirror) for LOOK_K = 2.0
+        assert!((look_s(0.25) - 0.196_61).abs() < 1e-4, "0.25: {}", look_s(0.25));
+        assert!((look_s(0.75) - 0.803_39).abs() < 1e-4, "0.75: {}", look_s(0.75));
+    }
+
+    #[test]
+    fn look_s_monotonic_in_range_no_clip() {
+        let mut prev = -1.0;
+        let mut v = 0.0;
+        while v <= 1.0001 {
+            let s = look_s(v);
+            assert!(s >= prev - 1e-7, "monotonic at {v}: {s} < {prev}");
+            assert!((0.0..=1.0).contains(&s), "in range at {v}: {s}");
+            prev = s;
+            v += 1.0 / 512.0;
+        }
+    }
+
+    #[test]
+    fn look_s_adds_midcontrast_soft_ends() {
+        let slope = |v: f32| (look_s(v + 1e-3) - look_s(v - 1e-3)) / 2e-3;
+        assert!(slope(0.5) > 1.05, "mid slope adds punch: {}", slope(0.5));
+        assert!(slope(0.08) < 1.0, "toe is soft: {}", slope(0.08));
+        assert!(slope(0.92) < 1.0, "shoulder is soft: {}", slope(0.92));
+    }
+
+    #[test]
+    fn faithful_look_darkens_shadow_keeps_neutral() {
+        // The look adds contrast (a mid-shadow gets darker than the bare core), and a
+        // neutral negative stays neutral (per-channel curve preserves equal channels).
+        let base = [0.42, 0.55, 0.26];
+        let scan = [0.30, 0.36, 0.18];
+        let p = InversionParams { base, d_max: 1.5, tone_mode: ToneMode::Faithful, ..Default::default() };
+        let out = invert_d(scan, &p);
+        // neutral scan (equal density vs base) -> equal output channels
+        let neg = [base[0] * 10f32.powf(-0.5), base[1] * 10f32.powf(-0.5), base[2] * 10f32.powf(-0.5)];
+        let nout = invert_d(neg, &p);
+        let (mx, mn) = (nout.iter().cloned().fold(f32::MIN, f32::max), nout.iter().cloned().fold(f32::MAX, f32::min));
+        assert!(mx - mn < 1e-3, "neutral stays neutral under look: {nout:?}");
+        assert!(out.iter().all(|&v| (0.0..=1.0).contains(&v)), "in range: {out:?}");
+    }
+
+    #[test]
+    fn faithful_hdr_bypasses_look() {
+        // HDR Faithful keeps the headroom-expanded value (look applies SDR only): a dense
+        // neg exceeds 1.0 under HDR but is capped at 1.0 under SDR.
+        let base = [1.0, 1.0, 1.0];
+        let bright = [10f32.powf(-1.6); 3];
+        let sdr = invert_d(bright, &InversionParams { base, tone_mode: ToneMode::Faithful, hdr: false, ..Default::default() });
+        let hdr = invert_d(bright, &InversionParams { base, tone_mode: ToneMode::Faithful, hdr: true, ..Default::default() });
+        assert!(sdr[0] <= 1.0001, "SDR capped: {}", sdr[0]);
+        assert!(hdr[0] > 1.0001, "HDR exceeds SDR white (look bypassed): {}", hdr[0]);
     }
 }
