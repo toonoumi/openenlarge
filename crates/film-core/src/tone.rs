@@ -43,7 +43,7 @@ pub fn apply_transfer(t: f32, tr: &Transfer) -> f32 {
                 raw
             } else {
                 let k = knee;
-                (k + (1.0 - k) * (1.0 - (-(raw - k) / (1.0 - k)).exp())).min(0.999999)
+                k + (1.0 - k) * (1.0 - (-(raw - k) / (1.0 - k)).exp())
             }
         }
     }
@@ -324,8 +324,8 @@ mod tests {
             assert!(v <= 1.0 + 1e-6, "shoulder asymptotes <= 1: {v}");
             prev = v;
         }
-        // shoulder: a large t approaches but never reaches 1.0
-        assert!(apply_transfer(50.0, &gs) > 0.95 && apply_transfer(50.0, &gs) < 1.0);
+        // shoulder: a large t approaches 1.0
+        assert!(apply_transfer(50.0, &gs) > 0.95 && apply_transfer(50.0, &gs) <= 1.0);
     }
 
     #[test]
