@@ -32,6 +32,7 @@ fn at(img: &Image, x: f32, y: f32) -> Option<[f32; 3]> {
 
 /// Sample one cell: gather an N×N grid of samples in the inset window, trimmed-mean by luma.
 fn sample_cell(img: &Image, corners: &[[f32; 2]; 4], spec: &GridSpec, col: usize, row: usize, trim: f32) -> [f32; 3] {
+    debug_assert!(trim < 0.5, "trim must be in [0, 0.5); got {trim}");
     const N: usize = 11; // 11x11 sub-samples per patch
     let cu = (col as f32 + 0.5) / spec.cols as f32;
     let cv = (row as f32 + 0.5) / spec.rows as f32;
