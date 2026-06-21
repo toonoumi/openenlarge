@@ -44,6 +44,39 @@ pub fn sample_base(img: &Image, rect: Option<Rect>) -> [f32; 3] {
     base
 }
 
+/// Estimate the film base on a frame whose brightest pixels are NOT the film.
+///
+/// A clear leader shot on a lightbox (a dedicated d_min frame) has a blown-out
+/// surround that clips near 1.0 — brighter than the orange mask itself. A plain
+/// high-percentile sampler ([`sample_base`]) latches onto that blown surround and
+/// returns ~`[1,1,1]`, giving the inversion no mask compensation (a heavy blue
+/// cast). This rejects pixels whose max channel exceeds `reject` (clipped /
+/// non-film) and returns the `pct` percentile per channel of what remains — the
+/// brightest *non-clipped* value, i.e. the clear film base. If rejection leaves
+/// too little (<1% of the frame, e.g. a frame with no usable film), it falls back
+/// to [`sample_base`] so the result is never empty.
+pub fn sample_base_clearfilm(img: &Image, reject: f32, pct: f32) -> [f32; 3] {
+    let mut chans: [Vec<f32>; 3] = [Vec::new(), Vec::new(), Vec::new()];
+    for px in &img.pixels {
+        if px[0].max(px[1]).max(px[2]) <= reject {
+            for c in 0..3 {
+                chans[c].push(px[c]);
+            }
+        }
+    }
+    let min_keep = (img.pixels.len() / 100).max(1);
+    if chans[0].len() < min_keep {
+        return sample_base(img, None);
+    }
+    let mut base = [0.0f32; 3];
+    for c in 0..3 {
+        chans[c].sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let idx = (((chans[c].len() as f32) * pct) as usize).min(chans[c].len() - 1);
+        base[c] = chans[c][idx];
+    }
+    base
+}
+
 /// Luma band for sampling the base from a deliberately-drawn CLEAR-FILM rect:
 /// a central trimmed mean rejects dark specks and specular hot pixels.
 pub const BASE_BAND_REBATE: (f32, f32) = (0.1, 0.9);
@@ -478,6 +511,40 @@ pub fn detect_rebate_base(img: &Image) -> RebateBase {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn clearfilm_base_rejects_blown_surround() {
+        // 70% orange film + 30% blown white. A plain high-percentile sampler
+        // latches onto the white; clearfilm rejects it and returns the orange.
+        let orange = [0.40, 0.50, 0.25];
+        let white = [0.99, 0.99, 0.99];
+        let mut img = Image::new(10, 10); // 100 px
+        for i in 0..100 {
+            img.pixels[i] = if i < 30 { white } else { orange };
+        }
+        // sample_base (95th pct) is dominated by the blown surround.
+        let naive = sample_base(&img, None);
+        assert!(naive[0] > 0.9, "naive base should latch onto white: {naive:?}");
+        // clearfilm rejects the >0.92 pixels and recovers the orange base.
+        let cf = sample_base_clearfilm(&img, 0.92, 0.95);
+        for c in 0..3 {
+            assert!(
+                (cf[c] - orange[c]).abs() < 1e-3,
+                "clearfilm channel {c}: got {} want {}",
+                cf[c],
+                orange[c]
+            );
+        }
+        // Degenerate: an all-clipped frame leaves nothing → falls back to sample_base.
+        let allwhite = Image {
+            width: 10,
+            height: 10,
+            pixels: vec![white; 100],
+            ir: None,
+        };
+        let fb = sample_base_clearfilm(&allwhite, 0.92, 0.95);
+        assert!(fb[0] > 0.9, "all-clipped frame must fall back, got {fb:?}");
+    }
 
     #[test]
     fn sample_dmax_recovers_density_range_and_clamps() {

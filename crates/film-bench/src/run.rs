@@ -1,6 +1,6 @@
 use crate::manifest::{load, Frame};
 use film_core::bench::{score_color, score_tone};
-use film_core::calibrate::sample_base;
+use film_core::calibrate::sample_base_clearfilm;
 use film_core::chart::{sampling_overlay, GridSpec};
 use film_core::decode::decode_raw;
 use film_core::engine::{invert_image, InversionParams, Mode};
@@ -22,14 +22,17 @@ pub fn run(manifest_path: &str, out_dir: &str) -> Result<(), String> {
         ));
     }
 
-    // Base from the d_min frame (per-channel film base); fall back to whole-frame sample.
+    // Per-roll film base from the d_min frame. A clear leader shot on a lightbox
+    // has a blown-white surround brighter than the orange mask, so a plain
+    // high-percentile sampler returns ~[1,1,1] (no mask compensation → blue cast).
+    // `sample_base_clearfilm` rejects the clipped surround and recovers the mask.
     let base = m
         .frames
         .iter()
         .find(|f| f.role == "d_min")
         .map(|f| {
             let img = decode(&m.dir, &f.file);
-            sample_base(&img, None)
+            sample_base_clearfilm(&img, 0.92, 0.95)
         })
         .unwrap_or([1.0, 1.0, 1.0]);
 
