@@ -1,0 +1,45 @@
+<h1>图库</h1>
+<p class="lead">图库是每卷胶片的起点：在这里导入扫描文件、浏览文件夹，并以联系表缩略图网格查看全卷。本页介绍导入的工作方式、目录如何组织文件夹，以及缩略图如何生成、缓存，并在渲染引擎更新时自动刷新。</p>
+
+<figure><img src="/img/library.png" alt="OpenEnlarge 图库界面，左侧面板选中一个文件夹，右侧显示胶片扫描缩略图网格"><figcaption>图库界面 —— 左侧文件夹列表，右侧缩略图网格。</figcaption></figure>
+
+<h2>导入</h2>
+<p>点击左侧面板的<strong>导入</strong>按钮（菜单中包含「导入文件…」与「导入文件夹…」选项），或直接将文件拖放到图库窗口。两种方式走同一导入管线。</p>
+
+<p>OpenEnlarge 接受以下文件类型（大小写不敏感）：<code>jpg</code>、<code>jpeg</code>、<code>png</code>、<code>dng</code>、<code>tif</code>、<code>tiff</code>、<code>raf</code>、<code>rw2</code>、<code>nef</code>、<code>arw</code>、<code>cr2</code>、<code>cr3</code>、<code>3fr</code>、<code>orf</code>、<code>raw</code>。扩展名不在此列表中的文件将被静默跳过。该列表定义于 <code>workflow.ts</code> 的 <code>IMPORT_EXTENSIONS</code> 中。</p>
+
+<p><strong>忽略预览 JPG</strong>复选框（<em>folderNav.omitPreviewJpgs</em>）默认开启。启用后，与同批次同目录、同基本文件名的 RAW 主文件并存的 JPEG（或 PNG）将被跳过，只导入主文件。没有同名 RAW 文件的独立 JPEG 始终保留。此选项可防止相机或扫描仪生成的预览文件与 RAW 原件同时出现在图库中，造成混乱。该偏好设置跨会话保持。</p>
+
+<p>文件逐一导入，到达即添加到目录。若导入前未选中任何图像，第一张导入的图像将自动成为当前活动图像。</p>
+
+<h2>目录与文件夹</h2>
+<p>OpenEnlarge 不复制或移动你的文件。目录是一份记录：哪些文件已被导入、以及它们的显影状态——路径、缩略图、编辑参数、裁剪和逐帧标志均存储于目录中。目录在启动时载入，工作期间持续写入；关闭应用无需手动保存。</p>
+
+<p>左侧面板中的文件夹对应磁盘上已导入文件所在的真实目录。点击某个文件夹，右侧缩略图网格即切换为该文件夹的图像范围，只显示该文件夹中的照片。文件夹列表顶部的<strong>已导入</strong>分组包含所有至少导入了一张照片的文件夹。同一文件夹内的图像按导入顺序排列。</p>
+
+<p>切换文件夹不会卸载或重载任何内容——完整目录始终驻留于内存。所选文件夹在会话间记忆，下次打开时直接恢复到上次处理的胶卷。</p>
+
+<h2>缩略图与自动刷新</h2>
+<p>每张已显影的图像在显影时都会生成一张目录缩略图：以 320 px（长边）渲染的正片，存储于图像记录中。网格在正常缩放级别下显示的就是这些缩略图——无需重新解码 RAW 文件，从目录中瞬时加载。</p>
+
+<p>当你放大到只剩一两列时，网格切换为高分辨率渲染：为每个可见单元格按需计算 1080 px（长边）的缩略图。高分辨率渲染使用当前编辑参数——裁剪、除尘和显影设置——因此与显影界面中看到的效果一致。缩小回去后，网格恢复显示 320 px 的缓存缩略图。</p>
+
+<p>每张目录缩略图都记录了烘焙它的引擎版本（图像条目上的 <code>thumb_stale</code> 字段）。当渲染引擎更新时——例如 <strong>ENGINE_VERSION</strong> 随 Faithful 色调曲线升至 <strong>3</strong>——来自旧版本的所有已存储缩略图均被标记为陈旧（<code>thumb_stale: true</code>）。陈旧缩略图仍然显示，但反映的是旧引擎的外观，而非当前效果。</p>
+
+<p>OpenEnlarge 通过两种方式刷新陈旧缩略图：</p>
+<ul>
+  <li><strong>启动时主动扫描</strong> —— 图库加载时，<code>sweepStale()</code> 每次会话运行一次。它找出所有 <code>thumb_stale: true</code> 的已显影图像，并在后台通过有界并发池重新烘焙缩略图。滚动浏览网格时，缩略图已反映当前引擎效果。这就是 <code>ENGINE_VERSION</code> 升级后无需任何手动操作即可更新整个目录的机制。</li>
+  <li><strong>按需逐格刷新</strong> —— 滚动时，每个仍为陈旧状态的可见单元格（未被扫描覆盖，或新近变陈旧）在首次进入屏幕时由 <code>regenStale()</code> 单独重新烘焙。新缩略图写回目录并清除 <code>thumb_stale</code>，后续查看不再触发重烘。</li>
+</ul>
+
+<p>两种方式走同一渲染路径：若图像已有保存的编辑参数，则从中烘焙缩略图；若没有（该图像从未在显影界面打开过），则先测量自动白平衡种子，使缩略图与图像打开时的外观保持一致。</p>
+
+<details class="hood"><summary>深入原理</summary><div class="hood-body">
+<p><strong>IMPORT_EXTENSIONS</strong>（定义于 <code>workflow.ts</code>）：<code>["jpg", "jpeg", "png", "dng", "tif", "tiff", "raf", "rw2", "nef", "arw", "cr2", "cr3", "3fr", "orf", "raw"]</code>。辅助函数 <code>filterImportable(paths)</code> 将扩展名转为小写后与该数组比对，不在列表中的文件在到达后端之前即被丢弃。</p>
+<p><strong>omitPreviewSidecars</strong>：对可导入列表进行两次遍历——第一次构建「主文件」基本名键集合（同目录下所有非预览扩展名），第二次过滤掉同文件夹同基本名键存在于主文件集合中的 <code>jpg/jpeg/png</code>。保序且无副作用。</p>
+<p><strong>thumb_stale</strong>：SQLite 目录随每张缩略图存储 <code>thumb_version</code>。加载时，<code>thumb_stale</code> 由 <code>thumb_version != ENGINE_VERSION</code> 决定。<code>ENGINE_VERSION</code> 当前为 <strong>3</strong>（Faithful 外观；参见 <a href="../science/tone-curve.html">色调曲线</a>）。<code>saveThumbnail</code> 写入新缩略图时会盖印当前 <code>ENGINE_VERSION</code>，从而清除陈旧标志。</p>
+<p><strong>sweepStale</strong>：在网格挂载时运行，由模块级布尔值 <code>sweptStale</code> 控制，每次会话最多触发一次。使用并发池（POOL = 3）——足以让后端保持忙碌而不饿死 UI 线程。每个工作者循环调用 <code>regenStale</code>，直至列表耗尽。</p>
+<p><strong>高分辨率增强</strong>：当有效列数（<code>gridColumns()</code>）降至 ≤ <code>GRID_HIRES_MAX_COLS = 2</code> 时触发。每个可见单元格的高分辨率 URL 缓存在组件本地的 <code>hiRes</code> 映射中，以静态缩略图 URL 为键；若静态缩略图变化（重新烘焙或编辑更新），键不匹配会自动使缓存的高分辨率图失效。</p>
+</div></details>
+
+<p class="next"><a href="roll.html">下一篇：整卷 →</a></p>
