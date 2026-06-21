@@ -136,7 +136,7 @@
 <p><strong>API（api.ts）：</strong><code>api.autodustStatus()</code> 返回 <code>{ installed: boolean, downloadBytes: number }</code>。<code>api.downloadAutodust()</code> 触发模型下载；进度通过 Tauri 事件 <code>autodust://download-progress</code>（<code>{ received, total }</code> 字节）流式传输。检测运行完成后，后端发出 <code>autodust://result</code>，携带 <code>{ count: number }</code>——去除的不重复斑点数。<code>autodustInstalled</code> store（<code>store.ts</code>）在面板挂载间缓存安装状态，避免下载提示重复出现。<code>DustEdits</code> 中的自动除尘状态：<code>autoDust: { enabled: boolean, sensitivity: number }</code>；排除点：<code>autoDustExclusions: DustPoint[]</code>（每个为归一化 <code>{ x, y }</code> 质心，通过 <code>addExclusion()</code> 添加）。</p>
 </div></details>
 
-<p class="next"><a href="ai.html">下一篇：AI 增强 →</a></p>
+<p class="next"><a href="ai.html">下一篇：AI 工具 →</a></p>
 </article>
     <footer class="docfoot">OpenEnlarge —— 开源胶片扫描编辑器 · MIT 许可</footer>
   </main>

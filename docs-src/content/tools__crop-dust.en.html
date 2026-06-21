@@ -86,4 +86,4 @@
 <p><strong>API (api.ts):</strong> <code>api.autodustStatus()</code> returns <code>{ installed: boolean, downloadBytes: number }</code>. <code>api.downloadAutodust()</code> triggers the model download; progress is streamed via the <code>autodust://download-progress</code> Tauri event (<code>{ received, total }</code> bytes). After a detection run the backend emits <code>autodust://result</code> with <code>{ count: number }</code> — the count of distinct spots removed. The <code>autoDustInstalled</code> store (<code>store.ts</code>) caches the installed state across panel mounts so the download prompt does not re-appear. Auto-dust state in <code>DustEdits</code>: <code>autoDust: { enabled: boolean, sensitivity: number }</code>; exclusion points: <code>autoDustExclusions: DustPoint[]</code> (each a normalized <code>{ x, y }</code> centroid added via <code>addExclusion()</code>).</p>
 </div></details>
 
-<p class="next"><a href="ai.html">Next: AI enhance →</a></p>
+<p class="next"><a href="ai.html">Next: AI tools →</a></p>

@@ -52,4 +52,4 @@
 <p><strong>API 调用（<code>api.ts</code>）：</strong><code>api.upscalerStatus()</code> → Tauri <code>upscaler_status</code> 返回 <code>{ installed: boolean, downloadBytes: number }</code>。<code>api.downloadUpscaler()</code> → <code>download_upscaler</code> 触发模型下载。对于已显影图像，<code>api.upscaleImage(id, params, imageCrop, geom, targetLong)</code> → <code>upscale_image</code> 先渲染全分辨率图像，再进行超分辨率处理。对于 AI 增强结果，<code>api.upscaleEnhanced(imageBase64, targetLong)</code> → <code>upscale_enhanced</code> 直接接收 base64 PNG。两者均返回 <code>{ previewDataUrl: string, outW: number, outH: number }</code>。分块进度通过 <code>upscale://progress</code> 事件流式传输（<code>{ done, total }</code>）。保存调用 <code>api.saveUpscaled(outPath, format)</code> → <code>save_upscaled</code>。</p>
 </div></details>
 
-<p class="next"><a href="library.html">下一篇：Library →</a></p>
+<p class="next"><a href="library.html">下一篇：图库 →</a></p>
