@@ -1,0 +1,113 @@
+<!-- AUTO-GENERATED from /docs-src — do not edit by hand. Run python3 scripts/gen-docs.py -->
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI 工具 — OpenEnlarge Docs</title>
+<meta name="description" content="AI 增强（通过 OpenAI API）、基于参考图的本地色调匹配，以及本地超分辨率放大 —— 各自的作用与运行位置。">
+<meta name="theme-color" content="#0a0a0c">
+<link rel="icon" href="../../../img/favicon.png">
+<link rel="canonical" href="https://openenlarge.io/docs/zh/tools/ai.html">
+<link rel="alternate" hreflang="en" href="https://openenlarge.io/docs/tools/ai.html">
+<link rel="alternate" hreflang="zh-Hans" href="https://openenlarge.io/docs/zh/tools/ai.html">
+<link rel="alternate" hreflang="x-default" href="https://openenlarge.io/docs/tools/ai.html">
+<meta property="og:type" content="article"><meta property="og:title" content="AI 工具 — OpenEnlarge Docs"><meta property="og:description" content="AI 增强（通过 OpenAI API）、基于参考图的本地色调匹配，以及本地超分辨率放大 —— 各自的作用与运行位置。"><meta property="og:url" content="https://openenlarge.io/docs/zh/tools/ai.html"><meta name="twitter:card" content="summary">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "AI 工具", "description": "AI 增强（通过 OpenAI API）、基于参考图的本地色调匹配，以及本地超分辨率放大 —— 各自的作用与运行位置。", "inLanguage": "zh-Hans", "url": "https://openenlarge.io/docs/zh/tools/ai.html", "isPartOf": {"@type": "WebSite", "name": "OpenEnlarge", "url": "https://openenlarge.io"}}</script>
+<link rel="stylesheet" href="../../docs.css">
+</head>
+<body>
+<a class="skip" href="#content">跳到正文</a>
+<nav class="docnav"><div class="navbar glass wrap">
+  <a class="brand" href="../../../index.html"><img class="mark" src="../../../img/icon.png" alt=""> OpenEnlarge <span class="brand-docs">文档</span></a>
+  <button class="menu-btn" id="menu-btn" type="button" aria-label="菜单" aria-expanded="false">☰</button>
+  <div class="navlinks">
+    <a href="../../../index.html">主页</a>
+    <a href="https://github.com/mohaelder/openenlarge">GitHub</a>
+    <a class="lang-link" href="../../tools/ai.html">EN</a>
+  </div>
+</div></nav>
+<div class="doclayout wrap">
+  <aside class="sidebar" id="sidebar"><div class="side-sec"><div class="side-h">概览</div>
+<a href="../index.html">文档</a>
+<a href="../workflow.html">工作流程</a>
+</div>
+<div class="side-sec"><div class="side-h">原理</div>
+<a href="../science/negatives.html">彩色负片的原理</a>
+<a href="../science/inversion.html">反转流程</a>
+<a href="../science/density.html">密度与对数空间</a>
+<a href="../science/tone-curve.html">色调曲线（Faithful 风格）</a>
+<a href="../science/color.html">色彩与白平衡</a>
+<a href="../science/base-calibration.html">片基校准</a>
+</div>
+<div class="side-sec"><div class="side-h">工具</div>
+<a href="../tools/develop-basic.html">显影 · 基础</a>
+<a href="../tools/tune.html">微调</a>
+<a href="../tools/crop-dust.html">裁剪与除尘</a>
+<a class="on" href="../tools/ai.html">AI 工具</a>
+</div></aside>
+  <main class="content" id="content">
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="../index.html">文档</a> <span class="sep">/</span> <span>AI 工具</span></nav>
+    <article class="prose"><h1>AI 工具</h1>
+<p class="lead">显影中的 AI 面板包含三项功能：AI 增强、色调匹配和放大。它们在运行位置上并不相同。AI 增强会将预览图发送至 <strong>OpenAI API</strong>——这是 OpenEnlarge 中唯一会将图像数据传输到外部的工具。色调匹配和放大均完全在本地设备上运行，图像数据不会离开您的计算机。</p>
+
+<h2>AI 增强</h2>
+<p><strong>AI 增强</strong>对当前显影预览图进行重新生成，以减少噪点、灰尘和划痕。结果是对您扫描图像的创意性再诠释，而非逐像素的忠实还原：模型可能会生成原图中并不存在的细节。请将其用于视觉风格，而非作为精准输出。</p>
+
+<p>使用 AI 增强前，您需要在<strong>设置</strong>中添加自己的 OpenAI API 密钥。没有密钥时，增强按钮将显示"请在设置中添加 OpenAI API 密钥。"并不执行任何操作。OpenEnlarge 不提供也不代理任何 API 密钥——费用将从您自己的 OpenAI 账户扣除。</p>
+
+<p><strong>隐私说明：</strong>点击"增强"后，当前预览图（以 base64 编码的 PNG 格式）将被发送至 OpenAI API。这是 OpenEnlarge 中唯一将图像数据传输至外部服务器的操作。相关数据受 OpenAI 的使用条款和隐私政策约束。</p>
+
+<p>结果到达后，将以缩略图形式显示在面板中。按住<strong>按住对比原图</strong>按钮可在原图与增强结果之间切换，松开后恢复显示结果。点击缩略图可全屏查看。</p>
+
+<p>点击<strong>下载增强后的图像…</strong>将结果保存到磁盘。保存对话框支持 PNG、TIFF 和 JPEG 格式。文件通过 <code>api.saveEnhanced()</code> 以结果原始分辨率写出，此步骤不进行放大。</p>
+
+<p>获得增强结果后，其下方会出现<strong>放大此结果</strong>区域，可对 AI 增强图像而非原始显影输出运行本地放大模型。具体说明见下方放大章节。</p>
+
+<details class="hood"><summary>深入原理</summary><div class="hood-body">
+<p><strong>API 调用（<code>api.ts</code>）：</strong>前端调用 <code>api.aiEnhanceImage(imageBase64, apiKey)</code>，触发 Tauri 命令 <code>ai_enhance_image</code>。后端将 base64 图像和用户提供的 API 密钥发送至 OpenAI API，并以 base64 字符串形式返回增强结果。调用时捕获的源预览存储于 <code>source</code> 变量，用于前后对比切换（<code>showBefore</code>）。保存使用 <code>api.saveEnhanced(outPath, imageBase64, format)</code> → Tauri 命令 <code>save_enhanced</code>。格式类型为 <code>ExportFormat</code>：<code>{ kind: "png" | "tiff" | "jpeg", bitDepth?: 16, quality?: number }</code>。</p>
+</div></details>
+
+<h2>色调匹配</h2>
+<p><strong>色调匹配</strong>导入一张参考图像，并调整当前扫描的显影参数，使其白平衡、对比度和饱和度与参考图一致。所有处理均在本地完成——图像数据不会离开您的计算机。</p>
+
+<p>点击<strong>导入参考图像</strong>选取任意 JPEG、PNG、TIFF 或 WebP 文件。面板中会显示参考图缩略图，随时可点击更换参考图。</p>
+
+<p>加载参考图后，点击<strong>匹配</strong>以计算匹配结果。匹配通过 <code>api.colorMatchParams()</code> 在本地运行，并将一组混合后的显影参数写入当前图像的设置，作为单步可撤销操作（<kbd>⌘Z</kbd> / <kbd>Ctrl Z</kbd> 可还原）。</p>
+
+<p><strong>强度</strong>滑块（0–100%，默认 60%）在匹配前的数值和完整匹配结果之间进行混合。拖动时预览实时更新，无需后端往返——完整匹配仅计算一次并存储，滑块在本地进行插值。提交滑块值会增加一步撤销记录。</p>
+
+<p>点击<strong>重置匹配</strong>可将参数还原至匹配前的状态，并清除已存储的匹配数据。重置同样是单步可撤销操作。</p>
+
+<p>匹配完成后，您可以继续在显影面板中正常调整任意滑块。匹配仅影响参数的一个有限子集（详见下方原理），不触及其他控件。</p>
+
+<details class="hood"><summary>深入原理</summary><div class="hood-body">
+<p><strong>API 调用（<code>api.ts</code>）：</strong><code>api.colorMatchParams(id, params, refPath, 100)</code> 触发 Tauri 命令 <code>color_match_params</code>，传入当前图像 id、完整 <code>InvertParams</code>、参考文件路径和强度值 100（完整匹配）。后端返回一个 <code>MatchedParams</code> 对象——<code>InvertParams</code> 的 <code>Pick</code> 子集，精确覆盖以下字段：<code>temp</code>、<code>tint</code>、<code>exposure</code>、<code>contrast</code>、<code>saturation</code>、<code>cg_sh_hue</code>、<code>cg_sh_sat</code>、<code>cg_sh_lum</code>、<code>cg_hi_hue</code>、<code>cg_hi_sat</code>、<code>cg_hi_lum</code>。前端将这些键的匹配前数值捕获到 <code>origScoped</code>，完整匹配存储于 <code>matchedFull</code>。强度滑块按键插值：<code>blended[k] = origScoped[k] + (matchedFull[k] − origScoped[k]) × (strength / 100)</code>。参考图缩略图通过 <code>api.referenceThumb(path)</code> → Tauri 命令 <code>reference_thumb</code> 获取。</p>
+</div></details>
+
+<h2>放大</h2>
+<p><strong>放大</strong>在设备端运行超分辨率模型，将已显影的图像放大至最长边 4K 或 8K。模型下载一次后完全在本地运行，任何图像数据均不会上传。</p>
+
+<p>首次打开 AI 面板时，OpenEnlarge 会检查放大模型是否已安装。若未安装，将显示提示及大致下载大小（MB）。点击<strong>下载放大器</strong>进行下载；进度条实时显示下载进度（字节接收情况通过 <code>upscale://download-progress</code> Tauri 事件流式传输）。</p>
+
+<p>模型安装完成后，通过 <strong>4K / 8K</strong> 分段控件选择目标分辨率（4K = 3840 像素；8K = 7680 像素，均以最长边计；默认 8K）。点击<strong>放大</strong>开始处理。进度条跟踪分块完成情况。结果以预览图形式显示在面板中，附带输出像素尺寸。</p>
+
+<p>若源图像最长边已达到或超过 8K，放大将不会增加细节（应用会提示这一情况）。较小的原图往往能获得最佳效果，模型能够真正重建精细细节。</p>
+
+<p>点击<strong>保存放大后的图像…</strong>保存结果。保存对话框支持 PNG、TIFF（16 位）和 JPEG 格式。</p>
+
+<p>若已有 AI 增强结果，其上方会出现<strong>放大此结果</strong>区域，可对 AI 增强的 PNG 而非已显影扫描进行放大。两种路径使用相同的本地模型。</p>
+
+<details class="hood"><summary>深入原理</summary><div class="hood-body">
+<p><strong>API 调用（<code>api.ts</code>）：</strong><code>api.upscalerStatus()</code> → Tauri <code>upscaler_status</code> 返回 <code>{ installed: boolean, downloadBytes: number }</code>。<code>api.downloadUpscaler()</code> → <code>download_upscaler</code> 触发模型下载。对于已显影图像，<code>api.upscaleImage(id, params, imageCrop, geom, targetLong)</code> → <code>upscale_image</code> 先渲染全分辨率图像，再进行超分辨率处理。对于 AI 增强结果，<code>api.upscaleEnhanced(imageBase64, targetLong)</code> → <code>upscale_enhanced</code> 直接接收 base64 PNG。两者均返回 <code>{ previewDataUrl: string, outW: number, outH: number }</code>。分块进度通过 <code>upscale://progress</code> 事件流式传输（<code>{ done, total }</code>）。保存调用 <code>api.saveUpscaled(outPath, format)</code> → <code>save_upscaled</code>。</p>
+</div></details>
+
+<p class="next"><a href="library.html">下一篇：Library →</a></p>
+</article>
+    <footer class="docfoot">OpenEnlarge —— 开源胶片扫描编辑器 · MIT 许可</footer>
+  </main>
+  <aside class="toc" id="toc" aria-label="本页目录"><div class="toc-title">本页目录</div><div id="toc-list"></div></aside>
+</div>
+<script src="../../docs.js" defer></script>
+</body>
+</html>
