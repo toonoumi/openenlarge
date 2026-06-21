@@ -8,6 +8,7 @@ import { translate } from "./i18n";
 import { developedFolderImages } from "./export/eligible";
 import { withEffectiveBase } from "./develop/base";
 import { imageDir } from "./library/folderScope";
+import { gridThumbView, GRID_STATIC_EDGE } from "./library/gridHiRes";
 
 /** Ids of images not yet developed, in order. Pure helper (testable). */
 export function undevelopedIds(list: ImageEntry[]): string[] {
@@ -174,13 +175,25 @@ export async function developAll(target: "develop" | "roll" = "develop"): Promis
         } catch { /* not resident yet — Develop's per-image seed retries on activation */ }
         // Seed exposure ONCE here too (the frame is resident, so auto_brightness is cheap),
         // measured on the WB-seeded look — so the whole roll opens correctly exposed in
-        // Develop/Roll/Tune without each frame needing to be individually activated. Persists
+        // Develop/Roll/Frame without each frame needing to be individually activated. Persists
         // via editsById; never re-runs (later entries see a non-default exposure and skip).
         try {
           const { exposure } = await api.autoBrightness(id, withEffectiveBase(seed, imageDir(updated)));
           seed.exposure = exposure;
-        } catch { /* not resident yet — the per-image / folder seed retries on activation */ }
-        editsById.update((m) => (m[id] ? m : { ...m, [id]: seed }));
+        } catch { /* not resident yet — the per-image seed retries on activation */ }
+        editsById.update((m) => m[id] ? m : { ...m, [id]: seed });
+        // Re-bake the catalog thumbnail at the SEEDED params so the stored thumbnail matches
+        // the develop-time seed. Otherwise the backend's DEFAULT-params bake (exposure 0) is
+        // what's stored, and the contact sheet/grid re-renders to the seeded look on EVERY
+        // entry — the "re-auto-exposes on Roll re-entry" churn. The frame is resident here, so
+        // this reuses the just-decoded buffer.
+        try {
+          const params = withEffectiveBase(get(editsById)[id] ?? seed, imageDir(updated));
+          const view = gridThumbView(get(cropById)[id], get(dustById)[id], GRID_STATIC_EDGE);
+          const url = await api.thumbnail(id, params, view);
+          await api.saveThumbnail(id, url);
+          images.update((list) => list.map((i) => (i.id === id ? { ...i, thumbnail: url, thumb_stale: false } : i)));
+        } catch { /* not resident — the thumbnail re-bakes on first view instead */ }
       }
       if (updated.developed) {
         ok = true;
