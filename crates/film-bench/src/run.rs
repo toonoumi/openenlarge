@@ -15,6 +15,13 @@ pub fn run(manifest_path: &str, out_dir: &str) -> Result<(), String> {
     std::fs::create_dir_all(out_dir).map_err(|e| format!("mkdir {out_dir}: {e}"))?;
     let m = load(manifest_path)?;
 
+    if m.chart != "colorchecker24" {
+        return Err(format!(
+            "unsupported chart {:?} (this harness only supports \"colorchecker24\")",
+            m.chart
+        ));
+    }
+
     // Base from the d_min frame (per-channel film base); fall back to whole-frame sample.
     let base = m
         .frames
@@ -47,12 +54,13 @@ pub fn run(manifest_path: &str, out_dir: &str) -> Result<(), String> {
         ov.save(&ov_path).map_err(|e| format!("save {ov_path}: {e}"))?;
 
         json.push_str(&format!(
-            "    {{ \"file\": {:?}, \"neutralized_mean\": {:.4}, \"neutralized_max\": {:.4}, \"chroma_mean\": {:.4}, \"as_shipped_mean\": {:.4} }}{}\n",
+            "    {{ \"file\": {:?}, \"neutralized_mean\": {:.4}, \"neutralized_max\": {:.4}, \"chroma_mean\": {:.4}, \"as_shipped_mean\": {:.4}, \"flags\": {} }}{}\n",
             f.file,
             rep.neutralized.mean,
             rep.neutralized.max,
             rep.neutralized_chroma_only.mean,
             rep.as_shipped.mean,
+            json_str_array(&f.flags),
             if idx + 1 < color_frames.len() { "," } else { "" }
         ));
         summary.push(format!(
@@ -76,12 +84,21 @@ pub fn run(manifest_path: &str, out_dir: &str) -> Result<(), String> {
             f.mid_step.unwrap_or(0),
             f.drop_last.unwrap_or(0),
         );
+
+        // Overlay for human verification (wedge: n_steps × 1 grid).
+        let positive = invert_image(&neg, &InversionParams { base, ..Default::default() }, Mode::D);
+        let spec = GridSpec { cols: f.n_steps.unwrap_or(10), rows: 1, inset: 0.5 };
+        let ov = sampling_overlay(&positive, &corners, &spec, 1400);
+        let ov_path = format!("{out_dir}/overlay_{}.png", sanitize(&f.file));
+        ov.save(&ov_path).map_err(|e| format!("save {ov_path}: {e}"))?;
+
         for (i, (e, l)) in rep.ev.iter().zip(rep.lstar.iter()).enumerate() {
             csv.push_str(&format!("{},{},{},{:.3}\n", f.file, i, e, l));
         }
         json.push_str(&format!(
-            "    {{ \"file\": {:?}, \"mid_gray_l\": {:.2}, \"shadow_latitude_ev\": {:.2}, \"highlight_latitude_ev\": {:.2}, \"mid_slope\": {:.2}, \"monotonic\": {} }}{}\n",
+            "    {{ \"file\": {:?}, \"mid_gray_l\": {:.2}, \"shadow_latitude_ev\": {:.2}, \"highlight_latitude_ev\": {:.2}, \"mid_slope\": {:.2}, \"monotonic\": {}, \"flags\": {} }}{}\n",
             f.file, rep.mid_gray_l, rep.shadow_latitude_ev, rep.highlight_latitude_ev, rep.mid_slope, rep.monotonic,
+            json_str_array(&f.flags),
             if idx + 1 < wedge_frames.len() { "," } else { "" }
         ));
         summary.push(format!(
@@ -107,4 +124,9 @@ fn sanitize(name: &str) -> String {
     name.chars()
         .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
         .collect()
+}
+
+fn json_str_array(items: &[String]) -> String {
+    let inner: Vec<String> = items.iter().map(|s| format!("{s:?}")).collect();
+    format!("[{}]", inner.join(", "))
 }
