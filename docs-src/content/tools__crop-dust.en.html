@@ -25,7 +25,7 @@
 </ul>
 <p>Flips and rotations interact: the backend applies flips before the quarter-turns (flip_h → flip_v → rot90 clockwise), so flipping a rotated image toggles the correct axis without disturbing the rotation count.</p>
 
-<p>The <strong>Straighten</strong> slider provides a fine rotation adjustment from −45° to +45° in 0.1° steps, double-clicking the value resets it to 0. This is stored as <code>angle</code> in the <code>CropRect</code>. It is applied as a sub-pixel rotation around the center of the crop and does not affect the crop box dimensions.</p>
+<p>The <strong>Straighten</strong> slider provides a fine rotation adjustment from −45° to +45° in 0.1° steps, double-clicking the value resets it to 0. This is stored as <code>angle</code> in the <code>CropRect</code>. It is applied as a sub-pixel rotation of the source image around its center (sampled before the crop window) and does not affect the crop box dimensions.</p>
 
 <p>The <strong>Reset</strong> button clears all crop settings to the full-frame original: <code>rect</code> back to <code>{x:0, y:0, w:1, h:1}</code>, <code>rot90</code> to 0, <code>flipH</code>/<code>flipV</code> to false, <code>angle</code> to 0, and <code>aspect</code> to <code>"original"</code>. It does not affect any other develop parameters.</p>
 

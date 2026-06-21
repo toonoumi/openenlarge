@@ -82,7 +82,7 @@
 </ul>
 <p>翻转与旋转相互关联：后端按照翻转先于四分之一圈旋转的顺序执行（flip_h → flip_v → rot90 顺时针），因此对已旋转的图像进行翻转时会正确切换对应轴，不影响旋转计数。</p>
 
-<p><strong>校正</strong>滑块提供 −45° 至 +45° 的精细旋转调整，步进 0.1°，双击数值可重置为 0。该值存储于 <code>CropRect</code> 的 <code>angle</code> 字段。它以裁剪框中心为轴对源图像进行亚像素旋转，不影响裁剪框尺寸。</p>
+<p><strong>校正</strong>滑块提供 −45° 至 +45° 的精细旋转调整，步进 0.1°，双击数值可重置为 0。该值存储于 <code>CropRect</code> 的 <code>angle</code> 字段。它以源图像中心为轴对其进行亚像素旋转（在裁剪框采样之前），不影响裁剪框尺寸。</p>
 
 <p><strong>重置</strong>按钮将所有裁剪设置清除为全帧原始状态：<code>rect</code> 恢复为 <code>{x:0, y:0, w:1, h:1}</code>，<code>rot90</code> 归零，<code>flipH</code>/<code>flipV</code> 设为 false，<code>angle</code> 清零，<code>aspect</code> 恢复为 <code>"original"</code>。不影响任何其他显影参数。</p>
 

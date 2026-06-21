@@ -65,7 +65,7 @@
 
 <p>OpenEnlarge accepts the following file types (case-insensitive): <code>jpg</code>, <code>jpeg</code>, <code>png</code>, <code>dng</code>, <code>tif</code>, <code>tiff</code>, <code>raf</code>, <code>rw2</code>, <code>nef</code>, <code>arw</code>, <code>cr2</code>, <code>cr3</code>, <code>3fr</code>, <code>orf</code>, <code>raw</code>. Any file whose extension is not in this list is silently skipped. The list is defined in <code>IMPORT_EXTENSIONS</code> in <code>workflow.ts</code>.</p>
 
-<p>The <strong>Omit preview JPGs</strong> checkbox (<em>folderNav.omitPreviewJpgs</em>) is on by default. When enabled, any JPEG (or PNG) that shares a folder and base name with a raw master in the same batch is dropped — only the master file is imported. Standalone JPEGs with no raw sibling are always kept. This prevents camera and scanner preview files from cluttering the library alongside their raw originals. The preference persists across sessions.</p>
+<p>The <strong>Omit preview JPGs</strong> checkbox (<em>folderNav.omitPreviewJpgs</em>) is on by default. When enabled, any JPEG (or PNG) that shares a folder and base name with a raw master in the same batch is dropped — only the master file is imported. Standalone JPEGs with no raw sibling are always kept. This prevents camera-generated preview files from cluttering the library alongside their raw originals. The preference persists across sessions.</p>
 
 <p>Files are imported one by one and added to the catalog as they arrive. If nothing was selected before the import, the first imported file becomes the active image automatically.</p>
 
