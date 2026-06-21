@@ -79,6 +79,28 @@
     finally { inFlight.delete(img.id); }
   }
 
+  // Eager force-refresh on app entry: regenerate EVERY developed+stale thumbnail (not just
+  // visible cells) so a render-engine bump (ENGINE_VERSION) re-bakes the whole catalog to the
+  // current look immediately. Runs once per session; reuses regenStale (which stamps the
+  // version + clears thumb_stale). Bounded concurrency keeps the UI responsive.
+  let sweptStale = false;
+  async function sweepStale() {
+    if (sweptStale) return;
+    const list = get(images).filter((i) => i.developed && i.thumb_stale);
+    sweptStale = true;
+    if (!list.length) return;
+    const POOL = 3;
+    let idx = 0;
+    const worker = async () => {
+      while (idx < list.length) {
+        const next = list[idx++];
+        const cur = get(images).find((i) => i.id === next.id); // re-read latest (observer may have done it)
+        if (cur?.developed && cur.thumb_stale) await regenStale(cur);
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(POOL, list.length) }, worker));
+  }
+
   // For every visible developed cell: refresh a stale static thumbnail first, else
   // (when zoomed) render the hi-res boost.
   function ensureVisible() {
@@ -90,6 +112,7 @@
     }
   }
   $: boost, shown, ensureVisible(); // re-check when zoom crosses the threshold or list changes
+  $: if ($images.length) sweepStale(); // once-per-session eager refresh after the catalog loads
 
   // (Re)observe cells so we only render what's on screen; rootMargin pre-warms a little.
   async function reobserve() {
