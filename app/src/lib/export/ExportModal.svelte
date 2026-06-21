@@ -176,18 +176,43 @@
   let total = 0;
   let finished = false;
   let failedCount = 0;
+  let skippedCount = 0;
   let lastFolder = "";
   let exportedPaths: string[] = [];
+
+  // ---- Filename-collision prompt ----
+  // When a chosen output name already exists on disk, the export pauses before
+  // writing and asks what to do, per conflicting file. "Apply to all remaining"
+  // reuses the choice for the rest of this run so big batches aren't a modal storm.
+  type CollisionAction = "overwrite" | "skip" | "rename" | "cancel";
+  let collision: { name: string; index: number; count: number } | null = null;
+  let collisionApplyAll = false;
+  let resolveCollision: ((r: { action: CollisionAction; applyToAll: boolean }) => void) | null = null;
+
+  function askCollision(name: string, index: number, count: number) {
+    return new Promise<{ action: CollisionAction; applyToAll: boolean }>((res) => {
+      collision = { name, index, count };
+      resolveCollision = res;
+    });
+  }
+  function chooseCollision(action: CollisionAction) {
+    const res = resolveCollision;
+    collision = null;
+    resolveCollision = null;
+    res?.({ action, applyToAll: collisionApplyAll });
+  }
 
   // Reactive so the summary re-evaluates (and re-translates) on language change.
   $: summary = !finished
     ? ""
     : failedCount > 0
       ? $t("export.summaryPartial", { done, total, failed: failedCount })
-      : $t("export.summaryDone", {
-          done,
-          imageOrImages: $t(done === 1 ? "export.imageSingular" : "export.imagePlural"),
-        });
+      : skippedCount > 0
+        ? $t("export.summarySkipped", { done, total, skipped: skippedCount })
+        : $t("export.summaryDone", {
+            done,
+            imageOrImages: $t(done === 1 ? "export.imageSingular" : "export.imagePlural"),
+          });
 
   async function runExport() {
     const chosen = imgs.filter((i) => sel.selected.has(i.id));
@@ -199,7 +224,48 @@
     const dir: string = folder;
 
     running = true; done = 0; total = chosen.length; finished = false;
-    failedCount = 0; exportedPaths = []; lastFolder = dir;
+    failedCount = 0; skippedCount = 0; exportedPaths = []; lastFolder = dir;
+    collisionApplyAll = false;
+
+    // Resolve output paths and clear collisions with existing files BEFORE writing
+    // anything. `targets[i]` is the final path for chosen[i], or null to skip it.
+    const outPaths = await Promise.all(chosen.map((i) => join(dir, outName(i.file_name, kind))));
+    const targets: (string | null)[] = outPaths.slice();
+    try {
+      const existing = await api.pathsExist(outPaths);
+      const conflicts = existing.flatMap((e, i) => (e ? [i] : []));
+      let applied: CollisionAction | null = null;
+      for (let k = 0; k < conflicts.length; k++) {
+        const i = conflicts[k];
+        let action: CollisionAction | null = applied;
+        if (!action) {
+          const r = await askCollision(outName(chosen[i].file_name, kind), k + 1, conflicts.length);
+          action = r.action;
+          if (r.applyToAll) applied = action;
+        }
+        if (action === "cancel") { running = false; return; }
+        if (action === "skip") targets[i] = null;
+        else if (action === "rename") targets[i] = await api.uniquePath(outPaths[i]);
+        // "overwrite": keep targets[i] = outPaths[i]
+      }
+    } catch (e) {
+      // If the existence check itself fails, fall through and export as before (the
+      // OS write overwrites) rather than blocking the export on a guard failure.
+      console.warn("overwrite check failed; exporting without the guard:", e);
+    }
+
+    // Drop skipped images; the worker pool runs over the resolved (image, path) pairs.
+    const work = chosen
+      .map((img, i) => ({ img, outPath: targets[i] }))
+      .filter((w): w is { img: (typeof chosen)[number]; outPath: string } => w.outPath !== null);
+    skippedCount = chosen.length - work.length;
+    total = work.length;
+    if (work.length === 0) {
+      // Every selected file was skipped — nothing to write, but report it.
+      running = false; exportedPaths = []; finished = true;
+      return;
+    }
+
     const written: string[] = [];
     const failures: string[] = [];
 
@@ -215,7 +281,7 @@
     // GPU state is `exportRenderer`, and `renderExport` is synchronous (atomic), so
     // workers can't interleave GPU calls — they only overlap the backend's async
     // decode/bake (exportBegin) and encode/write (exportFinish).
-    async function exportOne(img: (typeof chosen)[number]) {
+    async function exportOne(img: (typeof chosen)[number], outPath: string) {
       try {
         const p = withEffectiveBase($editsById[img.id] ?? defaultParams(), imageDir(img));
         const crop = resolveCrop(batchCrop, draft, $cropById[img.id] ?? null);
@@ -227,7 +293,7 @@
           : {};
         const d = $dustById[img.id] ?? emptyDust();
         const metaOverride = $metaById[img.id] ?? null;
-        const outPath = await join(dir, outName(img.file_name, kind));
+        // outPath was resolved up front (collision handling) and is passed in.
 
         if (wantsHdrExport(kind, p)) {
           // HDR gain-map JPEG: backend CPU dual-render. Skips the GPU/SDR path.
@@ -288,12 +354,13 @@
     const CONCURRENCY = 4;
     let next = 0;
     const worker = async () => {
-      while (next < chosen.length) {
-        await exportOne(chosen[next++]);
+      while (next < work.length) {
+        const w = work[next++];
+        await exportOne(w.img, w.outPath);
       }
     };
     await Promise.all(
-      Array.from({ length: Math.min(CONCURRENCY, chosen.length) }, () => worker()),
+      Array.from({ length: Math.min(CONCURRENCY, work.length) }, () => worker()),
     );
 
     running = false;
@@ -447,6 +514,30 @@
       </div>
     </footer>
   </div>
+
+  {#if collision}
+    <div class="ow-overlay" transition:fade={{ duration: 120 }}>
+      <div class="ow-card" transition:scale={{ start: 0.96, opacity: 0, duration: 200, easing: cubicOut }}>
+        <h3>{$t('export.overwriteTitle')}</h3>
+        <p class="ow-body">{$t('export.overwriteBody', { name: collision.name })}</p>
+        {#if collision.count > 1}
+          <p class="ow-progress">{$t('export.overwriteProgress', { index: collision.index, count: collision.count })}</p>
+        {/if}
+        {#if collision.count > 1}
+          <label class="ow-applyall">
+            <input type="checkbox" bind:checked={collisionApplyAll} />
+            {$t('export.overwriteApplyAll')}
+          </label>
+        {/if}
+        <div class="ow-actions">
+          <button class="ghost" on:click={() => chooseCollision('cancel')}>{$t('export.overwriteCancel')}</button>
+          <button class="ghost danger" on:click={() => chooseCollision('overwrite')}>{$t('export.overwriteOverwrite')}</button>
+          <button class="ghost" on:click={() => chooseCollision('skip')}>{$t('export.overwriteSkip')}</button>
+          <button class="primary" on:click={() => chooseCollision('rename')}>{$t('export.overwriteKeepBoth')}</button>
+        </div>
+      </div>
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -633,4 +724,34 @@
     .primary { transition: background 0.14s ease; }
     .primary:hover:not(:disabled), .primary:active:not(:disabled) { transform: none; }
   }
+
+  /* Filename-collision prompt: a small modal over the export dialog. */
+  .ow-overlay {
+    position: fixed; inset: 0; z-index: 60;
+    display: grid; place-items: center;
+    background: rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(3px);
+    -webkit-backdrop-filter: blur(3px);
+  }
+  .ow-card {
+    width: min(440px, 90vw);
+    display: flex; flex-direction: column; gap: 12px;
+    padding: 20px;
+    background: var(--glass-bg);
+    backdrop-filter: blur(20px) saturate(140%);
+    -webkit-backdrop-filter: blur(20px) saturate(140%);
+    border: 1px solid var(--glass-brd);
+    border-radius: var(--radius);
+    box-shadow: 0 28px 80px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  }
+  .ow-card h3 { margin: 0; font-size: 14px; font-weight: 600; letter-spacing: 0.2px; }
+  .ow-body { margin: 0; font-size: 13px; color: var(--text); line-height: 1.4; word-break: break-word; }
+  .ow-progress { margin: 0; font-size: 11px; color: var(--text-faint); }
+  .ow-applyall {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 12px; color: var(--text-dim); cursor: pointer; user-select: none;
+  }
+  .ow-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; margin-top: 4px; }
+  .ow-actions .danger { color: #e0a23a; }
+  .ow-actions .danger:hover { background: rgba(224, 162, 58, 0.14); border-color: rgba(224, 162, 58, 0.4); }
 </style>

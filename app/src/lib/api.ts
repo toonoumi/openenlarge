@@ -201,6 +201,10 @@ export const api = {
       flipV: geom.flip_v ?? false, angle: geom.angle ?? 0,
       dust: wireDust(dust), irRemoval, format, metaOverride,
     }),
+  /** For each output path, whether a file already exists there (overwrite warning). */
+  pathsExist: (paths: string[]) => invoke<boolean[]>("paths_exist", { paths }),
+  /** A non-colliding variant of `path` ("<stem> (n).<ext>"); the input if it's free. */
+  uniquePath: (path: string) => invoke<string>("unique_path", { path }),
   developImage: (id: string) => invoke<ImageEntry>("develop_image", { id }),
   ensureDeveloped: (id: string) => invoke<ImageEntry>("ensure_developed", { id }),
   /** Forget an image; when deleteFile is true also move the file to the OS trash. */

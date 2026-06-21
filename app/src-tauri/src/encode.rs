@@ -4,35 +4,42 @@
 use base64::Engine;
 use film_core::Image;
 use image::{ImageBuffer, ImageEncoder, Rgb};
+use rayon::prelude::*;
 use std::path::Path;
 
 /// Build an 8-bit RGB buffer from the linear/toned image, optionally applying
-/// ~sRGB display gamma.
+/// ~sRGB display gamma. Fills a flat `w*h*3` buffer in parallel by index — same
+/// per-pixel encoding as before (bit-identical), without per-pixel `put_pixel`
+/// bounds checks or `i % width` / `i / width` recomputation.
 fn to_rgb8(img: &Image, apply_gamma: bool) -> ImageBuffer<Rgb<u8>, Vec<u8>> {
     let g = if apply_gamma { 1.0 / 2.2 } else { 1.0 };
-    let mut buf: ImageBuffer<Rgb<u8>, Vec<u8>> =
-        ImageBuffer::new(img.width as u32, img.height as u32);
-    for (i, px) in img.pixels.iter().enumerate() {
-        let x = (i % img.width) as u32;
-        let y = (i / img.width) as u32;
-        let enc = |v: f32| -> u8 { (v.clamp(0.0, 1.0).powf(g) * 255.0).round() as u8 };
-        buf.put_pixel(x, y, Rgb([enc(px[0]), enc(px[1]), enc(px[2])]));
-    }
-    buf
+    let enc = |v: f32| -> u8 { (v.clamp(0.0, 1.0).powf(g) * 255.0).round() as u8 };
+    let mut raw = vec![0u8; img.pixels.len() * 3];
+    raw.par_chunks_mut(3)
+        .zip(img.pixels.par_iter())
+        .for_each(|(out, px)| {
+            out[0] = enc(px[0]);
+            out[1] = enc(px[1]);
+            out[2] = enc(px[2]);
+        });
+    ImageBuffer::from_raw(img.width as u32, img.height as u32, raw)
+        .expect("rgb8 raw buffer is exactly w*h*3")
 }
 
 /// Build a 16-bit RGB buffer from the toned image (no gamma — output is already
-/// display-encoded, matching the TIFF/preview path).
+/// display-encoded, matching the TIFF/preview path). Parallel flat fill.
 fn to_rgb16(img: &Image) -> ImageBuffer<Rgb<u16>, Vec<u16>> {
-    let mut buf: ImageBuffer<Rgb<u16>, Vec<u16>> =
-        ImageBuffer::new(img.width as u32, img.height as u32);
-    for (i, px) in img.pixels.iter().enumerate() {
-        let x = (i % img.width) as u32;
-        let y = (i / img.width) as u32;
-        let enc = |v: f32| -> u16 { (v.clamp(0.0, 1.0) * 65535.0).round() as u16 };
-        buf.put_pixel(x, y, Rgb([enc(px[0]), enc(px[1]), enc(px[2])]));
-    }
-    buf
+    let enc = |v: f32| -> u16 { (v.clamp(0.0, 1.0) * 65535.0).round() as u16 };
+    let mut raw = vec![0u16; img.pixels.len() * 3];
+    raw.par_chunks_mut(3)
+        .zip(img.pixels.par_iter())
+        .for_each(|(out, px)| {
+            out[0] = enc(px[0]);
+            out[1] = enc(px[1]);
+            out[2] = enc(px[2]);
+        });
+    ImageBuffer::from_raw(img.width as u32, img.height as u32, raw)
+        .expect("rgb16 raw buffer is exactly w*h*3")
 }
 
 /// Write a PNG file. bits == 16 → 16-bit PNG; any other value → 8-bit PNG.

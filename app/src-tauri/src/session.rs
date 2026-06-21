@@ -6,7 +6,8 @@ use film_core::Image;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
+use std::time::SystemTime;
 
 /// One Point Color sample: a picked target color + per-sample adjustments.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -262,6 +263,15 @@ pub struct PendingUpscale {
     pub metadata: Metadata,
 }
 
+/// One slot of the export decode cache: the full-res decoded source for `path` as
+/// it stood at `mtime`. Shared via `Arc` so concurrent export workers borrow one
+/// buffer instead of each re-decoding the file.
+pub struct DecodeCacheEntry {
+    pub path: std::path::PathBuf,
+    pub mtime: SystemTime,
+    pub image: Arc<Image>,
+}
+
 #[derive(Default)]
 pub struct Session {
     pub images: Mutex<HashMap<String, CachedImage>>,
@@ -272,6 +282,14 @@ pub struct Session {
     pub zoom_src: Mutex<Option<(String, Image)>>,
     pub pending_export: Mutex<HashMap<String, PreparedExport>>,
     pub pending_upscale: Mutex<Option<PendingUpscale>>,
+    /// Single-slot full-res decode cache for export. The resident `developed.working`
+    /// buffer is only a ≤2560 proxy, so every export must re-decode the original at
+    /// full res; this slot lets repeat exports of one frame (different format/size)
+    /// and the GPU→CPU fallback reuse a single decode instead of re-running the
+    /// (often multi-second) RAW demosaic. Single-slot by design: a 60MP `Image` is
+    /// ~720MB, so a multi-entry cache under CONCURRENCY=4 could exhaust memory. An
+    /// `Arc` so it can be cloned into `export_begin`'s `spawn_blocking`.
+    pub decode_cache: Arc<Mutex<Option<DecodeCacheEntry>>>,
     /// Cached AI-dust probability map per image id (`(w, h, w*h f32 in [0,1])`).
     /// The detector runs once; the sensitivity slider only re-thresholds + refills.
     pub autodust_prob: Mutex<HashMap<String, (usize, usize, Vec<f32>)>>,

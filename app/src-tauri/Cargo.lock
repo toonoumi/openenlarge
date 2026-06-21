@@ -112,6 +112,7 @@ dependencies = [
  "notify",
  "ort",
  "rawler",
+ "rayon",
  "reqwest 0.12.28",
  "rusqlite",
  "serde",

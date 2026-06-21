@@ -1,6 +1,7 @@
 //! Write an Image to a 16-bit RGB TIFF.
 
 use crate::Image;
+use rayon::prelude::*;
 use std::path::Path;
 use tiff::encoder::{colortype, TiffEncoder};
 
@@ -10,13 +11,16 @@ use tiff::encoder::{colortype, TiffEncoder};
 pub fn write_tiff16(img: &Image, path: &Path) -> Result<(), tiff::TiffError> {
     let mut file = std::fs::File::create(path).map_err(tiff::TiffError::IoError)?;
     let mut enc = TiffEncoder::new(&mut file)?;
-    let mut data: Vec<u16> = Vec::with_capacity(img.len() * 3);
-    for px in &img.pixels {
-        for &channel in px.iter() {
-            let v = (channel.clamp(0.0, 1.0) * 65535.0).round() as u16;
-            data.push(v);
-        }
-    }
+    // Build the interleaved u16 buffer in parallel (index-preserving → identical
+    // bytes to the sequential clamp/scale/round).
+    let mut data: Vec<u16> = vec![0u16; img.len() * 3];
+    data.par_chunks_mut(3)
+        .zip(img.pixels.par_iter())
+        .for_each(|(out, px)| {
+            out[0] = (px[0].clamp(0.0, 1.0) * 65535.0).round() as u16;
+            out[1] = (px[1].clamp(0.0, 1.0) * 65535.0).round() as u16;
+            out[2] = (px[2].clamp(0.0, 1.0) * 65535.0).round() as u16;
+        });
     enc.write_image::<colortype::RGB16>(img.width as u32, img.height as u32, &data)?;
     Ok(())
 }

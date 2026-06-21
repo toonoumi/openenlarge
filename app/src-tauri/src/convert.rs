@@ -3,6 +3,7 @@
 
 use film_core::Image;
 use image::{ImageBuffer, Luma, Rgb};
+use rayon::prelude::*;
 
 pub fn to_rgb32f(img: &Image) -> ImageBuffer<Rgb<f32>, Vec<f32>> {
     let mut buf = ImageBuffer::new(img.width as u32, img.height as u32);
@@ -229,20 +230,27 @@ pub fn rotate(img: &Image, deg: f32) -> Image {
     let (sin, cos) = rad.sin_cos();
     let cx = w as f32 / 2.0;
     let cy = h as f32 / 2.0;
+    // Source coordinate for output pixel index `i` (row-major). Each output pixel is
+    // independent, so the resample parallelizes over the buffer with identical math
+    // (and identical results) to the sequential nested loop.
+    let src_coord = |i: usize| -> (f32, f32) {
+        let dx = (i % w) as f32 + 0.5 - cx;
+        let dy = (i / w) as f32 + 0.5 - cy;
+        (cos * dx + sin * dy + cx - 0.5, -sin * dx + cos * dy + cy - 0.5)
+    };
     let mut px = vec![[0.0_f32; 3]; w * h];
-    let mut ir = img.ir.as_ref().map(|_| vec![0.0_f32; w * h]);
-    for oy in 0..h {
-        for ox in 0..w {
-            let dx = ox as f32 + 0.5 - cx;
-            let dy = oy as f32 + 0.5 - cy;
-            let sx = cos * dx + sin * dy + cx - 0.5;
-            let sy = -sin * dx + cos * dy + cy - 0.5;
-            px[oy * w + ox] = sample_bilinear(img, sx, sy);
-            if let (Some(d), Some(s)) = (ir.as_mut(), img.ir.as_ref()) {
-                d[oy * w + ox] = sample_scalar_bilinear(s, w, h, sx, sy);
-            }
-        }
-    }
+    px.par_iter_mut().enumerate().for_each(|(i, out)| {
+        let (sx, sy) = src_coord(i);
+        *out = sample_bilinear(img, sx, sy);
+    });
+    let ir = img.ir.as_ref().map(|s| {
+        let mut d = vec![0.0_f32; w * h];
+        d.par_iter_mut().enumerate().for_each(|(i, out)| {
+            let (sx, sy) = src_coord(i);
+            *out = sample_scalar_bilinear(s, w, h, sx, sy);
+        });
+        d
+    });
     Image {
         width: w,
         height: h,

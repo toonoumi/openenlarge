@@ -122,6 +122,8 @@ pub fn run() {
             commands::export_begin,
             commands::export_pixels,
             commands::export_finish,
+            commands::paths_exist,
+            commands::unique_path,
             commands::as_shot_wb,
             commands::auto_brightness,
             commands::gray_point_wb,
