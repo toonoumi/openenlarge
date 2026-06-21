@@ -65,7 +65,7 @@
 <h2>8. 显示编码</h2>
 <p>结果是一个 0–1 范围内的线性光值，可直接输出至屏幕。最终钳制去除超出色域的溢出值，随后将数值交由显示系统处理。流程中不额外应用伽马编码 —— 系统色彩栈会负责处理。</p>
 
-<figure><svg viewBox="0 0 920 160" role="img" aria-label="Eight-stage inversion pipeline: Scan, minus Base, log D, divide by d_max, Balance, Tone, Look, Display — each a rounded rectangle connected left to right by arrows" xmlns="http://www.w3.org/2000/svg">
+<figure><svg viewBox="0 0 920 160" role="img" aria-label="Eight-stage inversion pipeline: Scan, divide by Base, log D, divide by d_max, Balance, Tone, Look, Display — each a rounded rectangle connected left to right by arrows" xmlns="http://www.w3.org/2000/svg">
   <rect width="920" height="160" rx="12" fill="#141418"/>
   <!-- Node definitions: x positions for 8 nodes spaced evenly across 920px with padding -->
   <!-- Node width 80, gap 26, arrow 16 -->
@@ -78,9 +78,9 @@
     <!-- Arrow 1→2 -->
     <line x1="100" y1="80" x2="116" y2="80" stroke="#f49d4e" stroke-width="1.5"/>
     <polygon points="116,76 124,80 116,84" fill="#f49d4e"/>
-    <!-- Node 2: − Base -->
+    <!-- Node 2: ÷ Base -->
     <rect x="124" y="44" width="88" height="72" rx="8" fill="#1e1e26" stroke="#f49d4e" stroke-width="1.5"/>
-    <text x="168" y="83" font-size="12" fill="#f49d4e" font-weight="bold">− Base</text>
+    <text x="168" y="83" font-size="12" fill="#f49d4e" font-weight="bold">÷ Base</text>
     <text x="168" y="100" font-size="10" fill="#9a9aa2">÷ orange mask</text>
     <!-- Arrow 2→3 -->
     <line x1="212" y1="80" x2="228" y2="80" stroke="#f49d4e" stroke-width="1.5"/>
