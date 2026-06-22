@@ -128,6 +128,7 @@ pub fn run() {
             commands::paths_exist,
             commands::unique_path,
             commands::as_shot_wb,
+            commands::per_zone_wb,
             commands::auto_brightness,
             commands::gray_point_wb,
             commands::load_catalog,

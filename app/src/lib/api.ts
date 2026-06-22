@@ -111,6 +111,11 @@ export interface AsShotWb {
   tint: number;
   gains: [number, number, number];
 }
+export interface PerZoneWbResult {
+  sh: [number, number, number];
+  mid: [number, number, number];
+  hi: [number, number, number];
+}
 export interface ViewSpec {
   crop: [number, number, number, number];
   out_w: number;
@@ -236,6 +241,19 @@ export const api = {
     geom: { rot90?: number; flip_h?: boolean; flip_v?: boolean; angle?: number } = {},
   ) =>
     invoke<AsShotWb>("as_shot_wb", {
+      id, params, crop,
+      rot90: geom.rot90 ?? 0, flipH: geom.flip_h ?? false,
+      flipV: geom.flip_v ?? false, angle: geom.angle ?? 0,
+    }),
+  /** Estimate residual per-zone white balance on the developed image. Inverts the
+   *  thumb with the CURRENT resolved WB to measure the residual cast on top of global
+   *  WB. Returns shadow/mid/highlight zone gains to store into pz_sh/pz_mid/pz_hi. */
+  perZoneWb: (
+    id: string, params: InvertParams,
+    crop: [number, number, number, number] | null = null,
+    geom: { rot90?: number; flip_h?: boolean; flip_v?: boolean; angle?: number } = {},
+  ) =>
+    invoke<PerZoneWbResult>("per_zone_wb", {
       id, params, crop,
       rot90: geom.rot90 ?? 0, flipH: geom.flip_h ?? false,
       flipV: geom.flip_v ?? false, angle: geom.angle ?? 0,

@@ -1928,6 +1928,65 @@ pub(crate) fn auto_seed_wb(
     (temp, tint * 150.0) // tint back to UI −150..150
 }
 
+/// Per-zone WB seed: run `film_core::calibrate::per_zone_wb_gains` on `src`
+/// (a developed positive) to estimate residual per-zone gray-world gains.
+/// Factored out like `auto_seed_wb` so it can be tested independently.
+pub(crate) fn per_zone_seed(src: &film_core::Image, strength: f32) -> [[f32; 3]; 3] {
+    film_core::calibrate::per_zone_wb_gains(src, strength)
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct PerZoneWbResult {
+    pub sh: [f32; 3],
+    pub mid: [f32; 3],
+    pub hi: [f32; 3],
+}
+
+/// Estimate residual per-zone white balance on the developed image.
+/// Inverts the thumb with the CURRENT resolved WB so the gains measure the
+/// RESIDUAL cast on top of global WB. Returns shadow/mid/highlight zone gains
+/// the frontend stores into `pz_sh`/`pz_mid`/`pz_hi`.
+#[tauri::command]
+pub fn per_zone_wb(
+    id: String,
+    params: InvertParams,
+    crop: Option<[f64; 4]>,
+    rot90: Option<u8>,
+    flip_h: Option<bool>,
+    flip_v: Option<bool>,
+    angle: Option<f32>,
+    session: State<Session>,
+) -> Result<PerZoneWbResult, String> {
+    ensure_resident(&session, &id)?;
+    let (base, thumb, dev_dmax) = {
+        let images = session.images.lock().unwrap();
+        let img = images.get(&id).ok_or("unknown image id")?;
+        let dev = img.developed.as_ref().ok_or("not developed")?;
+        (dev.base, dev.thumb.clone(), dev.d_max)
+    };
+    // Orient/crop exactly like as_shot_wb so the estimate matches the rendered region.
+    let thumb = match crop {
+        Some(nc) => {
+            let geom = geom_base(
+                &thumb,
+                rot90.unwrap_or(0),
+                flip_h.unwrap_or(false),
+                flip_v.unwrap_or(false),
+                angle.unwrap_or(0.0),
+            );
+            let (x, y, w, h) = crop_px(nc, geom.width, geom.height);
+            crate::convert::crop(&geom, x, y, w, h)
+        }
+        None => thumb,
+    };
+    // Invert with the CURRENT resolved WB so per-zone measures the RESIDUAL cast.
+    let mut ip = resolve_params(&params, &thumb, effective_base(&params, base));
+    ip.d_max = effective_dmax(&params, dev_dmax);
+    let positive = invert_image(&thumb, &ip, mode_from(&params.mode));
+    let z = per_zone_seed(&positive, params.pz_strength);
+    Ok(PerZoneWbResult { sh: z[0], mid: z[1], hi: z[2] })
+}
+
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct AutoBrightness {
     /// Solved exposure in EV stops. Drives the highlight-preserving filmic exposure
@@ -2906,6 +2965,26 @@ mod tests {
         let n = imbalance(render(&default_invert_params()));
         let s = imbalance(render(&seeded));
         assert!(s < n, "seeded imbalance {s} must be < neutral {n}");
+    }
+
+    #[test]
+    fn per_zone_seed_uniform_cast_matches_global_direction() {
+        // Invert a synthetic uniformly-cast neutral ramp; the per-zone seed gains should
+        // all push the same direction (faithfulness: agrees with a global gray-world).
+        use film_core::Image;
+        let mut pixels = Vec::new();
+        for i in 0..300 {
+            let s = 0.1 + 0.8 * (i as f32 / 299.0);
+            pixels.push([0.6 * s, 0.5 * s, 0.45 * s]);
+        }
+        let src = Image { width: 300, height: 1, pixels, ir: None };
+        let z = per_zone_seed(&src, 1.0);
+        // Blue is the dimmest channel of the cast → blue gain > 1 in every populated zone.
+        for zone in &z {
+            if *zone != [1.0, 1.0, 1.0] {
+                assert!(zone[2] >= zone[0], "blue should be boosted: {zone:?}");
+            }
+        }
     }
 
     #[test]
