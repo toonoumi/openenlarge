@@ -1,5 +1,5 @@
 <h1>整卷</h1>
-<p class="lead">整卷标签页将当前文件夹中的所有已显影帧以印样表形式展示。在此可对整卷应用统一的色调效果——色调、颜色、裁剪、片基与白点——实时双通道预览会在您移动滑块时立即在每一帧上呈现效果，停止操作后自动持久化。您也可以从<a href="develop-basic.html">单帧 · 基础</a>面板复制单帧的显影设置，并按分组应用到整卷。</p>
+<p class="lead">整卷标签页将当前文件夹中的所有已显影帧以印样表形式展示。在此可对整卷应用统一的色调效果——色调、颜色、裁剪、片基与白点——实时双通道预览会在您移动滑块时立即在每一帧上呈现效果，停止操作后自动持久化。您也可以从<a href="develop-basic.html">基础</a>面板复制单帧的显影设置，并按分组应用到整卷。</p>
 
 <h2>印样表</h2>
 <p>印样表占据整卷标签页的主区域。胶片按六帧一行横向排列，每行称为一个<strong>条</strong>，与 35 mm 胶卷的实际条长对应。图块的纵横比会自动适应本卷的实际帧形：通过 <code>contactSheet.ts</code> 中的 <code>pickTileAspect()</code> 计算所有横向帧的中位纵横比，使横向帧恰好填满图块边缘。纵向帧则在同等图块高度内信箱式显示，确保无论方向如何，每行高度保持一致。</p>
@@ -38,10 +38,10 @@
 
 <p><strong>曝光的处理方式：</strong>由于单帧标签页中的自动亮度功能会为每帧独立求解曝光值，整卷曝光滑块仅在您主动将其从默认值（0 EV）移开时才向所有帧传播。由自动亮度设定的各帧曝光值将被保留，除非您在此处明确覆盖。</p>
 
-<p><strong>复制设置时色温的处理方式：</strong>当您在单帧 · 基础面板使用<strong>应用到整卷…</strong>（<code>basic.applyToRoll</code>）并勾选「色调与颜色」分组时，色温会针对每帧重新基准化。源帧的色温被记录为相对于其自身原始中性点的偏移量（即 <code>SettingsSnapshot</code> 中的 <code>tempOffset</code>）；每个目标帧将该偏移量叠加到其自身的原始基准色温上。这意味着复制的「比中性点暖 +1000 K」会在每个目标帧上落地为「比其自身中性点暖 +1000 K」——而非与源帧绝对色温相同。</p>
+<p><strong>复制设置时色温的处理方式：</strong>当您在「基础」面板使用<strong>应用到整卷…</strong>（<code>basic.applyToRoll</code>）并勾选「色调与颜色」分组时，色温会针对每帧重新基准化。源帧的色温被记录为相对于其自身原始中性点的偏移量（即 <code>SettingsSnapshot</code> 中的 <code>tempOffset</code>）；每个目标帧将该偏移量叠加到其自身的原始基准色温上。这意味着复制的「比中性点暖 +1000 K」会在每个目标帧上落地为「比其自身中性点暖 +1000 K」——而非与源帧绝对色温相同。</p>
 
 <h2>复制并应用到整卷</h2>
-<p>您也可以从整卷标签页之外将单帧的显影设置推送到整卷。在<a href="develop-basic.html">单帧 · 基础</a>中，点击<strong>应用到整卷…</strong>按钮（<code>basic.applyToRoll</code>）将打开分组选择对话框——<strong>「应用到本胶卷的全部 N 张？」</strong>（<code>confirmApply.rollTitle</code>）——包含五个复选框：</p>
+<p>您也可以从整卷标签页之外将单帧的显影设置推送到整卷。在<a href="develop-basic.html">基础</a>面板中，点击<strong>应用到整卷…</strong>按钮（<code>basic.applyToRoll</code>）将打开分组选择对话框——<strong>「应用到本胶卷的全部 N 张？」</strong>（<code>confirmApply.rollTitle</code>）——包含五个复选框：</p>
 <ul>
   <li><strong>色调与颜色</strong>（<code>applyGroups.toneColor</code>）——除片基、白点、曝光、模式、胶片配置、HDR 与正片标志之外的所有显影参数。</li>
   <li><strong>裁切</strong>（<code>applyGroups.crop</code>）——该帧的完整 <code>CropRect</code>（纵横比、方向、rot90、flipH、flipV、angle、rect），以完全相同的方式应用到每帧。</li>
