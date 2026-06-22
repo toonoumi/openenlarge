@@ -1,0 +1,25 @@
+<h1>存储与清除数据</h1>
+<p class="lead">OpenEnlarge 把它记住的一切都保存在单个按用户划分的应用数据文件夹中。本页说明这里存放了什么、为什么卸载可能会留下部分数据，以及如何在「设置」中清除缓存或重置所有数据。</p>
+
+<h2>你的数据保存在哪里</h2>
+<p>OpenEnlarge 持久化的一切都保存在同一个文件夹下：</p>
+<ul>
+  <li><strong>macOS：</strong> <code>~/Library/Application Support/com.mohaelder.openenlarge/</code></li>
+  <li><strong>Windows：</strong> <code>%APPDATA%\com.mohaelder.openenlarge\</code></li>
+</ul>
+<p>其中包含两个相互独立的存储：</p>
+<ul>
+  <li><strong>图库</strong>（<code>catalog.db</code>）—— 一个小型数据库，保存你的<strong>文件夹结构</strong>（导入的胶卷与帧）、每一项<strong>编辑与校色</strong>（曝光、白平衡、色调、裁剪、除尘、按卷的片基），窗口状态，以及你的<strong>偏好设置</strong>（语言、API 密钥、键盘快捷键、遥测选择）。</li>
+  <li><strong>图像缓存</strong>（<code>cache/</code>）—— 每帧一个 <code>.oecache</code> 文件，保存已显影的图像，使照片重新打开时即为已显影状态，无需重新处理原始扫描。这通常是占用磁盘空间最多的部分。</li>
+</ul>
+
+<h2>为什么卸载会留下数据</h2>
+<p>卸载应用并不一定会删除这个文件夹 —— 在 macOS 和 Windows 上，按用户划分的应用数据文件夹常常被原样保留。这就是为什么在「卸载并清除数据」之后，有人会发现自己的<strong>校色数据还在，但某卷的文件夹结构却不见了</strong>，或者相反：卸载程序移除或重置了其中一个存储，却没有处理另一个，导致两半数据不同步。清除 OpenEnlarge 数据的可靠方式是在应用内使用下面的操作 —— 它们始终会同时清除两个存储。</p>
+
+<h2>清除图像缓存</h2>
+<p>在<strong>设置 → 存储</strong>中，<strong>清除图像缓存</strong>会删除所有 <code>.oecache</code> 文件。它能释放最多的磁盘空间，并且完全安全：你的照片、文件夹和每一项编辑都会保留。下次打开每张照片时，它只会从原始扫描重新显影。当你想在不丢失任何工作的情况下回收空间时，使用此操作。</p>
+
+<h2>重置所有数据</h2>
+<p><strong>重置所有数据</strong>会恢复到全新状态：它会永久移除所有胶卷、文件夹、编辑和图像缓存，然后以空白状态重启应用。你的<strong>偏好设置会保留</strong> —— 语言、OpenAI API 密钥、键盘快捷键和遥测选择都会保留 —— 因此应用会以你习惯的配置重新启动。由于此操作无法撤销，它会先请求确认。当你想重新开始或将应用交给他人时，使用此操作。</p>
+
+<p class="next"><a href="../index.html">← 返回文档首页</a></p>

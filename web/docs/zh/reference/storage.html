@@ -1,0 +1,91 @@
+<!-- AUTO-GENERATED from /docs-src — do not edit by hand. Run python3 scripts/gen-docs.py -->
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>存储与清除数据 — OpenEnlarge Docs</title>
+<meta name="description" content="OpenEnlarge 将图库与图像缓存保存在何处、卸载会移除和不会移除什么，以及如何在「设置」中清除缓存或重置所有数据。">
+<meta name="theme-color" content="#0a0a0c">
+<link rel="icon" href="../../../img/favicon.png">
+<link rel="canonical" href="https://openenlarge.io/docs/zh/reference/storage.html">
+<link rel="alternate" hreflang="en" href="https://openenlarge.io/docs/reference/storage.html">
+<link rel="alternate" hreflang="zh-Hans" href="https://openenlarge.io/docs/zh/reference/storage.html">
+<link rel="alternate" hreflang="x-default" href="https://openenlarge.io/docs/reference/storage.html">
+<meta property="og:type" content="article"><meta property="og:title" content="存储与清除数据 — OpenEnlarge Docs"><meta property="og:description" content="OpenEnlarge 将图库与图像缓存保存在何处、卸载会移除和不会移除什么，以及如何在「设置」中清除缓存或重置所有数据。"><meta property="og:url" content="https://openenlarge.io/docs/zh/reference/storage.html"><meta property="og:image" content="https://openenlarge.io/docs/og/cover.png"><meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "存储与清除数据", "description": "OpenEnlarge 将图库与图像缓存保存在何处、卸载会移除和不会移除什么，以及如何在「设置」中清除缓存或重置所有数据。", "inLanguage": "zh-Hans", "url": "https://openenlarge.io/docs/zh/reference/storage.html", "isPartOf": {"@type": "WebSite", "name": "OpenEnlarge", "url": "https://openenlarge.io"}}</script>
+<link rel="stylesheet" href="../../docs.css">
+</head>
+<body>
+<a class="skip" href="#content">跳到正文</a>
+<nav class="docnav"><div class="navbar glass wrap">
+  <a class="brand" href="../../../index.html"><img class="mark" src="../../../img/icon.png" alt=""> OpenEnlarge <span class="brand-docs">文档</span></a>
+  <button class="menu-btn" id="menu-btn" type="button" aria-label="菜单" aria-expanded="false">☰</button>
+  <div class="navlinks">
+    <a href="../../../index.html">主页</a>
+    <a href="https://github.com/mohaelder/openenlarge">GitHub</a>
+    <a class="lang-link" href="../../reference/storage.html">EN</a>
+  </div>
+</div></nav>
+<div class="doclayout wrap">
+  <aside class="sidebar" id="sidebar"><div class="side-sec"><div class="side-h">概览</div>
+<a href="../index.html">文档</a>
+<a href="../workflow.html">工作流程</a>
+</div>
+<div class="side-sec"><div class="side-h">原理</div>
+<a href="../science/negatives.html">彩色负片的原理</a>
+<a href="../science/inversion.html">反转流程</a>
+<a href="../science/density.html">密度与对数空间</a>
+<a href="../science/tone-curve.html">色调曲线（Faithful 风格）</a>
+<a href="../science/color.html">色彩与白平衡</a>
+<a href="../science/base-calibration.html">片基校准</a>
+</div>
+<div class="side-sec"><div class="side-h">工具</div>
+<a href="../tools/develop-basic.html">显影 · 基础</a>
+<a href="../tools/tune.html">微调</a>
+<a href="../tools/crop-dust.html">裁剪与除尘</a>
+<a href="../tools/ai.html">AI 工具</a>
+<a href="../tools/library.html">图库</a>
+<a href="../tools/roll.html">整卷</a>
+<a href="../tools/export.html">导出</a>
+</div>
+<div class="side-sec"><div class="side-h">参考</div>
+<a href="../reference/glossary.html">术语表</a>
+<a href="../reference/faq.html">常见问题</a>
+<a class="on" href="../reference/storage.html">存储与清除数据</a>
+</div></aside>
+  <main class="content" id="content">
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="../index.html">文档</a> <span class="sep">/</span> <span>存储与清除数据</span></nav>
+    <article class="prose"><h1>存储与清除数据</h1>
+<p class="lead">OpenEnlarge 把它记住的一切都保存在单个按用户划分的应用数据文件夹中。本页说明这里存放了什么、为什么卸载可能会留下部分数据，以及如何在「设置」中清除缓存或重置所有数据。</p>
+
+<h2>你的数据保存在哪里</h2>
+<p>OpenEnlarge 持久化的一切都保存在同一个文件夹下：</p>
+<ul>
+  <li><strong>macOS：</strong> <code>~/Library/Application Support/com.mohaelder.openenlarge/</code></li>
+  <li><strong>Windows：</strong> <code>%APPDATA%\com.mohaelder.openenlarge\</code></li>
+</ul>
+<p>其中包含两个相互独立的存储：</p>
+<ul>
+  <li><strong>图库</strong>（<code>catalog.db</code>）—— 一个小型数据库，保存你的<strong>文件夹结构</strong>（导入的胶卷与帧）、每一项<strong>编辑与校色</strong>（曝光、白平衡、色调、裁剪、除尘、按卷的片基），窗口状态，以及你的<strong>偏好设置</strong>（语言、API 密钥、键盘快捷键、遥测选择）。</li>
+  <li><strong>图像缓存</strong>（<code>cache/</code>）—— 每帧一个 <code>.oecache</code> 文件，保存已显影的图像，使照片重新打开时即为已显影状态，无需重新处理原始扫描。这通常是占用磁盘空间最多的部分。</li>
+</ul>
+
+<h2>为什么卸载会留下数据</h2>
+<p>卸载应用并不一定会删除这个文件夹 —— 在 macOS 和 Windows 上，按用户划分的应用数据文件夹常常被原样保留。这就是为什么在「卸载并清除数据」之后，有人会发现自己的<strong>校色数据还在，但某卷的文件夹结构却不见了</strong>，或者相反：卸载程序移除或重置了其中一个存储，却没有处理另一个，导致两半数据不同步。清除 OpenEnlarge 数据的可靠方式是在应用内使用下面的操作 —— 它们始终会同时清除两个存储。</p>
+
+<h2>清除图像缓存</h2>
+<p>在<strong>设置 → 存储</strong>中，<strong>清除图像缓存</strong>会删除所有 <code>.oecache</code> 文件。它能释放最多的磁盘空间，并且完全安全：你的照片、文件夹和每一项编辑都会保留。下次打开每张照片时，它只会从原始扫描重新显影。当你想在不丢失任何工作的情况下回收空间时，使用此操作。</p>
+
+<h2>重置所有数据</h2>
+<p><strong>重置所有数据</strong>会恢复到全新状态：它会永久移除所有胶卷、文件夹、编辑和图像缓存，然后以空白状态重启应用。你的<strong>偏好设置会保留</strong> —— 语言、OpenAI API 密钥、键盘快捷键和遥测选择都会保留 —— 因此应用会以你习惯的配置重新启动。由于此操作无法撤销，它会先请求确认。当你想重新开始或将应用交给他人时，使用此操作。</p>
+
+<p class="next"><a href="../index.html">← 返回文档首页</a></p>
+</article>
+    <footer class="docfoot">OpenEnlarge —— 开源胶片扫描编辑器 · MIT 许可</footer>
+  </main>
+  <aside class="toc" id="toc" aria-label="本页目录"><div class="toc-title">本页目录</div><div id="toc-list"></div></aside>
+</div>
+<script src="../../docs.js" defer></script>
+</body>
+</html>

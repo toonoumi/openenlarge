@@ -7,7 +7,7 @@
     { "id": "tools", "title": {"en": "Tools", "zh": "工具"},
       "pages": ["tools/develop-basic","tools/tune","tools/crop-dust","tools/ai","tools/library","tools/roll","tools/export"] },
     { "id": "reference", "title": {"en": "Reference", "zh": "参考"},
-      "pages": ["reference/glossary","reference/faq"] }
+      "pages": ["reference/glossary","reference/faq","reference/storage"] }
   ],
   "pages": {
     "index":    {"slug":"index","section":"overview","title":{"en":"Documentation","zh":"文档"},"desc":{"en":"Understand how OpenEnlarge inverts film scans through real density-domain chemistry, and what every tool does.","zh":"了解 OpenEnlarge 如何通过真实的密度域化学原理反转胶片扫描，以及每个工具的作用。"}},
@@ -26,6 +26,7 @@
     "tools/roll": {"slug":"tools/roll","section":"tools","title":{"en":"Roll","zh":"整卷"},"desc":{"en":"The contact-sheet view and live mirror mode — edit one frame and preview it across the whole roll — plus copy/apply-to-roll groups and film-edge rendering.","zh":"印样表视图与实时镜像模式 —— 编辑一帧并预览到整卷 —— 以及复制/应用到整卷的分组与片边渲染。"}},
     "tools/export": {"slug":"tools/export","section":"tools","title":{"en":"Export","zh":"导出"},"desc":{"en":"Batch export to JPEG, TIFF, or PNG with bit-depth, resolution caps, an optional shared crop, and filename-collision handling — rendered through the same pipeline as the live preview.","zh":"批量导出为 JPEG、TIFF 或 PNG，支持位深、分辨率上限、可选的统一裁剪与文件名冲突处理 —— 通过与实时预览相同的管线渲染。"}},
     "reference/glossary": {"slug":"reference/glossary","section":"reference","title":{"en":"Glossary","zh":"术语表"},"desc":{"en":"A reference of OpenEnlarge's engine constants and the film-photography terms used throughout these docs.","zh":"OpenEnlarge 引擎常量与本文档中所用胶片摄影术语的速查表。"}},
-    "reference/faq": {"slug":"reference/faq","section":"reference","title":{"en":"FAQ","zh":"常见问题"},"desc":{"en":"Common questions about OpenEnlarge — why density-domain inversion, color casts and the film base, dust-removal options, AI fidelity, and whether exports match the preview.","zh":"关于 OpenEnlarge 的常见问题 —— 为何采用密度域反转、色偏与片基、除尘选项、AI 的保真度，以及导出是否与预览一致。"}}
+    "reference/faq": {"slug":"reference/faq","section":"reference","title":{"en":"FAQ","zh":"常见问题"},"desc":{"en":"Common questions about OpenEnlarge — why density-domain inversion, color casts and the film base, dust-removal options, AI fidelity, and whether exports match the preview.","zh":"关于 OpenEnlarge 的常见问题 —— 为何采用密度域反转、色偏与片基、除尘选项、AI 的保真度，以及导出是否与预览一致。"}},
+    "reference/storage": {"slug":"reference/storage","section":"reference","title":{"en":"Storage & clearing data","zh":"存储与清除数据"},"desc":{"en":"Where OpenEnlarge keeps your catalog and image cache, what an uninstall does and doesn't remove, and how to clear the cache or reset all data from Settings.","zh":"OpenEnlarge 将图库与图像缓存保存在何处、卸载会移除和不会移除什么，以及如何在「设置」中清除缓存或重置所有数据。"}}
   }
 }

@@ -1,0 +1,25 @@
+<h1>Storage &amp; clearing data</h1>
+<p class="lead">OpenEnlarge keeps everything it remembers in a single per-user app-data folder. This page explains what lives there, why an uninstall may leave some of it behind, and how to clear the cache or reset all data from Settings.</p>
+
+<h2>Where your data lives</h2>
+<p>Everything OpenEnlarge persists is stored under one folder:</p>
+<ul>
+  <li><strong>macOS:</strong> <code>~/Library/Application Support/com.mohaelder.openenlarge/</code></li>
+  <li><strong>Windows:</strong> <code>%APPDATA%\com.mohaelder.openenlarge\</code></li>
+</ul>
+<p>Inside it there are two independent stores:</p>
+<ul>
+  <li><strong>The catalog</strong> (<code>catalog.db</code>) — a small database holding your <strong>folder structure</strong> (the rolls and frames you imported), every <strong>edit and color calibration</strong> (exposure, white balance, tone, crop, dust, the per-roll film base), window state, and your <strong>preferences</strong> (language, API key, keyboard shortcuts, telemetry choice).</li>
+  <li><strong>The image cache</strong> (<code>cache/</code>) — one <code>.oecache</code> file per frame, holding the baked developed image so photos reopen already developed without re-processing the original scan. This is usually the largest consumer of disk space.</li>
+</ul>
+
+<h2>Why an uninstall can leave data behind</h2>
+<p>Uninstalling an app does not reliably delete this folder — on both macOS and Windows the per-user app-data folder is often left in place. That is why, after "uninstalling and clearing data," people sometimes find that their <strong>color calibration is still there but a roll's folder structure looks gone</strong>, or vice-versa: the uninstaller removed or reset one store but not the other, leaving the two halves out of sync. The reliable way to clear OpenEnlarge's data is from inside the app, using the actions below — they always clear both stores together.</p>
+
+<h2>Clear image cache</h2>
+<p>In <strong>Settings → Storage</strong>, <strong>Clear image cache</strong> deletes every <code>.oecache</code> file. It frees the most disk space and is completely safe: your photos, folders, and every edit are kept. Each image simply re-develops from the original scan the next time you open it. Use this when you want to reclaim space without losing any work.</p>
+
+<h2>Reset all data</h2>
+<p><strong>Reset all data</strong> is a clean slate: it permanently removes every roll, folder, edit, and the image cache, then restarts the app empty. Your <strong>preferences are kept</strong> — language, OpenAI API key, keyboard shortcuts, and telemetry choice all survive — so the app comes back configured the way you like it. Because this cannot be undone, it asks for confirmation first. Use it when you want to start over or hand the app to someone else.</p>
+
+<p class="next"><a href="../index.html">← Back to the docs home</a></p>
