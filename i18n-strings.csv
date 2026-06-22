@@ -2,7 +2,7 @@ key,en,zh,file,note
 app.brand,"OpenEnlarge","OpenEnlarge","src/routes/+page.svelte","button"
 app.about.ariaLabel,"About OpenEnlarge","关于OpenEnlarge","src/routes/+page.svelte","aria-label"
 app.tab.library,"Library","库","src/routes/+page.svelte","button"
-app.tab.develop,"Roll","胶卷","src/routes/+page.svelte","button"
+app.tab.develop,"Roll","整卷","src/routes/+page.svelte","button"
 app.tab.tune,"Frame","单帧","src/routes/+page.svelte","button"
 app.tab.export,"Export","导出","src/routes/+page.svelte","button"
 app.settings.ariaLabel,"Settings","设置","src/routes/+page.svelte","aria-label"

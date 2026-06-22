@@ -480,7 +480,7 @@ export const dict: Record<string, Record<string, string>> = {
     "app.brand": "OpenEnlarge",
     "app.about.ariaLabel": "关于OpenEnlarge",
     "app.tab.library": "库",
-    "app.tab.develop": "胶卷",
+    "app.tab.develop": "整卷",
     "app.tab.tune": "单帧",
     "app.tab.export": "导出",
     "app.settings.ariaLabel": "设置",
