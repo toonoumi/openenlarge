@@ -290,6 +290,89 @@ pub fn auto_wb_gains_strength(img: &Image, strength: f32) -> [f32; 3] {
     ]
 }
 
+/// Per-zone damping (analogous to AUTO_WB_STRENGTH): corrects most of a zone's
+/// residual cast while leaving the look faithful. Tunable on real problem rolls.
+pub const PER_ZONE_STRENGTH: f32 = 0.7;
+/// Hard clamp on any per-zone per-channel gain — keeps the correction gentle so it
+/// never reads as "AI-processed". ±25%.
+pub const PER_ZONE_MAX_GAIN: f32 = 1.25;
+
+/// Zone edges + softness reused from the color-grade split-toning (finish.rs).
+/// NOTE: HI_EDGE is 0.55 (not 0.66) so that the highlight zone has effective
+/// coverage down to luma ~0.30, capturing bright-midtone pixels in typical
+/// inverted-positive images where highlights rarely reach above 0.7.
+const PZ_SH_EDGE: f32 = 0.33;
+const PZ_HI_EDGE: f32 = 0.55;
+const PZ_SOFT: f32 = 0.25;
+
+#[inline]
+fn pz_luma(p: [f32; 3]) -> f32 {
+    0.2126 * p[0] + 0.7152 * p[1] + 0.0722 * p[2]
+}
+#[inline]
+fn pz_smoothstep(e0: f32, e1: f32, x: f32) -> f32 {
+    let t = ((x - e0) / (e1 - e0)).clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
+}
+
+/// Per-zone gray-world WB gains [shadows, mids, highlights] from an already-inverted
+/// positive. Bins near-neutral pixels into 3 luma zones (the color-grade edges),
+/// computes a damped, clamped gray-world correction per zone, and returns identity
+/// for any zone with too few neutral pixels. With a uniform cast all zones agree, so
+/// the result collapses to a global correction (faithfulness invariant).
+pub fn per_zone_wb_gains(img: &Image, strength: f32) -> [[f32; 3]; 3] {
+    let identity = [1.0f32, 1.0, 1.0];
+    if img.pixels.is_empty() {
+        return [identity; 3];
+    }
+    let k = strength.clamp(0.0, 1.0);
+    // Accumulate a saturation-gated, weighted channel sum per zone.
+    // weights: [shadow, mid, highlight] from the luma smoothstep masks.
+    let mut sum = [[0.0f64; 3]; 3];
+    let mut wsum = [0.0f64; 3];
+    for &p in &img.pixels {
+        let mx = p[0].max(p[1]).max(p[2]);
+        let mn = p[0].min(p[1]).min(p[2]);
+        let sat = if mx > 1e-6 { (mx - mn) / mx } else { 0.0 };
+        if sat - 0.25f32 > 1e-5 {
+            continue; // reject chromatic content (same gate spirit as auto_wb_gains)
+        }
+        let l = pz_luma(p);
+        let w_sh = 1.0 - pz_smoothstep(PZ_SH_EDGE - PZ_SOFT, PZ_SH_EDGE + PZ_SOFT, l);
+        let w_hi = pz_smoothstep(PZ_HI_EDGE - PZ_SOFT, PZ_HI_EDGE + PZ_SOFT, l);
+        let w_mid = (1.0 - w_sh - w_hi).clamp(0.0, 1.0);
+        let w = [w_sh, w_mid, w_hi];
+        for z in 0..3 {
+            wsum[z] += w[z] as f64;
+            for c in 0..3 {
+                sum[z][c] += (w[z] * p[c]) as f64;
+            }
+        }
+    }
+    // Min effective pixel weight for a zone to be trusted.
+    // Floor of 1.0 (not 8) because smoothstep weights are fractional and a zone
+    // at the edge of the image's luma range accumulates small but valid weight.
+    let min_w = (img.pixels.len() as f64 / 50.0).max(1.0);
+    let mut out = [identity; 3];
+    for z in 0..3 {
+        if wsum[z] < min_w {
+            continue; // too few neutral pixels → identity, never invent a cast
+        }
+        let mean = [
+            (sum[z][0] / wsum[z]) as f32,
+            (sum[z][1] / wsum[z]) as f32,
+            (sum[z][2] / wsum[z]) as f32,
+        ];
+        let gray = (mean[0] + mean[1] + mean[2]) / 3.0;
+        for c in 0..3 {
+            let raw = gray / mean[c].max(1e-6);
+            let damped = 1.0 + k * (raw - 1.0);
+            out[z][c] = damped.clamp(1.0 / PER_ZONE_MAX_GAIN, PER_ZONE_MAX_GAIN);
+        }
+    }
+    out
+}
+
 /// Auto-derive the Cineon `D_max` (negative density range) over a region: per
 /// channel take a low transmission percentile (the densest neg / brightest scene),
 /// convert to density `log10(base_c / I_low_c)`, and take the max across channels
@@ -1036,5 +1119,70 @@ mod tests {
             spread2 > 0.5,
             "ranged crop spread should be substantial: {spread2}"
         );
+    }
+}
+
+#[cfg(test)]
+mod per_zone_tests {
+    use super::*;
+
+    fn luma(p: [f32; 3]) -> f32 { 0.2126 * p[0] + 0.7152 * p[1] + 0.0722 * p[2] }
+
+    #[test]
+    fn uniform_cast_gives_equal_zone_gains() {
+        // A single cast across all tones → all three zones report the same gains
+        // (the faithfulness invariant: per-zone collapses to a global correction).
+        let cast = [0.6f32, 0.5, 0.45];
+        let mut pixels = Vec::new();
+        for i in 0..300 {
+            let s = 0.15 + 0.7 * (i as f32 / 299.0); // sweep brightness across zones
+            pixels.push([cast[0] * s, cast[1] * s, cast[2] * s]);
+        }
+        let img = Image { width: 300, height: 1, pixels, ir: None };
+        let z = per_zone_wb_gains(&img, 1.0);
+        for c in 0..3 {
+            assert!((z[0][c] - z[1][c]).abs() < 0.05, "sh vs mid ch{c}: {z:?}");
+            assert!((z[1][c] - z[2][c]).abs() < 0.05, "mid vs hi ch{c}: {z:?}");
+        }
+    }
+
+    #[test]
+    fn pink_highlights_neutral_mids_corrects_only_highlights() {
+        // Mids neutral gray, highlights pushed pink (R,B up vs G). The highlight zone
+        // must get a correction (G boosted relative to R/B), the mid zone ≈ identity.
+        let mut pixels = Vec::new();
+        for _ in 0..400 { pixels.push([0.45f32, 0.45, 0.45]); }      // neutral mids
+        for _ in 0..200 { pixels.push([0.92f32, 0.80, 0.90]); }      // pink highlights
+        let img = Image { width: 600, height: 1, pixels, ir: None };
+        let z = per_zone_wb_gains(&img, 1.0);
+        // mid zone ~identity
+        for c in 0..3 { assert!((z[1][c] - 1.0).abs() < 0.08, "mid not identity ch{c}: {z:?}"); }
+        // highlight zone boosts green relative to red/blue (neutralises pink)
+        assert!(z[2][1] > z[2][0] && z[2][1] > z[2][2], "highlights not de-pinked: {z:?}");
+    }
+
+    #[test]
+    fn empty_zone_is_identity() {
+        // All pixels in the mid band → shadow & highlight zones have no pixels →
+        // identity gains (never invent a cast).
+        let img = Image { width: 100, height: 1, pixels: vec![[0.45, 0.45, 0.45]; 100], ir: None };
+        let z = per_zone_wb_gains(&img, 1.0);
+        assert_eq!(z[0], [1.0, 1.0, 1.0], "empty shadow zone must be identity: {z:?}");
+        assert_eq!(z[2], [1.0, 1.0, 1.0], "empty highlight zone must be identity: {z:?}");
+    }
+
+    #[test]
+    fn gains_are_clamped() {
+        // An extreme single-zone cast must be bounded by PER_ZONE_MAX_GAIN.
+        let mut pixels = vec![[0.45f32, 0.45, 0.45]; 300];
+        for _ in 0..300 { pixels.push([0.95f32, 0.05, 0.95]); } // violently pink highlights
+        let img = Image { width: 600, height: 1, pixels, ir: None };
+        let z = per_zone_wb_gains(&img, 1.0);
+        for zone in &z {
+            for &g in zone {
+                assert!(g <= PER_ZONE_MAX_GAIN + 1e-4 && g >= 1.0 / PER_ZONE_MAX_GAIN - 1e-4,
+                    "gain out of clamp: {g} in {z:?}");
+            }
+        }
     }
 }
