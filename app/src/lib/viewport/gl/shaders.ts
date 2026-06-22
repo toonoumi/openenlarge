@@ -42,6 +42,11 @@ uniform float u_pc_lum_shift[8];
 uniform float u_pc_variance[8];
 uniform float u_pc_range[8];
 
+// Per-zone white-balance neutralizer (mirror finish.rs::apply_per_zone_wb).
+// Applied FIRST in finishAt(), before brightness multiply + tone curve.
+uniform int u_pz_enabled;
+uniform vec3 u_pz_sh, u_pz_mid, u_pz_hi;
+
 // Clipping-warning overlay (B1: OUTPUT detail-loss semantics). Enables only;
 // the thresholds are derived from the engine soft-clip knee, not hard-coded
 // display values — see clipCode().
@@ -65,6 +70,24 @@ float tone(float v) {
   v += u_shadows * 0.18 * (1.0 - smoothstep(0.0, 0.5, v));
   v = 0.5 + (v - 0.5) * (1.0 + u_contrast);
   return clamp(v, 0.0, 1.0);
+}
+
+// Per-zone WB neutralizer — mirrors finish.rs::apply_per_zone_wb EXACTLY.
+// Luma weights use BT.709 coefficients; smoothstep edges are fixed:
+//   w_sh = 1 - smoothstep(0.08, 0.58, L)   (shadow zone, L ≈ 0.33 centre)
+//   w_hi =     smoothstep(0.41, 0.91, L)   (highlight zone, L ≈ 0.66 centre)
+//   w_mid = clamp(1 - w_sh - w_hi, 0, 1)
+// Example (sh=[1,1,1] mid=[1,1,1] hi=[1,1,1]) → gain=1 everywhere → identity.
+// Example (L=0.0) → w_sh=1, w_mid=0, w_hi=0 → gain=u_pz_sh.
+// Example (L=1.0) → w_sh=0, w_mid=0, w_hi=1 → gain=u_pz_hi.
+vec3 applyPerZoneWb(vec3 rgb) {
+  if (u_pz_enabled == 0) return rgb;
+  float L = dot(rgb, vec3(0.2126, 0.7152, 0.0722));
+  float wsh = 1.0 - smoothstep(0.08, 0.58, L);
+  float whi = smoothstep(0.41, 0.91, L);
+  float wmid = clamp(1.0 - wsh - whi, 0.0, 1.0);
+  vec3 gain = wsh * u_pz_sh + wmid * u_pz_mid + whi * u_pz_hi;
+  return clamp(rgb * gain, 0.0, 1.0);
 }
 
 vec3 colorGrade(vec3 rgb) {
@@ -234,9 +257,12 @@ vec3 oklabSaturate(vec3 rgb) {
 }
 
 vec3 finishAt(vec2 uv) {
+  // Per-zone WB: FIRST op in finish_pixel (mirror finish.rs::apply_per_zone_wb order).
+  // Applied to the raw inverted positive BEFORE brightness gain + tone curve.
+  vec3 src = texture(u_src, uv).rgb;
   // Brightness/density: log-curve gain (10^(b·RANGE)) before the tone curve, so
   // equal slider steps = equal density steps (mirror finish.rs::finish_pixel).
-  vec3 c = texture(u_src, uv).rgb * pow(10.0, u_brightness * BRIGHTNESS_DENSITY_RANGE);
+  vec3 c = applyPerZoneWb(src) * pow(10.0, u_brightness * BRIGHTNESS_DENSITY_RANGE);
   vec3 t = vec3(tone(c.r), tone(c.g), tone(c.b));
   vec3 s = oklabSaturate(t);
   // Tone curve LUT (per channel: sample at the channel's own value).

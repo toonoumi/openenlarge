@@ -1,7 +1,7 @@
 import { VERT, FRAG, INVERT_FRAG, USM_FRAG, TEXTURE_SIGMA_FRAC } from "./shaders";
 import { type InversionUniforms } from "./invert";
 import type { FinishUniforms } from "./uniforms";
-import type { ColorGradeUniforms, ColorMixUniforms } from "../../develop/finish";
+import type { ColorGradeUniforms, ColorMixUniforms, PerZoneWbUniforms } from "../../develop/finish";
 import type { ClipUniforms } from "./clip";
 import { LUT_SIZE } from "../../develop/curve";
 
@@ -82,6 +82,7 @@ export class FinishRenderer {
   private loc: Record<string, WebGLUniformLocation | null> = {};
   private uniforms: FinishUniforms | null = null;
   private cg: ColorGradeUniforms | null = null;
+  private pz: PerZoneWbUniforms | null = null;
   private cm: ColorMixUniforms | null = null;
   private clip: ClipUniforms | null = null;
   private srcW = 0;
@@ -143,6 +144,8 @@ export class FinishRenderer {
     for (const n of UNIFORM_NAMES) this.loc[`u_${n}`] = gl.getUniformLocation(prog, `u_${n}`);
     for (const [u] of CG_VEC3) this.loc[u] = gl.getUniformLocation(prog, u);
     for (const [u] of CG_FLOAT) this.loc[u] = gl.getUniformLocation(prog, u);
+    for (const u of ["u_pz_enabled", "u_pz_sh", "u_pz_mid", "u_pz_hi"])
+      this.loc[u] = gl.getUniformLocation(prog, u);
     for (const u of [
       "u_cm_hue","u_cm_sat","u_cm_lum","u_pc_count","u_pc_hue","u_pc_sat","u_pc_lum",
       "u_pc_hue_shift","u_pc_sat_shift","u_pc_lum_shift","u_pc_variance","u_pc_range",
@@ -251,6 +254,7 @@ export class FinishRenderer {
   }
 
   setColorGrade(cg: ColorGradeUniforms) { this.cg = cg; }
+  setPerZoneWb(pz: PerZoneWbUniforms) { this.pz = pz; }
   setColorMix(cm: ColorMixUniforms) { this.cm = cm; }
   setClip(c: ClipUniforms) { this.clip = c; }
 
@@ -415,6 +419,13 @@ export class FinishRenderer {
     if (cg) {
       for (const [uu, k] of CG_VEC3) gl.uniform3fv(this.loc[uu], cg[k] as [number, number, number]);
       for (const [uu, k] of CG_FLOAT) gl.uniform1f(this.loc[uu], cg[k] as number);
+    }
+    const pz = this.pz;
+    if (pz) {
+      gl.uniform1i(this.loc.u_pz_enabled, pz.enabled);
+      gl.uniform3fv(this.loc.u_pz_sh, pz.sh);
+      gl.uniform3fv(this.loc.u_pz_mid, pz.mid);
+      gl.uniform3fv(this.loc.u_pz_hi, pz.hi);
     }
     const cm = this.cm;
     if (cm) {

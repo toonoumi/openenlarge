@@ -7,7 +7,7 @@
   import { finishUniforms } from "./gl/uniforms";
   import { toInversionUniforms } from "./gl/invert";
   import { clipUniforms } from "./gl/clip";
-  import { toneLutBytes, colorGrade, colorMix } from "../develop/finish";
+  import { toneLutBytes, colorGrade, colorMix, perZoneWb } from "../develop/finish";
   import { screenRadius, strokeCentroid, type DustStroke } from "../develop/dust";
   import { marqueeZoom } from "./marquee";
   import { hiTierAction } from "./hiTier";
@@ -268,6 +268,7 @@
     renderer.setUniforms(finishUniforms(params));
     renderer.setLut(toneLutBytes(params));
     renderer.setColorGrade(colorGrade(params));
+    renderer.setPerZoneWb(perZoneWb(params));
     renderer.setColorMix(colorMix(params));
     renderer.setClip(clipUniforms({ high: clipHigh, low: clipLow, strict: clipStrict }));
     renderer.draw();

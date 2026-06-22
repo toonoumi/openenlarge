@@ -102,6 +102,23 @@ export function colorGrade(p: InvertParams): ColorGradeUniforms {
   };
 }
 
+/** Per-zone WB uniforms for the GPU (mirror finish.rs::apply_per_zone_wb). */
+export interface PerZoneWbUniforms {
+  enabled: number;
+  sh: [number, number, number];
+  mid: [number, number, number];
+  hi: [number, number, number];
+}
+
+export function perZoneWb(p: InvertParams): PerZoneWbUniforms {
+  return {
+    enabled: p.pz_enabled ? 1 : 0,
+    sh: p.pz_sh,
+    mid: p.pz_mid,
+    hi: p.pz_hi,
+  };
+}
+
 /** Packed Color Mixer uniforms for the GPU (mirror finish.rs::ColorMix). Mixer
  *  slider values are pre-divided by 100; sample shifts too. Arrays are length 8;
  *  Point Color slots beyond pc_count are zero-filled. */
