@@ -35,3 +35,23 @@ describe("reciprocal slider scale", () => {
     expect(frac).toBeLessThan(0.7);
   });
 });
+
+// Task 5b: Temp slider centering — 5500 K must sit at visual centre (50%) with
+// the new min/max so the neutral position is unambiguous to the user.
+describe("Temp slider centering at 5500 K (task 5b)", () => {
+  const TEMP_MIN = 3793;
+  const TEMP_MAX = 10000;
+
+  it("positions 5500 K at exactly 50% of the reciprocal track (within 0.01)", () => {
+    const frac = reciprocalPos(5500, TEMP_MIN) / reciprocalSpan(TEMP_MIN, TEMP_MAX);
+    expect(frac).toBeCloseTo(0.5, 2); // 2 decimal places → within ±0.005
+  });
+
+  it("still pins min to left edge and max to right edge", () => {
+    expect(reciprocalPos(TEMP_MIN, TEMP_MIN)).toBeCloseTo(0, 6);
+    expect(reciprocalPos(TEMP_MAX, TEMP_MIN)).toBeCloseTo(
+      reciprocalSpan(TEMP_MIN, TEMP_MAX),
+      6,
+    );
+  });
+});
