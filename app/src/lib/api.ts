@@ -97,7 +97,11 @@ export type MatchedParams = Pick<InvertParams,
   | "cg_sh_hue" | "cg_sh_sat" | "cg_sh_lum"
   | "cg_hi_hue" | "cg_hi_sat" | "cg_hi_lum">;
 
-export interface AsShotWb { temp: number; tint: number }
+export interface AsShotWb {
+  temp: number;
+  tint: number;
+  gains: [number, number, number];
+}
 export interface ViewSpec {
   crop: [number, number, number, number];
   out_w: number;

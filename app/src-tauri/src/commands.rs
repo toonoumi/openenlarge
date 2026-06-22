@@ -317,6 +317,11 @@ pub(crate) fn wb_from_params(temp: f32, tint: f32) -> [f32; 3] {
     wb_from_kelvin(temp, tint / 150.0)
 }
 
+/// Baseline gains for a (temp, tint) estimate — exactly the WB the render applies.
+pub(crate) fn as_shot_gains(temp: f32, tint: f32) -> [f32; 3] {
+    wb_from_params(temp, tint)
+}
+
 pub(crate) fn resolve_params(
     p: &InvertParams,
     _autowb_src: &film_core::Image,
@@ -1846,6 +1851,9 @@ pub fn unique_path(path: String) -> String {
 pub struct AsShotWb {
     pub temp: f32,
     pub tint: f32,
+    /// Baseline gains the frontend stores in `wb_baseline`; equals the WB today's
+    /// render applies for (temp,tint), so storing it + neutral sliders is identical.
+    pub gains: [f32; 3],
 }
 
 #[tauri::command]
@@ -1887,7 +1895,7 @@ pub fn as_shot_wb(
     // colour space the image is actually rendered in. `build_params` leaves `wb` at
     // [1,1,1], so the estimate is independent of any temp/tint already on the sliders.
     let (temp, tint) = auto_seed_wb(&thumb, &params, base, dev_dmax);
-    Ok(AsShotWb { temp, tint })
+    Ok(AsShotWb { temp, tint, gains: as_shot_gains(temp, tint) })
 }
 
 /// Per-image auto white balance as `(Kelvin, UI-tint −150..150)` — the gray-world
@@ -2097,11 +2105,15 @@ fn gray_point_temp_tint(params: &InvertParams, rgb: [f32; 3]) -> (f32, f32) {
 /// sampled at the click. See [`gray_point_temp_tint`].
 #[tauri::command]
 pub fn gray_point_wb(params: InvertParams, rgb: [f32; 3]) -> AsShotWb {
+    // Additional gains (relative to the current WB) that neutralise the clicked pixel.
     let (temp, tint) = gray_point_temp_tint(&params, rgb);
-    AsShotWb {
-        temp,
-        tint: tint * 150.0,
-    } // back to UI −150..150
+    let gp = wb_from_params(temp, tint);
+    // Current total WB = baseline × slider. New baseline = current_total × gp, so the
+    // pick becomes the new neutral and the frontend can re-zero the sliders.
+    let slider = wb_from_params(params.temp, params.tint);
+    let new_baseline: [f32; 3] =
+        std::array::from_fn(|c| params.wb_baseline[c] * slider[c] * gp[c]);
+    AsShotWb { temp, tint: tint * 150.0, gains: new_baseline }
 }
 
 /// Load the whole catalog at launch: return the snapshot to the frontend AND
@@ -3617,6 +3629,24 @@ mod wb_compose_tests {
         let legacy = wb_from_params(p.temp, p.tint);
         for c in 0..3 {
             assert!((ip.wb[c] - legacy[c]).abs() < 1e-6, "ch {c}: {:?} vs {:?}", ip.wb, legacy);
+        }
+    }
+}
+
+#[cfg(test)]
+mod as_shot_gains_tests {
+    use super::*;
+
+    #[test]
+    fn as_shot_wb_gains_match_cct_projection() {
+        // The returned gains must equal wb_from_params(temp,tint) so that storing
+        // them as wb_baseline (with neutral sliders) reproduces today's applied WB.
+        let temp = 6800.0_f32;
+        let tint = 15.0_f32;
+        let g = as_shot_gains(temp, tint);
+        let want = wb_from_params(temp, tint);
+        for c in 0..3 {
+            assert!((g[c] - want[c]).abs() < 1e-6, "ch {c}: {g:?} vs {want:?}");
         }
     }
 }
