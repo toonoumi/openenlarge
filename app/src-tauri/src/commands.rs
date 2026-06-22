@@ -11,7 +11,7 @@ use crate::session::{
     CachedImage, DecodeCacheEntry, Developed, ImageEntry, InvertParams, PreparedExport, Session,
 };
 use film_core::calibrate::auto_wb_gains;
-use film_core::decode::{decode_ldr, decode_raw, decode_tiff};
+use film_core::decode::{decode_ldr, decode_raw, decode_raw_preview, decode_tiff};
 use film_core::dust::{self, Stamp};
 use film_core::engine::{invert_image, InversionParams, Mode};
 use film_core::finish::{finish_image, tone_luts, ColorGrade, ColorMix, FinishParams, PcSample};
@@ -534,36 +534,26 @@ pub(crate) fn finish_from(p: &InvertParams) -> FinishParams {
 }
 
 /// LIGHT import: thumbnail (embedded preview if available) + metadata + stored
-/// path. No full decode — the heavy work happens in `develop_image`.
+/// path. Previewable formats skip the demosaic — the heavy develop work happens in
+/// `develop_image`. (Formats rawler can't preview — e.g. Olympus `.orf` — do run a
+/// one-time full decode here so the grid never shows a black cell.)
 #[tauri::command]
-pub fn import_image(
+pub async fn import_image(
     path: String,
-    session: State<Session>,
-    catalog: State<crate::catalog::Catalog>,
+    session: State<'_, Session>,
+    catalog: State<'_, crate::catalog::Catalog>,
 ) -> Result<ImageEntry, String> {
-    let p = Path::new(&path);
-    // Light thumbnail: TIFF and JPEG/PNG decode cheaply (no demosaic), so render a
-    // real preview. RAW files fall back to the 1x1 placeholder until develop.
-    let ext = p
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("")
-        .to_lowercase();
-    let preview = match ext.as_str() {
-        "jpg" | "jpeg" | "png" => decode_ldr(p).map_err(|e| format!("{e}")),
-        _ => decode_tiff(p).map_err(|e| format!("{e}")),
-    };
-    let thumbnail = match preview {
-        Ok(prev) => to_png_b64(&proxy(&prev, THUMB_EDGE), true)?,
-        Err(_) => "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==".to_string(),
-    };
-    let metadata = extract(p, 0, 0);
-    let file_name = p
-        .file_name()
-        .and_then(|s| s.to_str())
-        .unwrap_or("image")
-        .to_string();
-    let metadata_json = metadata_to_json(&metadata)?;
+    // The preview decode + metadata extraction run for tens of ms (RAW embedded
+    // preview) up to seconds (ORF full decode), and imports are driven serially per
+    // file from the frontend. Keep it off the main thread — which the WKWebView
+    // shares on macOS — like `develop_image`, so the UI stays live and thumbnails
+    // populate progressively. No `Session`/`Catalog` borrow crosses the boundary;
+    // the catalog upsert + session insert happen back here on the async side.
+    let path_for_compute = path.clone();
+    let (thumbnail, file_name, metadata, metadata_json) =
+        tauri::async_runtime::spawn_blocking(move || import_compute(path_for_compute))
+            .await
+            .map_err(|e| e.to_string())??;
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
@@ -580,6 +570,58 @@ pub fn import_image(
         last_access: 0,
     };
     Ok(session.insert_with_id(id, cached))
+}
+
+/// CPU-bound half of `import_image`, run on `spawn_blocking`: build the light
+/// thumbnail and extract metadata. Owned in / owned out so no `Session`/`Catalog`
+/// borrow crosses the thread boundary. Returns `(thumbnail, file_name, metadata,
+/// metadata_json)`.
+fn import_compute(
+    path: String,
+) -> Result<(String, String, crate::metadata::Metadata, String), String> {
+    let p = Path::new(&path);
+    // Light thumbnail so the Library grid shows a real picture the instant a file is
+    // imported, before develop:
+    //   • JPEG/PNG/TIFF decode cheaply → render the real image directly.
+    //   • RAW (dng/raf/nef/cr2/cr3/arw/rw2/3fr/…) → pull the camera's EMBEDDED
+    //     preview JPEG via rawler. Without this a fresh RAW renders as a black
+    //     placeholder until it's developed.
+    //   • RAW with no embedded preview (Olympus .orf, scanner "linear DNG", bare
+    //     .raw) → fall back to the tiff crate, then a one-time full demosaic
+    //     (`decode_raw`). Heavier, but it only runs for these few formats and we're
+    //     off the UI thread here.
+    // Anything still undecodable falls back to the 1x1 placeholder.
+    let ext = p
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+    let preview: Option<film_core::Image> = match ext.as_str() {
+        "jpg" | "jpeg" | "png" => decode_ldr(p).ok(),
+        "tif" | "tiff" => decode_tiff(p).ok(),
+        _ => decode_raw_preview(p, THUMB_EDGE)
+            .ok()
+            .or_else(|| decode_tiff(p).ok())
+            .or_else(|| {
+                // decode_raw can panic on malformed RAW; guard it so one bad file
+                // degrades to the placeholder instead of failing the whole import.
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| decode_raw(p).ok()))
+                    .ok()
+                    .flatten()
+            }),
+    };
+    let thumbnail = match preview {
+        Some(prev) => to_png_b64(&proxy(&prev, THUMB_EDGE), true)?,
+        None => "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==".to_string(),
+    };
+    let metadata = extract(p, 0, 0);
+    let file_name = p
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("image")
+        .to_string();
+    let metadata_json = metadata_to_json(&metadata)?;
+    Ok((thumbnail, file_name, metadata, metadata_json))
 }
 
 /// List the absolute paths of regular files under `dir`, recursing into every
