@@ -6,6 +6,11 @@
   import { setTelemetryChoice } from "../telemetry";
   import { runManualCheck } from "../update/updater";
   import { openUrl } from "@tauri-apps/plugin-opener";
+  import { onMount } from "svelte";
+  import { confirm } from "@tauri-apps/plugin-dialog";
+  import { relaunch } from "@tauri-apps/plugin-process";
+  import { api } from "../api";
+  import { hydrate } from "../catalog";
   const dispatch = createEventDispatcher();
   const OPENAI_KEYS_URL = "https://platform.openai.com/api-keys";
   const PRIVACY_URL = "https://github.com/mohaelder/openenlarge#telemetry";
@@ -15,6 +20,46 @@
     "mailto:calen0909@hotmail.com?subject=OpenEnlarge%20analytics%20dashboard%20access" +
     "&body=Hi%2C%20I%27d%20like%20access%20to%20the%20OpenEnlarge%20analytics%20dashboard.%0A%0A" +
     "Name%20%2F%20GitHub%3A%0AReason%3A%0AEmail%20to%20invite%20%28Aptabase%20account%29%3A%0A%0AThanks%21";
+
+  let cacheBytes = 0;
+  let busy = false;
+
+  function humanBytes(n: number): string {
+    if (n < 1024) return `${n} B`;
+    const units = ["KB", "MB", "GB", "TB"];
+    let v = n, i = -1;
+    do { v /= 1024; i++; } while (v >= 1024 && i < units.length - 1);
+    return `${v.toFixed(1)} ${units[i]}`;
+  }
+
+  onMount(async () => {
+    try { cacheBytes = await api.cacheSize(); } catch { cacheBytes = 0; }
+  });
+
+  async function onClearCache() {
+    if (busy) return;
+    const ok = await confirm($t("settings.storage.clearCacheConfirm"),
+      { title: "OpenEnlarge", kind: "warning" });
+    if (!ok) return;
+    busy = true;
+    try {
+      await api.clearImageCache();
+      await hydrate();
+      cacheBytes = await api.cacheSize();
+    } finally { busy = false; }
+  }
+
+  async function onReset() {
+    if (busy) return;
+    const ok = await confirm($t("settings.storage.resetConfirm"),
+      { title: "OpenEnlarge", kind: "warning" });
+    if (!ok) return;
+    busy = true;
+    try {
+      await api.resetAllData();
+      await relaunch();
+    } catch { busy = false; }
+  }
 </script>
 
 <div class="backdrop" on:click={() => dispatch("close")} transition:fade={{ duration: 120 }}></div>
@@ -53,6 +98,21 @@
             on:click={() => openUrl(DASHBOARD_REQUEST_URL).catch(() => {})}>
       {$t("settings.telemetry.requestAccess")} ↗
     </button>
+  </div>
+  <div class="grp">
+    <div class="head">{$t("settings.storage.heading")}</div>
+    <div class="row">
+      <span class="lbl">{$t("settings.storage.cacheLabel")}</span>
+      <span class="val">{humanBytes(cacheBytes)}</span>
+    </div>
+    <button class="store-btn" disabled={busy} on:click={onClearCache}>
+      {$t("settings.storage.clearCache")}
+    </button>
+    <div class="hint">{$t("settings.storage.clearCacheHint")}</div>
+    <button class="store-btn danger" disabled={busy} on:click={onReset}>
+      {$t("settings.storage.reset")}
+    </button>
+    <div class="hint">{$t("settings.storage.resetHint")}</div>
   </div>
   <button class="shortcuts" on:click={() => dispatch("shortcuts")}>
     <span class="kbd-icon" aria-hidden="true">⌨</span>
@@ -101,4 +161,17 @@
     cursor: pointer; font: inherit; font-size: 11px; color: var(--text-dim);
     text-decoration: underline; text-decoration-style: dashed; text-underline-offset: 3px; }
   .req-link:hover, .req-link:focus-visible { color: var(--accent); outline: none; }
+  .row { display: flex; justify-content: space-between; align-items: baseline;
+    font-size: 12px; margin-bottom: 8px; }
+  .row .lbl { color: var(--text-dim); }
+  .row .val { color: var(--text); font-variant-numeric: tabular-nums; }
+  .store-btn { width: 100%; margin-top: 6px; padding: 8px 10px; border-radius: 8px;
+    font-size: 12px; cursor: pointer; text-align: left;
+    border: 1px solid var(--glass-brd); background: transparent; color: var(--text);
+    transition: background 0.12s ease, border-color 0.12s ease; }
+  .store-btn:hover:not(:disabled) { background: var(--glass-hi); }
+  .store-btn:disabled { opacity: 0.5; cursor: default; }
+  .store-btn.danger { color: #f4a9a9; border-color: rgba(244,120,120,0.4); }
+  .store-btn.danger:hover:not(:disabled) { background: rgba(244,120,120,0.12);
+    border-color: rgba(244,120,120,0.7); }
 </style>

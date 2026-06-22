@@ -253,6 +253,9 @@ export const api = {
   grayPointWb: (params: InvertParams, rgb: [number, number, number]) =>
     invoke<AsShotWb>("gray_point_wb", { params, rgb }),
   loadCatalog: () => invoke<CatalogSnapshot>("load_catalog"),
+  cacheSize: () => invoke<number>("cache_size"),
+  clearImageCache: () => invoke<number>("clear_image_cache"),
+  resetAllData: () => invoke<void>("reset_all_data"),
   saveEdits: (id: string, paramsJson: string) =>
     invoke<void>("save_edits", { id, paramsJson }),
   saveCrop: (id: string, cropJson: string) =>
