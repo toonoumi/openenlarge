@@ -47,6 +47,12 @@ pub struct InvertParams {
     /// Kelvin (e.g. 5500) and green↔magenta tint (−150..150).
     pub temp: f32,
     pub tint: f32,
+    /// Hidden auto-WB baseline gains (per-image). The auto estimate populates this
+    /// instead of writing temp/tint, so the visible sliders re-zero to neutral with
+    /// symmetric headroom. Final WB = wb_baseline × wb_from_kelvin(temp, tint).
+    /// Defaults to identity so old edits (no key) render unchanged.
+    #[serde(default = "default_wb_baseline")]
+    pub wb_baseline: [f32; 3],
     /// True once the user has deliberately set WB (gray-point pick): the auto-WB
     /// reseed (which fires on base/profile changes) must not clobber it. The Auto
     /// button clears it. Backend never reads it; carried for persistence.
@@ -193,6 +199,9 @@ pub struct InvertParams {
 /// Default identity tone curve: a straight 0→0, 1→1 line.
 pub fn identity_curve() -> Vec<[f32; 2]> {
     vec![[0.0, 0.0], [1.0, 1.0]]
+}
+fn default_wb_baseline() -> [f32; 3] {
+    [1.0, 1.0, 1.0]
 }
 fn default_blending() -> f32 {
     50.0
@@ -484,5 +493,20 @@ mod tests {
         let p: InvertParams = serde_json::from_str(old).unwrap();
         assert_eq!(p.cg_blending, 50.0); // defaulted
         assert_eq!(p.tc_curve, super::identity_curve()); // defaulted
+    }
+
+    #[test]
+    fn invert_params_defaults_wb_baseline_to_identity_from_old_json() {
+        // Old session JSON has no `wb_baseline` key. Serde must fill the identity
+        // default so existing edits render with WB == wb_from_kelvin(temp,tint).
+        let json = r#"{
+            "mode":"d","stock":"none","exposure":0.0,"black":0.0,"gamma":0.4545,
+            "auto_wb":true,"temp":5500.0,"tint":0.0,"wb_manual":false,
+            "wb_mode":"gain","tone_mode":"faithful","contrast":0.0,"highlights":0.0,
+            "shadows":0.0,"whites":0.0,"blacks":0.0,"texture":0.0,
+            "vibrance":0.0,"saturation":0.0
+        }"#;
+        let p: InvertParams = serde_json::from_str(json).expect("must deserialize old JSON");
+        assert_eq!(p.wb_baseline, [1.0, 1.0, 1.0]);
     }
 }

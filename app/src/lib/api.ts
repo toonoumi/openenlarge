@@ -53,6 +53,8 @@ export interface InvertParams {
   auto_wb: boolean;
   temp: number; // Kelvin
   tint: number; // −150..150
+  /** Hidden auto-WB baseline gains; auto-WB writes this, sliders stay neutral. */
+  wb_baseline: [number, number, number];
   wb_manual: boolean; // user set WB deliberately (gray-point pick) → don't auto-reseed it
   wb_mode: "gain" | "subtractive"; // WB application: post-curve gain vs subtractive color-head
   tone_mode: "filmic" | "faithful"; // Tone transfer: filmic S-curve (default) vs faithful gamma+shoulder
@@ -367,7 +369,7 @@ export const defaultParams = (): InvertParams => ({
   // gray-world gains that neutralize as a gain, and the develop-time thumbnail bake
   // also renders gain — so a fresh frame is neutral and matches its thumbnail/Tune.
   // "subtractive" (color head) is an opt-in toggle until the seed is mode-aware.
-  auto_wb: true, temp: 5500, tint: 0, wb_manual: false, wb_mode: "gain", tone_mode: "faithful", hdr: false,
+  auto_wb: true, temp: 5500, tint: 0, wb_baseline: [1, 1, 1], wb_manual: false, wb_mode: "gain", tone_mode: "faithful", hdr: false,
   brightness: 0,
   contrast: 0, highlights: 0, shadows: 0, whites: 0, blacks: 0,
   texture: 0, vibrance: 0, saturation: 0,
