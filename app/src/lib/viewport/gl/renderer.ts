@@ -608,7 +608,7 @@ export class FinishRenderer {
   renderExport(
     src: Uint16Array, w: number, h: number,
     inv: InversionUniforms,
-    fu: FinishUniforms, lut: Uint8Array, cg: ColorGradeUniforms, cm: ColorMixUniforms,
+    fu: FinishUniforms, lut: Uint8Array, cg: ColorGradeUniforms, cm: ColorMixUniforms, pz: PerZoneWbUniforms,
     bit16: boolean,
   ): { data: Uint8Array | Float32Array; w: number; h: number } | null {
     const gl = this.gl; if (!gl || !this.invProg || !this.prog) return null;
@@ -621,7 +621,7 @@ export class FinishRenderer {
     if (!this.setSourceFloat(src, w, h)) return null;
     this.setInversion(inv);
     this.setGeometry({ crop_off: [0, 0], crop_scale: [1, 1], angle: 0, aspect: 1, orient: [1, 0, 0, 1], raw: false, outW: w, outH: h });
-    this.setUniforms(fu); this.setLut(lut); this.setColorGrade(cg); this.setColorMix(cm);
+    this.setUniforms(fu); this.setLut(lut); this.setColorGrade(cg); this.setColorMix(cm); this.setPerZoneWb(pz);
 
     // Offscreen output texture + FBO (RGBA8 for 8-bit, RGBA16F for 16-bit).
     const outInternal = bit16 ? gl.RGBA16F : gl.RGBA8;

@@ -14,7 +14,7 @@
   import { FinishRenderer } from "../viewport/gl/renderer";
   import { toInversionUniforms } from "../viewport/gl/invert";
   import { finishUniforms } from "../viewport/gl/uniforms";
-  import { toneLutBytes, colorGrade, colorMix } from "../develop/finish";
+  import { toneLutBytes, colorGrade, colorMix, perZoneWb } from "../develop/finish";
   import { allSelected, noneSelected, click, isAllSelected, toggleAll, type SelState } from "../selection";
   import { outName } from "./naming";
   import { t } from "$lib/i18n";
@@ -323,7 +323,7 @@
               const out = exportRenderer.renderExport(
                 new Uint16Array(buf), prep.w, prep.h,
                 toInversionUniforms(prep.uniforms),
-                finishUniforms(p), toneLutBytes(p), colorGrade(p), colorMix(p), bit16);
+                finishUniforms(p), toneLutBytes(p), colorGrade(p), colorMix(p), perZoneWb(p), bit16);
               if (out) {
                 const bytes = bit16
                   ? new Uint8Array((out.data as Float32Array).buffer)
