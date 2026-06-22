@@ -447,7 +447,6 @@ histogram.clipLow,"Shadow clipping (right-click: 2)","暗部裁切（右键：2�
 histogram.clipStrictHint,"Strict 253/2 threshold","严格 253/2 阈值","src/lib/viewport/Histogram.svelte","tooltip"
 roll.adjust.heading,"Roll look","整卷色调","src/lib/roll/RollAdjust.svelte","heading"
 roll.adjust.whitePoint,"White point","白点","src/lib/roll/RollAdjust.svelte","label"
-roll.recalibrateBase,"Recalibrate roll base","重新校准胶卷片基","src/lib/roll/RollAdjust.svelte","button"
 confirmOverwrite.title,"Overwrite {count} edited frame{plural}?","覆盖 {count} 张已编辑的胶片？","src/lib/roll/ConfirmOverwrite.svelte","heading"
 confirmOverwrite.sub,"Some frames in this roll already have edits. Applying to the whole roll will replace them.","本卷中部分胶片已有编辑。应用到整卷将覆盖它们。","src/lib/roll/ConfirmOverwrite.svelte","paragraph"
 confirmOverwrite.cancel,"Cancel","取消","src/lib/roll/ConfirmOverwrite.svelte","button"
