@@ -55,16 +55,16 @@
 </div></aside>
   <main class="content" id="content">
     <nav class="crumbs" aria-label="Breadcrumb"><a href="../index.html">Docs</a> <span class="sep">/</span> <span>Develop · Basic</span></nav>
-    <article class="prose"><h1>Develop · Basic</h1>
+    <article class="prose"><h1>Frame · Basic</h1>
 <p class="lead">The Basic panel is where every develop decision starts. It covers the entire photographic chain from base removal and exposure through tone shaping, white balance, and saturation. This page walks each control from top to bottom — what it does for the photo and what engine parameter it tunes.</p>
 
-<figure><img src="/img/develop.png" alt="OpenEnlarge Develop view with a positive image and the Basic adjustment panel open on the right"><figcaption>The Develop view — the inverted positive with the Basic panel controls on the right.</figcaption></figure>
+<figure><img src="/img/develop.png" alt="OpenEnlarge Frame view with a positive image and the Basic adjustment panel open on the right"><figcaption>The Frame view — the inverted positive with the Basic panel controls on the right.</figcaption></figure>
 
 <h2>Inverse</h2>
 <p>The <strong>Inverse</strong> button flips the current frame between negative (Cineon inversion) and positive (passthrough) mode. In positive mode the scan is display-encoded without any inversion, with only <code>exposure</code> and white balance applied. Use it for slide film or print originals where you want to skip the inversion entirely and work on an already-positive source. The toggle is per-image, undoable, and takes effect immediately.</p>
 
 <h2>Film Profile</h2>
-<p>The <strong>Film Profile</strong> menu (labeled <em>Film Profile</em> in the panel) chooses a pre-calibrated stock preset — Kodak Portra 400, Fuji C200, Ektar 100, and others. Selecting a profile sets the <code>stock</code> parameter; the engine uses that to apply a stock-specific pre-log linear mix (<code>m_pre</code>) and density-space unmix (<code>m_post</code>) that corrects for the spectral sensitivity and dye-crosstalk specific to that emulsion. Without a profile the engine runs both matrices as identity (neutral). If no profile matches your film, leave it at <em>No film profile</em>.</p>
+<p>The <strong>Film Profile</strong> menu (labeled <em>Film Profile</em> in the panel) chooses a stock preset — Kodak Portra 400, Fuji C200, Ektar 100, and others. Selecting a profile sets the <code>stock</code> parameter. Currently the pre-log linear mix (<code>m_pre</code>) and density-space unmix (<code>m_post</code>) matrices are identity for all stocks — per-stock spectral sensitivity and dye-crosstalk correction is designed but not yet active in the shipped engine. The menu selection has no effect on color rendering today; it is a placeholder for per-stock profiles that are planned for a future release. If no profile matches your film, leave it at <em>No film profile</em>.</p>
 
 <h2>Exposure</h2>
 <p>Exposure is the primary brightness control and the one to reach for first. It adjusts the <code>exposure</code> parameter in EV stops (slider range −5 to +5). Internally the EV value drives <code>print_exposure = 2^EV</code>, which the engine uses to scale the normalised log-density before the tone curve. Brightening pushes tones up the curve toward white; darkening pulls them down while an already-clipped specular stays at white — the control is highlight-preserving and has no dead zone across the full ±5 range.</p>
@@ -91,7 +91,7 @@
   <li><strong>Blacks</strong> — acts at the extreme dark end (power-law weight strongest near 0). Lifting Blacks raises the shadow floor, adding a film-base lift; lowering it deepens shadows toward pure black. Field: <code>blacks</code>.</li>
 </ul>
 
-<p>The six controls compose in order: Brightness gain → tone curve (Whites/Blacks endpoints, then Highlights/Shadows regions, then Contrast S-gain). They are applied in display space after the inversion core, so they are the same whether you are working on a negative or a positive passthrough frame. For further curve editing — per-channel point curves and region parametric sliders — see <a href="tune.html">Tune</a>.</p>
+<p>The six controls compose in order: Brightness gain → tone curve (Whites/Blacks endpoints, then Highlights/Shadows regions, then Contrast S-gain). They are applied in display space after the inversion core, so they are the same whether you are working on a negative or a positive passthrough frame. For further curve editing — per-channel point curves and region parametric sliders — see <a href="tune.html">Frame — Advanced Panels</a>.</p>
 
 <details class="hood"><summary>Under the hood</summary><div class="hood-body">
 <p><strong>Brightness density curve:</strong> <span class="formula">gain = 10^(b · 0.5)</span> where <code>b</code> is the Brightness slider value pre-scaled from its −100..100 UI range to −1..1. At the extremes (b = ±1) the gain is approximately ×3.16 / ×0.32 (~±1.66 stops). The GPU preview and CPU export use the same constant <code>BRIGHTNESS_DENSITY_RANGE = 0.5</code> so they match identically.</p>
@@ -107,7 +107,7 @@
 </div></details>
 
 <h2>White Balance — Temp, Tint, Auto, Gray-point picker, Color head</h2>
-<p>White balance in Develop is applied through the <strong>Temp</strong> (color temperature, 2800–10000 K) and <strong>Tint</strong> (green/magenta axis, −100 to +100) sliders, which together control per-channel WB gains. The readout for Temp shows as a relative ± offset from the auto-detected as-shot neutral, so you can see how far you have drifted rather than an absolute Kelvin value that is hard to interpret on film.</p>
+<p>White balance in the Frame tab is applied through the <strong>Temp</strong> (color temperature, 2800–10000 K) and <strong>Tint</strong> (green/magenta axis, −100 to +100) sliders, which together control per-channel WB gains. The readout for Temp shows as a relative ± offset from the auto-detected as-shot neutral, so you can see how far you have drifted rather than an absolute Kelvin value that is hard to interpret on film.</p>
 
 <p>Three one-click helpers sit above the sliders:</p>
 <ul>
@@ -151,9 +151,9 @@
 <p>The <strong>HDR</strong> toggle (top-right of the Basic panel header, field <code>hdr: boolean</code>) enables an HDR preview rendition for the current frame. On the Faithful path — OpenEnlarge's sole active tone path — HDR mode raises the tone curve's output ceiling to <code>HDR_HEADROOM = 2.5</code>: the curve's shoulder is fitted toward this raised ceiling instead of SDR white (1.0), so specular highlights and light sources can exceed SDR white on displays that support EDR/HDR10. The look layer is bypassed in HDR mode to preserve those headroom values. The export pipeline stays SDR by default; HDR is a preview-only toggle. (<code>HDR_KNEE</code> belongs to the dormant Filmic path and does not apply here.)</p>
 
 <h2>Reset</h2>
-<p>The <strong>Reset</strong> button (top-right of the Basic panel header) returns all Basic controls to their defaults: Exposure, Brightness, Contrast, Highlights, Shadows, Whites, Blacks, Texture, Vibrance, Saturation are all set to 0, and Film Profile is cleared. Temp and Tint are re-seeded from the as-shot auto-WB estimate rather than being set to a hard default, so the color balance lands at the image's detected neutral rather than an arbitrary number. Crop, film-edge color, and any Tune settings are left untouched.</p>
+<p>The <strong>Reset</strong> button (top-right of the Basic panel header) returns all Basic controls to their defaults: Exposure, Brightness, Contrast, Highlights, Shadows, Whites, Blacks, Texture, Vibrance, Saturation are all set to 0, and Film Profile is cleared. Temp and Tint are re-seeded from the as-shot auto-WB estimate rather than being set to a hard default, so the color balance lands at the image's detected neutral rather than an arbitrary number. Crop, film-edge color, and any Curve, Color Grading, or Color Mixer settings are left untouched.</p>
 
-<p class="next"><a href="tune.html">Next: Tune →</a></p>
+<p class="next"><a href="tune.html">Next: Frame — Advanced Panels →</a></p>
 </article>
     <footer class="docfoot">OpenEnlarge — open-source film scan editor · MIT licensed</footer>
   </main>

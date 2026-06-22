@@ -17,7 +17,7 @@
 <h2>白点（d_max）</h2>
 <p>负片中密度最大的点对应场景中最亮的部分——或胶片边缘完全未曝光的片头。OpenEnlarge 将此密度值称为 <code>d_max</code>。它按通道从待显影的胶片中求取，并锚定归一化步骤：</p>
 <p><span class="formula">t = D / d_max</span></p>
-<p>经此除法后，<code>t = 0</code> 对应负片最薄处（场景最深阴影），<code>t = 1</code> 对应负片最厚处（纸基白）。后续所有操作——色调曲线、风格层、平衡——均作用于归一化后的 <code>t</code>。参见<a href="base-calibration.html">确定白点</a>，了解如何正确设置 <code>d_max</code>。</p>
+<p>经此除法后，<code>t = 0</code> 对应负片最薄处（场景最深阴影），<code>t = 1</code> 对应负片最厚处（纸基白）。在当前的 Faithful 路径中，色调曲线直接作用于经固定系数缩放的原始密度 <code>D</code>（参见色调曲线页面），而非作用于逐帧的 <code>t</code>；平衡与风格层则作用于色调曲线的输出。参见<a href="base-calibration.html">确定白点</a>，了解如何正确设置 <code>d_max</code>。</p>
 
 <details class="hood"><summary>深入原理</summary><div class="hood-body">
 <p>密度公式为 <span class="formula">D = log₁₀(片基 / 扫描值)</span>，钳制为 ≥ 0；<code>片基</code> 从透明胶片边缘采样，<code>扫描值</code> 为原始像素值。一个密度单位约等于 3.32 摄影档（因为 log₁₀(2) ≈ 0.301，1 / 0.301 ≈ 3.32）。白点归一化为 <span class="formula">t = D / d_max</span>，其中 <code>d_max</code> 为各通道负片的最大密度值。OpenEnlarge 中的曝光是以黑点为支点的对数域乘法 —— 在 Faithful 模式下，曝光滑块每移动一单位约对应 1 档/EV。</p>

@@ -11,7 +11,7 @@
 </ul>
 
 <h2>Per roll, not per frame</h2>
-<p>The orange mask is a property of the film emulsion and the development chemistry, not of any individual frame. All frames on a roll share the same base color. For this reason, OpenEnlarge encourages you to set the base <em>once per roll or folder</em> and reuse it: use <a href="../tools/develop-basic.html">the film-edge picker</a> to sample the clear leader at the beginning of the strip, then apply that reading to every frame. Re-sampling frame by frame is rarely necessary and can introduce subtle inconsistencies if the sampled region contains subject matter rather than clear film.</p>
+<p>The orange mask is a property of the film emulsion and the development chemistry, not of any individual frame. All frames on a roll share the same base color. For this reason, OpenEnlarge sets the base <em>once per roll or folder</em> and reuses it. When you develop a roll it computes this base <strong>automatically</strong> — the confidence-filtered median of each frame's auto-detected film edge across the roll — and seeds every frame from it, so no manual sampling step is required. If the automatic base looks off, recalibrate the whole roll from the Roll tab, or override a single frame with the <a href="../tools/develop-basic.html">film-edge picker</a> in Frame · Basic. Re-sampling frame by frame is rarely necessary and can introduce subtle inconsistencies if the sampled region contains subject matter rather than clear film.</p>
 <p>If a roll looks consistently warm or cool after inversion, the first thing to check is whether the base sample was taken from truly clear, unexposed leader. A sample taken from an overexposed frame or a colored frame edge will skew every subsequent inversion on that roll.</p>
 
 <h2>The white point</h2>
@@ -25,4 +25,4 @@
 <p><strong>d_max:</strong> the engine records the <em>densest</em> sampled area of clear film as d_max — equivalently, the pixel with the highest raw value in the clear region. After a crop, the engine re-derives d_max from whatever region of clear film remains visible, keeping the white point stable.</p>
 </div></details>
 
-<p class="next"><a href="../tools/develop-basic.html">Next: the Develop tool →</a></p>
+<p class="next"><a href="../tools/develop-basic.html">Next: Frame · Basic →</a></p>

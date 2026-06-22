@@ -79,7 +79,7 @@
 <h2>Thumbnails and auto-refresh</h2>
 <p>Every developed image has a catalog thumbnail baked at develop time: a 320 px (long edge) rendered positive, stored with the image record. These thumbnails are what the grid displays at normal zoom — they load instantly from the catalog without re-decoding the raw file.</p>
 
-<p>When you zoom in far enough that only one or two columns are visible, the grid switches to a higher-resolution render: a 1080 px (long edge) thumbnail computed on demand for each visible cell. The hi-res render uses your current edits — crop, dust removal, and develop parameters — so it matches what you see in Develop. Zooming back out returns to the cached 320 px catalog thumbnails.</p>
+<p>When you zoom in far enough that only one or two columns are visible, the grid switches to a higher-resolution render: a 1080 px (long edge) thumbnail computed on demand for each visible cell. The hi-res render uses your current edits — crop, dust removal, and develop parameters — so it matches what you see in Frame. Zooming back out returns to the cached 320 px catalog thumbnails.</p>
 
 <p>Each catalog thumbnail carries the engine version that baked it (field <code>thumb_stale</code> on the image entry). When the render engine is updated — for example, the <strong>ENGINE_VERSION</strong> was bumped to <strong>3</strong> for the Faithful tone curve — all stored thumbnails from an earlier version are marked stale (<code>thumb_stale: true</code>). A stale thumbnail still displays, but it reflects the old look rather than the current engine.</p>
 
@@ -89,7 +89,7 @@
   <li><strong>Lazy per-cell refresh</strong> — as you scroll, each visible cell that is still stale (missed by the sweep, or newly stale) is re-baked individually via <code>regenStale()</code> the first time it appears on screen. The new thumbnail is saved back to the catalog and <code>thumb_stale</code> is cleared, so it does not re-bake on subsequent views.</li>
 </ul>
 
-<p>Both paths use the same render route: if the image has saved edits, the thumbnail is baked from those; if not (the image has never been opened in Develop), an auto-WB seed is measured first so the thumbnail matches the look the image would open with.</p>
+<p>Both paths use the same render route: if the image has saved edits, the thumbnail is baked from those; if not (the image has never been opened in Frame), an auto-WB seed is measured first so the thumbnail matches the look the image would open with.</p>
 
 <details class="hood"><summary>Under the hood</summary><div class="hood-body">
 <p><strong>IMPORT_EXTENSIONS</strong> (defined in <code>workflow.ts</code>): <code>["jpg", "jpeg", "png", "dng", "tif", "tiff", "raf", "rw2", "nef", "arw", "cr2", "cr3", "3fr", "orf", "raw"]</code>. The helper <code>filterImportable(paths)</code> lowercases the extension and tests it against this array; anything not in the list is dropped before the backend ever sees it.</p>

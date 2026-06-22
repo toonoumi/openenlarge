@@ -1,5 +1,5 @@
 <h1>导出</h1>
-<p class="lead">导出将已显影的图像转换为成品文件。对话框让你选择格式、设置分辨率上限、为所有所选图像应用可选的统一裁剪，并处理文件名冲突 —— 整个过程通过与显影实时预览相同的管线渲染。</p>
+<p class="lead">导出将已显影的图像转换为成品文件。对话框让你选择格式、设置分辨率上限、为所有所选图像应用可选的统一裁剪，并处理文件名冲突 —— 整个过程通过与单帧实时预览相同的管线渲染。</p>
 
 <figure><img src="/img/export.png" alt="OpenEnlarge 导出对话框，显示图像网格、格式控件和导出按钮"><figcaption>导出对话框 —— 在网格中选择图像，配置格式与分辨率，然后导出。</figcaption></figure>
 
@@ -36,7 +36,7 @@
 <p>跳过的图像不计入最终的「已导出 N 张照片」摘要，而是单独报告为「跳过 N 张」。如果所有选中图像均被跳过，导出以零文件写入完成，并显示跳过数量。</p>
 
 <h2>GPU/CPU 导出一致性</h2>
-<p>导出通过<strong>与实时预览相同的管线</strong>渲染。一个专用的离屏 <code>FinishRenderer</code>（即显影视口所用的同一套 WebGL 着色器）执行完整的反转与润色处理 —— 结果与屏幕上所见的内容像素精确一致。只要 WebGL 可用且图像尺寸在设备最大纹理限制以内，均采用 GPU 路径。</p>
+<p>导出通过<strong>与实时预览相同的管线</strong>渲染。一个专用的离屏 <code>FinishRenderer</code>（即单帧视口所用的同一套 WebGL 着色器）执行完整的反转与润色处理 —— 结果与屏幕上所见的内容像素精确一致。只要 WebGL 可用且图像尺寸在设备最大纹理限制以内，均采用 GPU 路径。</p>
 
 <p>若 GPU 路径不可用 —— 无 WebGL 支持、图像超过纹理尺寸限制，或运行时 GL 错误 —— 导出会自动无感回退到 CPU 路径。CPU 回退使用相同的反转参数，产生相同的结果；仅对大文件速度较慢。无需任何手动操作，回退自动触发。</p>
 
@@ -44,7 +44,7 @@
 
 <details class="hood"><summary>深入原理</summary><div class="hood-body">
 <p><strong>ExportFormat</strong>（定义于 <code>api.ts</code>）：<code>kind: "jpeg" | "tiff" | "png"</code>；<code>bitDepth?: 8 | 16</code>（仅 TIFF/PNG）；<code>quality?: number</code>（仅 JPEG，1–100）；<code>maxBytes?: number | null</code>（仅 JPEG —— 后端以逐步降低质量的方式重新编码，直到文件字节数不超过该值）；<code>resizeLongEdge?: number | null</code>（null 或 0 → 完整分辨率）。</p>
-<p><strong>可导出图像</strong>：导出对话框仅列出当前文件夹范围内已显影的图像（<code>eligible.ts</code> 中的 <code>developedFolderImages</code>）。已导入但从未在显影界面打开的图像不在导出选项中。选择集从当前网格/胶片条选择中初始化，限制在可导出集合内；若所选图像中无可导出项，则默认选中所有可导出图像。</p>
+<p><strong>可导出图像</strong>：导出对话框仅列出当前文件夹范围内已显影的图像（<code>eligible.ts</code> 中的 <code>developedFolderImages</code>）。已导入但从未在单帧界面打开的图像不在导出选项中。选择集从当前网格/胶片条选择中初始化，限制在可导出集合内；若所选图像中无可导出项，则默认选中所有可导出图像。</p>
 <p><strong>输出文件名</strong>：<code>naming.ts</code> 中的 <code>outName</code> 将源文件扩展名替换为目标格式的扩展名（JPEG 为 <code>jpg</code>，TIFF 为 <code>tiff</code>，PNG 为 <code>png</code>），保留原始文件名主干。例如，<code>SCAN_0042.tif</code> 导出为 JPEG 后变为 <code>SCAN_0042.jpg</code>。</p>
 <p><strong>GPU 导出流程</strong>：<code>api.exportBegin</code> 在 Rust 后端解码 RAW 文件，返回像素数据和已计算的 <code>InvertParams</code> 统一变量；<code>api.exportPixels</code> 传输原始像素缓冲区；离屏 <code>FinishRenderer</code> 执行 <code>renderExport</code>（反转 + 润色着色器）；<code>api.exportFinish</code> 将渲染结果编码为所选格式并写入文件。<code>renderExport</code> 交给 <code>exportFinish</code> 的<em>渲染后</em>缓冲区，16 位 TIFF/PNG 为 <code>Float32Array</code>，8 位输出为 <code>Uint8Array</code>（<code>exportPixels</code> 上传的原始扫描数据是另一个独立的整数缓冲区）。CPU 回退（<code>api.exportImage</code>）在 Rust 中运行等效管线。</p>
 <p><strong>并发</strong>：有界工作者池大小为 4（<code>CONCURRENCY = 4</code>），并行处理导出。同步 GPU 渲染步骤（<code>renderExport</code>）绝不并发等待 —— 每个工作者在任何 <code>await</code> 之前以同步索引自增领取下一张图像，因此不同工作者的 GPU 调用不会交错。</p>

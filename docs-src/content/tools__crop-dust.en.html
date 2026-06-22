@@ -1,8 +1,8 @@
 <h1>Crop &amp; dust</h1>
-<p class="lead">The Crop tool and the Eraser tool live on the Develop toolbar as two separate panels. The Crop panel handles geometry — aspect ratio, orientation, 90° rotation, fine straighten, and flip. The Eraser panel handles defect removal — manual heal brush, infrared (IR) automatic dust removal, AI inpainting (MI-GAN), and the on-device AI dust &amp; hair detector. Everything described here runs locally on your machine; no image data is sent anywhere.</p>
+<p class="lead">The Crop tool and the Eraser tool live on the Frame toolbar as two separate panels. The Crop panel handles geometry — aspect ratio, orientation, 90° rotation, fine straighten, and flip. The Eraser panel handles defect removal — manual heal brush, infrared (IR) automatic dust removal, AI inpainting (MI-GAN), and the on-device AI dust &amp; hair detector. Everything described here runs locally on your machine; no image data is sent anywhere.</p>
 
 <h2>Crop &amp; transform</h2>
-<p>The <strong>Crop</strong> panel opens when you click the Crop tool in the Develop toolbar. The crop box on the image is live: dragging any edge or corner resizes it; dragging inside the box pans it. Holding <kbd>Shift</kbd> while dragging locks the aspect ratio. Press <kbd>Enter</kbd> (or click outside the box) to commit; press <kbd>Esc</kbd> to discard changes.</p>
+<p>The <strong>Crop</strong> panel opens when you click the Crop tool in the Frame toolbar. The crop box on the image is live: dragging any edge or corner resizes it; dragging inside the box pans it. Holding <kbd>Shift</kbd> while dragging locks the aspect ratio. Press <kbd>Enter</kbd> (or click outside the box) to commit; press <kbd>Esc</kbd> to discard changes.</p>
 
 <p>The <strong>Aspect ratio</strong> drop-down lets you constrain the crop box to a fixed ratio. Presets are grouped by film format:</p>
 <ul>
@@ -37,7 +37,7 @@
 </div></details>
 
 <h2>Manual eraser brush</h2>
-<p>The <strong>Eraser</strong> panel opens from the Develop toolbar. The manual brush lets you paint over individual dust spots or scratches and have them healed immediately (or via MI-GAN — see below).</p>
+<p>The <strong>Eraser</strong> panel opens from the Frame toolbar. The manual brush lets you paint over individual dust spots or scratches and have them healed immediately (or via MI-GAN — see below).</p>
 
 <p>The <strong>Brush size</strong> slider sets the brush radius normalized to the image width, from 0.005 (very small) to 0.2 (large). The displayed value is the radius as a percentage of image width. You can also scroll the mouse wheel over the image to resize the brush in real time. Each click or drag records a <code>DustStroke</code>: a polyline of normalized points plus the radius <code>r</code>. Press <kbd>⌘Z</kbd> (macOS) to undo the last stroke. Strokes are stored in <code>DustEdits.strokes</code> and persisted via <code>api.saveDust()</code>.</p>
 

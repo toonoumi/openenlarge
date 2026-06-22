@@ -56,10 +56,10 @@
   <main class="content" id="content">
     <nav class="crumbs" aria-label="Breadcrumb"><a href="../index.html">Docs</a> <span class="sep">/</span> <span>AI tools</span></nav>
     <article class="prose"><h1>AI tools</h1>
-<p class="lead">The AI panel in Develop groups three capabilities: AI Enhance, Tone Matching, and Upscale. They are not equivalent in where they run. AI Enhance sends your preview to the <strong>OpenAI API</strong> — the only tool in OpenEnlarge that transmits image data outside your computer. Tone Matching and Upscale both run entirely on your device; no image data leaves your machine.</p>
+<p class="lead">The AI panel in Frame groups three capabilities: AI Enhance, Tone Matching, and Upscale. They are not equivalent in where they run. AI Enhance sends your preview to the <strong>OpenAI API</strong> — the only tool in OpenEnlarge that transmits image data outside your computer. Tone Matching and Upscale both run entirely on your device; no image data leaves your machine.</p>
 
 <h2>AI Enhance</h2>
-<p><strong>AI Enhance</strong> re-imagines the current Develop preview to reduce noise, dust, and scratches. The result is a creative interpretation of your scan, not a faithful pixel-level restoration: the model may invent detail that was not in the original. Use it for look and feel, not as a ground-truth output.</p>
+<p><strong>AI Enhance</strong> re-imagines the current Frame preview to reduce noise, dust, and scratches. The result is a creative interpretation of your scan, not a faithful pixel-level restoration: the model may invent detail that was not in the original. Use it for look and feel, not as a ground-truth output.</p>
 
 <p>Before you can use AI Enhance you must add your own OpenAI API key in <strong>Settings</strong>. Without a key the Enhance button shows the message "Add your OpenAI API key in Settings." and does nothing. OpenEnlarge does not supply or proxy any API key — charges are billed to your own OpenAI account.</p>
 
@@ -69,7 +69,7 @@
 
 <p>Click <strong>Download enhanced image…</strong> to save the result to disk. The save dialog accepts PNG, TIFF, and JPEG. The file is written at the result's native resolution via <code>api.saveEnhanced()</code>; no upscaling is applied at this stage.</p>
 
-<p>Once you have an enhanced result, an <strong>Upscale this result</strong> section appears directly below it, letting you run the on-device upscaler on the AI-enhanced image rather than on the raw Develop output. See the Upscale section below for how that works.</p>
+<p>Once you have an enhanced result, an <strong>Upscale this result</strong> section appears directly below it, letting you run the on-device upscaler on the AI-enhanced image rather than on the raw Frame output. See the Upscale section below for how that works.</p>
 
 <details class="hood"><summary>Under the hood</summary><div class="hood-body">
 <p><strong>API call (<code>api.ts</code>):</strong> the front end calls <code>api.aiEnhanceImage(imageBase64, apiKey)</code>, which invokes the Tauri command <code>ai_enhance_image</code>. The backend sends the base64 image and the user-supplied API key to the OpenAI API and returns the enhanced result as a base64 string. The source preview captured at call time is stored in the <code>source</code> variable for the before/after toggle (<code>showBefore</code>). Saving uses <code>api.saveEnhanced(outPath, imageBase64, format)</code> → Tauri command <code>save_enhanced</code>. The format type is <code>ExportFormat</code>: <code>{ kind: "png" | "tiff" | "jpeg", bitDepth?: 16, quality?: number }</code>.</p>
@@ -86,7 +86,7 @@
 
 <p>Click <strong>Reset match</strong> to restore the parameters to what they were before the match was applied and clear the stored match data. The reset is also a single undo step.</p>
 
-<p>After matching you can continue to adjust any slider in the Develop panel normally. The match only affects a scoped subset of parameters (see hood below) and leaves all other controls untouched.</p>
+<p>After matching you can continue to adjust any slider in the Frame panel normally. The match only affects a scoped subset of parameters (see hood below) and leaves all other controls untouched.</p>
 
 <details class="hood"><summary>Under the hood</summary><div class="hood-body">
 <p><strong>API call (<code>api.ts</code>):</strong> <code>api.colorMatchParams(id, params, refPath, 100)</code> invokes the Tauri command <code>color_match_params</code> with the current image id, its full <code>InvertParams</code>, the reference file path, and strength 100 (full). The backend returns a <code>MatchedParams</code> object — a <code>Pick</code> of <code>InvertParams</code> covering exactly: <code>temp</code>, <code>tint</code>, <code>exposure</code>, <code>contrast</code>, <code>saturation</code>, <code>cg_sh_hue</code>, <code>cg_sh_sat</code>, <code>cg_sh_lum</code>, <code>cg_hi_hue</code>, <code>cg_hi_sat</code>, <code>cg_hi_lum</code>. The front end captures the pre-match values for those same keys into <code>origScoped</code> and stores the full match in <code>matchedFull</code>. The Strength slider blends per-key: <code>blended[k] = origScoped[k] + (matchedFull[k] − origScoped[k]) × (strength / 100)</code>. A reference thumbnail is fetched with <code>api.referenceThumb(path)</code> → Tauri command <code>reference_thumb</code>.</p>

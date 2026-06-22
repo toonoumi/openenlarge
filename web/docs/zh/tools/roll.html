@@ -56,12 +56,12 @@
   <main class="content" id="content">
     <nav class="crumbs" aria-label="Breadcrumb"><a href="../index.html">文档</a> <span class="sep">/</span> <span>整卷</span></nav>
     <article class="prose"><h1>整卷</h1>
-<p class="lead">整卷标签页将当前文件夹中的所有已显影帧以印样表形式展示。在此可对整卷应用统一的色调效果——色调、颜色、裁剪、片基与白点——实时双通道预览会在您移动滑块时立即在每一帧上呈现效果，停止操作后自动持久化。您也可以从<a href="develop-basic.html">显影 · 基础</a>面板复制单帧的显影设置，并按分组应用到整卷。</p>
+<p class="lead">整卷标签页将当前文件夹中的所有已显影帧以印样表形式展示。在此可对整卷应用统一的色调效果——色调、颜色、裁剪、片基与白点——实时双通道预览会在您移动滑块时立即在每一帧上呈现效果，停止操作后自动持久化。您也可以从<a href="develop-basic.html">单帧 · 基础</a>面板复制单帧的显影设置，并按分组应用到整卷。</p>
 
 <h2>印样表</h2>
 <p>印样表占据整卷标签页的主区域。胶片按六帧一行横向排列，每行称为一个<strong>条</strong>，与 35 mm 胶卷的实际条长对应。图块的纵横比会自动适应本卷的实际帧形：通过 <code>contactSheet.ts</code> 中的 <code>pickTileAspect()</code> 计算所有横向帧的中位纵横比，使横向帧恰好填满图块边缘。纵向帧则在同等图块高度内信箱式显示，确保无论方向如何，每行高度保持一致。</p>
 
-<p>点击任意帧，可在全屏<strong>帧预览叠加层</strong>（由 <code>FramePreview.svelte</code> 渲染）中查看该帧——这是一个以全分辨率 GPU 视口展示该帧已提交的显影设置与裁剪的界面。按 <kbd>Esc</kbd> 或点击背景可关闭。叠加层为只读模式：仅展示帧的当前状态，不会打开显影编辑器。</p>
+<p>点击任意帧，可在全屏<strong>帧预览叠加层</strong>（由 <code>FramePreview.svelte</code> 渲染）中查看该帧——这是一个以全分辨率 GPU 视口展示该帧已提交的显影设置与裁剪的界面。按 <kbd>Esc</kbd> 或点击背景可关闭。叠加层为只读模式：仅展示帧的当前状态，不会打开单帧编辑器。</p>
 
 <p>印样表上方工具栏有两个控件。<strong>片边</strong>开关（标签 <code>roll.filmEdge</code>）在胶片条模式与普通印样网格模式之间切换——详见下文<a href="#film-edge-rendering">片边渲染</a>。<strong>导出印样</strong>按钮（标签 <code>roll.export.button</code>）通过系统保存对话框将印样导出为 PNG 文件——详见<a href="export.html">导出 →</a>。</p>
 
@@ -75,28 +75,30 @@
 
 <p><strong>通道 1——预览</strong>在最后一次滑块移动后 120 ms 触发（防抖处理）。以草稿外观重新渲染每帧的缩略图并立即更新印样表，最多 5 帧并行渲染。印样表中的缩略图随结果到来逐帧替换；尚未更新的帧保持上一次的预览图。此通道不写入磁盘，也不更新任何已存储的编辑。</p>
 
-<p><strong>通道 2——持久化</strong>在最后一次更改后 600 ms 触发。它将草稿外观写入每帧的已存储编辑（<code>editsById</code>），若整卷裁剪已设定则将裁剪几何保存到所有帧，并通过复用通道 1 已渲染的预览图更新目录缩略图——无需二次渲染。两个通道在您实际操作控件之前（<code>rollDraftTouched</code> 为 false）均处于休眠状态，因此仅仅打开整卷标签页不会还原您在显影中针对各帧所做的编辑。</p>
+<p><strong>通道 2——持久化</strong>在最后一次更改后 600 ms 触发。它将草稿外观写入每帧的已存储编辑（<code>editsById</code>），若整卷裁剪已设定则将裁剪几何保存到所有帧，并通过复用通道 1 已渲染的预览图更新目录缩略图——无需二次渲染。两个通道在您实际操作控件之前（<code>rollDraftTouched</code> 为 false）均处于休眠状态，因此仅仅打开整卷标签页不会还原您在单帧标签页中针对各帧所做的编辑。</p>
 
 <p>草稿状态在重新进入<em>同一卷</em>时得以保留（切换标签页后滑块位置不丢失），但当活动文件夹切换时会重置为新的默认草稿。</p>
 
 <h2>整卷控件</h2>
-<p>右侧面板（由 <code>RollAdjust.svelte</code> 渲染）标题为<strong>「整卷色调」</strong>（<code>roll.adjust.heading</code>），包含与显影基础面板相同的滑块：色温、色调、曝光、对比度、高光、阴影、白色、黑色、纹理、自然饱和度与饱和度，以及色调曲线。<strong>重置</strong>按钮（<code>basic.reset</code>）将外观恢复默认，同时保留草稿中的片基与白点不变。</p>
+<p>右侧面板（由 <code>RollAdjust.svelte</code> 渲染）标题为<strong>「整卷色调」</strong>（<code>roll.adjust.heading</code>），包含与单帧基础面板相同的滑块：色温、色调、曝光、对比度、高光、阴影、白色、黑色、纹理、自然饱和度与饱和度，以及色调曲线。<strong>重置</strong>按钮（<code>basic.reset</code>）将外观恢复默认，同时保留草稿中的片基与白点不变。</p>
 
 <p>标题下方、滑块上方有三个图标工具按钮，分别开启参考帧编辑模式：</p>
 <ul>
   <li><strong>裁剪</strong>（<code>roll.crop.tool</code>）——在参考帧上打开完整裁剪编辑器；结果应用到所有帧。</li>
-  <li><strong>片基</strong>（<code>roll.base.heading</code>）——在参考帧上打开片基采样模式；采样到的片基应用到所有帧。</li>
+  <li><strong>片基</strong>（<code>roll.base.heading</code>）——在参考帧上打开片基采样模式，并以拾取值重新校准整卷片基；新片基将设为文件夹默认值并重新播种到所有帧。用于覆盖自动计算的整卷片基（详见下文）。</li>
   <li><strong>白点</strong>（<code>roll.wp.heading</code>）——在参考帧上打开白点拾取模式；拾取到的 D-max 值应用到所有帧。</li>
 </ul>
 
+<p><strong>自动整卷片基：</strong>显影一卷胶片时，OpenEnlarge 会自动计算统一的整卷片基——即各帧自动检测到的片基样本经置信度过滤后的逐通道中位值——并将其存储为文件夹默认值。所有帧随后以该共享片基播种。已设置逐帧 <code>base_override</code> 或手动选取白平衡的帧不受影响。首次打开时，尚无存储片基的旧卷将自动迁移。上方的<strong>片基</strong>参考帧编辑模式是在自动片基需要修正时使用的<em>手动重新校准</em>工具；它将替换存储的文件夹片基并重新播种整卷。</p>
+
 <p>三种模式均采用相同的参考帧编辑布局：所选帧占据主区域，所有帧的横向胶片条沿底部排列，可在不退出模式的情况下切换参考帧；右侧面板显示相应控件，或在片基与白点模式下保持为空（单次拾取后自动关闭）。裁剪模式下，按 <kbd>Enter</kbd> 或点击<strong>裁剪</strong>按钮提交几何设置；按 <kbd>Esc</kbd> 放弃。</p>
 
-<p><strong>曝光的处理方式：</strong>由于显影中的自动亮度功能会为每帧独立求解曝光值，整卷曝光滑块仅在您主动将其从默认值（0 EV）移开时才向所有帧传播。由自动亮度设定的各帧曝光值将被保留，除非您在此处明确覆盖。</p>
+<p><strong>曝光的处理方式：</strong>由于单帧标签页中的自动亮度功能会为每帧独立求解曝光值，整卷曝光滑块仅在您主动将其从默认值（0 EV）移开时才向所有帧传播。由自动亮度设定的各帧曝光值将被保留，除非您在此处明确覆盖。</p>
 
-<p><strong>复制设置时色温的处理方式：</strong>当您在显影 · 基础面板使用<strong>应用到整卷…</strong>（<code>basic.applyToRoll</code>）并勾选「色调与颜色」分组时，色温会针对每帧重新基准化。源帧的色温被记录为相对于其自身原始中性点的偏移量（即 <code>SettingsSnapshot</code> 中的 <code>tempOffset</code>）；每个目标帧将该偏移量叠加到其自身的原始基准色温上。这意味着复制的「比中性点暖 +1000 K」会在每个目标帧上落地为「比其自身中性点暖 +1000 K」——而非与源帧绝对色温相同。</p>
+<p><strong>复制设置时色温的处理方式：</strong>当您在单帧 · 基础面板使用<strong>应用到整卷…</strong>（<code>basic.applyToRoll</code>）并勾选「色调与颜色」分组时，色温会针对每帧重新基准化。源帧的色温被记录为相对于其自身原始中性点的偏移量（即 <code>SettingsSnapshot</code> 中的 <code>tempOffset</code>）；每个目标帧将该偏移量叠加到其自身的原始基准色温上。这意味着复制的「比中性点暖 +1000 K」会在每个目标帧上落地为「比其自身中性点暖 +1000 K」——而非与源帧绝对色温相同。</p>
 
 <h2>复制并应用到整卷</h2>
-<p>您也可以从整卷标签页之外将单帧的显影设置推送到整卷。在<a href="develop-basic.html">显影 · 基础</a>中，点击<strong>应用到整卷…</strong>按钮（<code>basic.applyToRoll</code>）将打开分组选择对话框——<strong>「应用到本胶卷的全部 N 张？」</strong>（<code>confirmApply.rollTitle</code>）——包含五个复选框：</p>
+<p>您也可以从整卷标签页之外将单帧的显影设置推送到整卷。在<a href="develop-basic.html">单帧 · 基础</a>中，点击<strong>应用到整卷…</strong>按钮（<code>basic.applyToRoll</code>）将打开分组选择对话框——<strong>「应用到本胶卷的全部 N 张？」</strong>（<code>confirmApply.rollTitle</code>）——包含五个复选框：</p>
 <ul>
   <li><strong>色调与颜色</strong>（<code>applyGroups.toneColor</code>）——除片基、白点、曝光、模式、胶片配置、HDR 与正片标志之外的所有显影参数。</li>
   <li><strong>裁切</strong>（<code>applyGroups.crop</code>）——该帧的完整 <code>CropRect</code>（纵横比、方向、rot90、flipH、flipV、angle、rect），以完全相同的方式应用到每帧。</li>
