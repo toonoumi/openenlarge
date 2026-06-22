@@ -183,6 +183,46 @@ pub fn read_has_ir(path: &Path) -> io::Result<bool> {
     Ok(byte[0] == 1)
 }
 
+/// Does this path name an `.oecache` file?
+fn is_oecache(p: &Path) -> bool {
+    p.extension().and_then(|x| x.to_str()) == Some("oecache")
+}
+
+/// Sum the byte sizes of all `*.oecache` files directly in `dir`. A missing dir
+/// or unreadable entry counts as zero (best-effort; never errors).
+pub fn oecache_bytes(dir: &Path) -> u64 {
+    let mut total = 0u64;
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for e in entries.flatten() {
+            let p = e.path();
+            if is_oecache(&p) {
+                if let Ok(md) = e.metadata() {
+                    total += md.len();
+                }
+            }
+        }
+    }
+    total
+}
+
+/// Delete every `*.oecache` file directly in `dir`; return total bytes freed.
+/// Best-effort: per-file failures are skipped and not counted.
+pub fn clear_oecache(dir: &Path) -> u64 {
+    let mut freed = 0u64;
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for e in entries.flatten() {
+            let p = e.path();
+            if is_oecache(&p) {
+                let len = e.metadata().map(|m| m.len()).unwrap_or(0);
+                if std::fs::remove_file(&p).is_ok() {
+                    freed += len;
+                }
+            }
+        }
+    }
+    freed
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -362,5 +402,34 @@ mod tests {
             }
         }
         let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn oecache_bytes_and_clear_only_touch_oecache_files() {
+        let dir = std::env::temp_dir().join(format!("oe-cache-clear-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let img = make_image_no_ir(2, 2);
+        let thumb = make_image_no_ir(1, 1);
+        write(&dir.join("a.oecache"), [0.0; 3], &img, &thumb).unwrap();
+        write(&dir.join("b.oecache"), [0.0; 3], &img, &thumb).unwrap();
+        // A non-cache file that must survive.
+        std::fs::write(dir.join("keep.txt"), b"hello").unwrap();
+
+        let total = oecache_bytes(&dir);
+        assert!(total > 0, "should sum the two .oecache files");
+
+        let freed = clear_oecache(&dir);
+        assert_eq!(freed, total, "freed bytes equal the measured total");
+        assert_eq!(oecache_bytes(&dir), 0, "all .oecache removed");
+        assert!(dir.join("keep.txt").exists(), "non-cache file untouched");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn oecache_bytes_is_zero_for_missing_dir() {
+        let dir = std::env::temp_dir().join("oe-cache-does-not-exist-xyz");
+        assert_eq!(oecache_bytes(&dir), 0);
     }
 }
