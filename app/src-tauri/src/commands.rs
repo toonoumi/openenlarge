@@ -167,6 +167,11 @@ pub(crate) fn default_invert_params() -> InvertParams {
         pc_samples: Vec::new(),
         wb_mode: "gain".to_string(),
         tone_mode: "filmic".to_string(),
+        pz_enabled: true,
+        pz_strength: 0.7,
+        pz_sh: [1.0, 1.0, 1.0],
+        pz_mid: [1.0, 1.0, 1.0],
+        pz_hi: [1.0, 1.0, 1.0],
     }
 }
 
@@ -538,6 +543,12 @@ pub(crate) fn finish_from(p: &InvertParams) -> FinishParams {
         lut_b,
         cg,
         cm: color_mix_from(p),
+        per_zone: film_core::finish::PerZoneWb {
+            enabled: p.pz_enabled,
+            sh: p.pz_sh,
+            mid: p.pz_mid,
+            hi: p.pz_hi,
+        },
     }
 }
 

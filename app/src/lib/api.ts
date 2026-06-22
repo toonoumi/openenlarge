@@ -90,6 +90,15 @@ export interface InvertParams {
   pc_samples: PointColorSample[];
   /** Positive passthrough: render the scan without inversion (slide/print). */
   positive: boolean;
+
+  // --- Per-zone white-balance neutralizer (Task 7 apply layer) ---
+  /** Enable/disable per-zone WB correction. */
+  pz_enabled: boolean;
+  /** Strength 0..1 (applied at estimate time; stored gains are already damped). */
+  pz_strength: number;
+  pz_sh: [number, number, number];
+  pz_mid: [number, number, number];
+  pz_hi: [number, number, number];
 }
 /** Scoped develop params returned by the local color-match (subset of InvertParams). */
 export type MatchedParams = Pick<InvertParams,
@@ -400,4 +409,6 @@ export const defaultParams = (): InvertParams => ({
   cm_magenta_hue: 0, cm_magenta_sat: 0, cm_magenta_lum: 0,
   pc_samples: [],
   positive: false,
+  pz_enabled: true, pz_strength: 0.7,
+  pz_sh: [1, 1, 1], pz_mid: [1, 1, 1], pz_hi: [1, 1, 1],
 });

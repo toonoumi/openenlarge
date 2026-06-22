@@ -194,6 +194,20 @@ pub struct InvertParams {
     /// Serde default "filmic" so pre-existing saved edits load exactly as before.
     #[serde(default = "tone_mode_filmic")]
     pub tone_mode: String,
+
+    // Per-zone white-balance neutralizer. Gains are stored already damped by pz_strength
+    // (applied at estimate time in the per_zone_wb command, Task 9). Identity defaults
+    // so old session JSON loads as a no-op.
+    #[serde(default = "pz_default_enabled")]
+    pub pz_enabled: bool,
+    #[serde(default = "pz_default_strength")]
+    pub pz_strength: f32,
+    #[serde(default = "default_wb_baseline")]
+    pub pz_sh: [f32; 3],
+    #[serde(default = "default_wb_baseline")]
+    pub pz_mid: [f32; 3],
+    #[serde(default = "default_wb_baseline")]
+    pub pz_hi: [f32; 3],
 }
 
 /// Default identity tone curve: a straight 0→0, 1→1 line.
@@ -202,6 +216,12 @@ pub fn identity_curve() -> Vec<[f32; 2]> {
 }
 fn default_wb_baseline() -> [f32; 3] {
     [1.0, 1.0, 1.0]
+}
+fn pz_default_enabled() -> bool {
+    true
+}
+fn pz_default_strength() -> f32 {
+    0.7
 }
 fn default_blending() -> f32 {
     50.0
@@ -508,5 +528,23 @@ mod tests {
         }"#;
         let p: InvertParams = serde_json::from_str(json).expect("must deserialize old JSON");
         assert_eq!(p.wb_baseline, [1.0, 1.0, 1.0]);
+    }
+
+    #[test]
+    fn per_zone_params_default_from_old_json() {
+        // Old session JSON without any pz_* keys — serde must fill identity defaults.
+        let json = r#"{
+            "mode":"d","stock":"none","exposure":0.0,"black":0.0,"gamma":0.4545,
+            "auto_wb":true,"temp":5500.0,"tint":0.0,"wb_manual":false,
+            "wb_mode":"gain","tone_mode":"faithful",
+            "contrast":0.0,"highlights":0.0,"shadows":0.0,"whites":0.0,"blacks":0.0,
+            "texture":0.0,"vibrance":0.0,"saturation":0.0
+        }"#;
+        let p: InvertParams = serde_json::from_str(json).unwrap();
+        assert!(p.pz_enabled);
+        assert_eq!(p.pz_sh, [1.0, 1.0, 1.0]);
+        assert_eq!(p.pz_mid, [1.0, 1.0, 1.0]);
+        assert_eq!(p.pz_hi, [1.0, 1.0, 1.0]);
+        assert!((p.pz_strength - 0.7).abs() < 1e-6);
     }
 }
