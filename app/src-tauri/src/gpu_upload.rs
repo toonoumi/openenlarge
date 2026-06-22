@@ -194,7 +194,8 @@ pub struct ResolvedInversion {
 /// exact same param construction the CPU path uses (build_params + wb).
 pub fn resolve_to_uniforms(p: &InvertParams, base: [f32; 3]) -> ResolvedInversion {
     let mut ip = build_params(p, base);
-    ip.wb = wb_from_params(p.temp, p.tint);
+    let slider = wb_from_params(p.temp, p.tint);
+    ip.wb = std::array::from_fn(|c| p.wb_baseline[c] * slider[c]);
     let mode = 3u8; // one engine: Cineon
     let m_pre: [f32; 9] = ip.m_pre.as_slice().try_into().expect("mat3 has 9 elements");
     let m_post: [f32; 9] = ip

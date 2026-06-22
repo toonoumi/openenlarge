@@ -323,7 +323,9 @@ pub(crate) fn resolve_params(
     base: [f32; 3],
 ) -> InversionParams {
     let mut ip = build_params(p, base);
-    ip.wb = wb_from_params(p.temp, p.tint);
+    // Final WB = hidden auto baseline × visible slider trim (both per-channel gains).
+    let slider = wb_from_params(p.temp, p.tint);
+    ip.wb = std::array::from_fn(|c| p.wb_baseline[c] * slider[c]);
     ip
 }
 
@@ -3582,5 +3584,39 @@ pub fn save_enhanced(
         "png" => write_png(&img, out, format.bit_depth),
         "jpeg" => write_jpeg(&img, out, format.quality, format.max_bytes),
         other => Err(format!("unknown export format: {other}")),
+    }
+}
+
+#[cfg(test)]
+mod wb_compose_tests {
+    use super::*;
+
+    fn base_params() -> InvertParams {
+        default_invert_params()
+    }
+
+    #[test]
+    fn resolve_composes_baseline_times_slider() {
+        let mut p = base_params();
+        p.wb_baseline = [1.2, 1.0, 0.8];
+        // Neutral sliders → wb_from_params ≈ [1,1,1] → wb == baseline.
+        let ip = resolve_params(&p, &film_core::Image::new(1, 1), [0.5, 0.5, 0.5]);
+        for c in 0..3 {
+            assert!((ip.wb[c] - p.wb_baseline[c]).abs() < 1e-3, "ch {c}: {:?}", ip.wb);
+        }
+    }
+
+    #[test]
+    fn neutral_baseline_equals_legacy_wb() {
+        // Identity baseline must reproduce today's WB exactly (back-compat for old edits).
+        let mut p = base_params();
+        p.temp = 7200.0;
+        p.tint = 20.0;
+        p.wb_baseline = [1.0, 1.0, 1.0];
+        let ip = resolve_params(&p, &film_core::Image::new(1, 1), [0.5, 0.5, 0.5]);
+        let legacy = wb_from_params(p.temp, p.tint);
+        for c in 0..3 {
+            assert!((ip.wb[c] - legacy[c]).abs() < 1e-6, "ch {c}: {:?} vs {:?}", ip.wb, legacy);
+        }
     }
 }
