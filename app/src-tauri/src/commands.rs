@@ -861,6 +861,44 @@ pub fn delete_image(
     Ok(())
 }
 
+/// Total bytes used by the render cache (`cache/*.oecache`).
+#[tauri::command]
+pub fn cache_size(session: State<Session>) -> u64 {
+    let dir = session.cache_dir.lock().unwrap().clone();
+    crate::cache::oecache_bytes(&dir)
+}
+
+/// Delete the render cache (`cache/*.oecache`) and drop the in-memory developed
+/// buffers so the grid re-hydrates (images re-develop on next open). Catalog,
+/// edits, and folders are untouched. Returns bytes freed.
+#[tauri::command]
+pub fn clear_image_cache(session: State<Session>) -> u64 {
+    let dir = session.cache_dir.lock().unwrap().clone();
+    let freed = crate::cache::clear_oecache(&dir);
+    // Drop the heavy `developed` buffers (keep the lightweight image records);
+    // they would otherwise mask the now-deleted cache until relaunch.
+    for ci in session.images.lock().unwrap().values_mut() {
+        ci.developed = None;
+    }
+    session.autodust_prob.lock().unwrap().clear();
+    session.autodust_healed.lock().unwrap().clear();
+    freed
+}
+
+/// Wipe all catalog content (images, edits, folder structure, app state) and the
+/// render cache, but preserve preferences. The frontend relaunches the app after
+/// this returns to drop all remaining in-memory state.
+#[tauri::command]
+pub fn reset_all_data(
+    session: State<Session>,
+    catalog: State<crate::catalog::Catalog>,
+) -> Result<(), String> {
+    catalog.reset_content().map_err(|e| format!("{e}"))?;
+    let dir = session.cache_dir.lock().unwrap().clone();
+    let _ = crate::cache::clear_oecache(&dir);
+    Ok(())
+}
+
 /// A brush stroke from the UI: a polyline of points normalized to the DISPLAYED
 /// image ([0,1] each), with radius `r` normalized to the displayed image WIDTH.
 #[derive(Debug, Clone, Deserialize)]
