@@ -51,6 +51,50 @@ fn smoothstep(e0: f32, e1: f32, x: f32) -> f32 {
     t * t * (3.0 - 2.0 * t)
 }
 
+// --- Per-zone white-balance correction. ---
+// Corrective (not creative) gains measured on the inverted positive BEFORE the
+// creative color grade. Zone edges mirror ColorGrade so the neutraliser and the
+// artistic toning always divide the tonal range the same way. Mirrored in
+// shaders.ts `applyPerZoneWb` (Task 10).
+const PZ_SH_EDGE: f32 = 0.33;
+const PZ_HI_EDGE: f32 = 0.66;
+const PZ_SOFT: f32 = 0.25;
+
+/// Corrective per-zone white-balance gains (shadows/mids/highlights), applied to
+/// the inverted positive BEFORE the creative color grade. Separate from
+/// `ColorGrade` so it never overwrites the user's artistic toning. Identity gains
+/// + the `enabled = false` flag both render as a no-op (back-compat for old edits).
+#[derive(Debug, Clone, Copy)]
+pub struct PerZoneWb {
+    pub enabled: bool,
+    pub sh: [f32; 3],
+    pub mid: [f32; 3],
+    pub hi: [f32; 3],
+}
+
+impl Default for PerZoneWb {
+    fn default() -> Self {
+        PerZoneWb { enabled: true, sh: [1.0; 3], mid: [1.0; 3], hi: [1.0; 3] }
+    }
+}
+
+/// Apply the per-zone WB correction: luma-keyed blend of the three zone gains,
+/// then a per-channel multiply. Returns `rgb` unchanged when disabled or when all
+/// gains are identity. Mirror in shaders.ts `applyPerZoneWb`.
+pub fn apply_per_zone_wb(rgb: [f32; 3], pz: &PerZoneWb) -> [f32; 3] {
+    if !pz.enabled {
+        return rgb;
+    }
+    let l = luma(rgb);
+    let w_sh = 1.0 - smoothstep(PZ_SH_EDGE - PZ_SOFT, PZ_SH_EDGE + PZ_SOFT, l);
+    let w_hi = smoothstep(PZ_HI_EDGE - PZ_SOFT, PZ_HI_EDGE + PZ_SOFT, l);
+    let w_mid = (1.0 - w_sh - w_hi).clamp(0.0, 1.0);
+    std::array::from_fn(|c| {
+        let gain = w_sh * pz.sh[c] + w_mid * pz.mid[c] + w_hi * pz.hi[c];
+        (rgb[c] * gain).clamp(0.0, 1.0)
+    })
+}
+
 /// Pure-hue RGB at full saturation/value. `h` in degrees.
 fn hsv_hue_rgb(h: f32) -> [f32; 3] {
     let h = (h.rem_euclid(360.0)) / 60.0;
@@ -412,6 +456,7 @@ pub struct FinishParams {
     pub lut_b: [f32; LUT_SIZE],
     pub cg: ColorGrade,
     pub cm: ColorMix,
+    pub per_zone: PerZoneWb,
 }
 
 impl Default for FinishParams {
@@ -431,6 +476,7 @@ impl Default for FinishParams {
             lut_b: identity_lut(),
             cg: ColorGrade::default(),
             cm: ColorMix::default(),
+            per_zone: PerZoneWb::default(),
         }
     }
 }
@@ -563,9 +609,13 @@ fn apply_saturation(rgb: [f32; 3], p: &FinishParams) -> [f32; 3] {
     [linear_to_srgb(out_lin[0]), linear_to_srgb(out_lin[1]), linear_to_srgb(out_lin[2])]
 }
 
-/// Per-pixel finishing. Order: Basic tone curve + saturation → Tone Curve LUT →
-/// Color Grading. (Texture is a separate spatial pass in `finish_image`.)
+/// Per-pixel finishing. Order: Per-zone WB correction → Basic tone curve +
+/// saturation → Tone Curve LUT → Color Grading. (Texture is a separate spatial
+/// pass in `finish_image`.)
 pub fn finish_pixel(rgb: [f32; 3], p: &FinishParams) -> [f32; 3] {
+    // Per-zone WB correction: applied FIRST, in the same inverted-positive domain
+    // where the estimator (Task 6) measured the gains. Identity gains = no-op.
+    let rgb = apply_per_zone_wb(rgb, &p.per_zone);
     // Brightness/density: a log-curve gain applied before everything else, so it
     // reads as an overall lift/density move that Contrast then pivots about.
     let g = brightness_gain(p.brightness);
@@ -1355,5 +1405,69 @@ mod tests {
         let edge = out.pixels[2 * 5 + 2][0];
         let flat = out.pixels[2 * 5 + 4][0];
         assert!(edge > flat, "edge {edge} flat {flat}");
+    }
+
+    #[test]
+    fn per_zone_default_is_identity_in_finish_pixel() {
+        // Regression: applying default PerZoneWb must be a true no-op — the output of
+        // apply_per_zone_wb with identity gains equals the input exactly, and
+        // finish_pixel with default FinishParams (which contains default PerZoneWb)
+        // must yield the same result as the pre-feature path.
+        let probe = [0.35_f32, 0.55, 0.20];
+        let out_default = finish_pixel(probe, &FinishParams::default());
+        // Manually bypass per_zone (identity) and run the rest: apply_per_zone_wb
+        // with identity gains must return probe unchanged.
+        let pz_out = apply_per_zone_wb(probe, &PerZoneWb::default());
+        for c in 0..3 {
+            assert!(
+                (pz_out[c] - probe[c]).abs() < 1e-6,
+                "apply_per_zone_wb identity not no-op ch{c}: {pz_out:?}"
+            );
+        }
+        // And finish_pixel with default params uses identity per_zone, so same result.
+        let out_identity = finish_pixel(pz_out, &FinishParams {
+            per_zone: PerZoneWb::default(),
+            ..Default::default()
+        });
+        for c in 0..3 {
+            assert!(
+                (out_default[c] - out_identity[c]).abs() < 1e-6,
+                "default FinishParams not identity ch{c}: default={} identity={}",
+                out_default[c],
+                out_identity[c]
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod per_zone_apply_tests {
+    use super::*;
+
+    #[test]
+    fn identity_gains_are_noop() {
+        let pz = PerZoneWb::default();
+        let rgb = [0.2, 0.5, 0.8];
+        let out = apply_per_zone_wb(rgb, &pz);
+        for c in 0..3 { assert!((out[c] - rgb[c]).abs() < 1e-6, "noop ch{c}: {out:?}"); }
+    }
+
+    #[test]
+    fn disabled_is_noop_even_with_gains() {
+        let pz = PerZoneWb { enabled: false, sh: [1.2, 1.0, 0.8], mid: [1.1, 1.0, 0.9], hi: [0.8, 1.2, 0.9] };
+        let rgb = [0.2, 0.5, 0.8];
+        let out = apply_per_zone_wb(rgb, &pz);
+        for c in 0..3 { assert!((out[c] - rgb[c]).abs() < 1e-6, "disabled ch{c}: {out:?}"); }
+    }
+
+    #[test]
+    fn highlight_gain_affects_bright_pixel_not_dark() {
+        // A highlight-only green boost must move a bright pixel's green but leave a
+        // shadow pixel ~unchanged (luma-keyed weighting).
+        let pz = PerZoneWb { enabled: true, sh: [1.0; 3], mid: [1.0; 3], hi: [1.0, 1.2, 1.0] };
+        let bright = apply_per_zone_wb([0.9, 0.9, 0.9], &pz);
+        let dark = apply_per_zone_wb([0.05, 0.05, 0.05], &pz);
+        assert!(bright[1] > 0.9 + 1e-3, "highlight green not boosted: {bright:?}");
+        assert!((dark[1] - 0.05).abs() < 1e-2, "shadow wrongly changed: {dark:?}");
     }
 }
