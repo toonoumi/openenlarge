@@ -149,6 +149,22 @@ impl Catalog {
         Ok(())
     }
 
+    /// Wipe catalog content — `images`, `edits`, and `app_state` — but preserve
+    /// `prefs` (language, telemetry, API key, hotkeys). Backs the Settings
+    /// "Reset all data" action; the app relaunches afterward. Truncates rows
+    /// (never deletes the DB file) so the live connection stays valid on Windows.
+    pub fn reset_content(&self) -> rusqlite::Result<()> {
+        let conn = self.conn.lock().unwrap();
+        let tx = conn.unchecked_transaction()?;
+        tx.execute("DELETE FROM edits", [])?;
+        tx.execute("DELETE FROM images", [])?;
+        tx.execute("DELETE FROM app_state", [])?;
+        tx.commit()?;
+        // VACUUM reclaims the freed pages; it cannot run inside a transaction.
+        conn.execute("VACUUM", [])?;
+        Ok(())
+    }
+
     /// Load all images, ordered by import time. `exists` decides the offline flag
     /// (injected so tests don't touch the filesystem).
     pub fn load_images(
@@ -587,5 +603,27 @@ mod tests {
             snap.app_state.get("module").map(String::as_str),
             Some("library")
         );
+    }
+
+    #[test]
+    fn reset_content_clears_catalog_but_keeps_prefs() {
+        let cat = Catalog::open_in_memory().unwrap();
+        let id = cat.upsert_image("/x/a.dng", "a.dng", "{}", "t", 1).unwrap();
+        cat.save_params(&id, r#"{"exposure":1.0}"#).unwrap();
+        cat.save_app_state("grid_zoom", "3").unwrap();
+        cat.save_pref("telemetry", "on").unwrap();
+
+        cat.reset_content().unwrap();
+
+        // Content gone…
+        assert!(cat.load_images(&|_| true).unwrap().is_empty());
+        assert!(cat.load_edits().unwrap().is_empty());
+        assert!(cat.load_app_state().unwrap().is_empty());
+        // …but prefs preserved.
+        assert_eq!(cat.load_prefs().unwrap().get("telemetry").map(String::as_str), Some("on"));
+
+        // Idempotent: a second call is a no-op.
+        cat.reset_content().unwrap();
+        assert!(cat.load_images(&|_| true).unwrap().is_empty());
     }
 }
