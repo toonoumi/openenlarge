@@ -5,6 +5,7 @@
     editsById, cropById, dustById, images } from "../store";
   import { api, defaultParams, type ImageEntry } from "../api";
   import { withEffectiveBase } from "../develop/base";
+  import { applyAsShotWb } from "../develop/wb";
   import { imageDir } from "./folderScope";
   import { gridColumns, gridThumbView, GRID_HIRES_EDGE, GRID_STATIC_EDGE, GRID_HIRES_MAX_COLS } from "./gridHiRes";
   import { t } from "$lib/i18n";
@@ -68,7 +69,7 @@
       } else {
         const seed = withEffectiveBase({ ...defaultParams(), positive: img.positive }, dir);
         const wb = await api.asShotWb(img.id, seed, null, { rot90: 0, flip_h: false, flip_v: false, angle: 0 });
-        params = { ...seed, temp: wb.temp, tint: wb.tint };
+        params = applyAsShotWb(seed, wb);
       }
       const view = gridThumbView(get(cropById)[img.id], get(dustById)[img.id], GRID_STATIC_EDGE);
       const url = await api.thumbnail(img.id, params, view);

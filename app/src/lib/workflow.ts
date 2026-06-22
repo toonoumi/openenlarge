@@ -7,6 +7,7 @@ import { showToast } from "./toast";
 import { translate } from "./i18n";
 import { developedFolderImages } from "./export/eligible";
 import { withEffectiveBase, setFolderBase } from "./develop/base";
+import { applyAsShotWb } from "./develop/wb";
 import { imageDir } from "./library/folderScope";
 import { gridThumbView, GRID_STATIC_EDGE } from "./library/gridHiRes";
 
@@ -155,7 +156,7 @@ export async function seedFrame(id: string, img: ImageEntry, solveExposure: bool
   const seed: InvertParams = prior ? { ...prior } : { ...defaultParams(), positive: img.positive };
   try {
     const wb = await api.asShotWb(id, withEffectiveBase(seed, dir));
-    seed.temp = wb.temp; seed.tint = wb.tint; seed.wb_manual = false;
+    Object.assign(seed, applyAsShotWb(seed, wb), { wb_manual: false });
   } catch { return; /* not resident — per-image seed retries on activation */ }
   if (solveExposure) {
     try {
@@ -164,7 +165,7 @@ export async function seedFrame(id: string, img: ImageEntry, solveExposure: bool
     } catch { /* not resident */ }
     try {
       const wb2 = await api.asShotWb(id, withEffectiveBase(seed, dir));
-      seed.temp = wb2.temp; seed.tint = wb2.tint;
+      Object.assign(seed, applyAsShotWb(seed, wb2), { wb_manual: false });
     } catch { /* not resident */ }
   }
   editsById.update((m) => ({ ...m, [id]: seed }));

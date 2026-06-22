@@ -10,6 +10,7 @@
   import { reseedActive, commitActive } from "./historyStore";
   import { createSeedGuard } from "./seedGuard";
   import { withEffectiveBase } from "./base";
+  import { applyAsShotWb } from "./wb";
   import { imageDir } from "../library/folderScope";
   import Icon from "../icons/Icon.svelte";
   import HelpDot from "./HelpDot.svelte";
@@ -129,7 +130,7 @@
     if (!shouldSeed(key, force)) return;
     try {
       const wb = await api.asShotWb(id!, withEffectiveBase(get(params), dir), imageCrop, geom);
-      params.update((p) => ({ ...p, temp: wb.temp, tint: wb.tint, wb_manual: false }));
+      params.update((p) => ({ ...applyAsShotWb(p, wb), wb_manual: false }));
       // Auto-exposure on initial develop: fold a highlight-preserving exposure into the
       // baseline (after WB, so it measures the balanced positive) the first time a frame
       // is shown — so a fresh inversion opens at a sensible brightness, like auto-WB.
@@ -356,7 +357,7 @@
            neutral. Tint: range trimmed to ±100 and stepped finely (0.1) to kill the
            banding a coarse 1-unit step produced across a sweep (I2). -->
       <Slider label={$t('basic.temp')} min={2800} max={10000} step={0.5} scale="reciprocal" scrubStep={10}
-        bind:value={$params.temp} def={tempBaseline} gradient={TEMP_GRADIENT} format={(v) => relKelvin(v - tempBaseline)} on:input={markWbManual} />
+        bind:value={$params.temp} def={5500} gradient={TEMP_GRADIENT} format={(v) => relKelvin(v - tempBaseline)} on:input={markWbManual} />
       <Slider label={$t('basic.tint')} min={-100} max={100} step={0.1}
         bind:value={$params.tint} def={0} gradient={TINT_GRADIENT} format={signed} on:input={markWbManual} />
 

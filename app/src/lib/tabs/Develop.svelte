@@ -8,6 +8,7 @@
   import { createPreviewPrefetcher } from "../develop/previewPrefetch";
   import { imageDir } from "../library/folderScope";
   import { withEffectiveBase } from "../develop/base";
+  import { applyAsShotWb } from "../develop/wb";
   import { mergeEnsured } from "../workflow";
   import { api } from "../api";
   import Filmstrip from "../panels/Filmstrip.svelte";
@@ -445,7 +446,7 @@
       // pick over grainy film lands a stable Temp/Tint instead of an extreme (D).
       const wb = await api.grayPointWb(get(params), [rr, rg, rb]);
       // Mark WB user-controlled so a later base/profile change won't auto-reseed over it.
-      params.update((p) => ({ ...p, temp: wb.temp, tint: wb.tint, wb_manual: true }));
+      params.update((p) => ({ ...applyAsShotWb(p, wb), wb_manual: true }));
       reseedActive();
     } else if (target === "wp") {
       // White-point: sample a small patch around the click (working-image UV) and
