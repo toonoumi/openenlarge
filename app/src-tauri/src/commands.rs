@@ -1029,7 +1029,13 @@ async fn ensure_zoom_src(session: &Session, id: &str) -> Result<(), String> {
     // otherwise block the runtime worker for the whole gesture.
     let hi = tauri::async_runtime::spawn_blocking(move || -> Result<film_core::Image, String> {
         let full = decode_any(Path::new(&path))?;
-        Ok(proxy(&full, MAX_GPU_EDGE))
+        // Match the live proxy's noise floor before the GPU inverts this near-native
+        // buffer: the convex inversion turns full-res per-pixel noise into a colour cast
+        // (pink) the downscaled proxy never shows. See convert::match_proxy_noise.
+        Ok(crate::convert::match_proxy_noise(
+            &proxy(&full, MAX_GPU_EDGE),
+            PROXY_EDGE,
+        ))
     })
     .await
     .map_err(|e| e.to_string())??;
@@ -1439,6 +1445,10 @@ pub(crate) fn finish_full_res(
         )
     };
     let full = decode_cached(&session.decode_cache, Path::new(&path))?;
+    // Match the live proxy's noise floor before inverting at full res, so export
+    // reproduces the tuned preview instead of a noise-induced pink cast (the convex
+    // inversion amplifies per-pixel noise into colour). See convert::match_proxy_noise.
+    let full = crate::convert::match_proxy_noise(&full, PROXY_EDGE);
     let full = orient(&full, rot90, flip_h, flip_v);
     let full = rotate(&full, angle);
     let full = match image_crop {
@@ -1562,6 +1572,10 @@ pub async fn export_image_hdr(
         )
     };
     let full = decode_cached(&session.decode_cache, Path::new(&path))?;
+    // Match the live proxy's noise floor before inverting at full res, so export
+    // reproduces the tuned preview instead of a noise-induced pink cast (the convex
+    // inversion amplifies per-pixel noise into colour). See convert::match_proxy_noise.
+    let full = crate::convert::match_proxy_noise(&full, PROXY_EDGE);
     let full = orient(&full, rot90, flip_h, flip_v);
     let full = rotate(&full, angle);
     let full = match image_crop {
@@ -1632,6 +1646,10 @@ pub async fn export_begin(
     let cache = session.decode_cache.clone();
     let (w, h, bytes) = tauri::async_runtime::spawn_blocking(move || {
         let full = decode_cached(&cache, Path::new(&path))?;
+        // Match the live proxy's noise floor before the GPU inverts this full-res buffer,
+        // so export matches the tuned preview rather than a noise-induced pink cast (the
+        // convex inversion amplifies per-pixel noise into colour). See match_proxy_noise.
+        let full = crate::convert::match_proxy_noise(&full, PROXY_EDGE);
         let baked = bake_working(&full, &spec); // geometry + pre-invert heal, full-res
         if baked.width.max(baked.height) as u32 > max_edge {
             return Ok::<(u32, u32, Option<Vec<u8>>), String>((

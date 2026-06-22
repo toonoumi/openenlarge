@@ -58,6 +58,75 @@ pub fn proxy(img: &Image, max_edge: u32) -> Image {
     out
 }
 
+/// Match a near-native buffer's noise floor to the `proxy_edge` proxy before inversion.
+///
+/// # Why
+/// The live develop preview inverts the `proxy_edge`-capped proxy, where the source RAW
+/// was downscaled with a Triangle filter — i.e. sensor noise is averaged out in LINEAR
+/// light *before* the inversion. The deep-zoom and export paths instead invert a near-
+/// native buffer carrying full per-pixel noise. The inversion's density
+/// `d = log10(base/scan)` is CONVEX, so per-pixel noise inflates each channel's mean
+/// density (Jensen's inequality); the inflation is largest on the low-base / steep-curve
+/// channels, which pushes the result magenta/pink — visibly so on rolls whose base is low
+/// in red. The proxy hides this because its downscale already removed the noise. Bringing
+/// the hi-res/export buffer to the proxy's noise floor (a light separable box average sized
+/// to the proxy's downscale ratio) makes zoom + export reproduce the tuned proxy look.
+///
+/// The radius tracks how much more native this buffer is than the proxy, so the linear
+/// pre-inversion averaging matches the proxy's regardless of source resolution. Buffers at
+/// (or close to) the proxy edge already have proxy-like averaging and are returned as-is.
+/// The IR plane is carried through unchanged (it feeds dust detection, not the inversion).
+pub fn match_proxy_noise(img: &Image, proxy_edge: u32) -> Image {
+    let long = img.width.max(img.height) as u32;
+    let ratio = long as f32 / proxy_edge.max(1) as f32;
+    if ratio <= 1.5 {
+        return img.clone();
+    }
+    let radius = (((ratio - 1.0) / 2.0).round() as usize).clamp(1, 4);
+    let (w, h) = (img.width, img.height);
+    if w == 0 || h == 0 {
+        return img.clone();
+    }
+    let win = (2 * radius + 1) as f32;
+    // Horizontal pass → tmp.
+    let mut tmp = vec![[0.0f32; 3]; w * h];
+    tmp.par_chunks_mut(w).enumerate().for_each(|(y, row)| {
+        let src = &img.pixels[y * w..y * w + w];
+        for (x, out) in row.iter_mut().enumerate() {
+            let mut s = [0.0f32; 3];
+            for k in 0..=2 * radius {
+                let xx = (x + k).saturating_sub(radius).min(w - 1);
+                let p = src[xx];
+                s[0] += p[0];
+                s[1] += p[1];
+                s[2] += p[2];
+            }
+            *out = [s[0] / win, s[1] / win, s[2] / win];
+        }
+    });
+    // Vertical pass → out.
+    let mut out = vec![[0.0f32; 3]; w * h];
+    out.par_chunks_mut(w).enumerate().for_each(|(y, row)| {
+        for (x, px) in row.iter_mut().enumerate() {
+            let mut s = [0.0f32; 3];
+            for k in 0..=2 * radius {
+                let yy = (y + k).saturating_sub(radius).min(h - 1);
+                let p = tmp[yy * w + x];
+                s[0] += p[0];
+                s[1] += p[1];
+                s[2] += p[2];
+            }
+            *px = [s[0] / win, s[1] / win, s[2] / win];
+        }
+    });
+    Image {
+        width: w,
+        height: h,
+        pixels: out,
+        ir: img.ir.clone(),
+    }
+}
+
 /// Crop a rectangle (in pixels) from the image, clamped to its bounds. Returns a
 /// new Image; the IR plane (if present) is cropped alongside the pixels.
 pub fn crop(img: &Image, x: usize, y: usize, w: usize, h: usize) -> Image {
@@ -530,5 +599,104 @@ mod tests {
         // Top-left corner is rotated out of frame → ir 0.0 (same as RGB black).
         assert_eq!(r.pixels[0], [0.0, 0.0, 0.0]);
         assert_eq!(ir[0], 0.0);
+    }
+
+    #[test]
+    fn match_proxy_noise_noop_near_proxy_resolution() {
+        // A buffer at (or near) the proxy edge already has proxy-like averaging — no
+        // blur, returned unchanged including its IR plane.
+        let img = solid_ir(2560, 1700, [0.1, 0.2, 0.3], 0.5);
+        let m = match_proxy_noise(&img, 2560);
+        assert_eq!((m.width, m.height), (2560, 1700));
+        assert_eq!(m.pixels[100], [0.1, 0.2, 0.3]);
+        assert_eq!(m.ir.as_ref().map(|v| v.len()), Some(2560 * 1700));
+    }
+
+    #[test]
+    fn match_proxy_noise_smooths_single_pixel_noise() {
+        // A near-native buffer (3× the proxy edge) carrying 1px checkerboard noise around
+        // a flat field: after noise-matching, interior pixels collapse toward the mean.
+        let (w, h) = (192usize, 12usize);
+        let mut pixels = vec![[0.0f32; 3]; w * h];
+        for y in 0..h {
+            for x in 0..w {
+                let n = if (x + y) % 2 == 0 { 0.30 } else { 0.10 };
+                pixels[y * w + x] = [n, n, n];
+            }
+        }
+        let img = Image { width: w, height: h, pixels, ir: None };
+        let m = match_proxy_noise(&img, 64); // ratio 3 → radius 1
+        // Interior pixel should sit near the 0.20 mean, far from either 0.10/0.30 extreme.
+        let c = m.pixels[6 * w + 96][0];
+        assert!((c - 0.20).abs() < 0.05, "noise not smoothed: {c}");
+    }
+
+    // Regression for the "pink on zoom/export" bug: the hi-res/export buffer is inverted
+    // at near-native resolution with full per-pixel sensor noise, while the live proxy is
+    // downscaled (noise averaged out in linear space) before the SAME inversion. Because
+    // density d = log10(base/scan) is CONVEX, per-pixel noise inflates each channel's mean
+    // density (Jensen); the inflation lands hardest on the low-base / steep-curve channels
+    // (here R), pushing the result magenta. match_proxy_noise restores the proxy's noise
+    // floor so hi-res/export reproduce the tuned proxy look.
+    #[test]
+    fn noise_match_removes_hires_pink_bias() {
+        use film_core::engine::{invert_image, InversionParams, Mode, ToneMode};
+
+        // Gray scene (equal channels) with deterministic 3-state per-pixel noise, so any
+        // per-channel output difference comes purely from the base + convex inversion.
+        let (w, h) = (192usize, 12usize);
+        let factors = [0.4f32, 1.0, 1.8]; // mean 1.0667; a 3:1 downscale averages them out
+        let mut pixels = vec![[0.0f32; 3]; w * h];
+        for y in 0..h {
+            for x in 0..w {
+                let s = 0.05 * factors[x % 3];
+                pixels[y * w + x] = [s, s, s];
+            }
+        }
+        let full = Image { width: w, height: h, pixels, ir: None };
+        let proxy_buf = proxy(&full, 64); // 192 → 64: averages the 1px noise (the live proxy)
+
+        let p = InversionParams {
+            base: [0.11, 0.32, 0.17], // low R, like the real Phoenix-roll base
+            d_max: 1.5,
+            tone_mode: ToneMode::Faithful,
+            ..Default::default()
+        };
+        let mean = |img: &Image| {
+            let mut s = [0.0f64; 3];
+            for px in &img.pixels {
+                for c in 0..3 {
+                    s[c] += px[c] as f64;
+                }
+            }
+            let n = img.pixels.len() as f64;
+            [s[0] / n, s[1] / n, s[2] / n]
+        };
+        let max_chan_div = |a: [f64; 3], b: [f64; 3]| {
+            (0..3).map(|c| (a[c] - b[c]).abs()).fold(0.0_f64, f64::max)
+        };
+        let mp = mean(&invert_image(&proxy_buf, &p, Mode::D));
+        let mf = mean(&invert_image(&full, &p, Mode::D));
+        let matched = match_proxy_noise(&full, 64);
+        let mm = mean(&invert_image(&matched, &p, Mode::D));
+
+        // Bug reproduces: the noisy full-res inversion diverges per-channel from the tuned
+        // proxy (the convex log + per-channel base turns symmetric scan noise into a colour
+        // shift — magenta on the real low-red Phoenix base; see this fn's doc comment).
+        let div_unmatched = max_chan_div(mf, mp);
+        let div_matched = max_chan_div(mm, mp);
+        assert!(
+            div_unmatched > 0.008,
+            "noise should make full-res inversion diverge from the proxy: {div_unmatched}"
+        );
+        // Fix: noise-matching collapses that divergence so zoom/export track the proxy.
+        assert!(
+            div_matched < div_unmatched * 0.5,
+            "matching should at least halve the divergence: {div_matched} vs {div_unmatched}"
+        );
+        assert!(
+            div_matched < 0.01,
+            "matched inversion should track the proxy: {div_matched}"
+        );
     }
 }
