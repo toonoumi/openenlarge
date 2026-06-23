@@ -29,9 +29,15 @@ export interface SettingsSnapshot {
 /** Per-image film/calibration fields that are NOT part of the shared "look".
  *  `exposure` is here because Auto-Brightness solves a DISTINCT value per frame;
  *  a deliberate roll-wide exposure is re-applied separately (null-guarded) so it
- *  can't silently flatten those per-image values. */
+ *  can't silently flatten those per-image values.
+ *  `wb_baseline`/`pz_sh`/`pz_mid`/`pz_hi` are per-image measured gains (seeded
+ *  from each frame's as-shot WB analysis) and must not leak to other frames.
+ *  (These fields land in InvertParams with the per-zone WB feature; the cast
+ *  below keeps this file forward-compatible before that merge.) */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const EXCLUDE = new Set<keyof InvertParams>([
   "mode", "stock", "base_override", "d_max_override", "hdr", "positive", "exposure",
+  ...["wb_baseline", "pz_sh", "pz_mid", "pz_hi"] as any[],
 ]);
 
 /** The tone/color subset of a params object (everything except EXCLUDE). */

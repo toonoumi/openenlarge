@@ -5,20 +5,24 @@
 
 import { get } from "svelte/store";
 import {
-  activeId, editsById, cropById, images, settingsClipboard, applySettingsTarget,
+  activeId, editsById, cropById, settingsClipboard, applySettingsTarget,
   deleteSelectionIds, invalidatePreview,
 } from "../store";
-import { api, defaultParams } from "../api";
+import { defaultParams } from "../api";
 import {
   applyToneColorToAll, applyCropToAll, applyBaseToAll,
   applyExposureToAll, applyWhitePointToAll,
   type GroupSelection, type SettingsSnapshot,
 } from "../roll/apply";
-import { withEffectiveBase } from "./base";
-import { imageDir } from "../library/folderScope";
 import { commitActive } from "./historyStore";
 import { showToast } from "../toast";
 import { translate } from "../i18n";
+
+// Phase 1 re-zero: temp=5500 is the universal neutral on every image.
+// Each image's actual auto-WB correction lives in the hidden wb_baseline gains
+// param, so tempOffset is always relative to this fixed constant — no per-image
+// as-shot fetch needed.
+const TEMP_NEUTRAL = 5500;
 
 /** Detach from live store objects so later edits can't mutate the snapshot. */
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v));
@@ -29,35 +33,15 @@ export const PASTE_DEFAULT_GROUPS: GroupSelection = {
   toneColor: true, crop: false, base: false, exposure: false, whitePoint: false,
 };
 
-/** A frame's as-shot neutral Temp (Kelvin) — the baseline the Temp slider is shown
- *  relative to. Crop/orient-aware to match Basic.svelte's readout. null on failure. */
-async function asShotTemp(id: string): Promise<number | null> {
-  const img = get(images).find((i) => i.id === id);
-  if (!img) return null;
-  const p = get(editsById)[id] ?? defaultParams();
-  const c = get(cropById)[id] ?? null;
-  const crop = c
-    ? ([c.rect.x, c.rect.y, c.rect.w, c.rect.h] as [number, number, number, number])
-    : null;
-  const geom = c ? { rot90: c.rot90, flip_h: c.flipH, flip_v: c.flipV, angle: c.angle } : {};
-  try {
-    const wb = await api.asShotWb(id, withEffectiveBase(p, imageDir(img)), crop, geom);
-    return wb.temp;
-  } catch {
-    return null;
-  }
-}
-
 /** Copy the active image's settings to the in-app clipboard (full snapshot). */
 export async function copyDevelopSettings(): Promise<void> {
   const id = get(activeId);
   if (!id) return;
   const cur = get(editsById)[id] ?? defaultParams();
   const crop = get(cropById)[id] ?? null;
-  // Capture Temp as an offset from the source's as-shot neutral, so a pasted "+1000"
-  // lands "+1000" on a target with a different baseline (see SettingsSnapshot.tempOffset).
-  const baseline = await asShotTemp(id);
-  const tempOffset = baseline != null ? cur.temp - baseline : undefined;
+  // Capture Temp as a signed offset from TEMP_NEUTRAL (5500 K). Since re-zero,
+  // cur.temp IS always relative to this fixed neutral — no per-image baseline fetch.
+  const tempOffset = cur.temp - TEMP_NEUTRAL;
   settingsClipboard.set({ params: clone(cur), crop: clone(crop), tempOffset });
   showToast(translate("toast.settingsCopied"));
 }
@@ -84,13 +68,11 @@ export async function applySelectedTo(
   if (groups.base)       nextEdits = applyBaseToAll(nextEdits, ids, src.params.base_override);
   if (groups.whitePoint) nextEdits = applyWhitePointToAll(nextEdits, ids, src.params.d_max_override);
   if (groups.exposure)   nextEdits = applyExposureToAll(nextEdits, ids, src.params.exposure);
-  // Re-base the copied Temp onto each target's own as-shot neutral so the relative
-  // offset (not the absolute Kelvin) is what carries over. Temp is the only param
-  // shown relative to a per-image baseline, so it's the only one re-based here.
+  // Re-base the copied Temp onto TEMP_NEUTRAL (not a per-image as-shot fetch) so
+  // a "+500K warmer" look lands the same relative warmth on every target frame.
   if (groups.toneColor && src.tempOffset != null) {
     for (const id of ids) {
-      const tb = await asShotTemp(id);
-      if (tb != null) nextEdits = { ...nextEdits, [id]: { ...nextEdits[id], temp: tb + src.tempOffset } };
+      nextEdits = { ...nextEdits, [id]: { ...nextEdits[id], temp: TEMP_NEUTRAL + src.tempOffset } };
     }
   }
   editsById.set(nextEdits);

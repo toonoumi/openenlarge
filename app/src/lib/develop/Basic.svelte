@@ -159,15 +159,11 @@
 
   function autoWb() { seed($activeId, $params.stock, JSON.stringify(effBase), true); }
 
-  // Temp is shown as a signed offset from the fixed neutral 5500 K (task 5b).
-  // The auto-WB correction now lives in a hidden wb_baseline gains param, so
-  // params.temp=5500 is always neutral — no per-image baseline fetch needed.
+  // Temp is shown as a signed ± offset from this fixed neutral. Under re-zero
+  // (Phase 1), params.temp=5500 always means "no trim / neutral" — the per-image
+  // auto-WB correction lives in the hidden wb_baseline gains param — so no
+  // per-image as-shot fetch is needed to display or copy the slider value.
   const TEMP_NEUTRAL = 5500;
-  // loadBaseline / effBase reactive kept as a hook point for future per-roll
-  // baseline logic; currently a no-op since TEMP_NEUTRAL is a constant.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  function loadBaseline(_id: string | null, _baseKey: string) { /* no-op */ }
-  $: loadBaseline($activeId, JSON.stringify(effBase));
 
   // ---- Crop-aware D_max analysis ----
   // Derive D_max from the image area (the persistent crop) and apply it to THIS
@@ -283,8 +279,9 @@
     rollApplyIds = null;
     const id = get(activeId);
     if (!ids || !id) return;
-    // Carry Temp as an offset from the fixed neutral (5500 K) so it lands as the
-    // same relative ± on every frame regardless of per-frame auto-WB.
+    // Carry Temp as an offset from TEMP_NEUTRAL (5500 K) — the fixed universal
+    // neutral under re-zero — so the same relative ± lands on every target frame
+    // regardless of per-frame auto-WB. No per-image as-shot fetch needed.
     const src: SettingsSnapshot = {
       params: get(params), crop: get(cropById)[id] ?? null,
       tempOffset: get(params).temp - TEMP_NEUTRAL,
@@ -366,8 +363,8 @@
            visual centre (50%) of the thumb travel. Label shown as ± offset from 5500.
            Tint: range trimmed to ±100 and stepped finely (0.1) to kill the
            banding a coarse 1-unit step produced across a sweep (I2). -->
-      <Slider label={$t('basic.temp')} min={3793} max={10000} step={0.5} scale="reciprocal" scrubStep={10}
-        bind:value={$params.temp} def={5500} gradient={TEMP_GRADIENT} format={(v) => relKelvin(v - TEMP_NEUTRAL)} on:input={markWbManual} />
+      <Slider label={$t('basic.temp')} min={2800} max={10000} step={0.5} scale="reciprocal" scrubStep={10}
+        bind:value={$params.temp} def={TEMP_NEUTRAL} gradient={TEMP_GRADIENT} format={(v) => relKelvin(v - TEMP_NEUTRAL)} on:input={markWbManual} />
       <Slider label={$t('basic.tint')} min={-100} max={100} step={0.1}
         bind:value={$params.tint} def={0} gradient={TINT_GRADIENT} format={signed} on:input={markWbManual} />
 
