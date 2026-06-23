@@ -43,7 +43,6 @@
     // Keep the roll-wide slider values across re-entry to the same roll (start fresh on a
     // folder change); inert until the user edits, so it never re-applies/reverts per-frame edits.
     enterRollDraft(get(selectedFolder));
-    wpManual = false;
 
     // Compute conflicts: union of frames with any edits across the developed folder.
     const frames = get(developedFolderImages);
@@ -310,15 +309,10 @@
   // but only once mirroring has been enabled (after entry confirm or no conflicts).
   $: if (mirrorEnabled) { schedulePreview($rollDraft); schedulePersist($rollDraft); }
 
-  // --- Reference-edit mode (crop / base / wp) ----------------------------------
-  type EditMode = "none" | "crop" | "base" | "wp";
+  // --- Reference-edit mode (crop / base) ---------------------------------------
+  type EditMode = "none" | "crop" | "base";
   let editMode: EditMode = "none";
-  // Whether a wp-pick click is currently being processed (disarm after one pick).
-  let wpPicking = false;
   let refId: string | null = null;
-  // Sticky flag: once the user manually picks a white point, auto re-analysis from
-  // crop changes is suppressed for the remainder of this roll session.
-  let wpManual = false;
 
   // Reference frame metadata (for the crop state machine).
   $: refFrame = refId ? $images.find((i) => i.id === refId) ?? null : null;
@@ -434,15 +428,6 @@
     editMode = "base";
   }
 
-  function enterWpMode() {
-    const id = get(activeId) ?? $developedFolderImages[0]?.id ?? null;
-    if (!id) return;
-    refId = id;
-    setActive(id);
-    editMode = "wp";
-    wpPicking = true;
-  }
-
   async function onBaseSampled(e: CustomEvent<[number, number, number]>) {
     // Whole-roll recalibrate: BaseView already sampled the rebate via sampleBaseAt,
     // so e.detail IS the measured base. Set it as the roll/folder default and reseed
@@ -455,22 +440,6 @@
     await reseedRollProtectedFree(get(folderImages));
   }
 
-  async function onWpPick(e: CustomEvent<{ r: number; g: number; b: number; u: number; v: number }>) {
-    if (!refId) return;
-    wpPicking = false;
-    const { u, v } = e.detail;
-    const P = 0.02;
-    const c01 = (n: number) => (n < 0 ? 0 : n > 1 ? 1 : n);
-    const rect: [number, number, number, number] = [c01(u - P / 2), c01(v - P / 2), P, P];
-    try {
-      const { d_max } = await api.analyzeWhitePoint(refId, withEffectiveBase($rollDraft.params, refDir), rect);
-      rollDraft.update((d) => ({ ...d, params: { ...d.params, d_max_override: d_max } }));
-      rollDraftTouched.set(true);
-      wpManual = true;
-    } catch { /* ignore */ }
-    // Auto-dismiss: exit wp mode after one successful pick (mirrors film-base behaviour).
-    exitEditMode();
-  }
 
   /** Apply the current crop draft to all frames, then leave crop mode.
    *  If no manual WP pick has been made, re-derives D-max from the reference
@@ -486,8 +455,8 @@
     cropInit = false;
     editMode = "none";
     refId = null;
-    // Re-analyze D-max from the new crop unless the user has manually picked a WP.
-    if (id && crop && !wpManual) {
+    // Re-analyze D-max from the new crop.
+    if (id && crop) {
       try {
         const imageCrop: [number, number, number, number] = [crop.rect.x, crop.rect.y, crop.rect.w, crop.rect.h];
         const geom = { rot90: crop.rot90, flip_h: crop.flipH, flip_v: crop.flipV, angle: crop.angle };
@@ -506,10 +475,9 @@
   }
 
   function exitEditMode() {
-    // base / wp: draft writes already mirrored live — nothing extra to commit.
+    // base: draft writes already mirrored live — nothing extra to commit.
     // NOTE: do NOT call this from crop mode — use applyCropAndExit or discardCropAndExit.
     editMode = "none";
-    wpPicking = false;
     refId = null;
   }
 
@@ -698,14 +666,6 @@
             </button>
             <span class="tool-label">{$t('roll.base.heading')}</span>
           </div>
-          <div class="tool">
-            <button class="tool-btn" class:on={(editMode as string) === "wp"}
-                    on:click={enterWpMode} disabled={$developedFolderImages.length === 0}
-                    aria-label={$t('roll.wp.heading')}>
-              <Icon name="pipette" size={20} />
-            </button>
-            <span class="tool-label">{$t('roll.wp.heading')}</span>
-          </div>
         </div>
       </RollAdjust>
     </aside>
@@ -788,54 +748,6 @@
     </div>
   </div>
 
-{:else if editMode === "wp"}
-  <!-- ===== Reference-edit white-point layout ===== -->
-  <div class="ref-layout">
-    <!-- Center: Viewport with pointPick armed on the reference frame -->
-    <div class="ref-center">
-      {#if refFrame?.developed && refId}
-        <Viewport
-          id={refId}
-          params={refEffParams}
-          imgW={effW}
-          imgH={effH}
-          imageCrop={imageCrop}
-          rot90={cRot}
-          flipH={refCommitted?.flipH ?? false}
-          flipV={refCommitted?.flipV ?? false}
-          angle={refCommitted?.angle ?? 0}
-          fallbackThumb={refFrame?.thumbnail ?? ""}
-          dust={refDust.strokes}
-          irRemoval={refDust.irRemoval}
-          dustRev={0}
-          developRev={$developRev}
-          eraser={false}
-          pointPick={wpPicking}
-          clipHigh={false}
-          clipLow={false}
-          clipStrict={false}
-          on:pointpick={onWpPick}
-        />
-      {:else}
-        <div class="ref-hint">{$t('develop.notDevelopedYet')}</div>
-      {/if}
-    </div>
-
-    <!-- Right panel: empty (picking auto-closes; press Escape to cancel) -->
-    <aside class="ref-panel">
-      <div class="ref-panel-inner"></div>
-    </aside>
-
-    <!-- Bottom strip -->
-    <div class="ref-strip">
-      {#each $developedFolderImages as img (img.id)}
-        <button class="strip-cell" class:strip-active={img.id === refId}
-                data-id={img.id} on:click={() => onStripClick(img.id)}>
-          <img src={previewMap[img.id] ?? img.thumbnail} alt={img.file_name} draggable="false" />
-        </button>
-      {/each}
-    </div>
-  </div>
 {/if}
 
 {#if showEntryConfirm}

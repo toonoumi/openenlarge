@@ -2,7 +2,7 @@
   import { t } from "$lib/i18n";
   import { fade } from "svelte/transition";
   import { cubicOut } from "svelte/easing";
-  import { activeId, params, images, folderImages, tool, cropById, activeCrop, dustById, activeDust, deleteTarget, dustRev, developRev, folderBaseByPath, baseSampling, sampledBase, sampledDmax, selectAll, deleteSelectionIds, setActive, previewSrc, clipWarn, hotkeyBindings, autodustSpotsById, activeAutodustSpots, selectedSpot } from "../store";
+  import { activeId, params, images, folderImages, tool, cropById, activeCrop, dustById, activeDust, deleteTarget, dustRev, developRev, folderBaseByPath, baseSampling, sampledBase, selectAll, deleteSelectionIds, setActive, previewSrc, clipWarn, hotkeyBindings, autodustSpotsById, activeAutodustSpots, selectedSpot } from "../store";
   import { get } from "svelte/store";
   import { onMount } from "svelte";
   import { createPreviewPrefetcher } from "../develop/previewPrefetch";
@@ -430,12 +430,9 @@
   // ---- Eyedropper state ----
   // One crosshair, two consumers: 'pc' = ColorMixer point-colour sample, 'wb' = gray-point
   // white balance. The target string routes the single pointpick event to the right place.
-  let pickTarget: "" | "pc" | "wb" | "wp" = "";
+  let pickTarget: "" | "pc" | "wb" = "";
   function togglePcPick() { pickTarget = pickTarget === "pc" ? "" : "pc"; }
   function toggleWbPick() { pickTarget = pickTarget === "wb" ? "" : "wb"; }
-  function toggleWpPick() { pickTarget = pickTarget === "wp" ? "" : "wp"; }
-  // Leaving the edit tab cancels an in-progress white-point pick.
-  $: if ($tool !== "edit" && pickTarget === "wp") pickTarget = "";
   async function onPointPick(e: CustomEvent<{ r: number; g: number; b: number; u: number; v: number; rr: number; rg: number; rb: number }>) {
     const { r, g, b, u, v, rr, rg, rb } = e.detail;
     const target = pickTarget;
@@ -448,18 +445,6 @@
       // Mark WB user-controlled so a later base/profile change won't auto-reseed over it.
       params.update((p) => ({ ...applyAsShotWb(p, wb), wb_manual: true }));
       reseedActive();
-    } else if (target === "wp") {
-      // White-point: sample a small patch around the click (working-image UV) and
-      // anchor D_max. Hand off via sampledDmax; Basic.svelte applies + pins it.
-      if (!$activeId) return;
-      const P = 0.02;
-      const c01 = (n: number) => (n < 0 ? 0 : n > 1 ? 1 : n);
-      const rect: [number, number, number, number] =
-        [c01(u - P / 2), c01(v - P / 2), P, P];
-      try {
-        const { d_max } = await api.analyzeWhitePoint($activeId, withEffectiveBase(get(params), dir), rect);
-        sampledDmax.set(d_max);
-      } catch { /* not developed yet */ }
     } else if (target === "pc") {
       params.update((p) => {
         const arr = (p.pc_samples ?? []).slice();
@@ -530,7 +515,7 @@
             <Basic onWbPick={toggleWbPick} wbPicking={pickTarget === "wb"} imageCrop={imageCrop}
                    onViewActual={() => vp?.zoomTo100()}
                    geom={{ rot90: cRot, flip_h: committed?.flipH ?? false, flip_v: committed?.flipV ?? false, angle: committed?.angle ?? 0 }} />
-            <TonalCurve onWpPick={toggleWpPick} wpPicking={pickTarget === "wp"} />
+            <TonalCurve />
             <ColorGrading />
             <ColorMixer onPick={togglePcPick} picking={pickTarget === "pc"} />
           {:else if $tool === "crop"}

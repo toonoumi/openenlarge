@@ -3,13 +3,7 @@
   import { params } from "../store";
   import type { ParamsStore } from "../perImage";
   import Icon from "../icons/Icon.svelte";
-  import HelpDot from "./HelpDot.svelte";
 
-  // White-point picker is owned by the parent (Develop) viewport crosshair, same
-  // as the WB gray-point picker — so it respects crop + orientation. These props
-  // arm it; the sampled D_max is applied by the reactor in Basic.svelte.
-  export let onWpPick: (() => void) | null = null;
-  export let wpPicking = false;
   export let paramsStore: ParamsStore = params;
   import Slider from "./Slider.svelte";
   import CurveEditor from "./CurveEditor.svelte";
@@ -52,18 +46,6 @@
       <span>{$t('curve.title')}</span>
     </button>
     <span class="headbtns">
-      <!-- White-point picker: anchors highlights/contrast (D_max). Lives in the Tone
-           section because it shapes lighting. Only shown when a picker is wired
-           (per-image Tune); the roll contact-sheet view passes onWpPick={null} and
-           does white-point picking via its own reference-edit "WP" tool instead, so
-           the pipette + its help dot are hidden there to avoid a dead button. -->
-      {#if onWpPick}
-        <button class="wpdrop" class:on={wpPicking} on:click={() => onWpPick?.()}
-                title={$t('curve.whitepoint')} aria-label={$t('curve.whitepoint')}>
-          <Icon name="pipette" size={14} />
-        </button>
-        <HelpDot text={$t('curve.whitepointHelp')} />
-      {/if}
       <button class="reset" on:click={resetTone}>{$t('curve.reset')}</button>
     </span>
   </div>
@@ -99,10 +81,6 @@
     background: transparent; border: 0; color: var(--text); font-weight: 600;
     padding: 0; cursor: pointer; }
   .headbtns { display: inline-flex; align-items: center; gap: 6px; }
-  .wpdrop { display: inline-flex; align-items: center; justify-content: center;
-    background: transparent; border: 1px solid var(--glass-brd); color: var(--text-dim);
-    border-radius: 6px; padding: 2px 6px; cursor: pointer; }
-  .wpdrop.on { color: var(--text); border-color: var(--accent); }
   .sub { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;
     color: var(--text-dim); margin: 12px 0 4px; }
   .adjust { display: flex; align-items: center; gap: 10px; margin: 6px 0 8px; }

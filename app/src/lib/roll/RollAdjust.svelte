@@ -37,7 +37,7 @@
   <Slider label={$t('basic.vibrance')} min={-100} max={100} bind:value={$ps.vibrance} def={0} gradient={SAT_GRADIENT} format={signed} />
   <Slider label={$t('basic.saturation')} min={-100} max={100} bind:value={$ps.saturation} def={0} gradient={SAT_GRADIENT} format={signed} />
 
-  <TonalCurve paramsStore={ps} onWpPick={null} wpPicking={false} />
+  <TonalCurve paramsStore={ps} />
 </div>
 
 <style>
