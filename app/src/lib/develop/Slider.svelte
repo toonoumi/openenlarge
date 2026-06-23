@@ -40,7 +40,10 @@
 
 <div class="slider">
   <div class="row">
-    <span class="label" on:dblclick={() => (value = def)}>{label}</span>
+    <span class="labelgroup">
+      <span class="label" on:dblclick={() => (value = def)}>{label}</span>
+      <slot name="label-extra" />
+    </span>
     <span class="val"
       use:scrubValue={recip
         ? { get: () => value, set: scrubSet, min, max, step: scrubStep ?? step }
@@ -62,6 +65,7 @@
   .row { display: flex; justify-content: space-between; font-size: 11px;
     color: var(--text-dim); margin-bottom: 2px; }
   .val { color: var(--text); font-variant-numeric: tabular-nums; }
+  .labelgroup { display: inline-flex; align-items: center; gap: 6px; }
   .label { cursor: default; }
   input[type="range"] { width: 100%; height: 3px; border-radius: 3px;
     -webkit-appearance: none; appearance: none; background: var(--glass-brd);

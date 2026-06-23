@@ -392,11 +392,10 @@
       <!-- Tone -->
       <div class="sub tonehead">
         <span>{$t('basic.tone')}</span>
-        <button class="auto" title={$t('basic.autoExpTitle')} on:click={autoExposure}>
-          <Icon name="sparkles" size={12} />{$t('basic.autoExp')}
-        </button>
       </div>
-      <Slider label={$t('basic.exposure')} min={-5} max={5} step={0.01} bind:value={$params.exposure} def={0} format={ev} />
+      <Slider label={$t('basic.exposure')} min={-5} max={5} step={0.01} bind:value={$params.exposure} def={0} format={ev}>
+        <button slot="label-extra" class="auto autoexp" title={$t('basic.autoExpTitle')} on:click={autoExposure}>{$t('basic.autoExp')}</button>
+      </Slider>
       <Slider label={$t('basic.brightness')} min={-100} max={100} bind:value={$params.brightness} def={0} format={signed} />
       <Slider label={$t('basic.contrast')} min={-100} max={100} bind:value={$params.contrast} def={0} format={signed} />
       <Slider label={$t('basic.highlights')} min={-100} max={100} bind:value={$params.highlights} def={0} format={signed} />
