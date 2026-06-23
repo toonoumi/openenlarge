@@ -83,3 +83,16 @@ details.hood>.hood-body{padding:0 16px 14px;color:var(--text-dim);font-size:14px
   .sidebar{position:fixed;inset:56px 0 auto 0;z-index:15;max-height:70vh;background:var(--bg-0);border-bottom:1px solid var(--glass-brd);padding:16px 24px;display:none;}
   .sidebar.open{display:block;}
 }
+
+/* language menu */
+.langmenu{position:relative;font-size:13.5px;}
+.langmenu summary{list-style:none;cursor:pointer;color:var(--text-dim);padding:2px 4px;}
+.langmenu summary::-webkit-details-marker{display:none;}
+.langmenu summary:hover{color:var(--text);}
+.langmenu[open] .langmenu-list{display:flex;}
+.langmenu-list{display:none;position:absolute;right:0;top:130%;flex-direction:column;gap:2px;
+  background:var(--glass-bg,rgba(28,28,34,.95));border:1px solid var(--glass-brd,rgba(255,255,255,.08));
+  border-radius:9px;padding:6px;min-width:120px;box-shadow:0 8px 30px rgba(0,0,0,.4);z-index:20;}
+.langmenu-list a{padding:5px 10px;border-radius:6px;text-decoration:none;color:var(--text-dim);white-space:nowrap;}
+.langmenu-list a:hover{color:var(--text);background:rgba(255,255,255,.05);}
+.langmenu-list a[aria-current="true"]{color:var(--text);font-weight:600;}

@@ -204,5 +204,20 @@ class TestMultiLocale(unittest.TestCase):
         self.assertIn('<html lang="ja">', ja)
 
 
+class TestLangMenu(unittest.TestCase):
+    def setUp(self): gen.build()
+    def test_menu_lists_all_locales(self):
+        html = (ROOT / "web/docs/index.html").read_text()
+        for label in ("English", "中文", "日本語", "한국어"):
+            self.assertIn(label, html)
+    def test_menu_links_relative(self):
+        # from EN root index, the ja link is ja/index.html
+        html = (ROOT / "web/docs/index.html").read_text()
+        self.assertIn('href="ja/index.html"', html)
+    def test_current_locale_marked(self):
+        html = (ROOT / "web/docs/ja/index.html").read_text()
+        self.assertIn('aria-current="true"', html)
+
+
 if __name__ == "__main__":
     unittest.main()

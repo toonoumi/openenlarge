@@ -92,6 +92,27 @@ def rel_href(from_slug, to_slug):
     target = "index.html" if to_slug == "index" else f"{to_slug}.html"
     return up + target
 
+LOCALE_LABELS = {"en": "English", "zh": "中文", "ja": "日本語", "ko": "한국어"}
+
+def lang_href(from_slug, from_locale, to_locale):
+    """Relative href from the current page to the same slug in another locale."""
+    up = "../" * depth(from_slug)          # back to /docs/<from_locale>/ root
+    if from_locale != "en":
+        up += "../"                         # up out of the locale subdir to /docs/
+    if to_locale != "en":
+        up += f"{to_locale}/"
+    return up + ("index.html" if from_slug == "index" else f"{from_slug}.html")
+
+def langmenu_html(nav, strings, slug, locale):
+    items = []
+    for lc in LOCALES:
+        cur = ' aria-current="true"' if lc == locale else ""
+        href = lang_href(slug, locale, lc)
+        items.append(f'<a{cur} href="{href}">{LOCALE_LABELS[lc]}</a>')
+    label = LOCALE_LABELS[locale]
+    return ('<details class="langmenu"><summary>' + label + '</summary>'
+            '<div class="langmenu-list">' + "".join(items) + '</div></details>')
+
 def crumbs_html(nav, strings, locale, slug):
     root = "../" * depth(slug)
     docs_label = locale_str(strings, locale, "docs")
@@ -156,8 +177,7 @@ def render_page(nav, strings, slug, locale):
         "SIDEBAR": sidebar_html(nav, strings, locale, slug),
         "CRUMBS": crumbs_html(nav, strings, locale, slug),
         "BODY": body,
-        # TEMPORARY in B1 (replaced by langmenu in B2): keep layout's old lang link valid
-        "LANGSWITCHHREF": ("../" * depth(slug)) + ("zh/" if locale == "en" else "../") + ("index.html" if slug == "index" else f"{slug}.html"),
+        "LANGMENU": langmenu_html(nav, strings, slug, locale),
     }
     for k, v in strings.get(locale, strings["en"]).items():
         repl[f"S_{k}"] = html.escape(v)
