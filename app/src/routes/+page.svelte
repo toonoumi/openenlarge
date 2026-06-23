@@ -4,8 +4,8 @@
   import { fly } from "svelte/transition";
   import { cubicOut } from "svelte/easing";
   import { hydrate, initPersistence } from "$lib/catalog";
-  import { module, hasImages, images, undevelopedCount, deleteTarget, activeId, selection, applySettingsTarget, telemetryDecided, hotkeyBindings } from "$lib/store";
-  import { applyClipboardTo } from "$lib/develop/copySettings";
+  import { module, hasImages, images, undevelopedCount, deleteTarget, activeId, selection, copySettingsOpen, telemetryDecided, hotkeyBindings } from "$lib/store";
+  import { confirmCopyDevelopSettings, PASTE_DEFAULT_GROUPS } from "$lib/develop/copySettings";
   import { noneSelected } from "$lib/selection";
   import { get } from "svelte/store";
   import { matchUndoRedo } from "$lib/develop/history";
@@ -176,13 +176,14 @@
     on:trash={() => runDelete(true)}
     on:cancel={() => deleteTarget.set([])} />
 {/if}
-{#if $applySettingsTarget.length >= 1}
+{#if $copySettingsOpen}
   <ConfirmApplySettings
-    title={$t('confirmApply.title', { count: $applySettingsTarget.length, plural: $applySettingsTarget.length === 1 ? '' : 's' })}
-    sub={$t('confirmApply.sub')}
-    defaults={{ toneColor: true, crop: false, base: false, exposure: false, whitePoint: false }}
-    on:confirm={(e) => { const ids = $applySettingsTarget; applySettingsTarget.set([]); applyClipboardTo(ids, e.detail.groups); }}
-    on:cancel={() => applySettingsTarget.set([])} />
+    title={$t('confirmApply.copyTitle')}
+    sub={$t('confirmApply.copySub')}
+    confirmLabel={$t('confirmApply.copyConfirm')}
+    defaults={PASTE_DEFAULT_GROUPS}
+    on:confirm={(e) => confirmCopyDevelopSettings(e.detail.groups)}
+    on:cancel={() => copySettingsOpen.set(false)} />
 {/if}
 <Toast />
 

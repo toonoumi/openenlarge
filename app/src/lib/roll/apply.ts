@@ -6,12 +6,12 @@ const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v));
 /** The selectable setting groups, mirroring the per-group apply helpers below.
  *  Shared by the "apply settings" picker dialog and both of its entry points
  *  (clipboard paste + Develop's "apply to whole roll"). */
-export type SettingGroup = "toneColor" | "crop" | "base" | "exposure" | "whitePoint";
+export type SettingGroup = "toneColor" | "crop" | "base" | "exposure";
 export type GroupSelection = Record<SettingGroup, boolean>;
 
 /** Render/iteration order for the picker. */
 export const ALL_GROUPS: readonly SettingGroup[] = [
-  "toneColor", "crop", "base", "exposure", "whitePoint",
+  "toneColor", "crop", "base", "exposure",
 ];
 
 /** A self-contained source of settings to apply (the active frame, or a clipboard
@@ -24,6 +24,9 @@ export interface SettingsSnapshot {
    *  land "+1000" on a target (not shift by the baseline difference) we re-base it:
    *  target.temp = target_as_shot + tempOffset. Undefined → apply temp absolutely. */
   tempOffset?: number;
+  /** Which setting groups the user chose to carry, recorded at COPY time so paste
+   *  applies them directly (no second dialog). Unset → fall back to the default. */
+  groups?: GroupSelection;
 }
 
 /** Per-image film/calibration fields that are NOT part of the shared "look".

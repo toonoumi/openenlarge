@@ -422,7 +422,7 @@
   <ConfirmApplySettings
     title={$t('confirmApply.rollTitle', { count: rollApplyIds.length })}
     sub={$t('confirmApply.rollSub')}
-    defaults={{ toneColor: true, crop: true, base: true, exposure: false, whitePoint: true }}
+    defaults={{ toneColor: true, crop: true, base: true, exposure: false }}
     on:confirm={(e) => confirmRollApply(e.detail.groups)}
     on:cancel={() => (rollApplyIds = null)} />
 {/if}

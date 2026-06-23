@@ -12,7 +12,7 @@
   export let confirmLabel = "";
   /** Initial checkbox state per group. */
   export let defaults: GroupSelection = {
-    toneColor: true, crop: false, base: false, exposure: false, whitePoint: false,
+    toneColor: true, crop: false, base: false, exposure: false,
   };
 
   const dispatch = createEventDispatcher();
@@ -24,7 +24,6 @@
     crop: "applyGroups.crop",
     base: "applyGroups.base",
     exposure: "applyGroups.exposure",
-    whitePoint: "applyGroups.whitePoint",
   };
 
   $: anySelected = ALL_GROUPS.some((g) => sel[g]);

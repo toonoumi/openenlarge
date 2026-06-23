@@ -2,7 +2,7 @@
   import { t } from "$lib/i18n";
   import Slider from "$lib/develop/Slider.svelte";
   import TonalCurve from "$lib/develop/TonalCurve.svelte";
-  import { signed, ev, kelvin, TEMP_GRADIENT, TINT_GRADIENT, SAT_GRADIENT } from "$lib/develop/gradients";
+  import { signed, ev, relKelvin, TEMP_GRADIENT, TINT_GRADIENT, SAT_GRADIENT } from "$lib/develop/gradients";
   import { draftParamsStore } from "./draftParams";
   import { defaultParams } from "$lib/api";
 
@@ -24,8 +24,8 @@
   <!-- These rows are copied VERBATIM from Basic.svelte (lines ~248-272), with only
        `$params` swapped for `$ps`. Same label keys / min / max / step / scale /
        gradient / format so the roll look matches per-image Tune exactly. -->
-  <Slider label={$t('basic.temp')} min={2000} max={50000} step={0.5} scale="reciprocal" scrubStep={10}
-    bind:value={$ps.temp} def={5500} gradient={TEMP_GRADIENT} format={kelvin} on:input={markWbManual} />
+  <Slider label={$t('basic.temp')} min={3793} max={10000} step={0.5} scale="reciprocal" scrubStep={10}
+    bind:value={$ps.temp} def={5500} gradient={TEMP_GRADIENT} format={(v) => relKelvin(v - 5500)} on:input={markWbManual} />
   <Slider label={$t('basic.tint')} min={-150} max={150} step={1}
     bind:value={$ps.tint} def={0} gradient={TINT_GRADIENT} format={signed} on:input={markWbManual} />
   <Slider label={$t('basic.exposure')} min={-5} max={5} step={0.01} bind:value={$ps.exposure} def={0} format={ev} />

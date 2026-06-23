@@ -247,14 +247,14 @@ export const preReanalyze = writable<{ id: string; d_max_override: number | null
 export const deleteTarget = writable<string[]>([]);
 
 /** Copied develop settings (⌘/Ctrl+C), pasted onto other images with ⌘/Ctrl+V.
- * Holds a full snapshot of the source frame (all params + its crop); the paste
- * dialog picks which groups actually travel. null = nothing copied yet. */
+ * Holds a full snapshot of the source frame (all params + its crop) plus the
+ * groups the user chose at copy time; paste applies those groups directly.
+ * null = nothing copied yet. */
 export const settingsClipboard = writable<SettingsSnapshot | null>(null);
 
-/** Ids awaiting a "paste settings" confirmation (length > 1 = dialog showing).
- * Mirrors deleteTarget; a single-image paste applies immediately and never
- * populates this. */
-export const applySettingsTarget = writable<string[]>([]);
+/** True while the "copy settings" group picker is open. The picker now shows at
+ * COPY time (not paste): the user chooses what to carry, then paste applies it. */
+export const copySettingsOpen = writable<boolean>(false);
 
 /** Bumped on any dust change and on undo/redo so the Viewport re-renders. */
 export const dustRev = writable<number>(0);

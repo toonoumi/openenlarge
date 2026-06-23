@@ -1,17 +1,17 @@
 // Copy/paste of develop settings between images (⌘/Ctrl+C / +V) and the shared
 // "apply selected settings" routine reused by Develop's "apply to whole roll".
-// Copy grabs a full snapshot of the source frame; the paste/roll dialog picks
-// which groups (tone/color, crop, film base, exposure, white point) travel.
+// Copy opens the picker (tone/color, crop, film base, exposure) and records the
+// chosen groups in the clipboard; paste applies exactly those, no second dialog.
 
 import { get } from "svelte/store";
 import {
-  activeId, editsById, cropById, settingsClipboard, applySettingsTarget,
+  activeId, editsById, cropById, settingsClipboard, copySettingsOpen,
   deleteSelectionIds, invalidatePreview,
 } from "../store";
 import { defaultParams } from "../api";
 import {
   applyToneColorToAll, applyCropToAll, applyBaseToAll,
-  applyExposureToAll, applyWhitePointToAll,
+  applyExposureToAll,
   type GroupSelection, type SettingsSnapshot,
 } from "../roll/apply";
 import { commitActive } from "./historyStore";
@@ -27,14 +27,23 @@ const TEMP_NEUTRAL = 5500;
 /** Detach from live store objects so later edits can't mutate the snapshot. */
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v));
 
-/** Default picker state for a paste: only the tone/color look travels (the
- *  historical behavior); the other groups are opt-in via the dialog. */
+/** Default picker state: only the tone/color look travels; the other groups are
+ *  opt-in. Used as the copy dialog's initial state and the paste fallback. */
 export const PASTE_DEFAULT_GROUPS: GroupSelection = {
-  toneColor: true, crop: false, base: false, exposure: false, whitePoint: false,
+  toneColor: true, crop: false, base: false, exposure: false,
 };
 
-/** Copy the active image's settings to the in-app clipboard (full snapshot). */
-export async function copyDevelopSettings(): Promise<void> {
+/** Copy (⌘C): open the group picker so the user chooses what to carry. The
+ *  snapshot is captured on confirm (confirmCopyDevelopSettings). */
+export function copyDevelopSettings(): void {
+  if (!get(activeId)) return;
+  copySettingsOpen.set(true);
+}
+
+/** Confirm of the copy picker: snapshot the active frame + the chosen groups into
+ *  the clipboard. Paste then applies exactly these groups (no second dialog). */
+export function confirmCopyDevelopSettings(groups: GroupSelection): void {
+  copySettingsOpen.set(false);
   const id = get(activeId);
   if (!id) return;
   const cur = get(editsById)[id] ?? defaultParams();
@@ -42,18 +51,18 @@ export async function copyDevelopSettings(): Promise<void> {
   // Capture Temp as a signed offset from TEMP_NEUTRAL (5500 K). Since re-zero,
   // cur.temp IS always relative to this fixed neutral — no per-image baseline fetch.
   const tempOffset = cur.temp - TEMP_NEUTRAL;
-  settingsClipboard.set({ params: clone(cur), crop: clone(crop), tempOffset });
+  settingsClipboard.set({ params: clone(cur), crop: clone(crop), tempOffset, groups: { ...groups } });
   showToast(translate("toast.settingsCopied"));
 }
 
-/** Paste the clipboard onto the selection (or the active image when nothing is
- *  multi-selected). More than one target shows the picker dialog first. */
+/** Paste (⌘V): apply the copied groups onto the selection (or the active image).
+ *  The group choice was made at copy time, so this never opens a dialog. */
 export function pasteDevelopSettings(): void {
-  if (!get(settingsClipboard)) { showToast(translate("toast.copyFirst")); return; }
+  const clip = get(settingsClipboard);
+  if (!clip) { showToast(translate("toast.copyFirst")); return; }
   const ids = deleteSelectionIds();
   if (!ids.length) return;
-  if (ids.length === 1) void applyClipboardTo(ids);
-  else applySettingsTarget.set(ids); // open ConfirmApplySettings
+  void applySelectedTo(ids, clip, clip.groups ?? PASTE_DEFAULT_GROUPS);
 }
 
 /** Merge the selected groups of a source snapshot onto every target, preserving
@@ -66,7 +75,6 @@ export async function applySelectedTo(
   let nextEdits = get(editsById);
   if (groups.toneColor)  nextEdits = applyToneColorToAll(nextEdits, ids, src.params);
   if (groups.base)       nextEdits = applyBaseToAll(nextEdits, ids, src.params.base_override);
-  if (groups.whitePoint) nextEdits = applyWhitePointToAll(nextEdits, ids, src.params.d_max_override);
   if (groups.exposure)   nextEdits = applyExposureToAll(nextEdits, ids, src.params.exposure);
   // Re-base the copied Temp onto TEMP_NEUTRAL (not a per-image as-shot fetch) so
   // a "+500K warmer" look lands the same relative warmth on every target frame.
@@ -88,13 +96,4 @@ export async function applySelectedTo(
   showToast(n === 1
     ? translate("toast.settingsApplied")
     : translate("toast.settingsAppliedN", { count: n }));
-}
-
-/** Apply the clipboard's selected groups onto each target image. */
-export async function applyClipboardTo(
-  ids: string[], groups: GroupSelection = PASTE_DEFAULT_GROUPS,
-): Promise<void> {
-  const clip = get(settingsClipboard);
-  if (!clip || !ids.length) return;
-  await applySelectedTo(ids, clip, groups);
 }
