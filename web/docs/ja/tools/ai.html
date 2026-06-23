@@ -1,0 +1,122 @@
+<!-- AUTO-GENERATED from /docs-src — do not edit by hand. Run python3 scripts/gen-docs.py -->
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI tools — OpenEnlarge Docs</title>
+<meta name="description" content="AI Enhance (via the OpenAI API), local tone matching from a reference image, and on-device super-resolution upscaling — what each does and where it runs.">
+<meta name="robots" content="noindex,follow">
+<meta name="theme-color" content="#0a0a0c">
+<link rel="icon" href="../../../img/favicon.png">
+<link rel="canonical" href="https://openenlarge.io/docs/ja/tools/ai.html">
+<link rel="alternate" hreflang="en" href="https://openenlarge.io/docs/tools/ai.html">
+<link rel="alternate" hreflang="zh-Hans" href="https://openenlarge.io/docs/zh/tools/ai.html">
+<link rel="alternate" hreflang="x-default" href="https://openenlarge.io/docs/tools/ai.html">
+<meta property="og:type" content="article"><meta property="og:title" content="AI tools — OpenEnlarge Docs"><meta property="og:description" content="AI Enhance (via the OpenAI API), local tone matching from a reference image, and on-device super-resolution upscaling — what each does and where it runs."><meta property="og:url" content="https://openenlarge.io/docs/ja/tools/ai.html"><meta property="og:image" content="https://openenlarge.io/docs/og/cover.png"><meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "AI tools", "description": "AI Enhance (via the OpenAI API), local tone matching from a reference image, and on-device super-resolution upscaling — what each does and where it runs.", "inLanguage": "ja", "url": "https://openenlarge.io/docs/ja/tools/ai.html", "isPartOf": {"@type": "WebSite", "name": "OpenEnlarge", "url": "https://openenlarge.io"}}</script>
+<link rel="stylesheet" href="../../docs.css">
+</head>
+<body>
+<a class="skip" href="#content">Skip to content</a>
+<nav class="docnav"><div class="navbar glass wrap">
+  <a class="brand" href="../../../index.html"><img class="mark" src="../../../img/icon.png" alt=""> OpenEnlarge <span class="brand-docs">Docs</span></a>
+  <button class="menu-btn" id="menu-btn" type="button" aria-label="Menu" aria-expanded="false">☰</button>
+  <div class="navlinks">
+    <a href="../../../index.html">Home</a>
+    <a href="https://github.com/mohaelder/openenlarge">GitHub</a>
+    <a class="lang-link" href="../../tools/ai.html">中文</a>
+  </div>
+</div></nav>
+<div class="doclayout wrap">
+  <aside class="sidebar" id="sidebar"><div class="side-sec"><div class="side-h">Overview</div>
+<a href="../index.html">Documentation</a>
+<a href="../workflow.html">The workflow</a>
+</div>
+<div class="side-sec"><div class="side-h">The Science</div>
+<a href="../science/negatives.html">How color negatives work</a>
+<a href="../science/inversion.html">The inversion pipeline</a>
+<a href="../science/density.html">Density &amp; log space</a>
+<a href="../science/tone-curve.html">The tone curve (the Faithful look)</a>
+<a href="../science/color.html">Color &amp; white balance</a>
+<a href="../science/base-calibration.html">Film-base calibration</a>
+</div>
+<div class="side-sec"><div class="side-h">Tools</div>
+<a href="../tools/develop-basic.html">Develop · Basic</a>
+<a href="../tools/tune.html">Tune</a>
+<a href="../tools/crop-dust.html">Crop &amp; dust</a>
+<a class="on" href="../tools/ai.html">AI tools</a>
+<a href="../tools/library.html">Library</a>
+<a href="../tools/roll.html">Roll</a>
+<a href="../tools/export.html">Export</a>
+</div>
+<div class="side-sec"><div class="side-h">Reference</div>
+<a href="../reference/glossary.html">Glossary</a>
+<a href="../reference/faq.html">FAQ</a>
+<a href="../reference/storage.html">Storage &amp; clearing data</a>
+</div></aside>
+  <main class="content" id="content">
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="../index.html">Docs</a> <span class="sep">/</span> <span>AI tools</span></nav>
+    <article class="prose"><h1>AI tools</h1>
+<p class="lead">The AI panel in Frame groups three capabilities: AI Enhance, Tone Matching, and Upscale. They are not equivalent in where they run. AI Enhance sends your preview to the <strong>OpenAI API</strong> — the only tool in OpenEnlarge that transmits image data outside your computer. Tone Matching and Upscale both run entirely on your device; no image data leaves your machine.</p>
+
+<h2>AI Enhance</h2>
+<p><strong>AI Enhance</strong> re-imagines the current Frame preview to reduce noise, dust, and scratches. The result is a creative interpretation of your scan, not a faithful pixel-level restoration: the model may invent detail that was not in the original. Use it for look and feel, not as a ground-truth output.</p>
+
+<p>Before you can use AI Enhance you must add your own OpenAI API key in <strong>Settings</strong>. Without a key the Enhance button shows the message "Add your OpenAI API key in Settings." and does nothing. OpenEnlarge does not supply or proxy any API key — charges are billed to your own OpenAI account.</p>
+
+<p><strong>Privacy:</strong> clicking Enhance sends the current preview image (as a base64-encoded PNG) to the OpenAI API. This is the only point in OpenEnlarge where image data is transmitted to an external server. The data is governed by OpenAI's usage and privacy policies.</p>
+
+<p>When the result arrives it is shown as a thumbnail in the panel. Hold the <strong>Hold to compare original</strong> button to toggle between the original and the enhanced version for a before/after comparison; release to return to the result. Click the thumbnail to open it full-screen.</p>
+
+<p>Click <strong>Download enhanced image…</strong> to save the result to disk. The save dialog accepts PNG, TIFF, and JPEG. The file is written at the result's native resolution via <code>api.saveEnhanced()</code>; no upscaling is applied at this stage.</p>
+
+<p>Once you have an enhanced result, an <strong>Upscale this result</strong> section appears directly below it, letting you run the on-device upscaler on the AI-enhanced image rather than on the raw Frame output. See the Upscale section below for how that works.</p>
+
+<details class="hood"><summary>Under the hood</summary><div class="hood-body">
+<p><strong>API call (<code>api.ts</code>):</strong> the front end calls <code>api.aiEnhanceImage(imageBase64, apiKey)</code>, which invokes the Tauri command <code>ai_enhance_image</code>. The backend sends the base64 image and the user-supplied API key to the OpenAI API and returns the enhanced result as a base64 string. The source preview captured at call time is stored in the <code>source</code> variable for the before/after toggle (<code>showBefore</code>). Saving uses <code>api.saveEnhanced(outPath, imageBase64, format)</code> → Tauri command <code>save_enhanced</code>. The format type is <code>ExportFormat</code>: <code>{ kind: "png" | "tiff" | "jpeg", bitDepth?: 16, quality?: number }</code>.</p>
+</div></details>
+
+<h2>Tone Matching</h2>
+<p><strong>Tone Matching</strong> imports a reference image and adjusts the current scan's develop parameters to match its white balance, contrast, and saturation. Everything runs locally — no image data leaves your computer.</p>
+
+<p>Click <strong>Import reference image</strong> to pick any JPEG, PNG, TIFF, or WebP file. A thumbnail of the reference is shown; click it to change the reference at any time.</p>
+
+<p>Once a reference is loaded, click <strong>Match</strong> to compute the match. The match runs via <code>api.colorMatchParams()</code> on your machine and writes a blended set of develop parameters into the current image's settings as a single undoable step (<kbd>⌘Z</kbd> / <kbd>Ctrl Z</kbd> to revert).</p>
+
+<p>The <strong>Strength</strong> slider (0–100 %, default 60 %) blends between the pre-match values and the full-strength match. Dragging it updates the preview live without a backend round-trip — the full-strength match is computed once and stored, then the slider interpolates locally. Committing the slider value adds one undo step.</p>
+
+<p>Click <strong>Reset match</strong> to restore the parameters to what they were before the match was applied and clear the stored match data. The reset is also a single undo step.</p>
+
+<p>After matching you can continue to adjust any slider in the Frame panel normally. The match only affects a scoped subset of parameters (see hood below) and leaves all other controls untouched.</p>
+
+<details class="hood"><summary>Under the hood</summary><div class="hood-body">
+<p><strong>API call (<code>api.ts</code>):</strong> <code>api.colorMatchParams(id, params, refPath, 100)</code> invokes the Tauri command <code>color_match_params</code> with the current image id, its full <code>InvertParams</code>, the reference file path, and strength 100 (full). The backend returns a <code>MatchedParams</code> object — a <code>Pick</code> of <code>InvertParams</code> covering exactly: <code>temp</code>, <code>tint</code>, <code>exposure</code>, <code>contrast</code>, <code>saturation</code>, <code>cg_sh_hue</code>, <code>cg_sh_sat</code>, <code>cg_sh_lum</code>, <code>cg_hi_hue</code>, <code>cg_hi_sat</code>, <code>cg_hi_lum</code>. The front end captures the pre-match values for those same keys into <code>origScoped</code> and stores the full match in <code>matchedFull</code>. The Strength slider blends per-key: <code>blended[k] = origScoped[k] + (matchedFull[k] − origScoped[k]) × (strength / 100)</code>. A reference thumbnail is fetched with <code>api.referenceThumb(path)</code> → Tauri command <code>reference_thumb</code>.</p>
+</div></details>
+
+<h2>Upscale</h2>
+<p><strong>Upscale</strong> runs an on-device super-resolution model to enlarge your developed image to 4K or 8K on the longest side. The model downloads once and runs entirely on your machine; no image data is uploaded at any point.</p>
+
+<p>The first time you open the AI panel, OpenEnlarge checks whether the upscaler model is installed. If it is not, a prompt shows the approximate download size in MB. Click <strong>Download upscaler</strong> to fetch it; a progress bar shows download progress (bytes received streamed via the <code>upscale://download-progress</code> Tauri event).</p>
+
+<p>Once the model is installed, choose your target resolution with the <strong>4K / 8K</strong> segment control (4K = 3840 px; 8K = 7680 px on the longest side; 8K is the default). Click <strong>Upscale</strong> to start. A progress bar tracks tile completion. The result is shown as a preview in the panel with its output pixel dimensions.</p>
+
+<p>If the source image is already 8K or larger on its longest side, upscaling will not add detail (the app notes this). Best results come from smaller sources where the model can genuinely reconstruct fine detail.</p>
+
+<p>Click <strong>Save upscaled image…</strong> to save the result. The save dialog accepts PNG, TIFF (16-bit), and JPEG.</p>
+
+<p>If you have an AI Enhance result, an <strong>Upscale this result</strong> section appears above the main Upscale section, letting you upscale the AI-enhanced PNG instead of the developed scan. Both paths use the same on-device model.</p>
+
+<details class="hood"><summary>Under the hood</summary><div class="hood-body">
+<p><strong>API calls (<code>api.ts</code>):</strong> <code>api.upscalerStatus()</code> → Tauri <code>upscaler_status</code> returns <code>{ installed: boolean, downloadBytes: number }</code>. <code>api.downloadUpscaler()</code> → <code>download_upscaler</code> triggers the model download. For a developed image, <code>api.upscaleImage(id, params, imageCrop, geom, targetLong)</code> → <code>upscale_image</code> renders the full-resolution image then super-resolves it. For an AI-enhanced result, <code>api.upscaleEnhanced(imageBase64, targetLong)</code> → <code>upscale_enhanced</code> takes the base64 PNG directly. Both return <code>{ previewDataUrl: string, outW: number, outH: number }</code>. Progress tiles are streamed as <code>upscale://progress</code> events (<code>{ done, total }</code>). Saving calls <code>api.saveUpscaled(outPath, format)</code> → <code>save_upscaled</code>.</p>
+</div></details>
+
+<p class="next"><a href="library.html">Next: Library →</a></p>
+</article>
+    <footer class="docfoot">OpenEnlarge — open-source film scan editor · MIT licensed</footer>
+  </main>
+  <aside class="toc" id="toc" aria-label="On this page"><div class="toc-title">On this page</div><div id="toc-list"></div></aside>
+</div>
+<script src="../../docs.js" defer></script>
+</body>
+</html>

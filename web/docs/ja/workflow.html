@@ -1,0 +1,85 @@
+<!-- AUTO-GENERATED from /docs-src — do not edit by hand. Run python3 scripts/gen-docs.py -->
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The workflow — OpenEnlarge Docs</title>
+<meta name="description" content="Import, Develop, Tune, Roll and Export — how a roll moves through OpenEnlarge.">
+<meta name="robots" content="noindex,follow">
+<meta name="theme-color" content="#0a0a0c">
+<link rel="icon" href="../../img/favicon.png">
+<link rel="canonical" href="https://openenlarge.io/docs/ja/workflow.html">
+<link rel="alternate" hreflang="en" href="https://openenlarge.io/docs/workflow.html">
+<link rel="alternate" hreflang="zh-Hans" href="https://openenlarge.io/docs/zh/workflow.html">
+<link rel="alternate" hreflang="x-default" href="https://openenlarge.io/docs/workflow.html">
+<meta property="og:type" content="article"><meta property="og:title" content="The workflow — OpenEnlarge Docs"><meta property="og:description" content="Import, Develop, Tune, Roll and Export — how a roll moves through OpenEnlarge."><meta property="og:url" content="https://openenlarge.io/docs/ja/workflow.html"><meta property="og:image" content="https://openenlarge.io/docs/og/cover.png"><meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "The workflow", "description": "Import, Develop, Tune, Roll and Export — how a roll moves through OpenEnlarge.", "inLanguage": "ja", "url": "https://openenlarge.io/docs/ja/workflow.html", "isPartOf": {"@type": "WebSite", "name": "OpenEnlarge", "url": "https://openenlarge.io"}}</script>
+<link rel="stylesheet" href="../docs.css">
+</head>
+<body>
+<a class="skip" href="#content">Skip to content</a>
+<nav class="docnav"><div class="navbar glass wrap">
+  <a class="brand" href="../../index.html"><img class="mark" src="../../img/icon.png" alt=""> OpenEnlarge <span class="brand-docs">Docs</span></a>
+  <button class="menu-btn" id="menu-btn" type="button" aria-label="Menu" aria-expanded="false">☰</button>
+  <div class="navlinks">
+    <a href="../../index.html">Home</a>
+    <a href="https://github.com/mohaelder/openenlarge">GitHub</a>
+    <a class="lang-link" href="../workflow.html">中文</a>
+  </div>
+</div></nav>
+<div class="doclayout wrap">
+  <aside class="sidebar" id="sidebar"><div class="side-sec"><div class="side-h">Overview</div>
+<a href="index.html">Documentation</a>
+<a class="on" href="workflow.html">The workflow</a>
+</div>
+<div class="side-sec"><div class="side-h">The Science</div>
+<a href="science/negatives.html">How color negatives work</a>
+<a href="science/inversion.html">The inversion pipeline</a>
+<a href="science/density.html">Density &amp; log space</a>
+<a href="science/tone-curve.html">The tone curve (the Faithful look)</a>
+<a href="science/color.html">Color &amp; white balance</a>
+<a href="science/base-calibration.html">Film-base calibration</a>
+</div>
+<div class="side-sec"><div class="side-h">Tools</div>
+<a href="tools/develop-basic.html">Develop · Basic</a>
+<a href="tools/tune.html">Tune</a>
+<a href="tools/crop-dust.html">Crop &amp; dust</a>
+<a href="tools/ai.html">AI tools</a>
+<a href="tools/library.html">Library</a>
+<a href="tools/roll.html">Roll</a>
+<a href="tools/export.html">Export</a>
+</div>
+<div class="side-sec"><div class="side-h">Reference</div>
+<a href="reference/glossary.html">Glossary</a>
+<a href="reference/faq.html">FAQ</a>
+<a href="reference/storage.html">Storage &amp; clearing data</a>
+</div></aside>
+  <main class="content" id="content">
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="index.html">Docs</a> <span class="sep">/</span> <span>The workflow</span></nav>
+    <article class="prose"><h1>The workflow</h1>
+<p class="lead">A roll moves through four stages. Edits are non-destructive and can mirror across the whole roll at once.</p>
+
+<h2>1 · Import &amp; Library</h2>
+<p>Drag in folders of scans (JPEG, TIFF, PNG, or camera RAW). OpenEnlarge catalogs them, builds thumbnails, and can omit duplicate camera-preview JPEGs. <a href="tools/library.html">Library reference →</a></p>
+<figure><img src="/img/library.png" alt="OpenEnlarge Library grid showing a folder of film scans as thumbnails"><figcaption>The Library — your catalog of rolls and frames.</figcaption></figure>
+
+<h2>2 · Roll</h2>
+<p>Decode and invert a whole folder in one pass. Each frame gets an auto white-balance and auto-exposure starting point, and the film base is measured automatically — one per-roll baseline calibrated from the rebate, shared across every frame. The contact sheet shows the whole roll; in mirror mode, an edit to one frame previews live across every frame, so a roll keeps a consistent look. <a href="tools/roll.html">Roll reference →</a> · <a href="science/inversion.html">How inversion works →</a></p>
+<figure><img src="/img/develop.png" alt="OpenEnlarge Roll view with the inverted contact sheet and whole-roll controls"><figcaption>Roll — the inverted contact sheet with whole-roll controls.</figcaption></figure>
+
+<h2>3 · Frame</h2>
+<p>Perfect each frame with curves, color wheels, the 8-band color mixer, and point-color targeting. <a href="tools/tune.html">Frame reference →</a></p>
+<figure><img src="/img/tune.png" alt="OpenEnlarge Frame panel with tone curve and color grading wheels"><figcaption>Frame — precise per-frame tone and color control.</figcaption></figure>
+
+<h2>4 · Export</h2>
+<p>Batch-export to JPEG, TIFF, or PNG at 8 or 16-bit, with resolution caps and an optional shared crop. <a href="tools/export.html">Export reference →</a></p>
+<figure><img src="/img/export.png" alt="OpenEnlarge Export dialog with format and resolution options"><figcaption>Export — batch output, exactly how you need it.</figcaption></figure>
+</article>
+    <footer class="docfoot">OpenEnlarge — open-source film scan editor · MIT licensed</footer>
+  </main>
+  <aside class="toc" id="toc" aria-label="On this page"><div class="toc-title">On this page</div><div id="toc-list"></div></aside>
+</div>
+<script src="../docs.js" defer></script>
+</body>
+</html>

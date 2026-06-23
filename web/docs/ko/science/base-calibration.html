@@ -1,0 +1,113 @@
+<!-- AUTO-GENERATED from /docs-src — do not edit by hand. Run python3 scripts/gen-docs.py -->
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Film-base calibration — OpenEnlarge Docs</title>
+<meta name="description" content="How OpenEnlarge samples the orange film base per roll and sets the white point, and how to recalibrate by hand.">
+<meta name="robots" content="noindex,follow">
+<meta name="theme-color" content="#0a0a0c">
+<link rel="icon" href="../../../img/favicon.png">
+<link rel="canonical" href="https://openenlarge.io/docs/ko/science/base-calibration.html">
+<link rel="alternate" hreflang="en" href="https://openenlarge.io/docs/science/base-calibration.html">
+<link rel="alternate" hreflang="zh-Hans" href="https://openenlarge.io/docs/zh/science/base-calibration.html">
+<link rel="alternate" hreflang="x-default" href="https://openenlarge.io/docs/science/base-calibration.html">
+<meta property="og:type" content="article"><meta property="og:title" content="Film-base calibration — OpenEnlarge Docs"><meta property="og:description" content="How OpenEnlarge samples the orange film base per roll and sets the white point, and how to recalibrate by hand."><meta property="og:url" content="https://openenlarge.io/docs/ko/science/base-calibration.html"><meta property="og:image" content="https://openenlarge.io/docs/og/cover.png"><meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "Film-base calibration", "description": "How OpenEnlarge samples the orange film base per roll and sets the white point, and how to recalibrate by hand.", "inLanguage": "ko", "url": "https://openenlarge.io/docs/ko/science/base-calibration.html", "isPartOf": {"@type": "WebSite", "name": "OpenEnlarge", "url": "https://openenlarge.io"}}</script>
+<link rel="stylesheet" href="../../docs.css">
+</head>
+<body>
+<a class="skip" href="#content">Skip to content</a>
+<nav class="docnav"><div class="navbar glass wrap">
+  <a class="brand" href="../../../index.html"><img class="mark" src="../../../img/icon.png" alt=""> OpenEnlarge <span class="brand-docs">Docs</span></a>
+  <button class="menu-btn" id="menu-btn" type="button" aria-label="Menu" aria-expanded="false">☰</button>
+  <div class="navlinks">
+    <a href="../../../index.html">Home</a>
+    <a href="https://github.com/mohaelder/openenlarge">GitHub</a>
+    <a class="lang-link" href="../../science/base-calibration.html">中文</a>
+  </div>
+</div></nav>
+<div class="doclayout wrap">
+  <aside class="sidebar" id="sidebar"><div class="side-sec"><div class="side-h">Overview</div>
+<a href="../index.html">Documentation</a>
+<a href="../workflow.html">The workflow</a>
+</div>
+<div class="side-sec"><div class="side-h">The Science</div>
+<a href="../science/negatives.html">How color negatives work</a>
+<a href="../science/inversion.html">The inversion pipeline</a>
+<a href="../science/density.html">Density &amp; log space</a>
+<a href="../science/tone-curve.html">The tone curve (the Faithful look)</a>
+<a href="../science/color.html">Color &amp; white balance</a>
+<a class="on" href="../science/base-calibration.html">Film-base calibration</a>
+</div>
+<div class="side-sec"><div class="side-h">Tools</div>
+<a href="../tools/develop-basic.html">Develop · Basic</a>
+<a href="../tools/tune.html">Tune</a>
+<a href="../tools/crop-dust.html">Crop &amp; dust</a>
+<a href="../tools/ai.html">AI tools</a>
+<a href="../tools/library.html">Library</a>
+<a href="../tools/roll.html">Roll</a>
+<a href="../tools/export.html">Export</a>
+</div>
+<div class="side-sec"><div class="side-h">Reference</div>
+<a href="../reference/glossary.html">Glossary</a>
+<a href="../reference/faq.html">FAQ</a>
+<a href="../reference/storage.html">Storage &amp; clearing data</a>
+</div></aside>
+  <main class="content" id="content">
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="../index.html">Docs</a> <span class="sep">/</span> <span>Film-base calibration</span></nav>
+    <article class="prose"><h1>Film-base calibration</h1>
+<p class="lead">Accurate inversion starts with an accurate base. The orange film base is not just background color — it encodes the dye couplers' built-in correction mask, and a wrong base reading is the most common cause of a color cast in the finished positive.</p>
+
+<figure><svg viewBox="0 0 640 280" role="img" aria-label="Spectral transmission of the orange film base: red high, green medium, blue low" xmlns="http://www.w3.org/2000/svg">
+  <rect width="640" height="280" rx="12" fill="#141418"/>
+  <g font-family="ui-monospace,monospace" font-size="12" fill="#9a9aa2">
+    <text x="20" y="26">Orange-mask transmission (relative)</text>
+    <line x1="60" y1="230" x2="600" y2="230" stroke="#3a3a42"/>
+    <line x1="60" y1="40" x2="60" y2="230" stroke="#3a3a42"/>
+  </g>
+  <g>
+    <rect x="120" y="70" width="90" height="160" rx="6" fill="#e0573a"/>
+    <rect x="290" y="135" width="90" height="95" rx="6" fill="#6fae5a"/>
+    <rect x="460" y="180" width="90" height="50" rx="6" fill="#5a78c8"/>
+  </g>
+  <g font-family="ui-monospace,monospace" font-size="13" fill="#e8e8ea" text-anchor="middle">
+    <text x="165" y="252">R</text>
+    <text x="335" y="252">G</text>
+    <text x="505" y="252">B</text>
+  </g>
+</svg>
+<figcaption>The orange mask is the reference: OpenEnlarge samples it from the clear film edge, divides it out of the raw scan, and then takes the log — this is how the neutral density value for each pixel is established.</figcaption></figure>
+
+<h2>Sampling the base</h2>
+<p>OpenEnlarge offers two strategies for measuring the base color from the clear film edge or a selected region:</p>
+<ul>
+  <li><strong>Default (robust per-channel)</strong> — the engine computes the <strong>~95th percentile</strong> of pixel values independently for each color channel. Working at the high end of the distribution means a few dust specks or scratches on the leader cannot drag the sample low and introduce a cast. Each channel is sampled separately, so the measured base faithfully tracks the exact orange tint of this particular roll.</li>
+  <li><strong>Coherent mode</strong> — instead of sampling each channel independently, the engine picks a luminance band and averages a single real RGB color from pixels that fall within it. Treating all channels together means the sampled color stays on the actual orange-mask locus even when the sampled region contains a colorful scene element. Use coherent mode when the default per-channel estimate produces a subtle cross-channel cast — for instance when shooting through a subject that overlaps the edge strip.</li>
+</ul>
+
+<h2>Per roll, not per frame</h2>
+<p>The orange mask is a property of the film emulsion and the development chemistry, not of any individual frame. All frames on a roll share the same base color. For this reason, OpenEnlarge sets the base <em>once per roll or folder</em> and reuses it. When you develop a roll it computes this base <strong>automatically</strong> — the confidence-filtered median of each frame's auto-detected film edge across the roll — and seeds every frame from it, so no manual sampling step is required. If the automatic base looks off, recalibrate the whole roll from the Roll tab, or override a single frame with the <a href="../tools/develop-basic.html">film-edge picker</a> in the Basic panel. Re-sampling frame by frame is rarely necessary and can introduce subtle inconsistencies if the sampled region contains subject matter rather than clear film.</p>
+<p>If a roll looks consistently warm or cool after inversion, the first thing to check is whether the base sample was taken from truly clear, unexposed leader. A sample taken from an overexposed frame or a colored frame edge will skew every subsequent inversion on that roll.</p>
+
+<h2>The white point</h2>
+<p>Alongside the base color, the engine also establishes <strong>d_max</strong> — the maximum density on the roll — from the densest sampled area of clear film (the fully transparent leader or rebate). This value anchors the white point: a pixel at d_max density is mapped to paper white in the positive.</p>
+<p>Cropping changes what the engine sees as the densest area. If you crop tightly and exclude the original clear-leader region, the engine re-analyses the remaining pixels to find d_max. Re-analyzing after a crop ensures that the highlights in the cropped image remain correctly placed — the white point does not drift. You do not need to resample the base manually after a crop; the engine handles it automatically.</p>
+
+<details class="hood"><summary>Under the hood</summary><div class="hood-body">
+<p><strong>Density formula:</strong> density is computed as <span class="formula">D = log₁₀(base / scan)</span> — the base is divided out of the raw scan value before the logarithm is taken. Dividing cancels the mask and leaves the net dye density for each channel.</p>
+<p><strong>Default sampling:</strong> for each of the three channels the engine finds the ~<strong>95th percentile</strong> value across the sampled pixels. Using a high percentile rather than the maximum protects against bright dust specks; using a per-channel value allows the sampled color to follow the exact tint of the roll without assuming a fixed orange ratio.</p>
+<p><strong>Coherent sampling:</strong> pixels within a narrow luminance band (typically near the high end of the luminance histogram in the sampled region) are averaged together as a single RGB triplet. Because all three channels are averaged from the same set of pixels, the resulting color lies on the orange-mask locus and avoids the per-channel independence that can produce subtle casts when colorful content appears in the sampled region.</p>
+<p><strong>d_max:</strong> the engine records the <em>densest</em> sampled area of clear film as d_max — equivalently, the pixel with the highest raw value in the clear region. After a crop, the engine re-derives d_max from whatever region of clear film remains visible, keeping the white point stable.</p>
+</div></details>
+
+<p class="next"><a href="../tools/develop-basic.html">Next: Basic →</a></p>
+</article>
+    <footer class="docfoot">OpenEnlarge — open-source film scan editor · MIT licensed</footer>
+  </main>
+  <aside class="toc" id="toc" aria-label="On this page"><div class="toc-title">On this page</div><div id="toc-list"></div></aside>
+</div>
+<script src="../../docs.js" defer></script>
+</body>
+</html>

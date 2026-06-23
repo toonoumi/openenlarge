@@ -1,0 +1,174 @@
+<!-- AUTO-GENERATED from /docs-src — do not edit by hand. Run python3 scripts/gen-docs.py -->
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The tone curve (the Faithful look) — OpenEnlarge Docs</title>
+<meta name="description" content="How OpenEnlarge reconstructs a positive with a gamma-plus-shoulder curve that gives true whites, soft highlights, and consistent tone across a roll.">
+<meta name="robots" content="noindex,follow">
+<meta name="theme-color" content="#0a0a0c">
+<link rel="icon" href="../../../img/favicon.png">
+<link rel="canonical" href="https://openenlarge.io/docs/ko/science/tone-curve.html">
+<link rel="alternate" hreflang="en" href="https://openenlarge.io/docs/science/tone-curve.html">
+<link rel="alternate" hreflang="zh-Hans" href="https://openenlarge.io/docs/zh/science/tone-curve.html">
+<link rel="alternate" hreflang="x-default" href="https://openenlarge.io/docs/science/tone-curve.html">
+<meta property="og:type" content="article"><meta property="og:title" content="The tone curve (the Faithful look) — OpenEnlarge Docs"><meta property="og:description" content="How OpenEnlarge reconstructs a positive with a gamma-plus-shoulder curve that gives true whites, soft highlights, and consistent tone across a roll."><meta property="og:url" content="https://openenlarge.io/docs/ko/science/tone-curve.html"><meta property="og:image" content="https://openenlarge.io/docs/og/cover.png"><meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "The tone curve (the Faithful look)", "description": "How OpenEnlarge reconstructs a positive with a gamma-plus-shoulder curve that gives true whites, soft highlights, and consistent tone across a roll.", "inLanguage": "ko", "url": "https://openenlarge.io/docs/ko/science/tone-curve.html", "isPartOf": {"@type": "WebSite", "name": "OpenEnlarge", "url": "https://openenlarge.io"}}</script>
+<link rel="stylesheet" href="../../docs.css">
+</head>
+<body>
+<a class="skip" href="#content">Skip to content</a>
+<nav class="docnav"><div class="navbar glass wrap">
+  <a class="brand" href="../../../index.html"><img class="mark" src="../../../img/icon.png" alt=""> OpenEnlarge <span class="brand-docs">Docs</span></a>
+  <button class="menu-btn" id="menu-btn" type="button" aria-label="Menu" aria-expanded="false">☰</button>
+  <div class="navlinks">
+    <a href="../../../index.html">Home</a>
+    <a href="https://github.com/mohaelder/openenlarge">GitHub</a>
+    <a class="lang-link" href="../../science/tone-curve.html">中文</a>
+  </div>
+</div></nav>
+<div class="doclayout wrap">
+  <aside class="sidebar" id="sidebar"><div class="side-sec"><div class="side-h">Overview</div>
+<a href="../index.html">Documentation</a>
+<a href="../workflow.html">The workflow</a>
+</div>
+<div class="side-sec"><div class="side-h">The Science</div>
+<a href="../science/negatives.html">How color negatives work</a>
+<a href="../science/inversion.html">The inversion pipeline</a>
+<a href="../science/density.html">Density &amp; log space</a>
+<a class="on" href="../science/tone-curve.html">The tone curve (the Faithful look)</a>
+<a href="../science/color.html">Color &amp; white balance</a>
+<a href="../science/base-calibration.html">Film-base calibration</a>
+</div>
+<div class="side-sec"><div class="side-h">Tools</div>
+<a href="../tools/develop-basic.html">Develop · Basic</a>
+<a href="../tools/tune.html">Tune</a>
+<a href="../tools/crop-dust.html">Crop &amp; dust</a>
+<a href="../tools/ai.html">AI tools</a>
+<a href="../tools/library.html">Library</a>
+<a href="../tools/roll.html">Roll</a>
+<a href="../tools/export.html">Export</a>
+</div>
+<div class="side-sec"><div class="side-h">Reference</div>
+<a href="../reference/glossary.html">Glossary</a>
+<a href="../reference/faq.html">FAQ</a>
+<a href="../reference/storage.html">Storage &amp; clearing data</a>
+</div></aside>
+  <main class="content" id="content">
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="../index.html">Docs</a> <span class="sep">/</span> <span>The tone curve (the Faithful look)</span></nav>
+    <article class="prose"><h1>The tone curve (the Faithful look)</h1>
+<p class="lead">A naive inversion — flipping density values with a straight line — produces images that look pale, flat, and harsh. OpenEnlarge instead applies a film-faithful S-shaped curve that protects shadow detail, adds mid-tone punch, and rolls highlights gently into a true white.</p>
+
+<h2>Toe, mid, shoulder</h2>
+<p>The Faithful curve mirrors the shape of the classic Hurter–Driffield (H&amp;D) characteristic curve that describes how photographic paper responds to light. It has three distinct zones:</p>
+<ul>
+  <li><strong>Toe</strong> — near black, the curve is shallower than a straight line. Very dark values are lifted slightly so shadow detail is protected rather than crushed.</li>
+  <li><strong>Midtones</strong> — the steepest region, where the curve rises faster than the linear diagonal. This is where most subject matter lives, and the added contrast gives the image its sense of depth and snap.</li>
+  <li><strong>Shoulder</strong> — near white, the curve rolls over gently. Speculars and bright areas are compressed into the upper range without clipping hard to a flat, blown-out white.</li>
+</ul>
+<p>The S-shape is parameterized by a gamma of approximately <strong>1.590</strong>, with the shoulder asymptoting at a knee of approximately <strong>0.892</strong>. Output is clamped to [0, 1] for SDR display.</p>
+
+<h2>True white</h2>
+<p>One subtle but important property: the curve reaches exactly <strong>output = 1.0</strong> at <strong>input = 1.0</strong>. This means the densest point of the negative — typically the brightest highlight in the scene — maps all the way to paper white, not to a mid-grey cap. Many simpler tone mappings leave highlights compressed into a grey ceiling; the Faithful curve does not. Specular highlights, window light, and skin in direct sun can all reach genuine white.</p>
+<p>This true-white anchor is visible in the figure: the S-curve ends precisely at the top-right corner of the plot.</p>
+
+<figure><svg viewBox="0 0 480 480" role="img" aria-label="Tone curve plot: input density (normalized t) on the x-axis, output on the y-axis, both from 0 to 1. A faint diagonal reference line runs from (0,0) to (1,1). The S-curve starts at (0,0), rises through a gentle toe in the shadow region where the curve is shallower than the diagonal, steepens through the midtones where contrast is highest, then rolls into a soft shoulder in the highlight region before reaching exactly (1,1) — true white — at the top-right corner. The curve is monotonically increasing and stays within [0,1]." xmlns="http://www.w3.org/2000/svg">
+  <rect width="480" height="480" rx="12" fill="#141418"/>
+
+  <!-- Chart area margins: left 64, right 24, top 28, bottom 60 -->
+  <!-- Plot area: x 64..456, y 28..420 — width 392, height 392 (square) -->
+  <!-- x maps: 0→64, 1→456 (width 392) -->
+  <!-- y maps: 0→420 (bottom), 1→28 (top) (height 392, inverted) -->
+  <!-- pixel_x = 64 + t * 392 -->
+  <!-- pixel_y = 420 - t * 392 -->
+
+  <!-- Gridlines at 0.25, 0.5, 0.75 -->
+  <!-- x gridlines -->
+  <line x1="64"  y1="28" x2="64"  y2="420" stroke="#9a9aa2" stroke-width="0.5" opacity="0.35"/>
+  <line x1="162" y1="28" x2="162" y2="420" stroke="#9a9aa2" stroke-width="0.5" opacity="0.25"/>
+  <line x1="260" y1="28" x2="260" y2="420" stroke="#9a9aa2" stroke-width="0.5" opacity="0.25"/>
+  <line x1="358" y1="28" x2="358" y2="420" stroke="#9a9aa2" stroke-width="0.5" opacity="0.25"/>
+  <line x1="456" y1="28" x2="456" y2="420" stroke="#9a9aa2" stroke-width="0.5" opacity="0.35"/>
+
+  <!-- y gridlines -->
+  <line x1="64" y1="420" x2="456" y2="420" stroke="#9a9aa2" stroke-width="0.5" opacity="0.35"/>
+  <line x1="64" y1="322" x2="456" y2="322" stroke="#9a9aa2" stroke-width="0.5" opacity="0.25"/>
+  <line x1="64" y1="224" x2="456" y2="224" stroke="#9a9aa2" stroke-width="0.5" opacity="0.25"/>
+  <line x1="64" y1="126" x2="456" y2="126" stroke="#9a9aa2" stroke-width="0.5" opacity="0.25"/>
+  <line x1="64" y1="28"  x2="456" y2="28"  stroke="#9a9aa2" stroke-width="0.5" opacity="0.35"/>
+
+  <!-- Diagonal reference line (y=x): from plot (0,0)=(64,420) to plot (1,1)=(456,28) -->
+  <line x1="64" y1="420" x2="456" y2="28" stroke="#9a9aa2" stroke-width="1" stroke-dasharray="5 4" opacity="0.5"/>
+
+  <!-- S-curve: tone curve from (0,0) to (1,1)
+       Composite of two cubic Bézier segments.
+       Segment 1: P0=(64,420), C1=(96,400), C2=(150,250), P3=(260,210)
+         toe: initial tangent (64,420)→(96,400) = (32,−20), data slope ≈ 0.63 < 1 (below diagonal)
+         joint at t=0.5: pixel (260,210) → out=(420−210)/392 ≈ 0.536 > 0.5 (above diagonal)
+       Segment 2: P0=(260,210), C1=(340,182), C2=(405,40), P3=(456,28)
+         soft shoulder: terminal tangent (405,40)→(456,28) = (51,−12), data slope ≈ 0.24 < 1 (flattens into white)
+       All y values strictly decreasing (420→400→250→210→182→40→28) → monotonic, no overshoot.
+  -->
+  <path d="M 64,420 C 96,400 150,250 260,210 C 340,182 405,40 456,28"
+        fill="none" stroke="#f49d4e" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Endpoint markers -->
+  <circle cx="64"  cy="420" r="3.5" fill="#f49d4e"/>
+  <circle cx="456" cy="28"  r="3.5" fill="#f49d4e"/>
+
+  <!-- Toe annotation: near t≈0.15, output≈0.08 → pixel (122.8, 388.6) -->
+  <!-- Arrow from label to curve point ~(118, 391) -->
+  <text x="46" y="388" font-family="ui-monospace,monospace" font-size="11" fill="#9a9aa2" text-anchor="end">toe</text>
+  <line x1="48" y1="385" x2="110" y2="376" stroke="#9a9aa2" stroke-width="0.8" opacity="0.6"/>
+
+  <!-- Shoulder annotation: near t≈0.82, output≈0.87 → pixel (385.4, ~62) on new curve -->
+  <text x="456" y="118" font-family="ui-monospace,monospace" font-size="11" fill="#9a9aa2" text-anchor="start">shoulder</text>
+  <line x1="454" y1="113" x2="400" y2="60" stroke="#9a9aa2" stroke-width="0.8" opacity="0.6"/>
+
+  <!-- True white annotation at (1,1) corner -->
+  <text x="456" y="21" font-family="ui-monospace,monospace" font-size="10" fill="#e8e8ea" text-anchor="end">true white (1.0)</text>
+
+  <!-- X-axis tick labels -->
+  <text x="64"  y="438" font-family="ui-monospace,monospace" font-size="11" fill="#9a9aa2" text-anchor="middle">0</text>
+  <text x="162" y="438" font-family="ui-monospace,monospace" font-size="11" fill="#9a9aa2" text-anchor="middle">0.25</text>
+  <text x="260" y="438" font-family="ui-monospace,monospace" font-size="11" fill="#9a9aa2" text-anchor="middle">0.5</text>
+  <text x="358" y="438" font-family="ui-monospace,monospace" font-size="11" fill="#9a9aa2" text-anchor="middle">0.75</text>
+  <text x="456" y="438" font-family="ui-monospace,monospace" font-size="11" fill="#9a9aa2" text-anchor="middle">1</text>
+
+  <!-- X-axis label -->
+  <text x="260" y="456" font-family="ui-monospace,monospace" font-size="11" fill="#e8e8ea" text-anchor="middle">input density  (normalized t)</text>
+
+  <!-- Y-axis tick labels -->
+  <text x="58" y="424" font-family="ui-monospace,monospace" font-size="11" fill="#9a9aa2" text-anchor="end">0</text>
+  <text x="58" y="326" font-family="ui-monospace,monospace" font-size="11" fill="#9a9aa2" text-anchor="end">0.25</text>
+  <text x="58" y="228" font-family="ui-monospace,monospace" font-size="11" fill="#9a9aa2" text-anchor="end">0.5</text>
+  <text x="58" y="130" font-family="ui-monospace,monospace" font-size="11" fill="#9a9aa2" text-anchor="end">0.75</text>
+  <text x="58" y="32"  font-family="ui-monospace,monospace" font-size="11" fill="#9a9aa2" text-anchor="end">1</text>
+
+  <!-- Y-axis label -->
+  <text x="14" y="224" font-family="ui-monospace,monospace" font-size="11" fill="#e8e8ea" text-anchor="middle" transform="rotate(-90,14,224)">output</text>
+
+  <!-- Diagonal label -->
+  <text x="320" y="148" font-family="ui-monospace,monospace" font-size="10" fill="#9a9aa2" text-anchor="start" transform="rotate(-45,320,148)" opacity="0.7">linear ref</text>
+</svg>
+<figcaption>Input density (normalized t, 0–1) versus output (0–1). The dashed diagonal is a linear reference. The S-curve starts at (0, 0), dips below the diagonal in the shadows (toe — shadow protection), rises above it through the midtones (contrast), then rolls over into a soft shoulder before reaching exactly (1, 1) — true white.</figcaption></figure>
+
+<h2>Consistent across the roll</h2>
+<p>OpenEnlarge uses a <strong>fixed density scale</strong> — <code>1 / 0.700 ≈ 1.429</code> — when computing the tone curve, rather than normalizing to each frame's own measured density. This means every frame in a roll is interpreted on the same tonal ruler. One frame that was slightly under-exposed and another that was slightly over-exposed will both be passed through the same curve shape; only the per-frame <em>exposure</em> slider adapts to compensate. The result is that a roll of street photographs all printed together looks cohesive: the sky stays a consistent white, the shadows maintain the same depth from frame to frame.</p>
+<p>This is the same discipline a darkroom printer uses when they dial in a single exposure time for a whole roll on the enlarger, then dodge and burn individual frames — the global tone mapping is fixed, and local corrections are applied on top.</p>
+
+<details class="hood"><summary>Under the hood</summary><div class="hood-body">
+<p>The Faithful tone curve is a power-law with a soft asymptotic shoulder: <span class="formula">out = t<sup>γ</sup></span> in the toe-to-mid region, transitioning into a shoulder that asymptotes at knee ≈ <strong>0.892</strong>, with gamma (γ) ≈ <strong>1.590</strong>. The raw density is pre-scaled by the fixed factor <span class="formula">FAITHFUL_SCALE = 1 / 0.700 ≈ 1.429</span> before the curve is applied; this scale is frame-independent, ensuring consistent tone across an entire roll. Only the per-frame exposure (a log-space multiply) adapts to the individual frame's brightness.</p>
+<p>On top of the base curve sits the optional <strong>Look layer</strong>: a normalized tanh S-curve with strength <strong>2.0</strong>, anchored so that 0 maps to 0 and 1 maps to 1. This adds an additional S-shaped contrast push without shifting the black or white points. In the current Faithful path the Look layer is always applied.</p>
+</div></details>
+
+<p class="next"><a href="color.html">Next: color &amp; white balance →</a></p>
+</article>
+    <footer class="docfoot">OpenEnlarge — open-source film scan editor · MIT licensed</footer>
+  </main>
+  <aside class="toc" id="toc" aria-label="On this page"><div class="toc-title">On this page</div><div id="toc-list"></div></aside>
+</div>
+<script src="../../docs.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,195 @@
+<!-- AUTO-GENERATED from /docs-src — do not edit by hand. Run python3 scripts/gen-docs.py -->
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Density &amp; log space — OpenEnlarge Docs</title>
+<meta name="description" content="Why OpenEnlarge works in optical density and log space, what a photographic stop is, and how the d_max white point is set.">
+<meta name="robots" content="noindex,follow">
+<meta name="theme-color" content="#0a0a0c">
+<link rel="icon" href="../../../img/favicon.png">
+<link rel="canonical" href="https://openenlarge.io/docs/ko/science/density.html">
+<link rel="alternate" hreflang="en" href="https://openenlarge.io/docs/science/density.html">
+<link rel="alternate" hreflang="zh-Hans" href="https://openenlarge.io/docs/zh/science/density.html">
+<link rel="alternate" hreflang="x-default" href="https://openenlarge.io/docs/science/density.html">
+<meta property="og:type" content="article"><meta property="og:title" content="Density &amp; log space — OpenEnlarge Docs"><meta property="og:description" content="Why OpenEnlarge works in optical density and log space, what a photographic stop is, and how the d_max white point is set."><meta property="og:url" content="https://openenlarge.io/docs/ko/science/density.html"><meta property="og:image" content="https://openenlarge.io/docs/og/cover.png"><meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "Density & log space", "description": "Why OpenEnlarge works in optical density and log space, what a photographic stop is, and how the d_max white point is set.", "inLanguage": "ko", "url": "https://openenlarge.io/docs/ko/science/density.html", "isPartOf": {"@type": "WebSite", "name": "OpenEnlarge", "url": "https://openenlarge.io"}}</script>
+<link rel="stylesheet" href="../../docs.css">
+</head>
+<body>
+<a class="skip" href="#content">Skip to content</a>
+<nav class="docnav"><div class="navbar glass wrap">
+  <a class="brand" href="../../../index.html"><img class="mark" src="../../../img/icon.png" alt=""> OpenEnlarge <span class="brand-docs">Docs</span></a>
+  <button class="menu-btn" id="menu-btn" type="button" aria-label="Menu" aria-expanded="false">☰</button>
+  <div class="navlinks">
+    <a href="../../../index.html">Home</a>
+    <a href="https://github.com/mohaelder/openenlarge">GitHub</a>
+    <a class="lang-link" href="../../science/density.html">中文</a>
+  </div>
+</div></nav>
+<div class="doclayout wrap">
+  <aside class="sidebar" id="sidebar"><div class="side-sec"><div class="side-h">Overview</div>
+<a href="../index.html">Documentation</a>
+<a href="../workflow.html">The workflow</a>
+</div>
+<div class="side-sec"><div class="side-h">The Science</div>
+<a href="../science/negatives.html">How color negatives work</a>
+<a href="../science/inversion.html">The inversion pipeline</a>
+<a class="on" href="../science/density.html">Density &amp; log space</a>
+<a href="../science/tone-curve.html">The tone curve (the Faithful look)</a>
+<a href="../science/color.html">Color &amp; white balance</a>
+<a href="../science/base-calibration.html">Film-base calibration</a>
+</div>
+<div class="side-sec"><div class="side-h">Tools</div>
+<a href="../tools/develop-basic.html">Develop · Basic</a>
+<a href="../tools/tune.html">Tune</a>
+<a href="../tools/crop-dust.html">Crop &amp; dust</a>
+<a href="../tools/ai.html">AI tools</a>
+<a href="../tools/library.html">Library</a>
+<a href="../tools/roll.html">Roll</a>
+<a href="../tools/export.html">Export</a>
+</div>
+<div class="side-sec"><div class="side-h">Reference</div>
+<a href="../reference/glossary.html">Glossary</a>
+<a href="../reference/faq.html">FAQ</a>
+<a href="../reference/storage.html">Storage &amp; clearing data</a>
+</div></aside>
+  <main class="content" id="content">
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="../index.html">Docs</a> <span class="sep">/</span> <span>Density &amp; log space</span></nav>
+    <article class="prose"><h1>Density &amp; log space</h1>
+<p class="lead">Film does not respond to light linearly — it responds <em>logarithmically</em>. That makes optical density, not raw brightness, the natural domain for film inversion: equal density steps are equal photographic stops, and every slider in OpenEnlarge works in this space.</p>
+
+<h2>Optical density</h2>
+<p>Density measures how much a film layer blocks light. Shine light through film; if only a tenth reaches the other side, that layer has a transmission of 0.1. The Beer–Lambert law connects transmission to density:</p>
+<p><span class="formula">T = 10<sup>−D</sup></span></p>
+<p>A piece of film at D = 1 transmits exactly T = 0.1 (one-tenth of incident light); at D = 2 it transmits T = 0.01. Each integer step multiplies the blocking by a factor of ten — a tenfold ratio that maps cleanly onto the logarithm. OpenEnlarge computes density directly from the scan:</p>
+<p><span class="formula">D = log₁₀(base / scan)</span></p>
+<p>where <code>base</code> is the pixel value sampled from the clear film edge and <code>scan</code> is the raw value at each point. Dividing removes the orange mask; taking the logarithm converts the result into density, clamped ≥ 0 so clear film reads D = 0.</p>
+
+<h2>What is a "stop"?</h2>
+<p>A <strong>photographic stop</strong> is a doubling or halving of light: one stop more means twice as many photons. On the density scale, each stop corresponds to a fixed increment of log₁₀(2) ≈ 0.301. Flipping that around, one density unit spans 1 / 0.301 ≈ <strong>3.32 stops</strong>.</p>
+<p>This is why density is the right domain for image editing. In raw linear light, shadows and highlights cover wildly different numerical ranges — a one-stop change in bright areas is numerically huge, but tiny in dark areas. In density space, every stop is the same size everywhere. Equal slider steps deliver equal perceptual changes across the entire tonal range.</p>
+
+<figure><svg viewBox="0 0 640 320" role="img" aria-label="Density versus light on a stop-spaced axis: a straight line in which each doubling of light — one photographic stop — adds the same 0.30 of density. Light values 1, 2, 4, 8, 16 are equally spaced on the x-axis because the axis is already stop-spaced (logarithmic). The five data points fall on evenly-spaced y positions at D = 0.0, 0.3, 0.6, 0.9, 1.2, confirming that each stop adds exactly log₁₀(2) ≈ 0.30 of optical density." xmlns="http://www.w3.org/2000/svg">
+  <rect width="640" height="320" rx="12" fill="#141418"/>
+
+  <!-- Chart area margins: left 70, right 24, top 24, bottom 56 -->
+  <!-- Plot area: x 70..616, y 24..264 — width 546, height 240 -->
+
+  <!-- Stop gridlines: x positions for light values 1,2,4,8,16 mapped logarithmically
+       log2(1)=0, log2(2)=1, log2(4)=2, log2(8)=3, log2(16)=4
+       x = 70 + (log2(v)/4) * 546
+       v=1 → x=70, v=2 → x=206.5, v=4 → x=343, v=8 → x=479.5, v=16 → x=616
+  -->
+
+  <!-- Horizontal density gridlines: y positions for D=0.0,0.3,0.6,0.9,1.2 evenly spaced
+       y = 264 - (D/1.2)*240  (1.2 = 4 stops × 0.30 per stop)
+       D=0.0 → y=264, D=0.3 → y=204, D=0.6 → y=144, D=0.9 → y=84, D=1.2 → y=24
+  -->
+
+  <!-- Vertical stop gridlines (light values) -->
+  <line x1="70"    y1="24" x2="70"    y2="264" stroke="#9a9aa2" stroke-width="0.5" opacity="0.4"/>
+  <line x1="206.5" y1="24" x2="206.5" y2="264" stroke="#9a9aa2" stroke-width="0.5" opacity="0.4"/>
+  <line x1="343"   y1="24" x2="343"   y2="264" stroke="#9a9aa2" stroke-width="0.5" opacity="0.4"/>
+  <line x1="479.5" y1="24" x2="479.5" y2="264" stroke="#9a9aa2" stroke-width="0.5" opacity="0.4"/>
+  <line x1="616"   y1="24" x2="616"   y2="264" stroke="#9a9aa2" stroke-width="0.5" opacity="0.4"/>
+
+  <!-- Horizontal density gridlines -->
+  <line x1="70" y1="264" x2="616" y2="264" stroke="#9a9aa2" stroke-width="0.5" opacity="0.4"/>
+  <line x1="70" y1="204" x2="616" y2="204" stroke="#9a9aa2" stroke-width="0.5" opacity="0.4"/>
+  <line x1="70" y1="144" x2="616" y2="144" stroke="#9a9aa2" stroke-width="0.5" opacity="0.4"/>
+  <line x1="70" y1="84"  x2="616" y2="84"  stroke="#9a9aa2" stroke-width="0.5" opacity="0.4"/>
+  <line x1="70" y1="24"  x2="616" y2="24"  stroke="#9a9aa2" stroke-width="0.5" opacity="0.4"/>
+
+  <!-- Stop connector lines: each +1 stop on x = +0.30 density step on y (equal spacing)
+       Highlight the equal-step property with dashed connectors from grid intersections
+  -->
+  <!-- Connecting dots at stop intersections (v=1,D=0.0), (v=2,D=0.3), (v=4,D=0.6), (v=8,D=0.9), (v=16,D=1.2) -->
+  <circle cx="70"    cy="264" r="4" fill="#f49d4e"/>
+  <circle cx="206.5" cy="204" r="4" fill="#f49d4e"/>
+  <circle cx="343"   cy="144" r="4" fill="#f49d4e"/>
+  <circle cx="479.5" cy="84"  r="4" fill="#f49d4e"/>
+  <circle cx="616"   cy="24"  r="4" fill="#f49d4e"/>
+
+  <!-- The line y = 264 - (log2(t) / 4)*240 for t from 1..16 is STRAIGHT on a stop-spaced x-axis
+       because x = 70 + (log2(t)/4)*546 — both x and y are proportional to log2(t).
+       Sampled at integer and half-stop positions for a smooth polyline.
+       t values: 1, 1.41, 2, 2.83, 4, 5.66, 8, 11.31, 16
+       x = 70 + (log2(t)/4)*546
+       y = 264 - (log2(t)/4)*240
+       (1, D=0.0):   x=70,    y=264
+       (1.41,D=0.15):x=138.3, y=234
+       (2,  D=0.3):  x=206.5, y=204
+       (2.83,D=0.45):x=274.8, y=174
+       (4,  D=0.6):  x=343,   y=144
+       (5.66,D=0.75):x=411.3, y=114
+       (8,  D=0.9):  x=479.5, y=84
+       (11.31,D=1.05):x=547.8,y=54
+       (16, D=1.2):  x=616,   y=24
+  -->
+  <polyline
+    points="70,264 138.3,234 206.5,204 274.8,174 343,144 411.3,114 479.5,84 547.8,54 616,24"
+    fill="none" stroke="#f49d4e" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- "1 stop" bracket annotations between v=1→2 and v=2→4 on x-axis -->
+  <!-- Between x=70 and x=206.5, below y=264 -->
+  <line x1="70"    y1="275" x2="70"    y2="282" stroke="#9a9aa2" stroke-width="1"/>
+  <line x1="206.5" y1="275" x2="206.5" y2="282" stroke="#9a9aa2" stroke-width="1"/>
+  <line x1="70"    y1="278" x2="206.5" y2="278" stroke="#9a9aa2" stroke-width="1"/>
+  <text x="138.3" y="295" font-family="ui-monospace,monospace" font-size="10" fill="#9a9aa2" text-anchor="middle">+1 stop</text>
+
+  <!-- Between x=206.5 and x=343, same level -->
+  <line x1="206.5" y1="275" x2="206.5" y2="282" stroke="#9a9aa2" stroke-width="1"/>
+  <line x1="343"   y1="275" x2="343"   y2="282" stroke="#9a9aa2" stroke-width="1"/>
+  <line x1="206.5" y1="278" x2="343"   y2="278" stroke="#9a9aa2" stroke-width="1"/>
+  <text x="274.8" y="295" font-family="ui-monospace,monospace" font-size="10" fill="#9a9aa2" text-anchor="middle">+1 stop</text>
+
+  <!-- Y-axis density labels (true optical density: each stop = log₁₀(2) ≈ 0.30) -->
+  <text x="60" y="268" font-family="ui-monospace,monospace" font-size="11" fill="#9a9aa2" text-anchor="end">D 0.0</text>
+  <text x="60" y="208" font-family="ui-monospace,monospace" font-size="11" fill="#9a9aa2" text-anchor="end">D 0.3</text>
+  <text x="60" y="148" font-family="ui-monospace,monospace" font-size="11" fill="#9a9aa2" text-anchor="end">D 0.6</text>
+  <text x="60" y="88"  font-family="ui-monospace,monospace" font-size="11" fill="#9a9aa2" text-anchor="end">D 0.9</text>
+  <text x="60" y="28"  font-family="ui-monospace,monospace" font-size="11" fill="#9a9aa2" text-anchor="end">D 1.2</text>
+
+  <!-- Y-axis label -->
+  <text x="14" y="144" font-family="ui-monospace,monospace" font-size="11" fill="#e8e8ea" text-anchor="middle" transform="rotate(-90,14,144)">density  D = log₁₀(light)</text>
+
+  <!-- X-axis light value labels -->
+  <text x="70"    y="310" font-family="ui-monospace,monospace" font-size="11" fill="#9a9aa2" text-anchor="middle">1</text>
+  <text x="206.5" y="310" font-family="ui-monospace,monospace" font-size="11" fill="#9a9aa2" text-anchor="middle">2</text>
+  <text x="343"   y="310" font-family="ui-monospace,monospace" font-size="11" fill="#9a9aa2" text-anchor="middle">4</text>
+  <text x="479.5" y="310" font-family="ui-monospace,monospace" font-size="11" fill="#9a9aa2" text-anchor="middle">8</text>
+  <text x="616"   y="310" font-family="ui-monospace,monospace" font-size="11" fill="#9a9aa2" text-anchor="middle">16</text>
+
+  <!-- X-axis label -->
+  <text x="343" y="316" font-family="ui-monospace,monospace" font-size="11" fill="#e8e8ea" text-anchor="middle" dy="0">linear light (stops ×2)</text>
+
+  <!-- Callout: "+1 stop → +0.30 D" annotation on right side — every interval is the same -->
+  <!-- Bracket for equal y spacing on right side, D=0.0→0.3 (one stop) -->
+  <line x1="624" y1="264" x2="630" y2="264" stroke="#9a9aa2" stroke-width="1"/>
+  <line x1="624" y1="204" x2="630" y2="204" stroke="#9a9aa2" stroke-width="1"/>
+  <line x1="627" y1="264" x2="627" y2="204" stroke="#9a9aa2" stroke-width="1"/>
+  <text x="634" y="232" font-family="ui-monospace,monospace" font-size="9" fill="#f49d4e" text-anchor="start">+1 stop</text>
+  <text x="634" y="243" font-family="ui-monospace,monospace" font-size="9" fill="#f49d4e" text-anchor="start">→ +0.30 D</text>
+</svg>
+<figcaption>Geometric light values (1, 2, 4, 8, 16 — each a doubling, i.e. one stop) fall on a straight line when the x-axis is already stop-spaced. Each stop adds the same ~0.30 of optical density (D = 0.0 → 0.3 → 0.6 → 0.9 → 1.2), confirming that equal density steps are equal photographic stops.</figcaption></figure>
+
+<h2>The white point (d_max)</h2>
+<p>The densest point of a negative corresponds to the brightest part of the scene — or to the completely unexposed leader at the edge. OpenEnlarge calls this density <code>d_max</code>. It is found per channel from the film being developed, and it anchors the normalization step:</p>
+<p><span class="formula">t = D / d_max</span></p>
+<p>After this division, <code>t = 0</code> is the thinnest part of the negative (deepest shadow in the scene) and <code>t = 1</code> is the densest part (paper white). In the active Faithful path, the tone curve works directly on the raw density <code>D</code> scaled by a fixed factor (see the tone-curve page), rather than on the per-frame <code>t</code>; balance and look layers operate on the tone-curve output. See <a href="base-calibration.html">picking the white point</a> for how to set <code>d_max</code> correctly.</p>
+
+<details class="hood"><summary>Under the hood</summary><div class="hood-body">
+<p>The density formula is <span class="formula">D = log₁₀(base / scan)</span>, clamped ≥ 0; <code>base</code> is sampled from the clear film edge, <code>scan</code> is the raw pixel value. One density unit ≈ 3.32 photographic stops (because log₁₀(2) ≈ 0.301, and 1 / 0.301 ≈ 3.32). The white-point normalize is <span class="formula">t = D / d_max</span>, where <code>d_max</code> is the densest negative value per channel. Exposure in OpenEnlarge is a log-space multiply that pivots on black — in the Faithful path, one unit of the exposure slider corresponds to approximately 1 stop/EV.</p>
+</div></details>
+
+<p class="next"><a href="tone-curve.html">Next: the tone curve →</a></p>
+</article>
+    <footer class="docfoot">OpenEnlarge — open-source film scan editor · MIT licensed</footer>
+  </main>
+  <aside class="toc" id="toc" aria-label="On this page"><div class="toc-title">On this page</div><div id="toc-list"></div></aside>
+</div>
+<script src="../../docs.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,137 @@
+<!-- AUTO-GENERATED from /docs-src — do not edit by hand. Run python3 scripts/gen-docs.py -->
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Roll — OpenEnlarge Docs</title>
+<meta name="description" content="The contact-sheet view and live mirror mode — edit one frame and preview it across the whole roll — plus copy/apply-to-roll groups and film-edge rendering.">
+<meta name="robots" content="noindex,follow">
+<meta name="theme-color" content="#0a0a0c">
+<link rel="icon" href="../../../img/favicon.png">
+<link rel="canonical" href="https://openenlarge.io/docs/ko/tools/roll.html">
+<link rel="alternate" hreflang="en" href="https://openenlarge.io/docs/tools/roll.html">
+<link rel="alternate" hreflang="zh-Hans" href="https://openenlarge.io/docs/zh/tools/roll.html">
+<link rel="alternate" hreflang="x-default" href="https://openenlarge.io/docs/tools/roll.html">
+<meta property="og:type" content="article"><meta property="og:title" content="Roll — OpenEnlarge Docs"><meta property="og:description" content="The contact-sheet view and live mirror mode — edit one frame and preview it across the whole roll — plus copy/apply-to-roll groups and film-edge rendering."><meta property="og:url" content="https://openenlarge.io/docs/ko/tools/roll.html"><meta property="og:image" content="https://openenlarge.io/docs/og/cover.png"><meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "Roll", "description": "The contact-sheet view and live mirror mode — edit one frame and preview it across the whole roll — plus copy/apply-to-roll groups and film-edge rendering.", "inLanguage": "ko", "url": "https://openenlarge.io/docs/ko/tools/roll.html", "isPartOf": {"@type": "WebSite", "name": "OpenEnlarge", "url": "https://openenlarge.io"}}</script>
+<link rel="stylesheet" href="../../docs.css">
+</head>
+<body>
+<a class="skip" href="#content">Skip to content</a>
+<nav class="docnav"><div class="navbar glass wrap">
+  <a class="brand" href="../../../index.html"><img class="mark" src="../../../img/icon.png" alt=""> OpenEnlarge <span class="brand-docs">Docs</span></a>
+  <button class="menu-btn" id="menu-btn" type="button" aria-label="Menu" aria-expanded="false">☰</button>
+  <div class="navlinks">
+    <a href="../../../index.html">Home</a>
+    <a href="https://github.com/mohaelder/openenlarge">GitHub</a>
+    <a class="lang-link" href="../../tools/roll.html">中文</a>
+  </div>
+</div></nav>
+<div class="doclayout wrap">
+  <aside class="sidebar" id="sidebar"><div class="side-sec"><div class="side-h">Overview</div>
+<a href="../index.html">Documentation</a>
+<a href="../workflow.html">The workflow</a>
+</div>
+<div class="side-sec"><div class="side-h">The Science</div>
+<a href="../science/negatives.html">How color negatives work</a>
+<a href="../science/inversion.html">The inversion pipeline</a>
+<a href="../science/density.html">Density &amp; log space</a>
+<a href="../science/tone-curve.html">The tone curve (the Faithful look)</a>
+<a href="../science/color.html">Color &amp; white balance</a>
+<a href="../science/base-calibration.html">Film-base calibration</a>
+</div>
+<div class="side-sec"><div class="side-h">Tools</div>
+<a href="../tools/develop-basic.html">Develop · Basic</a>
+<a href="../tools/tune.html">Tune</a>
+<a href="../tools/crop-dust.html">Crop &amp; dust</a>
+<a href="../tools/ai.html">AI tools</a>
+<a href="../tools/library.html">Library</a>
+<a class="on" href="../tools/roll.html">Roll</a>
+<a href="../tools/export.html">Export</a>
+</div>
+<div class="side-sec"><div class="side-h">Reference</div>
+<a href="../reference/glossary.html">Glossary</a>
+<a href="../reference/faq.html">FAQ</a>
+<a href="../reference/storage.html">Storage &amp; clearing data</a>
+</div></aside>
+  <main class="content" id="content">
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="../index.html">Docs</a> <span class="sep">/</span> <span>Roll</span></nav>
+    <article class="prose"><h1>Roll</h1>
+<p class="lead">The Roll tab shows every developed frame in the current folder as a contact sheet. From here you can apply a unified look across the whole roll — tone, color, crop, and film base — with a live two-pass preview that shows the result on every frame as you move a slider, then persists it automatically once you stop. You can also copy develop settings from a single frame and apply selected groups to the whole roll from the <a href="develop-basic.html">Basic</a> panel.</p>
+
+<h2>The contact sheet</h2>
+<p>The contact sheet fills the main area of the Roll tab. Frames are laid out in horizontal rows of six — a <strong>strip</strong> — matching the physical strip length of a 35 mm roll. The tile aspect ratio adapts to the roll's actual frame shape: the median aspect of all landscape frames is computed via <code>pickTileAspect()</code> in <code>contactSheet.ts</code>, so that landscape frames fill their tile edge-to-edge. Portrait frames letterbox inside the same tile height, keeping every row the same height regardless of orientation.</p>
+
+<p>Clicking any frame opens it in a full-screen <strong>frame preview overlay</strong> (rendered by <code>FramePreview.svelte</code>) — a full-resolution GPU viewport showing the frame's committed develop settings and crop. Press <kbd>Esc</kbd> or click the background to dismiss. The overlay is read-only: it shows the frame as-is and does not open the Frame editor.</p>
+
+<p>The toolbar above the sheet has two controls. The <strong>Film edge</strong> toggle (label <code>roll.filmEdge</code>) switches the sheet between film-strip mode and plain proof-grid mode — see <a href="#film-edge-rendering">Film-edge rendering</a> below. The <strong>Export contact sheet</strong> button (label <code>roll.export.button</code>) saves the sheet as a PNG file via an OS save dialog — see <a href="export.html">Export →</a>.</p>
+
+<h2>Mirror mode and the entry gate</h2>
+<p>When you open the Roll tab, OpenEnlarge checks whether any frame in the folder already has develop edits (tone/color, crop, film base, or white point). If one or more frames do, a confirmation dialog appears — <strong>"Overwrite N edited frames?"</strong> (label <code>confirmOverwrite.title</code>) — explaining that applying roll-wide settings will replace per-frame edits. You can click <strong>Overwrite all</strong> (<code>confirmOverwrite.overwrite</code>) to proceed, or <strong>Cancel</strong> (<code>confirmOverwrite.cancel</code>) to return to the Library. A <strong>Don't ask me again</strong> checkbox (<code>confirmOverwrite.dontAsk</code>) suppresses the dialog for future visits to this roll. If no frames have edits, mirroring is enabled immediately without showing the dialog.</p>
+
+<p>Once confirmed, the roll enters <strong>mirror mode</strong>: every change to the roll-wide controls in the right panel is reflected live across all frames in the contact sheet. If there are no conflicts, mirror mode is active from the moment the tab opens.</p>
+
+<h2>Live preview and persist (the two-pass model)</h2>
+<p>Mirror mode runs two asynchronous passes:</p>
+
+<p><strong>Pass 1 — Preview</strong> fires 120 ms after the last slider movement (debounced). It re-renders every frame's thumbnail using the draft look and updates the contact sheet immediately, with up to five frames rendering in parallel. The thumbnails shown in the sheet are replaced as results arrive; frames not yet updated keep their previous preview. This pass does not write to disk or update any stored edits.</p>
+
+<p><strong>Pass 2 — Persist</strong> fires 600 ms after the last change. It writes the draft look into every frame's stored edits (<code>editsById</code>), saves the crop geometry to all frames when a roll-wide crop is set, and updates the catalog thumbnails by reusing the previews already rendered in Pass 1 — no second render. Both passes are suppressed until you actually touch a control (<code>rollDraftTouched</code>), so simply opening the Roll tab never reverts per-frame edits you made in Frame.</p>
+
+<p>The draft state is kept alive across re-entries to the <em>same</em> roll (so slider positions are not lost when you switch tabs), but a fresh default draft is started whenever the active folder changes.</p>
+
+<h2>Roll-wide controls</h2>
+<p>The right panel (rendered by <code>RollAdjust.svelte</code>) is headed <strong>"Roll look"</strong> (<code>roll.adjust.heading</code>) and contains the same sliders as the Frame Basic panel: Temperature, Tint, Exposure, Contrast, Highlights, Shadows, Whites, Blacks, Vibrance, and Saturation, plus a tonal curve. A <strong>Reset</strong> button (<code>basic.reset</code>) clears the look back to defaults while leaving the film base and white point in the draft untouched.</p>
+
+<p>Below the heading and above the sliders, two icon tool buttons open reference-edit modes:</p>
+<ul>
+  <li><strong>Crop</strong> (<code>roll.crop.tool</code>) — opens the full crop editor on a reference frame; the result is applied to all frames.</li>
+  <li><strong>Film base</strong> (<code>roll.base.heading</code>) — opens base-sampling mode on a reference frame and recalibrates the whole-roll base from the pick; the new base is set as the folder default and reseeded across all frames. Use this to override the automatic roll base (see below).</li>
+</ul>
+
+<p><strong>Automatic roll base:</strong> when you develop a roll, OpenEnlarge automatically computes a single roll-wide film base — the confidence-filtered per-channel median of each frame's auto-detected rebate — and stores it as the folder default. Every frame is then seeded against this shared base. Frames with a per-image <code>base_override</code> or a manually picked white balance are left untouched. Existing rolls that have no stored base are migrated automatically on first open. The <strong>Film base</strong> reference-edit mode above is a <em>manual recalibrate</em> for when the automatic base needs correction; it replaces the stored folder base and reseeds the roll.</p>
+
+<p>Both modes use the same reference-edit layout: the chosen frame fills the main area, a horizontal filmstrip of all frames runs along the bottom so you can switch the reference without leaving the mode, and the right panel shows the relevant controls or remains empty (base mode auto-dismisses on a single pick). In crop mode, pressing <kbd>Enter</kbd> or clicking the <strong>Crop</strong> button commits the geometry; pressing <kbd>Esc</kbd> discards it.</p>
+
+<p><strong>The scalar sliders are relative.</strong> Temperature, Tint, Exposure, Contrast, Highlights, Shadows, Whites, Blacks, Vibrance and Saturation apply as an <em>offset</em> on top of each frame's own value rather than overwriting it — so per-frame differences survive (each frame keeps its own Auto-Brightness exposure and white balance; a punchier frame stays relatively punchier). Moving a roll slider shifts every frame by the same amount, and opening a frame shows its shifted value. The Tonal Curve and the film base apply identically to every frame.</p>
+
+<p><strong>Copying Temperature with the Tone &amp; Color group:</strong> <strong>Apply to whole roll…</strong> (<code>basic.applyToRoll</code>) carries Temperature/Tint with the Tone &amp; Color group. (A per-frame-relative offset for copy/roll-apply — done in mired so the shift is consistent across base temperatures — is planned; until then Temperature copies as its slider value.)</p>
+
+<h2>Copy and apply to the whole roll</h2>
+<p>You can also push a single frame's develop settings across the whole roll from outside the Roll tab. In the <a href="develop-basic.html">Basic</a> panel, the <strong>Apply to whole roll…</strong> button (<code>basic.applyToRoll</code>) opens a group-picker dialog — <strong>"Apply to all N frames in this roll?"</strong> (<code>confirmApply.rollTitle</code>) — with five checkboxes:</p>
+<ul>
+  <li><strong>Tone &amp; Color</strong> (<code>applyGroups.toneColor</code>) — all develop parameters except film base, white point, exposure, mode, stock, HDR, and positive flag.</li>
+  <li><strong>Crop</strong> (<code>applyGroups.crop</code>) — the frame's full <code>CropRect</code> (aspect, orientation, rot90, flipH, flipV, angle, rect) applied identically to every frame.</li>
+  <li><strong>Film base</strong> (<code>applyGroups.base</code>) — the frame's <code>base_override</code> RGB triplet applied to all frames.</li>
+  <li><strong>Exposure</strong> (<code>applyGroups.exposure</code>) — the frame's absolute exposure value applied to all frames.</li>
+  <li><strong>White point</strong> (<code>applyGroups.whitePoint</code>) — the frame's <code>d_max_override</code> applied to all frames.</li>
+</ul>
+<p>The same group-picker appears when pasting copied settings (<kbd>⌘C</kbd> / <kbd>⌘V</kbd>) onto a multi-image selection in the Library. For a single-image paste, only the Tone &amp; Color group is applied by default (no dialog). The apply helpers are implemented in <code>roll/apply.ts</code> (<code>applyToneColorToAll</code>, <code>applyCropToAll</code>, <code>applyBaseToAll</code>, <code>applyExposureToAll</code>, <code>applyWhitePointToAll</code>) and are shared between the roll mirror path and the copy/paste path.</p>
+
+<h2>Film-edge rendering</h2>
+<p>The <strong>Film edge</strong> toggle switches between two sheet layouts, with a short fade transition between them:</p>
+
+<p><strong>Film-strip mode (Film edge on):</strong> each strip of six frames is wrapped in a film rebate. Above the frames: a row of CSS-rendered sprocket holes followed by monospaced sequential frame numbers. Below the frames: a barcode graphic, an editable text marking repeated three times across the strip width, and a direction arrow. The text marking is editable live via the <strong>Edge text</strong> field (<code>roll.edgeText</code>) that appears in the toolbar when film-edge is enabled; its placeholder reads "Film edge marking" (<code>roll.edgeTextPlaceholder</code>). The rebate background is dark (<code>#131210</code>); the frame area sits on a black row.</p>
+
+<p><strong>Proof-grid mode (Film edge off):</strong> each strip of six is a plain row. Each frame is shown on a warm-white background (<code>#d8d3c4</code>) with a 3 px padding and a drop shadow, and its sequential number is printed below in monospace. This mirrors the classic darkroom proof print.</p>
+
+<p>The <strong>Export contact sheet</strong> button renders whichever layout is currently active — including the edge text — to a PNG file at a fixed resolution (frame width 260 px per frame tile, 6 frames per strip) via <code>exportSheet.ts</code>. The export faithfully replicates the sprocket, frame-number, barcode, edge-text, and arrow elements from the on-screen layout using the Canvas 2D API.</p>
+
+<details class="hood"><summary>Under the hood</summary><div class="hood-body">
+<p><strong>Draft state (<code>roll/draft.ts</code>):</strong> <code>rollDraft</code> (a Svelte writable store of type <code>RollDraft</code>) holds <code>params: InvertParams</code> and <code>crop: CropRect | null</code>. <code>rollDraftTouched</code> is a boolean store that starts <code>false</code> on each Roll tab entry; it is set to <code>true</code> the first time any slider, crop, base sample, or white-point pick fires. The two-pass preview/persist reactive chain (<code>$: if (mirrorEnabled) { schedulePreview($rollDraft); schedulePersist($rollDraft); }</code> in <code>Roll.svelte</code>) is inert while <code>rollDraftTouched</code> is false. <code>enterRollDraft(folder)</code> resets the draft only when the folder changes; re-entering the same roll preserves the slider positions.</p>
+<p><strong>Live preview concurrency (<code>Roll.svelte</code>):</strong> preview batches run with a pool of 5 concurrent <code>api.thumbnail()</code> calls. A monotonic <code>previewToken</code> discards stale batches so a slow render started before a fast slider drag cannot overwrite newer results. A <code>requestAnimationFrame</code> coalescing loop commits the accumulating <code>previewMap</code> at most ~60 times per second. If a new draft arrives while a batch is in flight, it is queued in <code>previewPending</code> and started immediately when the in-flight batch ends.</p>
+<p><strong>Tone/color subset (<code>roll/apply.ts</code>):</strong> <code>toneColorOf(p)</code> strips the <code>EXCLUDE</code> set (<code>mode</code>, <code>stock</code>, <code>base_override</code>, <code>d_max_override</code>, <code>hdr</code>, <code>positive</code>, <code>exposure</code>) from an <code>InvertParams</code> object. This is the "shared look" that mirrors across all frames; per-frame calibration fields (base, white point, exposure) travel only when explicitly included. The roll panel's scalar sliders apply <strong>relatively</strong>: <code>applyRollDelta</code> / <code>rollPreviewFrame</code> in <code>apply.ts</code> add the slider's offset (the delta since the last applied offset, tracked in <code>rollApplied</code>) on top of each frame's own value, so per-frame differences survive; the structured look (tonal curve, color grade) is still broadcast absolutely.</p>
+<p><strong>Tile aspect (<code>contactSheet.ts</code>):</strong> <code>pickTileAspect(aspects)</code> takes the median of all landscape-aspect (≥ 1) frame ratios, falling back to all frames or to the default 3:2 if the roll is empty or all-portrait. Each frame's effective aspect is computed in <code>Roll.svelte</code> by combining the raw metadata dimensions with <code>orientDims(w, h, rot90)</code> and the normalized crop rect dimensions (<code>ow*rw / oh*rh</code>).</p>
+<p><strong>D-max re-analysis after crop (<code>Roll.svelte</code> <code>applyCropAndExit()</code>):</strong> when the user commits a roll-wide crop, the function re-analyzes D-max from the reference frame's new crop area via <code>api.analyze()</code> and writes the result into the draft. If analysis fails (e.g. the frame is not yet developed) the existing value is preserved.</p>
+</div></details>
+
+<p class="next"><a href="export.html">Next: Export →</a></p>
+</article>
+    <footer class="docfoot">OpenEnlarge — open-source film scan editor · MIT licensed</footer>
+  </main>
+  <aside class="toc" id="toc" aria-label="On this page"><div class="toc-title">On this page</div><div id="toc-list"></div></aside>
+</div>
+<script src="../../docs.js" defer></script>
+</body>
+</html>

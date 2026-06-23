@@ -1,0 +1,179 @@
+<!-- AUTO-GENERATED from /docs-src — do not edit by hand. Run python3 scripts/gen-docs.py -->
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Color &amp; white balance — OpenEnlarge Docs</title>
+<meta name="description" content="Gray-world auto white balance, Temperature and Tint, gain versus a subtractive color head, and perceptual OKLab saturation.">
+<meta name="robots" content="noindex,follow">
+<meta name="theme-color" content="#0a0a0c">
+<link rel="icon" href="../../../img/favicon.png">
+<link rel="canonical" href="https://openenlarge.io/docs/ja/science/color.html">
+<link rel="alternate" hreflang="en" href="https://openenlarge.io/docs/science/color.html">
+<link rel="alternate" hreflang="zh-Hans" href="https://openenlarge.io/docs/zh/science/color.html">
+<link rel="alternate" hreflang="x-default" href="https://openenlarge.io/docs/science/color.html">
+<meta property="og:type" content="article"><meta property="og:title" content="Color &amp; white balance — OpenEnlarge Docs"><meta property="og:description" content="Gray-world auto white balance, Temperature and Tint, gain versus a subtractive color head, and perceptual OKLab saturation."><meta property="og:url" content="https://openenlarge.io/docs/ja/science/color.html"><meta property="og:image" content="https://openenlarge.io/docs/og/cover.png"><meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "Color & white balance", "description": "Gray-world auto white balance, Temperature and Tint, gain versus a subtractive color head, and perceptual OKLab saturation.", "inLanguage": "ja", "url": "https://openenlarge.io/docs/ja/science/color.html", "isPartOf": {"@type": "WebSite", "name": "OpenEnlarge", "url": "https://openenlarge.io"}}</script>
+<link rel="stylesheet" href="../../docs.css">
+</head>
+<body>
+<a class="skip" href="#content">Skip to content</a>
+<nav class="docnav"><div class="navbar glass wrap">
+  <a class="brand" href="../../../index.html"><img class="mark" src="../../../img/icon.png" alt=""> OpenEnlarge <span class="brand-docs">Docs</span></a>
+  <button class="menu-btn" id="menu-btn" type="button" aria-label="Menu" aria-expanded="false">☰</button>
+  <div class="navlinks">
+    <a href="../../../index.html">Home</a>
+    <a href="https://github.com/mohaelder/openenlarge">GitHub</a>
+    <a class="lang-link" href="../../science/color.html">中文</a>
+  </div>
+</div></nav>
+<div class="doclayout wrap">
+  <aside class="sidebar" id="sidebar"><div class="side-sec"><div class="side-h">Overview</div>
+<a href="../index.html">Documentation</a>
+<a href="../workflow.html">The workflow</a>
+</div>
+<div class="side-sec"><div class="side-h">The Science</div>
+<a href="../science/negatives.html">How color negatives work</a>
+<a href="../science/inversion.html">The inversion pipeline</a>
+<a href="../science/density.html">Density &amp; log space</a>
+<a href="../science/tone-curve.html">The tone curve (the Faithful look)</a>
+<a class="on" href="../science/color.html">Color &amp; white balance</a>
+<a href="../science/base-calibration.html">Film-base calibration</a>
+</div>
+<div class="side-sec"><div class="side-h">Tools</div>
+<a href="../tools/develop-basic.html">Develop · Basic</a>
+<a href="../tools/tune.html">Tune</a>
+<a href="../tools/crop-dust.html">Crop &amp; dust</a>
+<a href="../tools/ai.html">AI tools</a>
+<a href="../tools/library.html">Library</a>
+<a href="../tools/roll.html">Roll</a>
+<a href="../tools/export.html">Export</a>
+</div>
+<div class="side-sec"><div class="side-h">Reference</div>
+<a href="../reference/glossary.html">Glossary</a>
+<a href="../reference/faq.html">FAQ</a>
+<a href="../reference/storage.html">Storage &amp; clearing data</a>
+</div></aside>
+  <main class="content" id="content">
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="../index.html">Docs</a> <span class="sep">/</span> <span>Color &amp; white balance</span></nav>
+    <article class="prose"><h1>Color &amp; white balance</h1>
+<p class="lead">Balancing a color negative means deciding what should be neutral, then adjusting color without shifting black. OpenEnlarge gives you an automatic starting point and precise manual controls to get there.</p>
+
+<h2>Auto white balance</h2>
+<p>When you open a frame, OpenEnlarge runs a <strong>damped gray-world estimate</strong>: it measures the average of each color channel across the image and nudges the balance toward the point where all three channels read equal — neutral gray. The estimate is damped to avoid over-correcting on scenes that are genuinely dominated by a single color (a red door, a field of green grass). The default strength is <strong>0.7</strong>, leaving some of the original scene color intact.</p>
+<p>If the automatic result is not quite right, you have two options: <em>re-pick a gray</em> by clicking a patch that should be neutral in your image, or dial in Temperature and Tint by hand.</p>
+
+<h2>Temperature &amp; Tint</h2>
+<p>The two white balance axes map to familiar photographic concepts:</p>
+<ul>
+  <li><strong>Temperature</strong> — the warm/cool axis, expressed as <em>correlated color temperature</em> in kelvin. Higher values shift the image toward warm amber; lower values shift it toward cool blue. (As in any raw converter, the number names the <em>light's</em> assumed temperature: a higher value assumes bluer light, so the image is warmed to compensate.) A neutral balance for most daylight negative film falls near <strong>5500 K</strong>.</li>
+  <li><strong>Tint</strong> — the green/magenta axis, orthogonal to temperature. A positive tint shift adds magenta; a negative shift adds green. This corrects for fluorescent casts, reciprocity failures, or the slight green bias some scanners introduce.</li>
+</ul>
+<p>Temperature and Tint together give you full coverage of the chromaticity plane — any neutral can be reached by combining them.</p>
+
+<h2>Gain vs. color head</h2>
+<p>OpenEnlarge's engine supports two ways to apply white balance. The app currently applies <strong>Gain</strong> mode; the subtractive <strong>Color head</strong> mode described below is supported in the engine but is not exposed in the UI (the toggle was removed):</p>
+<ul>
+  <li><strong>Gain mode</strong> — balance is applied as a <em>post-curve linear multiply</em>, after the tone curve has already produced a positive image. Because the multiply is linear, pure black (output = 0) is unaffected: 0 × gain = 0, so shadows stay perfectly neutral. This is the von-Kries adaptation model — the same principle used in most digital camera white balance.</li>
+  <li><strong>Color head (subtractive)</strong> — balance is applied as a <em>density offset before the curve</em>, exactly like the CMY dichroic filters on a traditional color enlarger. The tint operates in log density space and modifies how the tone curve shapes each channel. Because density and contrast are coupled in log space, the tint influence is felt not just in the highlights but also through the midtones and into the lower tonal values. Shadows remain anchored at true black, but the character of the tint shifts with the tonal structure of the image.</li>
+</ul>
+<p>The figure below illustrates the difference: the Gain strip keeps the shadow end neutral while warm tint accumulates only in the mids and highlights; the Color head strip shows the tint woven through the midtones earlier and deeper into the tonal range.</p>
+
+<figure><svg viewBox="0 0 640 260" role="img" aria-label="Two horizontal gradient strips comparing white balance modes. Top strip labeled 'Gain (post-curve)': a gradient from true black on the left to warm white on the right, with the warm tint appearing only in the midtones and highlights while the shadow end remains neutral black — annotated 'shadows neutral'. Bottom strip labeled 'Color head (pre-curve)': a gradient from true black on the left to warm white on the right, but the warm tint is present earlier and deeper into the tonal range, coupled to contrast — annotated 'tint couples to contrast'. Both strips are anchored at true black (left edge) with a marker. The difference shows that gain mode preserves shadow neutrality while the subtractive color head couples tint into the tonal range." xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Gain (post-curve): tint only appears in mids/highlights; shadows stay neutral -->
+    <linearGradient id="grad-gain" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%"   stop-color="#000000"/>
+      <stop offset="18%"  stop-color="#0d0d0d"/>
+      <stop offset="35%"  stop-color="#333330"/>
+      <stop offset="50%"  stop-color="#6e6b5a"/>
+      <stop offset="65%"  stop-color="#b5a882"/>
+      <stop offset="80%"  stop-color="#d9c89a"/>
+      <stop offset="100%" stop-color="#f5e8c8"/>
+    </linearGradient>
+    <!-- Color head (pre-curve): tint coupled into lower tones, present from darker values -->
+    <linearGradient id="grad-head" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%"   stop-color="#000000"/>
+      <stop offset="12%"  stop-color="#0f0d08"/>
+      <stop offset="25%"  stop-color="#2e2618"/>
+      <stop offset="40%"  stop-color="#6b5a30"/>
+      <stop offset="55%"  stop-color="#a8885a"/>
+      <stop offset="72%"  stop-color="#cca96e"/>
+      <stop offset="100%" stop-color="#f0dca8"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="640" height="260" rx="12" fill="#141418"/>
+
+  <!-- === TOP STRIP: Gain (post-curve) === -->
+  <!-- Label above strip -->
+  <text x="36" y="44" font-family="ui-monospace,monospace" font-size="12" fill="#e8e8ea" text-anchor="start" font-weight="600">Gain (post-curve)</text>
+
+  <!-- Gradient bar -->
+  <rect x="36" y="52" width="490" height="54" rx="4" fill="url(#grad-gain)"/>
+
+  <!-- Black-point marker at left edge -->
+  <line x1="36" y1="48" x2="36" y2="110" stroke="#9a9aa2" stroke-width="1.2" opacity="0.7"/>
+  <text x="39" y="120" font-family="ui-monospace,monospace" font-size="10" fill="#9a9aa2" text-anchor="start">black</text>
+
+  <!-- "shadows neutral" annotation — pointing to shadow zone -->
+  <line x1="120" y1="79" x2="120" y2="112" stroke="#9a9aa2" stroke-width="0.8" opacity="0.6"/>
+  <text x="120" y="124" font-family="ui-monospace,monospace" font-size="10" fill="#9a9aa2" text-anchor="middle">shadows neutral</text>
+
+  <!-- Warm-zone annotation -->
+  <line x1="420" y1="52" x2="420" y2="46" stroke="#9a9aa2" stroke-width="0.8" opacity="0.5"/>
+  <text x="420" y="42" font-family="ui-monospace,monospace" font-size="10" fill="#9a9aa2" text-anchor="middle">warm tint in mids/highlights</text>
+
+  <!-- === BOTTOM STRIP: Color head (pre-curve) === -->
+  <!-- Label above strip -->
+  <text x="36" y="162" font-family="ui-monospace,monospace" font-size="12" fill="#e8e8ea" text-anchor="start" font-weight="600">Color head (pre-curve)</text>
+
+  <!-- Gradient bar -->
+  <rect x="36" y="170" width="490" height="54" rx="4" fill="url(#grad-head)"/>
+
+  <!-- Black-point marker -->
+  <line x1="36" y1="166" x2="36" y2="228" stroke="#9a9aa2" stroke-width="1.2" opacity="0.7"/>
+  <text x="39" y="238" font-family="ui-monospace,monospace" font-size="10" fill="#9a9aa2" text-anchor="start">black</text>
+
+  <!-- "tint couples to contrast" annotation — pointing into lower-mid zone -->
+  <line x1="220" y1="197" x2="220" y2="228" stroke="#9a9aa2" stroke-width="0.8" opacity="0.6"/>
+  <text x="220" y="242" font-family="ui-monospace,monospace" font-size="10" fill="#9a9aa2" text-anchor="middle">tint couples to contrast</text>
+
+  <!-- Warm-zone annotation for head -->
+  <line x1="430" y1="170" x2="430" y2="164" stroke="#9a9aa2" stroke-width="0.8" opacity="0.5"/>
+  <text x="430" y="160" font-family="ui-monospace,monospace" font-size="10" fill="#9a9aa2" text-anchor="middle">warm into mids &amp; lower tones</text>
+
+  <!-- Legend / key on the right -->
+  <text x="548" y="79" font-family="ui-monospace,monospace" font-size="10" fill="#9a9aa2" text-anchor="start">0 · · · · · · · 1</text>
+  <text x="548" y="91" font-family="ui-monospace,monospace" font-size="10" fill="#9a9aa2" text-anchor="start">shadow → highlight</text>
+  <text x="548" y="197" font-family="ui-monospace,monospace" font-size="10" fill="#9a9aa2" text-anchor="start">0 · · · · · · · 1</text>
+  <text x="548" y="209" font-family="ui-monospace,monospace" font-size="10" fill="#9a9aa2" text-anchor="start">shadow → highlight</text>
+</svg>
+<figcaption>Top: Gain (post-curve) — a gradient from true black to warm white; the warm tint appears only in the midtones and highlights while shadows remain neutral. Bottom: Color head (pre-curve) — the warm tint is present earlier and deeper into the tonal range, coupling tint to contrast. Both strips are anchored at true black on the left.</figcaption></figure>
+
+<h2>Saturation in OKLab</h2>
+<p>Vibrance and saturation adjustments in OpenEnlarge operate in the <strong>OKLab</strong> color space — a perceptually uniform model designed so that equal numerical steps produce equal-looking changes across all hues. This has two important practical consequences:</p>
+<ul>
+  <li>A saturation boost of a given amount looks consistent whether you are boosting the blues in a sky, the reds in a sunset, or the greens in foliage — no single hue dominates.</li>
+  <li>Neutral tones (grays) and skin tones are detected and protected: they receive a smaller boost, so pushing saturation does not cast a color onto what should be colorless areas or make skin look oversaturated.</li>
+</ul>
+<p>Gamut roll-off is also applied, compressing highly saturated colors toward the display boundary smoothly rather than clipping them hard.</p>
+
+<details class="hood"><summary>Under the hood</summary><div class="hood-body">
+<p><strong>Auto WB damping:</strong> the gray-world estimate is blended toward no-op at a default strength of <strong>0.7</strong> — meaning 70 % of the full gray-world shift is applied. This avoids the classic gray-world failure mode on non-neutral scenes.</p>
+<p><strong>Color head math:</strong> in subtractive (color-head) mode, the per-channel density is multiplied by <span class="formula">gain<sup>CMY_STRENGTH</sup></span> where <code>CMY_STRENGTH = 1.6</code>. Applied in log density space before the tone curve, this is equivalent to changing the filter pack on an enlarger: the exponent of 1.6 gives the tint a slightly non-linear coupling to density, matching the behavior of real dichroic filters more closely than a plain linear scale. The anchor at pure black is exact: density = 0 (black) maps to 0 × any gain factor = 0.</p>
+<p><strong>Gain mode math:</strong> a straightforward post-curve multiply — the neutral point is anchored at black (0) and stretched linearly toward white. Identical to the von-Kries chromatic adaptation transform when applied per channel.</p>
+<p><strong>Neutral CCT:</strong> the auto-WB target is approximately <strong>5500 K</strong>, consistent with the color temperature of overcast daylight — a common shooting condition for outdoor color negative film.</p>
+</div></details>
+
+<p class="next"><a href="base-calibration.html">Next: base calibration →</a></p>
+</article>
+    <footer class="docfoot">OpenEnlarge — open-source film scan editor · MIT licensed</footer>
+  </main>
+  <aside class="toc" id="toc" aria-label="On this page"><div class="toc-title">On this page</div><div id="toc-list"></div></aside>
+</div>
+<script src="../../docs.js" defer></script>
+</body>
+</html>

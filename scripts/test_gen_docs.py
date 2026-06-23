@@ -177,5 +177,32 @@ class TestScienceStructure(unittest.TestCase):
                 self.assertIn("<svg", html, f"{p} missing inlined figure")
                 self.assertNotIn("<!--FIG:", html, f"{p} has unreplaced figure placeholder")
 
+class TestMultiLocale(unittest.TestCase):
+    def setUp(self): gen.build()
+
+    def test_four_locale_dirs(self):
+        for lc in ("zh", "ja", "ko"):
+            self.assertTrue((ROOT / f"web/docs/{lc}/index.html").exists(), f"{lc} index missing")
+
+    def test_hreflang_map(self):
+        self.assertEqual(gen.HREFLANG["ja"], "ja")
+        self.assertEqual(gen.HREFLANG["ko"], "ko")
+
+    def test_untranslated_page_is_noindex(self):
+        # index has no ja translation yet -> EN fallback body -> noindex, no ja in its own hreflang set
+        html = (ROOT / "web/docs/ja/index.html").read_text()
+        self.assertIn('name="robots" content="noindex', html)
+
+    def test_untranslated_excluded_from_hreflang(self):
+        # the EN page should NOT advertise an alternate for an untranslated ja page
+        en = (ROOT / "web/docs/index.html").read_text()
+        # ja alternate only appears once a real index.ja.html exists; assert it's absent now
+        self.assertNotIn('hreflang="ja"', en)
+
+    def test_html_lang_attribute(self):
+        ja = (ROOT / "web/docs/ja/index.html").read_text()
+        self.assertIn('<html lang="ja">', ja)
+
+
 if __name__ == "__main__":
     unittest.main()

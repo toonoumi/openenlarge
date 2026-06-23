@@ -1,0 +1,156 @@
+<!-- AUTO-GENERATED from /docs-src — do not edit by hand. Run python3 scripts/gen-docs.py -->
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Crop &amp; dust — OpenEnlarge Docs</title>
+<meta name="description" content="Crop, rotate, straighten and flip; plus dust and scratch removal — the manual eraser, infrared dust, and on-device AI inpainting.">
+<meta name="robots" content="noindex,follow">
+<meta name="theme-color" content="#0a0a0c">
+<link rel="icon" href="../../../img/favicon.png">
+<link rel="canonical" href="https://openenlarge.io/docs/ja/tools/crop-dust.html">
+<link rel="alternate" hreflang="en" href="https://openenlarge.io/docs/tools/crop-dust.html">
+<link rel="alternate" hreflang="zh-Hans" href="https://openenlarge.io/docs/zh/tools/crop-dust.html">
+<link rel="alternate" hreflang="x-default" href="https://openenlarge.io/docs/tools/crop-dust.html">
+<meta property="og:type" content="article"><meta property="og:title" content="Crop &amp; dust — OpenEnlarge Docs"><meta property="og:description" content="Crop, rotate, straighten and flip; plus dust and scratch removal — the manual eraser, infrared dust, and on-device AI inpainting."><meta property="og:url" content="https://openenlarge.io/docs/ja/tools/crop-dust.html"><meta property="og:image" content="https://openenlarge.io/docs/og/cover.png"><meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "Crop & dust", "description": "Crop, rotate, straighten and flip; plus dust and scratch removal — the manual eraser, infrared dust, and on-device AI inpainting.", "inLanguage": "ja", "url": "https://openenlarge.io/docs/ja/tools/crop-dust.html", "isPartOf": {"@type": "WebSite", "name": "OpenEnlarge", "url": "https://openenlarge.io"}}</script>
+<link rel="stylesheet" href="../../docs.css">
+</head>
+<body>
+<a class="skip" href="#content">Skip to content</a>
+<nav class="docnav"><div class="navbar glass wrap">
+  <a class="brand" href="../../../index.html"><img class="mark" src="../../../img/icon.png" alt=""> OpenEnlarge <span class="brand-docs">Docs</span></a>
+  <button class="menu-btn" id="menu-btn" type="button" aria-label="Menu" aria-expanded="false">☰</button>
+  <div class="navlinks">
+    <a href="../../../index.html">Home</a>
+    <a href="https://github.com/mohaelder/openenlarge">GitHub</a>
+    <a class="lang-link" href="../../tools/crop-dust.html">中文</a>
+  </div>
+</div></nav>
+<div class="doclayout wrap">
+  <aside class="sidebar" id="sidebar"><div class="side-sec"><div class="side-h">Overview</div>
+<a href="../index.html">Documentation</a>
+<a href="../workflow.html">The workflow</a>
+</div>
+<div class="side-sec"><div class="side-h">The Science</div>
+<a href="../science/negatives.html">How color negatives work</a>
+<a href="../science/inversion.html">The inversion pipeline</a>
+<a href="../science/density.html">Density &amp; log space</a>
+<a href="../science/tone-curve.html">The tone curve (the Faithful look)</a>
+<a href="../science/color.html">Color &amp; white balance</a>
+<a href="../science/base-calibration.html">Film-base calibration</a>
+</div>
+<div class="side-sec"><div class="side-h">Tools</div>
+<a href="../tools/develop-basic.html">Develop · Basic</a>
+<a href="../tools/tune.html">Tune</a>
+<a class="on" href="../tools/crop-dust.html">Crop &amp; dust</a>
+<a href="../tools/ai.html">AI tools</a>
+<a href="../tools/library.html">Library</a>
+<a href="../tools/roll.html">Roll</a>
+<a href="../tools/export.html">Export</a>
+</div>
+<div class="side-sec"><div class="side-h">Reference</div>
+<a href="../reference/glossary.html">Glossary</a>
+<a href="../reference/faq.html">FAQ</a>
+<a href="../reference/storage.html">Storage &amp; clearing data</a>
+</div></aside>
+  <main class="content" id="content">
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="../index.html">Docs</a> <span class="sep">/</span> <span>Crop &amp; dust</span></nav>
+    <article class="prose"><h1>Crop &amp; dust</h1>
+<p class="lead">The Crop tool and the Eraser tool live on the Frame toolbar as two separate panels. The Crop panel handles geometry — aspect ratio, orientation, 90° rotation, fine straighten, and flip. The Eraser panel handles defect removal — manual heal brush, infrared (IR) automatic dust removal, AI inpainting (MI-GAN), and the on-device AI dust &amp; hair detector. Everything described here runs locally on your machine; no image data is sent anywhere.</p>
+
+<h2>Crop &amp; transform</h2>
+<p>The <strong>Crop</strong> panel opens when you click the Crop tool in the Frame toolbar. The crop box on the image is live: dragging any edge or corner resizes it; dragging inside the box pans it. Holding <kbd>Shift</kbd> while dragging locks the aspect ratio. Press <kbd>Enter</kbd> (or click outside the box) to commit; press <kbd>Esc</kbd> to discard changes.</p>
+
+<p>The <strong>Aspect ratio</strong> drop-down lets you constrain the crop box to a fixed ratio. Presets are grouped by film format:</p>
+<ul>
+  <li><strong>Original</strong> — unconstrained; the box can be any shape (preset id <code>"original"</code>, <code>ratio: null</code>).</li>
+  <li><strong>135</strong> — 36 × 24 (3:2).</li>
+  <li><strong>120</strong> — 6 × 4.5 (4:3), 6 × 6 (1:1), 6 × 7, 6 × 8, 6 × 9.</li>
+  <li><strong>Large format</strong> — 4 × 5, 5 × 7, 8 × 10.</li>
+  <li><strong>Screen · Print</strong> — 1 × 1, 16 × 9, 16 × 10, 8.5 × 11.</li>
+</ul>
+<p>Selecting a preset snaps the box to that ratio immediately. If you then resize the box freehand, the aspect changes to <code>"custom"</code> (shown in the drop-down only while active). Saved in the <code>CropRect</code> as the <code>aspect</code> field (the preset id string).</p>
+
+<p>The <strong>Orientation</strong> button (landscape/portrait icon) swaps the width and height of the constrained ratio — toggling a landscape 3:2 box to a portrait 2:3 one, for example. The current orientation is stored as <code>orientation: "landscape" | "portrait"</code> in the <code>CropRect</code>.</p>
+
+<p>The <strong>Transform</strong> row contains four icon buttons:</p>
+<ul>
+  <li><strong>Rotate left</strong> (<kbd>⌘/Ctrl [</kbd>) — rotates the image 90° counter-clockwise. Each click increments <code>rot90</code> by −1 (mod 4); the range is 0–3 clockwise quarter-turns.</li>
+  <li><strong>Rotate right</strong> (<kbd>⌘/Ctrl ]</kbd>) — rotates 90° clockwise, incrementing <code>rot90</code> by +1 (mod 4).</li>
+  <li><strong>Flip horizontal</strong> — mirrors the image left-to-right, toggling <code>flipH</code>.</li>
+  <li><strong>Flip vertical</strong> — mirrors top-to-bottom, toggling <code>flipV</code>.</li>
+</ul>
+<p>Flips and rotations interact: the backend applies flips before the quarter-turns (flip_h → flip_v → rot90 clockwise), so flipping a rotated image toggles the correct axis without disturbing the rotation count.</p>
+
+<p>The <strong>Straighten</strong> slider provides a fine rotation adjustment from −45° to +45° in 0.1° steps, double-clicking the value resets it to 0. This is stored as <code>angle</code> in the <code>CropRect</code>. It is applied as a sub-pixel rotation of the source image around its center (sampled before the crop window) and does not affect the crop box dimensions.</p>
+
+<p>The <strong>Reset</strong> button clears all crop settings to the full-frame original: <code>rect</code> back to <code>{x:0, y:0, w:1, h:1}</code>, <code>rot90</code> to 0, <code>flipH</code>/<code>flipV</code> to false, <code>angle</code> to 0, and <code>aspect</code> to <code>"original"</code>. It does not affect any other develop parameters.</p>
+
+<p>The complete crop data model (<code>CropRect</code>) written to disk per image contains: <code>rect</code> (a normalized rectangle with <code>x</code>, <code>y</code>, <code>w</code>, <code>h</code> each in 0–1), <code>aspect</code> (preset id string), <code>orientation</code>, <code>rot90</code> (0–3), <code>flipH</code> (boolean), <code>flipV</code> (boolean), and <code>angle</code> (degrees). Persisted via <code>api.saveCrop()</code>.</p>
+
+<details class="hood"><summary>Under the hood</summary><div class="hood-body">
+<p><strong>Orientation transform order (convert.rs):</strong> the backend orient pipeline is flip_h → flip_v → rot90 clockwise quarter-turns. On the front end, <code>transforms.ts</code> mirrors this so that the GPU preview overlay matches the rendered output exactly. When <code>rot90</code> is odd (1 or 3), flipping the <em>displayed</em> view on one axis is equivalent to flipping the pre-rotation image on the <em>other</em> axis, so <code>flipOrient()</code> also negates <code>rot90 mod 4</code> to keep the displayed crop box aligned: <code>rot90_new = (4 − rot90) % 4</code>, toggling the appropriate <code>flipH</code>/<code>flipV</code> flag.</p>
+<p><strong>Normalized rect math:</strong> <code>rotateRectCW(r)</code> maps <code>{x, y, w, h}</code> to <code>{x: 1−y−h, y: x, w: h, h: w}</code>, and <code>rotateRectCCW</code> to <code>{x: y, y: 1−x−w, w: h, h: w}</code>. The straighten <code>angle</code> is applied as a rotation of the source image around its center before the crop window is sampled, so the crop box always refers to the post-angle coordinate space. Wire format to the backend uses <code>image_crop: [x, y, w, h]</code> (a normalized 4-tuple), <code>rot90</code>, <code>flip_h</code>, <code>flip_v</code>, and <code>angle</code>.</p>
+</div></details>
+
+<h2>Manual eraser brush</h2>
+<p>The <strong>Eraser</strong> panel opens from the Frame toolbar. The manual brush lets you paint over individual dust spots or scratches and have them healed immediately (or via MI-GAN — see below).</p>
+
+<p>The <strong>Brush size</strong> slider sets the brush radius normalized to the image width, from 0.005 (very small) to 0.2 (large). The displayed value is the radius as a percentage of image width. You can also scroll the mouse wheel over the image to resize the brush in real time. Each click or drag records a <code>DustStroke</code>: a polyline of normalized points plus the radius <code>r</code>. Press <kbd>⌘Z</kbd> (macOS) to undo the last stroke. Strokes are stored in <code>DustEdits.strokes</code> and persisted via <code>api.saveDust()</code>.</p>
+
+<p>In normal mode, each stroke is healed live in the GPU preview as you release the pointer. The inpainted area is blended using a content-aware clone algorithm driven by the surrounding texture.</p>
+
+<p>The <strong>Show heal spots</strong> checkbox (field <code>showSpots</code>) overlays a small eraser-icon marker at the centroid of every committed stroke, making it easy to see and click-to-delete individual spots. Click a marker to remove that stroke immediately.</p>
+
+<p>The <strong>Zoom to area</strong> button arms a marquee zoom: drag a rectangle over the image to magnify that region for precise brush work. Once zoomed, the button changes to <strong>Reset view</strong> to return to the full image.</p>
+
+<p>The <strong>Reset</strong> button clears all manual strokes (<code>DustEdits.strokes → []</code>) and resets the AI-applied flag. It does not affect IR removal or auto dust settings.</p>
+
+<details class="hood"><summary>Under the hood</summary><div class="hood-body">
+<p><strong>Stroke model (dust.ts):</strong> a <code>DustStroke</code> is <code>{ points: DustPoint[], r: number }</code> where each <code>DustPoint</code> is <code>{ x: number, y: number }</code> in the displayed image's normalized coordinate space (0–1 in both axes), and <code>r</code> is the brush radius normalized to the displayed image width. The centroid of a stroke (<code>strokeCentroid()</code>) is the arithmetic mean of all points — this is the anchor for the heal-spot marker. Wire format to the backend: each stroke is serialized as <code>{ points: [[x,y], …], r }</code> (2-tuples, not objects) via <code>wireDust()</code> in <code>api.ts</code>. Individual spot deletion uses <code>removeStrokeAt(dust, i)</code>, which filters the strokes array by index and clears <code>aiApplied</code> so any pending MI-GAN mask must be re-applied. Screen radius in pixels = <code>r × imageWidthPx × zoomFactor</code>.</p>
+</div></details>
+
+<h2>AI fill (MI-GAN)</h2>
+<p>Enabling the <strong>AI fill (MI-GAN)</strong> checkbox switches the brush into mask mode. Strokes are no longer healed live: instead they appear as a semi-transparent red overlay on the image, showing exactly which areas will be inpainted. When you are satisfied with the mask, click <strong>AI erase</strong> to run MI-GAN — a machine-inpainting model that reconstructs the masked pixels from surrounding context. The model runs on-device; no image data leaves your computer.</p>
+
+<p>The <strong>AI erase</strong> button is enabled only when there are uncommitted strokes and the current mask has not yet been applied. It shows a spinner while the model is running and is labelled "Erasing…" during processing. After a successful run, <code>aiApplied</code> is set to true and the button becomes inactive. Adding or removing any stroke clears <code>aiApplied</code> and re-enables the button so the new mask can be applied. Undo (<kbd>⌘Z</kbd>) removes the last stroke and also clears the applied flag.</p>
+
+<details class="hood"><summary>Under the hood</summary><div class="hood-body">
+<p><strong>State machine (dust.ts):</strong> <code>DustEdits.brushMigan</code> governs whether the GPU preview draws live heals or a mask overlay. <code>addStroke()</code> and <code>undoStroke()</code> both reset <code>aiApplied = false</code>, ensuring the mask is never shown as "done" after a change. The "AI erase" dispatch fires an <code>aiErase</code> event that the parent view handles by invoking the MI-GAN backend command with the current stroke list. <code>setBrushMigan()</code> also clears <code>aiApplied</code> when the mode is toggled.</p>
+</div></details>
+
+<h2>Infrared (IR) dust removal</h2>
+<p>Some dedicated film scanners capture a fourth channel alongside R, G, B using near-infrared light. Because silver-halide grain is nearly transparent to infrared while dust and scratches scatter it strongly, this channel provides a near-perfect dust mask at no cost to image quality.</p>
+
+<p>When the loaded scan contains an IR plane, the <strong>Remove dust (IR)</strong> toggle is enabled. Clicking it turns IR removal on or off; the current state is shown as "On" or "Off" badge next to the label. When IR removal is active, the <strong>Sensitivity</strong> slider (0–100, default 50) controls how aggressively the IR channel is used as a mask. Higher values remove more — including finer dust — at the risk of clipping real detail at the grain level; lower values are more conservative. Both fields are stored in <code>DustEdits.irRemoval</code> as <code>enabled</code> and <code>sensitivity</code>, and are passed to the backend render as the <code>irRemoval</code> parameter.</p>
+
+<p>When the scan has no IR channel, the button is disabled and labelled with a "soon" badge (the tooltip reads "Requires an infrared scan channel"). IR removal is scanner-dependent: Nikon Coolscan and Minolta Scan Multi scanners with ICE support produce IR-capable TIFF files; most flatbed and DSLR scans do not.</p>
+
+<details class="hood"><summary>Under the hood</summary><div class="hood-body">
+<p><strong>Wire format (api.ts):</strong> IR state is passed to every render call via the <code>irRemoval: IrRemoval</code> parameter (<code>{ enabled: boolean, sensitivity: number }</code>). The backend uses the IR plane as an alpha mask for the heal composite, blending the reconstructed (dust-free) pixels with the original according to the IR signal strength scaled by the sensitivity value. The <code>hasIr</code> prop on <code>EraserPanel</code> is set by the parent view after probing the loaded image's channel count.</p>
+</div></details>
+
+<h2>AI dust &amp; hair removal (auto)</h2>
+<p>The <strong>AI Dust &amp; Hair Removal</strong> sub-panel runs an on-device machine-learning detector to find dust spots and hairs across the whole image automatically, then inpaints them using the same MI-GAN model as the manual AI fill. Everything runs locally — models are downloaded once and stored on your machine; no image is uploaded.</p>
+
+<p>The first time you open this panel, OpenEnlarge checks whether the AI models are installed. If not, it shows a download prompt with the approximate model size in MB. Click <strong>Download AI models</strong> to fetch them; a progress bar tracks the download. Once installed, the panel shows a <strong>Sensitivity</strong> slider (0–100, default 50) and the <strong>Detect &amp; remove</strong> button.</p>
+
+<p>The <strong>Sensitivity</strong> slider controls how aggressively the detector flags pixels as defects. At higher values, smaller and fainter spots are detected; at lower values only prominent defects are flagged. The slider commits on pointer release (not while dragging), triggering a re-run of the detection and inpainting. Sensitivity is stored in <code>DustEdits.autoDust.sensitivity</code>.</p>
+
+<p>Clicking <strong>Detect &amp; remove</strong> runs the full detector + inpainting pipeline on the current image. The button shows a spinner and is disabled while processing. After completion, a toast reports how many distinct spots were removed (or "no dust found" if the image was clean). The toggle state <code>DustEdits.autoDust.enabled</code> controls whether the auto-heal is displayed on the main preview. Individual auto-detected spots that you want to keep can be excluded by clicking them in the "Show heal spots" overlay — those exclusions are stored in <code>DustEdits.autoDustExclusions</code>.</p>
+
+<details class="hood"><summary>Under the hood</summary><div class="hood-body">
+<p><strong>API (api.ts):</strong> <code>api.autodustStatus()</code> returns <code>{ installed: boolean, downloadBytes: number }</code>. <code>api.downloadAutodust()</code> triggers the model download; progress is streamed via the <code>autodust://download-progress</code> Tauri event (<code>{ received, total }</code> bytes). After a detection run the backend emits <code>autodust://result</code> with <code>{ count: number }</code> — the count of distinct spots removed. The <code>autoDustInstalled</code> store (<code>store.ts</code>) caches the installed state across panel mounts so the download prompt does not re-appear. Auto-dust state in <code>DustEdits</code>: <code>autoDust: { enabled: boolean, sensitivity: number }</code>; exclusion points: <code>autoDustExclusions: DustPoint[]</code> (each a normalized <code>{ x, y }</code> centroid added via <code>addExclusion()</code>).</p>
+</div></details>
+
+<p class="next"><a href="ai.html">Next: AI tools →</a></p>
+</article>
+    <footer class="docfoot">OpenEnlarge — open-source film scan editor · MIT licensed</footer>
+  </main>
+  <aside class="toc" id="toc" aria-label="On this page"><div class="toc-title">On this page</div><div id="toc-list"></div></aside>
+</div>
+<script src="../../docs.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,92 @@
+<!-- AUTO-GENERATED from /docs-src — do not edit by hand. Run python3 scripts/gen-docs.py -->
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FAQ — OpenEnlarge Docs</title>
+<meta name="description" content="Common questions about OpenEnlarge — why density-domain inversion, color casts and the film base, dust-removal options, AI fidelity, and whether exports match the preview.">
+<meta name="robots" content="noindex,follow">
+<meta name="theme-color" content="#0a0a0c">
+<link rel="icon" href="../../../img/favicon.png">
+<link rel="canonical" href="https://openenlarge.io/docs/ko/reference/faq.html">
+<link rel="alternate" hreflang="en" href="https://openenlarge.io/docs/reference/faq.html">
+<link rel="alternate" hreflang="zh-Hans" href="https://openenlarge.io/docs/zh/reference/faq.html">
+<link rel="alternate" hreflang="x-default" href="https://openenlarge.io/docs/reference/faq.html">
+<meta property="og:type" content="article"><meta property="og:title" content="FAQ — OpenEnlarge Docs"><meta property="og:description" content="Common questions about OpenEnlarge — why density-domain inversion, color casts and the film base, dust-removal options, AI fidelity, and whether exports match the preview."><meta property="og:url" content="https://openenlarge.io/docs/ko/reference/faq.html"><meta property="og:image" content="https://openenlarge.io/docs/og/cover.png"><meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "FAQ", "description": "Common questions about OpenEnlarge — why density-domain inversion, color casts and the film base, dust-removal options, AI fidelity, and whether exports match the preview.", "inLanguage": "ko", "url": "https://openenlarge.io/docs/ko/reference/faq.html", "isPartOf": {"@type": "WebSite", "name": "OpenEnlarge", "url": "https://openenlarge.io"}}</script>
+<link rel="stylesheet" href="../../docs.css">
+</head>
+<body>
+<a class="skip" href="#content">Skip to content</a>
+<nav class="docnav"><div class="navbar glass wrap">
+  <a class="brand" href="../../../index.html"><img class="mark" src="../../../img/icon.png" alt=""> OpenEnlarge <span class="brand-docs">Docs</span></a>
+  <button class="menu-btn" id="menu-btn" type="button" aria-label="Menu" aria-expanded="false">☰</button>
+  <div class="navlinks">
+    <a href="../../../index.html">Home</a>
+    <a href="https://github.com/mohaelder/openenlarge">GitHub</a>
+    <a class="lang-link" href="../../reference/faq.html">中文</a>
+  </div>
+</div></nav>
+<div class="doclayout wrap">
+  <aside class="sidebar" id="sidebar"><div class="side-sec"><div class="side-h">Overview</div>
+<a href="../index.html">Documentation</a>
+<a href="../workflow.html">The workflow</a>
+</div>
+<div class="side-sec"><div class="side-h">The Science</div>
+<a href="../science/negatives.html">How color negatives work</a>
+<a href="../science/inversion.html">The inversion pipeline</a>
+<a href="../science/density.html">Density &amp; log space</a>
+<a href="../science/tone-curve.html">The tone curve (the Faithful look)</a>
+<a href="../science/color.html">Color &amp; white balance</a>
+<a href="../science/base-calibration.html">Film-base calibration</a>
+</div>
+<div class="side-sec"><div class="side-h">Tools</div>
+<a href="../tools/develop-basic.html">Develop · Basic</a>
+<a href="../tools/tune.html">Tune</a>
+<a href="../tools/crop-dust.html">Crop &amp; dust</a>
+<a href="../tools/ai.html">AI tools</a>
+<a href="../tools/library.html">Library</a>
+<a href="../tools/roll.html">Roll</a>
+<a href="../tools/export.html">Export</a>
+</div>
+<div class="side-sec"><div class="side-h">Reference</div>
+<a href="../reference/glossary.html">Glossary</a>
+<a class="on" href="../reference/faq.html">FAQ</a>
+<a href="../reference/storage.html">Storage &amp; clearing data</a>
+</div></aside>
+  <main class="content" id="content">
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="../index.html">Docs</a> <span class="sep">/</span> <span>FAQ</span></nav>
+    <article class="prose"><h1>FAQ</h1>
+<p class="lead">Common questions about OpenEnlarge, its inversion engine, and its tools — answered with links to the pages that go deeper.</p>
+
+<h2>Why density-domain inversion instead of just flipping a tone curve?</h2>
+<p>Inverting a negative by simply applying a tone curve in RGB space treats every channel as an independent brightness value — it cannot remove the orange mask, and it compresses or expands tonal range in ways that have no photographic basis. OpenEnlarge works in <strong>optical density</strong>: it samples the clear film edge to measure the orange base, divides that base out of each pixel channel by channel, and then converts the result to density using <span class="formula">D = log₁₀(base / scan)</span>. Because density is logarithmic, equal slider steps correspond to equal photographic stops, and the mask removal is physically exact. The tone curve is then applied in this perceptually linear space rather than in arbitrary RGB. See <a href="../science/inversion.html">the inversion pipeline</a> and <a href="../science/density.html">density &amp; log space</a> for a stage-by-stage breakdown.</p>
+
+<h2>My scan has a color cast — why, and how do I fix it?</h2>
+<p>The most common cause is an inaccurate film-base sample. The orange mask is not a fixed color — it varies by emulsion batch and development chemistry, and even a small error in the sampled base shifts every channel's density differently, producing a warm, cool, or cross-colored cast across the whole roll. The fix is to re-sample the base from a region of truly clear, unexposed film leader: open the <strong>Film base</strong> tool in the Roll tab or in the <a href="../tools/develop-basic.html">Basic</a> panel, place the picker on the clear edge of the strip, and apply the new reading to the whole roll. Note that the Roll tab's Film base tool recalibrates the entire roll base; the Film-Edge Color swatch in the Basic panel overrides the base for that one image only. The second common cause is white balance: once the base is correct, use the Temperature and Tint sliders to remove any remaining color shift. See <a href="../science/base-calibration.html">film-base calibration</a> for a full explanation of how base sampling works and why the sample must come from clear leader.</p>
+
+<h2>IR dust removal vs the AI dust tools — which should I use?</h2>
+<p>Use <strong>IR removal</strong> whenever your scanner captured a dedicated infrared channel (Nikon Coolscan, Minolta Scan Multi with ICE, and similar). The infrared channel identifies dust and scratches with near-perfect accuracy because silver-halide grain is transparent to IR while dust scatters it strongly — the result is a clean mask that costs nothing in image quality. If your scan has no IR channel (most flatbed and DSLR scans), use the <strong>AI dust &amp; hair removal</strong> tool, which runs an on-device machine-learning detector followed by MI-GAN inpainting. For isolated spots you can also paint them out manually with the <strong>Eraser brush</strong>. All three options run entirely on your machine. See <a href="../tools/crop-dust.html">Crop &amp; dust</a> for a full description of each tool and how to choose between them.</p>
+
+<h2>Why is AI Enhance "not faithful"? Is my image uploaded to the internet?</h2>
+<p><strong>AI Enhance</strong> is fundamentally a creative tool, not a restoration tool: it sends your preview image to the <strong>OpenAI API</strong> and the model re-imagines the content to reduce noise and scratches. Because a generative model can invent detail that was not in the original scan, the result is not a pixel-faithful representation of the negative. It is the only place in OpenEnlarge where image data leaves your computer, and it requires your own OpenAI API key. By contrast, <strong>Tone Matching</strong> and <strong>Upscale</strong> both run entirely on-device — no image data is transmitted anywhere, and the results are deterministic. If privacy or fidelity matter, use the on-device tools. See <a href="../tools/ai.html">AI tools</a> for a full comparison of what each tool does and where it runs.</p>
+
+<h2>Does the exported file match what I see in the preview?</h2>
+<p>Yes. Export renders through the <strong>same pipeline</strong> as the live Frame preview: the same inversion math, the same tone curve, the same finish pass, applied to the full-resolution source. A dedicated offscreen renderer (the same WebGL shader used in the Frame viewport) runs the complete inversion and finish chain; the exported pixels are identical to what the preview shows at 1:1. If WebGL is unavailable or the image exceeds the GPU texture limit, the export falls back to a CPU path that runs the same calculations in Rust and produces the same result. The one exception is HDR export, which is a separate GPU path used only for HDR gain-map JPEG. See <a href="../tools/export.html">Export</a> for details on format options, the GPU/CPU fallback, and how resolution caps are applied.</p>
+
+<h2>Per-roll vs per-frame film base — which does OpenEnlarge use?</h2>
+<p>OpenEnlarge uses a <strong>per-roll base</strong> by design, and computes it <strong>automatically</strong>. The orange mask is a property of the film emulsion and the development chemistry — it is the same across every frame on a strip. When you develop a roll, OpenEnlarge computes a single roll-wide base: the confidence-filtered per-channel median of each frame's auto-detected rebate. This base is stored as the folder default and every frame is seeded against it, so no manual sampling step is required. Existing rolls that have no stored base are migrated automatically on first open. If the automatic base is off, use the Roll tab's <strong>Film base</strong> reference-edit mode to recalibrate the whole roll from a region of clear leader. You can also override the base for an individual frame in the Basic panel (Film-Edge Color swatch) — that override applies to that one image only and does not affect the roll base. See <a href="../science/base-calibration.html">film-base calibration</a> and the <a href="../tools/roll.html">Roll</a> tool for details.</p>
+
+<h2>What file formats can I import?</h2>
+<p>OpenEnlarge accepts <code>JPG</code>, <code>JPEG</code>, <code>PNG</code>, <code>DNG</code>, <code>TIF</code>, <code>TIFF</code>, <code>RAF</code>, <code>RW2</code>, <code>NEF</code>, <code>ARW</code>, <code>CR2</code>, <code>CR3</code>, <code>3FR</code>, <code>ORF</code>, and <code>RAW</code> (all case-insensitive). Any file whose extension is not in this list is silently skipped during import. The most common workflow is to import multi-channel TIFFs produced by a dedicated film scanner, which may also carry an infrared plane used for dust removal. See the <a href="../tools/library.html">Library</a> page for how importing works, how folders map to rolls, and how thumbnails are generated and kept up to date.</p>
+
+<p class="next"><a href="../index.html">← Back to the docs home</a></p>
+</article>
+    <footer class="docfoot">OpenEnlarge — open-source film scan editor · MIT licensed</footer>
+  </main>
+  <aside class="toc" id="toc" aria-label="On this page"><div class="toc-title">On this page</div><div id="toc-list"></div></aside>
+</div>
+<script src="../../docs.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,162 @@
+<!-- AUTO-GENERATED from /docs-src — do not edit by hand. Run python3 scripts/gen-docs.py -->
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The inversion pipeline — OpenEnlarge Docs</title>
+<meta name="description" content="From scanned negative to finished positive, stage by stage: base removal, log density, balance, tone, look, display.">
+<meta name="robots" content="noindex,follow">
+<meta name="theme-color" content="#0a0a0c">
+<link rel="icon" href="../../../img/favicon.png">
+<link rel="canonical" href="https://openenlarge.io/docs/ko/science/inversion.html">
+<link rel="alternate" hreflang="en" href="https://openenlarge.io/docs/science/inversion.html">
+<link rel="alternate" hreflang="zh-Hans" href="https://openenlarge.io/docs/zh/science/inversion.html">
+<link rel="alternate" hreflang="x-default" href="https://openenlarge.io/docs/science/inversion.html">
+<meta property="og:type" content="article"><meta property="og:title" content="The inversion pipeline — OpenEnlarge Docs"><meta property="og:description" content="From scanned negative to finished positive, stage by stage: base removal, log density, balance, tone, look, display."><meta property="og:url" content="https://openenlarge.io/docs/ko/science/inversion.html"><meta property="og:image" content="https://openenlarge.io/docs/og/cover.png"><meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "The inversion pipeline", "description": "From scanned negative to finished positive, stage by stage: base removal, log density, balance, tone, look, display.", "inLanguage": "ko", "url": "https://openenlarge.io/docs/ko/science/inversion.html", "isPartOf": {"@type": "WebSite", "name": "OpenEnlarge", "url": "https://openenlarge.io"}}</script>
+<link rel="stylesheet" href="../../docs.css">
+</head>
+<body>
+<a class="skip" href="#content">Skip to content</a>
+<nav class="docnav"><div class="navbar glass wrap">
+  <a class="brand" href="../../../index.html"><img class="mark" src="../../../img/icon.png" alt=""> OpenEnlarge <span class="brand-docs">Docs</span></a>
+  <button class="menu-btn" id="menu-btn" type="button" aria-label="Menu" aria-expanded="false">☰</button>
+  <div class="navlinks">
+    <a href="../../../index.html">Home</a>
+    <a href="https://github.com/mohaelder/openenlarge">GitHub</a>
+    <a class="lang-link" href="../../science/inversion.html">中文</a>
+  </div>
+</div></nav>
+<div class="doclayout wrap">
+  <aside class="sidebar" id="sidebar"><div class="side-sec"><div class="side-h">Overview</div>
+<a href="../index.html">Documentation</a>
+<a href="../workflow.html">The workflow</a>
+</div>
+<div class="side-sec"><div class="side-h">The Science</div>
+<a href="../science/negatives.html">How color negatives work</a>
+<a class="on" href="../science/inversion.html">The inversion pipeline</a>
+<a href="../science/density.html">Density &amp; log space</a>
+<a href="../science/tone-curve.html">The tone curve (the Faithful look)</a>
+<a href="../science/color.html">Color &amp; white balance</a>
+<a href="../science/base-calibration.html">Film-base calibration</a>
+</div>
+<div class="side-sec"><div class="side-h">Tools</div>
+<a href="../tools/develop-basic.html">Develop · Basic</a>
+<a href="../tools/tune.html">Tune</a>
+<a href="../tools/crop-dust.html">Crop &amp; dust</a>
+<a href="../tools/ai.html">AI tools</a>
+<a href="../tools/library.html">Library</a>
+<a href="../tools/roll.html">Roll</a>
+<a href="../tools/export.html">Export</a>
+</div>
+<div class="side-sec"><div class="side-h">Reference</div>
+<a href="../reference/glossary.html">Glossary</a>
+<a href="../reference/faq.html">FAQ</a>
+<a href="../reference/storage.html">Storage &amp; clearing data</a>
+</div></aside>
+  <main class="content" id="content">
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="../index.html">Docs</a> <span class="sep">/</span> <span>The inversion pipeline</span></nav>
+    <article class="prose"><h1>The inversion pipeline</h1>
+<p class="lead">Every pixel runs the same per-channel chain: eight stages take a raw scan value and turn it into a finished positive. Understanding each stage tells you what every slider actually moves.</p>
+
+<h2>1. Clamp &amp; read the linear scan</h2>
+<p>The pipeline starts with the raw linear value from the scanner — a number proportional to how much light passed through the film. Values are clamped to a valid range before anything else happens; out-of-range data would corrupt every downstream calculation.</p>
+
+<h2>2. Remove the base</h2>
+<p>The clear edge of the film is not neutral — it carries the orange mask. OpenEnlarge samples that orange base and divides it out of each pixel, channel by channel. This single step strips the mask and leaves the dye density of the image alone. See <a href="base-calibration.html">film-base calibration</a>.</p>
+
+<h2>3. To density (log space)</h2>
+<p>Dividing the base by the scan and taking the base-10 logarithm converts the linear transmission ratio into <strong>density</strong>: <span class="formula">D = log₁₀(base / scan)</span>. Density is clamped to zero so clear film reads as D = 0 (no dye). Working in log space means that equal density steps correspond to equal photographic stops — the natural unit of film. See <a href="density.html">density &amp; log space</a>.</p>
+
+<h2>4. Scale to the tone curve</h2>
+<p>The raw density <code>D</code> is scaled by a fixed factor before the tone curve. In the Faithful path — the active path — a frame-independent constant (<code>FAITHFUL_SCALE = 1 / 0.700 ≈ 1.429</code>) is applied directly to <code>D</code>, giving every frame in a roll the same tonal ruler regardless of its individual exposure. The concept of a per-frame white point <code>d_max</code> still exists (it anchors the exposure slider's neutral starting point), but the Faithful tone curve does not normalize to it: <code>t = D / d_max</code> is the Filmic-path form only. After scaling, <code>D = 0</code> is still the film base — the scene's deepest shadow — and fully exposed density maps to the curve's white.</p>
+
+<h2>5. Balance</h2>
+<p>White balance shifts the neutral point so a gray card in the scene renders as gray. OpenEnlarge offers two modes: a gentle post-curve von-Kries gain (divide each channel by its white-patch value), or a subtractive "color head" that applies per-channel density gain before the tone curve — matching how an optical enlarger head would control color. See <a href="color.html">color &amp; white balance</a>.</p>
+
+<h2>6. Tone curve</h2>
+<p>The tone curve maps normalized density <code>t</code> to a display brightness. The Faithful curve applies a fixed-scale density-to-brightness transform with gamma ≈ 1.590 and an asymptotic shoulder above knee ≈ 0.892, on a frame-independent density scale so that tone is consistent across a whole roll. See <a href="tone-curve.html">the tone curve</a>.</p>
+
+<h2>7. Look layer</h2>
+<p>A subtle normalized tanh S-curve adds mid-tone contrast and a gentle highlight roll-off without clipping. The look layer is anchored 0 → 0 and 1 → 1, so it never shifts the black point or white point — it only reshapes the middle. Strength is fixed at 2.0 for the Faithful SDR output.</p>
+
+<h2>8. Display encode</h2>
+<p>The result is a linear-light value in the 0–1 range ready for the screen. A final clamp discards any out-of-gamut overshoot before the value is handed to the display. No additional gamma encoding is applied in the pipeline — the OS color stack handles that.</p>
+
+<figure><svg viewBox="0 0 920 160" role="img" aria-label="Eight-stage inversion pipeline: Scan, divide by Base, log D, divide by d_max, Balance, Tone, Look, Display — each a rounded rectangle connected left to right by arrows" xmlns="http://www.w3.org/2000/svg">
+  <rect width="920" height="160" rx="12" fill="#141418"/>
+  <!-- Node definitions: x positions for 8 nodes spaced evenly across 920px with padding -->
+  <!-- Node width 80, gap 26, arrow 16 -->
+  <!-- Nodes at x: 12, 118, 224, 330, 436, 542, 648, 754 ; width 80, height 72, cy=44 -->
+  <g font-family="ui-monospace,monospace" font-size="13" fill="#e8e8ea" text-anchor="middle">
+    <!-- Node 1: Scan -->
+    <rect x="12" y="44" width="88" height="72" rx="8" fill="#1e1e26" stroke="#f49d4e" stroke-width="1.5"/>
+    <text x="56" y="83" font-size="12" fill="#f49d4e" font-weight="bold">Scan</text>
+    <text x="56" y="100" font-size="10" fill="#9a9aa2">linear</text>
+    <!-- Arrow 1→2 -->
+    <line x1="100" y1="80" x2="116" y2="80" stroke="#f49d4e" stroke-width="1.5"/>
+    <polygon points="116,76 124,80 116,84" fill="#f49d4e"/>
+    <!-- Node 2: ÷ Base -->
+    <rect x="124" y="44" width="88" height="72" rx="8" fill="#1e1e26" stroke="#f49d4e" stroke-width="1.5"/>
+    <text x="168" y="83" font-size="12" fill="#f49d4e" font-weight="bold">÷ Base</text>
+    <text x="168" y="100" font-size="10" fill="#9a9aa2">÷ orange mask</text>
+    <!-- Arrow 2→3 -->
+    <line x1="212" y1="80" x2="228" y2="80" stroke="#f49d4e" stroke-width="1.5"/>
+    <polygon points="228,76 236,80 228,84" fill="#f49d4e"/>
+    <!-- Node 3: log D -->
+    <rect x="236" y="44" width="88" height="72" rx="8" fill="#1e1e26" stroke="#f49d4e" stroke-width="1.5"/>
+    <text x="280" y="83" font-size="12" fill="#f49d4e" font-weight="bold">log D</text>
+    <text x="280" y="100" font-size="10" fill="#9a9aa2">density domain</text>
+    <!-- Arrow 3→4 -->
+    <line x1="324" y1="80" x2="340" y2="80" stroke="#f49d4e" stroke-width="1.5"/>
+    <polygon points="340,76 348,80 340,84" fill="#f49d4e"/>
+    <!-- Node 4: ÷ d_max -->
+    <rect x="348" y="44" width="88" height="72" rx="8" fill="#1e1e26" stroke="#f49d4e" stroke-width="1.5"/>
+    <text x="392" y="83" font-size="12" fill="#f49d4e" font-weight="bold">÷ d_max</text>
+    <text x="392" y="100" font-size="10" fill="#9a9aa2">normalize t</text>
+    <!-- Arrow 4→5 -->
+    <line x1="436" y1="80" x2="452" y2="80" stroke="#f49d4e" stroke-width="1.5"/>
+    <polygon points="452,76 460,80 452,84" fill="#f49d4e"/>
+    <!-- Node 5: Balance -->
+    <rect x="460" y="44" width="88" height="72" rx="8" fill="#1e1e26" stroke="#f49d4e" stroke-width="1.5"/>
+    <text x="504" y="83" font-size="12" fill="#f49d4e" font-weight="bold">Balance</text>
+    <text x="504" y="100" font-size="10" fill="#9a9aa2">WB / color head</text>
+    <!-- Arrow 5→6 -->
+    <line x1="548" y1="80" x2="564" y2="80" stroke="#f49d4e" stroke-width="1.5"/>
+    <polygon points="564,76 572,80 564,84" fill="#f49d4e"/>
+    <!-- Node 6: Tone -->
+    <rect x="572" y="44" width="88" height="72" rx="8" fill="#1e1e26" stroke="#f49d4e" stroke-width="1.5"/>
+    <text x="616" y="83" font-size="12" fill="#f49d4e" font-weight="bold">Tone</text>
+    <text x="616" y="100" font-size="10" fill="#9a9aa2">gamma+shoulder</text>
+    <!-- Arrow 6→7 -->
+    <line x1="660" y1="80" x2="676" y2="80" stroke="#f49d4e" stroke-width="1.5"/>
+    <polygon points="676,76 684,80 676,84" fill="#f49d4e"/>
+    <!-- Node 7: Look -->
+    <rect x="684" y="44" width="88" height="72" rx="8" fill="#1e1e26" stroke="#f49d4e" stroke-width="1.5"/>
+    <text x="728" y="83" font-size="12" fill="#f49d4e" font-weight="bold">Look</text>
+    <text x="728" y="100" font-size="10" fill="#9a9aa2">S-curve</text>
+    <!-- Arrow 7→8 -->
+    <line x1="772" y1="80" x2="788" y2="80" stroke="#f49d4e" stroke-width="1.5"/>
+    <polygon points="788,76 796,80 788,84" fill="#f49d4e"/>
+    <!-- Node 8: Display -->
+    <rect x="796" y="44" width="112" height="72" rx="8" fill="#1e1e26" stroke="#f49d4e" stroke-width="1.5"/>
+    <text x="852" y="83" font-size="12" fill="#f49d4e" font-weight="bold">Display</text>
+    <text x="852" y="100" font-size="10" fill="#9a9aa2">clamp → screen</text>
+  </g>
+</svg>
+<figcaption>The eight-stage inversion chain, left to right. Every pixel and every channel passes through all stages in order.</figcaption></figure>
+
+<details class="hood"><summary>Under the hood</summary><div class="hood-body">
+<p>The density formula is <span class="formula">D = log₁₀(base / scan)</span>, clamped ≥ 0; one density unit ≈ 3.32 photographic stops. The white-point normalize is <span class="formula">t = D / d_max</span>, where <code>d_max</code> is the densest channel value in the frame. The Faithful tone curve uses a fixed density scale <code>FAITHFUL_SCALE = 1 / 0.700 ≈ 1.429</code>: this scale is applied to the raw density before the curve, making it frame-independent — identical tone across every frame of a roll. Gamma ≈ 1.590 with an asymptotic shoulder at knee ≈ 0.892. The look S-curve is a normalized tanh at strength 2.0, anchored 0 → 0 and 1 → 1. Exposure is a log-space multiply that pivots on black (≈ 1 stop/EV per unit). The CPU path and GPU (Metal) path run the identical math, so the live preview in the app matches the exported file exactly.</p>
+</div></details>
+
+<p class="next"><a href="density.html">Next: density &amp; log space →</a></p>
+</article>
+    <footer class="docfoot">OpenEnlarge — open-source film scan editor · MIT licensed</footer>
+  </main>
+  <aside class="toc" id="toc" aria-label="On this page"><div class="toc-title">On this page</div><div id="toc-list"></div></aside>
+</div>
+<script src="../../docs.js" defer></script>
+</body>
+</html>

@@ -6,6 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>色彩与白平衡 — OpenEnlarge Docs</title>
 <meta name="description" content="灰世界自动白平衡、色温与色调、增益模式与减色「彩色头」，以及基于 OKLab 的感知饱和度。">
+
 <meta name="theme-color" content="#0a0a0c">
 <link rel="icon" href="../../../img/favicon.png">
 <link rel="canonical" href="https://openenlarge.io/docs/zh/science/color.html">
@@ -72,7 +73,7 @@
 <p>色温与色调结合使用，可覆盖色品平面的全部范围 —— 任何中性点都可通过二者组合达到。</p>
 
 <h2>增益模式与彩色头</h2>
-<p>OpenEnlarge 提供两种截然不同的白平衡施加方式，可在控制面板中切换：</p>
+<p>OpenEnlarge 引擎支持两种白平衡施加方式。应用当前使用<strong>增益</strong>模式；下文所述的<strong>彩色头</strong>（减色）模式由引擎支持，但未在 UI 中暴露（该开关已移除）：</p>
 <ul>
   <li><strong>增益模式</strong> —— 白平衡作为<em>曲线后的线性乘法</em>施加，在色调曲线已生成正片图像之后进行。由于是线性乘法，纯黑（输出 = 0）不受影响：0 × 增益 = 0，因此暗部始终保持完美中性。这正是冯·克里斯适应模型 —— 与大多数数码相机白平衡所用的原理相同。</li>
   <li><strong>彩色头（减色模式）</strong> —— 白平衡作为<em>曲线前的密度偏移</em>施加，原理与传统彩色放大机的 CMY 二向色滤镜完全一致。色调在对数密度空间中运作，影响色调曲线对每个通道的塑形方式。由于密度与对比度在对数空间中相互耦合，色调的影响不仅体现在高光，也深入中调乃至较暗的调子区域。暗部仍然锚定在纯黑，但色调的特性会随图像的色调结构而变化。</li>

@@ -6,6 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Color &amp; white balance — OpenEnlarge Docs</title>
 <meta name="description" content="Gray-world auto white balance, Temperature and Tint, gain versus a subtractive color head, and perceptual OKLab saturation.">
+
 <meta name="theme-color" content="#0a0a0c">
 <link rel="icon" href="../../img/favicon.png">
 <link rel="canonical" href="https://openenlarge.io/docs/science/color.html">
@@ -72,7 +73,7 @@
 <p>Temperature and Tint together give you full coverage of the chromaticity plane — any neutral can be reached by combining them.</p>
 
 <h2>Gain vs. color head</h2>
-<p>OpenEnlarge offers two fundamentally different ways to apply white balance, toggled in the controls:</p>
+<p>OpenEnlarge's engine supports two ways to apply white balance. The app currently applies <strong>Gain</strong> mode; the subtractive <strong>Color head</strong> mode described below is supported in the engine but is not exposed in the UI (the toggle was removed):</p>
 <ul>
   <li><strong>Gain mode</strong> — balance is applied as a <em>post-curve linear multiply</em>, after the tone curve has already produced a positive image. Because the multiply is linear, pure black (output = 0) is unaffected: 0 × gain = 0, so shadows stay perfectly neutral. This is the von-Kries adaptation model — the same principle used in most digital camera white balance.</li>
   <li><strong>Color head (subtractive)</strong> — balance is applied as a <em>density offset before the curve</em>, exactly like the CMY dichroic filters on a traditional color enlarger. The tint operates in log density space and modifies how the tone curve shapes each channel. Because density and contrast are coupled in log space, the tint influence is felt not just in the highlights but also through the midtones and into the lower tonal values. Shadows remain anchored at true black, but the character of the tint shifts with the tonal structure of the image.</li>

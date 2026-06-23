@@ -6,6 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Glossary — OpenEnlarge Docs</title>
 <meta name="description" content="A reference of OpenEnlarge&#x27;s engine constants and the film-photography terms used throughout these docs.">
+
 <meta name="theme-color" content="#0a0a0c">
 <link rel="icon" href="../../img/favicon.png">
 <link rel="canonical" href="https://openenlarge.io/docs/reference/glossary.html">
@@ -80,7 +81,7 @@
   <dd>Strength of the normalized tanh look layer applied on top of the Faithful tone curve. The layer is anchored so that 0 → 0 and 1 → 1; <code>LOOK_K = 2.0</code> adds a clean S-shaped contrast push without shifting the black or white points. Always active on the Faithful path. See <a href="../science/tone-curve.html">The tone curve</a>.</dd>
 
   <dt><code>CMY_STRENGTH</code> = 1.6</dt>
-  <dd>Exponent used in the subtractive (Color head) white-balance mode: <span class="formula">t_eff = t · gain<sup>CMY_STRENGTH</sup></span>. The value 1.6 gives the density-space tint a slightly non-linear coupling that matches the behavior of real dichroic enlarger filters more closely than a plain linear scale. See <a href="../science/color.html">Color &amp; white balance</a>.</dd>
+  <dd>Exponent used in the subtractive (Color head) white-balance mode — currently a dormant engine mode, not exposed in the UI: <span class="formula">t_eff = t · gain<sup>CMY_STRENGTH</sup></span>. The value 1.6 gives the density-space tint a slightly non-linear coupling that matches the behavior of real dichroic enlarger filters more closely than a plain linear scale. See <a href="../science/color.html">Color &amp; white balance</a>.</dd>
 
   <dt><code>EXPO_K</code> = 0.14 <em>(legacy Filmic path, dormant)</em></dt>
   <dd>Exposure sensitivity used on the legacy Filmic path. At 0.14 one EV step moved brightness by only ~10 %, making the slider feel unresponsive. Kept in source for historical reference; the active Faithful path uses <code>FAITHFUL_EXPO_K</code> instead.</dd>
