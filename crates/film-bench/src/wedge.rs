@@ -48,9 +48,17 @@ pub fn load_reference(path: &str) -> Result<Vec<RefPatch>, String> {
 /// author to sharpen the anchor.)
 pub fn target_lstar(value: f32, value_max: f32) -> f32 {
     let s = (value / value_max).clamp(0.0, 1.0); // sRGB-encoded display value
-    let lin = if s <= 0.04045 { s / 12.92 } else { ((s + 0.055) / 1.055).powf(2.4) };
+    let lin = if s <= 0.04045 {
+        s / 12.92
+    } else {
+        ((s + 0.055) / 1.055).powf(2.4)
+    };
     // CIE L* from luminance Y=lin (D65), matching film_core::color::xyz_to_lab.
-    let f = if lin > 0.008_856 { lin.cbrt() } else { 7.787 * lin + 16.0 / 116.0 };
+    let f = if lin > 0.008_856 {
+        lin.cbrt()
+    } else {
+        7.787 * lin + 16.0 / 116.0
+    };
     116.0 * f - 16.0
 }
 

@@ -604,7 +604,10 @@ mod tests {
         }
         // sample_base (95th pct) is dominated by the blown surround.
         let naive = sample_base(&img, None);
-        assert!(naive[0] > 0.9, "naive base should latch onto white: {naive:?}");
+        assert!(
+            naive[0] > 0.9,
+            "naive base should latch onto white: {naive:?}"
+        );
         // clearfilm rejects the >0.92 pixels and recovers the orange base.
         let cf = sample_base_clearfilm(&img, 0.92, 0.95);
         for c in 0..3 {
@@ -1133,9 +1136,14 @@ mod per_zone_tests {
         let mut pixels = Vec::new();
         for i in 0..300 {
             let l = 0.12 + 0.76 * (i as f32 / 299.0); // ~0.12..0.88
-            pixels.push([l * 1.12, l, l * 0.92]);       // sat ≈ 0.18 (< 0.25 gate), spans shadow→highlight
+            pixels.push([l * 1.12, l, l * 0.92]); // sat ≈ 0.18 (< 0.25 gate), spans shadow→highlight
         }
-        let img = Image { width: 300, height: 1, pixels, ir: None };
+        let img = Image {
+            width: 300,
+            height: 1,
+            pixels,
+            ir: None,
+        };
         let z = per_zone_wb_gains(&img, 1.0);
         for c in 0..3 {
             assert!((z[0][c] - z[1][c]).abs() < 0.06, "sh vs mid ch{c}: {z:?}");
@@ -1150,22 +1158,57 @@ mod per_zone_tests {
         // Pink pixels have luma ≈ 0.83, which is above HI_EDGE=0.66 — they fall
         // squarely in the highlight zone with w_hi > 0.
         let mut pixels = Vec::new();
-        for _ in 0..400 { pixels.push([0.45f32, 0.45, 0.45]); }   // neutral mids (luma 0.45)
-        for _ in 0..200 { pixels.push([0.92f32, 0.80, 0.90]); }   // pink highlights (luma ~0.83, sat ~0.13)
-        let img = Image { width: 600, height: 1, pixels, ir: None };
+        for _ in 0..400 {
+            pixels.push([0.45f32, 0.45, 0.45]);
+        } // neutral mids (luma 0.45)
+        for _ in 0..200 {
+            pixels.push([0.92f32, 0.80, 0.90]);
+        } // pink highlights (luma ~0.83, sat ~0.13)
+        let img = Image {
+            width: 600,
+            height: 1,
+            pixels,
+            ir: None,
+        };
         let z = per_zone_wb_gains(&img, 1.0);
-        for c in 0..3 { assert!((z[1][c] - 1.0).abs() < 0.08, "mid not identity ch{c}: {z:?}"); }
-        assert!(z[2][1] > z[2][0] && z[2][1] > z[2][2], "highlights not de-pinked: {z:?}");
+        for c in 0..3 {
+            assert!(
+                (z[1][c] - 1.0).abs() < 0.08,
+                "mid not identity ch{c}: {z:?}"
+            );
+        }
+        assert!(
+            z[2][1] > z[2][0] && z[2][1] > z[2][2],
+            "highlights not de-pinked: {z:?}"
+        );
     }
 
     #[test]
     fn empty_zone_is_identity() {
         // All-bright neutral → SHADOW zone gets ~0 weight (luma 0.85 > 0.58 ⇒ w_sh=0) → identity.
-        let bright = Image { width: 200, height: 1, pixels: vec![[0.85, 0.85, 0.85]; 200], ir: None };
-        assert_eq!(per_zone_wb_gains(&bright, 1.0)[0], [1.0, 1.0, 1.0], "empty shadow zone must be identity");
+        let bright = Image {
+            width: 200,
+            height: 1,
+            pixels: vec![[0.85, 0.85, 0.85]; 200],
+            ir: None,
+        };
+        assert_eq!(
+            per_zone_wb_gains(&bright, 1.0)[0],
+            [1.0, 1.0, 1.0],
+            "empty shadow zone must be identity"
+        );
         // All-dark neutral → HIGHLIGHT zone gets ~0 weight (luma 0.10 < 0.41 ⇒ w_hi=0) → identity.
-        let dark = Image { width: 200, height: 1, pixels: vec![[0.10, 0.10, 0.10]; 200], ir: None };
-        assert_eq!(per_zone_wb_gains(&dark, 1.0)[2], [1.0, 1.0, 1.0], "empty highlight zone must be identity");
+        let dark = Image {
+            width: 200,
+            height: 1,
+            pixels: vec![[0.10, 0.10, 0.10]; 200],
+            ir: None,
+        };
+        assert_eq!(
+            per_zone_wb_gains(&dark, 1.0)[2],
+            [1.0, 1.0, 1.0],
+            "empty highlight zone must be identity"
+        );
     }
 
     #[test]
@@ -1173,14 +1216,25 @@ mod per_zone_tests {
         // Reuse a de-pinking case; assert EVERY zone/channel gain is within the clamp bounds.
         // The sat<0.25 gate keeps gains well within the clamp in practice; the clamp is a safety bound.
         let mut pixels = Vec::new();
-        for _ in 0..300 { pixels.push([0.45f32, 0.45, 0.45]); }
-        for _ in 0..300 { pixels.push([0.92f32, 0.78, 0.90]); } // stronger pink, still sat<0.25
-        let img = Image { width: 600, height: 1, pixels, ir: None };
+        for _ in 0..300 {
+            pixels.push([0.45f32, 0.45, 0.45]);
+        }
+        for _ in 0..300 {
+            pixels.push([0.92f32, 0.78, 0.90]);
+        } // stronger pink, still sat<0.25
+        let img = Image {
+            width: 600,
+            height: 1,
+            pixels,
+            ir: None,
+        };
         let z = per_zone_wb_gains(&img, 1.0);
         for zone in &z {
             for &g in zone {
-                assert!(g <= PER_ZONE_MAX_GAIN + 1e-4 && g >= 1.0 / PER_ZONE_MAX_GAIN - 1e-4,
-                    "gain out of clamp: {g} in {z:?}");
+                assert!(
+                    g <= PER_ZONE_MAX_GAIN + 1e-4 && g >= 1.0 / PER_ZONE_MAX_GAIN - 1e-4,
+                    "gain out of clamp: {g} in {z:?}"
+                );
             }
         }
     }

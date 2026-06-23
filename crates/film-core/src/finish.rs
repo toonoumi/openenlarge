@@ -74,7 +74,12 @@ pub struct PerZoneWb {
 
 impl Default for PerZoneWb {
     fn default() -> Self {
-        PerZoneWb { enabled: true, sh: [1.0; 3], mid: [1.0; 3], hi: [1.0; 3] }
+        PerZoneWb {
+            enabled: true,
+            sh: [1.0; 3],
+            mid: [1.0; 3],
+            hi: [1.0; 3],
+        }
     }
 }
 
@@ -518,19 +523,27 @@ fn tone_curve(v: f32, p: &FinishParams) -> f32 {
 // (which twists hue → neon). Luma (L) is held fixed; near-neutrals and skin hues are
 // protected; out-of-gamut chroma is compressed along the (gray→colour) line back to
 // the boundary. MUST be mirrored in shaders.ts (FRAG/finishAt).
-const SAT_C_REF: f32 = 0.20;      // OKLab chroma treated as "fully saturated" (vibrance weight)
+const SAT_C_REF: f32 = 0.20; // OKLab chroma treated as "fully saturated" (vibrance weight)
 const SAT_C_NEUTRAL: f32 = 0.025; // boost ramps from 0 below this chroma (protect neutrals)
-const SKIN_HUE: f32 = 0.70;       // OKLab hue (rad) at skin/orange
-const SKIN_WIDTH: f32 = 0.55;     // half-window (rad) of the skin damp
-const SKIN_DAMP: f32 = 0.5;       // max boost reduction inside the skin window
+const SKIN_HUE: f32 = 0.70; // OKLab hue (rad) at skin/orange
+const SKIN_WIDTH: f32 = 0.55; // half-window (rad) of the skin damp
+const SKIN_DAMP: f32 = 0.5; // max boost reduction inside the skin window
 
 #[inline]
 fn srgb_to_linear(c: f32) -> f32 {
-    if c <= 0.04045 { c / 12.92 } else { ((c + 0.055) / 1.055).powf(2.4) }
+    if c <= 0.04045 {
+        c / 12.92
+    } else {
+        ((c + 0.055) / 1.055).powf(2.4)
+    }
 }
 #[inline]
 fn linear_to_srgb(c: f32) -> f32 {
-    if c <= 0.0031308 { 12.92 * c } else { 1.055 * c.powf(1.0 / 2.4) - 0.055 }
+    if c <= 0.0031308 {
+        12.92 * c
+    } else {
+        1.055 * c.powf(1.0 / 2.4) - 0.055
+    }
 }
 #[inline]
 fn linear_to_oklab(r: f32, g: f32, b: f32) -> [f32; 3] {
@@ -561,7 +574,9 @@ fn oklab_to_linear(lab: [f32; 3]) -> [f32; 3] {
 fn hue_dist(a: f32, b: f32) -> f32 {
     let tau = 2.0 * std::f32::consts::PI;
     let mut d = (a - b).rem_euclid(tau);
-    if d > std::f32::consts::PI { d = tau - d; }
+    if d > std::f32::consts::PI {
+        d = tau - d;
+    }
     d
 }
 
@@ -573,7 +588,11 @@ fn apply_saturation(rgb: [f32; 3], p: &FinishParams) -> [f32; 3] {
     if p.saturation.abs() < EPS && p.vibrance.abs() < EPS {
         return rgb;
     }
-    let lin = [srgb_to_linear(rgb[0]), srgb_to_linear(rgb[1]), srgb_to_linear(rgb[2])];
+    let lin = [
+        srgb_to_linear(rgb[0]),
+        srgb_to_linear(rgb[1]),
+        srgb_to_linear(rgb[2]),
+    ];
     let lab = linear_to_oklab(lin[0], lin[1], lin[2]);
     let (l, a, b) = (lab[0], lab[1], lab[2]);
     let c = (a * a + b * b).sqrt();
@@ -605,8 +624,13 @@ fn apply_saturation(rgb: [f32; 3], p: &FinishParams) -> [f32; 3] {
         }
     }
     let tg = tg.clamp(0.0, 1.0);
-    let out_lin: [f32; 3] = std::array::from_fn(|ch| (gray[ch] + (col[ch] - gray[ch]) * tg).clamp(0.0, 1.0));
-    [linear_to_srgb(out_lin[0]), linear_to_srgb(out_lin[1]), linear_to_srgb(out_lin[2])]
+    let out_lin: [f32; 3] =
+        std::array::from_fn(|ch| (gray[ch] + (col[ch] - gray[ch]) * tg).clamp(0.0, 1.0));
+    [
+        linear_to_srgb(out_lin[0]),
+        linear_to_srgb(out_lin[1]),
+        linear_to_srgb(out_lin[2]),
+    ]
 }
 
 /// Per-pixel finishing. Order: Per-zone WB correction → Basic tone curve +
@@ -750,7 +774,11 @@ mod tests {
     use super::*;
 
     fn chroma_of(rgb: [f32; 3]) -> f32 {
-        let lin = [srgb_to_linear(rgb[0]), srgb_to_linear(rgb[1]), srgb_to_linear(rgb[2])];
+        let lin = [
+            srgb_to_linear(rgb[0]),
+            srgb_to_linear(rgb[1]),
+            srgb_to_linear(rgb[2]),
+        ];
         let lab = linear_to_oklab(lin[0], lin[1], lin[2]);
         (lab[1] * lab[1] + lab[2] * lab[2]).sqrt()
     }
@@ -764,32 +792,53 @@ mod tests {
     #[test]
     fn oklab_saturation_identity_at_zero() {
         let px = [0.42_f32, 0.55, 0.30];
-        let p = FinishParams { saturation: 0.0, vibrance: 0.0, ..Default::default() };
+        let p = FinishParams {
+            saturation: 0.0,
+            vibrance: 0.0,
+            ..Default::default()
+        };
         assert_eq!(apply_saturation(px, &p), px);
     }
 
     #[test]
     fn oklab_saturation_raises_chroma() {
         let px = [0.55_f32, 0.40, 0.30];
-        let p = FinishParams { saturation: 0.5, ..Default::default() };
+        let p = FinishParams {
+            saturation: 0.5,
+            ..Default::default()
+        };
         let out = apply_saturation(px, &p);
-        assert!(chroma_of(out) > chroma_of(px) + 1e-3, "{} !> {}", chroma_of(out), chroma_of(px));
+        assert!(
+            chroma_of(out) > chroma_of(px) + 1e-3,
+            "{} !> {}",
+            chroma_of(out),
+            chroma_of(px)
+        );
     }
 
     #[test]
     fn oklab_saturation_stays_in_gamut_under_heavy_push() {
         let px = [0.60_f32, 0.35, 0.25];
-        let p = FinishParams { saturation: 3.0, ..Default::default() };
+        let p = FinishParams {
+            saturation: 3.0,
+            ..Default::default()
+        };
         let out = apply_saturation(px, &p);
         for c in 0..3 {
-            assert!((0.0..=1.0).contains(&out[c]), "channel {c} out of gamut: {out:?}");
+            assert!(
+                (0.0..=1.0).contains(&out[c]),
+                "channel {c} out of gamut: {out:?}"
+            );
         }
     }
 
     #[test]
     fn oklab_saturation_preserves_neutral() {
         let px = [0.5_f32, 0.5, 0.5];
-        let p = FinishParams { saturation: 1.0, ..Default::default() };
+        let p = FinishParams {
+            saturation: 1.0,
+            ..Default::default()
+        };
         let out = apply_saturation(px, &p);
         for c in 0..3 {
             assert!((out[c] - 0.5).abs() < 0.02, "neutral drifted: {out:?}");
@@ -804,10 +853,16 @@ mod tests {
         let c0 = 0.06_f32;
         let skin = px_from_lch(l, c0, SKIN_HUE);
         let other = px_from_lch(l, c0, SKIN_HUE + std::f32::consts::PI);
-        let p = FinishParams { saturation: 1.0, ..Default::default() };
+        let p = FinishParams {
+            saturation: 1.0,
+            ..Default::default()
+        };
         let skin_ratio = chroma_of(apply_saturation(skin, &p)) / chroma_of(skin);
         let other_ratio = chroma_of(apply_saturation(other, &p)) / chroma_of(other);
-        assert!(skin_ratio < other_ratio - 1e-3, "skin {skin_ratio} not damped vs {other_ratio}");
+        assert!(
+            skin_ratio < other_ratio - 1e-3,
+            "skin {skin_ratio} not damped vs {other_ratio}"
+        );
     }
 
     fn img_from(pixels: Vec<[f32; 3]>) -> Image {
@@ -967,13 +1022,19 @@ mod tests {
     #[test]
     fn positive_saturation_increases_chroma() {
         let px = [0.6_f32, 0.4, 0.3];
-        let p = FinishParams { saturation: 0.5, ..Default::default() };
+        let p = FinishParams {
+            saturation: 0.5,
+            ..Default::default()
+        };
         assert!(chroma_of(apply_saturation(px, &p)) > chroma_of(px));
     }
 
     #[test]
     fn vibrance_affects_muted_more_than_vivid() {
-        let p = FinishParams { vibrance: 1.0, ..Default::default() };
+        let p = FinishParams {
+            vibrance: 1.0,
+            ..Default::default()
+        };
         let muted = [0.52_f32, 0.50, 0.48];
         let vivid = [0.90_f32, 0.10, 0.05];
         // Vibrance boosts low-chroma (muted) pixels more than already-vivid ones,
@@ -1425,10 +1486,13 @@ mod tests {
             );
         }
         // And finish_pixel with default params uses identity per_zone, so same result.
-        let out_identity = finish_pixel(pz_out, &FinishParams {
-            per_zone: PerZoneWb::default(),
-            ..Default::default()
-        });
+        let out_identity = finish_pixel(
+            pz_out,
+            &FinishParams {
+                per_zone: PerZoneWb::default(),
+                ..Default::default()
+            },
+        );
         for c in 0..3 {
             assert!(
                 (out_default[c] - out_identity[c]).abs() < 1e-6,
@@ -1449,25 +1513,45 @@ mod per_zone_apply_tests {
         let pz = PerZoneWb::default();
         let rgb = [0.2, 0.5, 0.8];
         let out = apply_per_zone_wb(rgb, &pz);
-        for c in 0..3 { assert!((out[c] - rgb[c]).abs() < 1e-6, "noop ch{c}: {out:?}"); }
+        for c in 0..3 {
+            assert!((out[c] - rgb[c]).abs() < 1e-6, "noop ch{c}: {out:?}");
+        }
     }
 
     #[test]
     fn disabled_is_noop_even_with_gains() {
-        let pz = PerZoneWb { enabled: false, sh: [1.2, 1.0, 0.8], mid: [1.1, 1.0, 0.9], hi: [0.8, 1.2, 0.9] };
+        let pz = PerZoneWb {
+            enabled: false,
+            sh: [1.2, 1.0, 0.8],
+            mid: [1.1, 1.0, 0.9],
+            hi: [0.8, 1.2, 0.9],
+        };
         let rgb = [0.2, 0.5, 0.8];
         let out = apply_per_zone_wb(rgb, &pz);
-        for c in 0..3 { assert!((out[c] - rgb[c]).abs() < 1e-6, "disabled ch{c}: {out:?}"); }
+        for c in 0..3 {
+            assert!((out[c] - rgb[c]).abs() < 1e-6, "disabled ch{c}: {out:?}");
+        }
     }
 
     #[test]
     fn highlight_gain_affects_bright_pixel_not_dark() {
         // A highlight-only green boost must move a bright pixel's green but leave a
         // shadow pixel ~unchanged (luma-keyed weighting).
-        let pz = PerZoneWb { enabled: true, sh: [1.0; 3], mid: [1.0; 3], hi: [1.0, 1.2, 1.0] };
+        let pz = PerZoneWb {
+            enabled: true,
+            sh: [1.0; 3],
+            mid: [1.0; 3],
+            hi: [1.0, 1.2, 1.0],
+        };
         let bright = apply_per_zone_wb([0.9, 0.9, 0.9], &pz);
         let dark = apply_per_zone_wb([0.05, 0.05, 0.05], &pz);
-        assert!(bright[1] > 0.9 + 1e-3, "highlight green not boosted: {bright:?}");
-        assert!((dark[1] - 0.05).abs() < 1e-2, "shadow wrongly changed: {dark:?}");
+        assert!(
+            bright[1] > 0.9 + 1e-3,
+            "highlight green not boosted: {bright:?}"
+        );
+        assert!(
+            (dark[1] - 0.05).abs() < 1e-2,
+            "shadow wrongly changed: {dark:?}"
+        );
     }
 }

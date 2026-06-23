@@ -38,23 +38,40 @@ pub fn run(manifest_path: &str, out_dir: &str) -> Result<(), String> {
 
     let mut json = String::from("{\n");
     json.push_str(&format!("  \"roll\": {:?},\n", m.roll));
-    json.push_str(&format!("  \"base\": [{}, {}, {}],\n", base[0], base[1], base[2]));
+    json.push_str(&format!(
+        "  \"base\": [{}, {}, {}],\n",
+        base[0], base[1], base[2]
+    ));
     json.push_str("  \"color\": [\n");
 
     let mut summary = Vec::new();
 
     let color_frames: Vec<&Frame> = m.frames.iter().filter(|f| f.role == "color").collect();
     for (idx, f) in color_frames.iter().enumerate() {
-        let corners = f.corners.ok_or_else(|| format!("color frame {} missing corners", f.file))?;
+        let corners = f
+            .corners
+            .ok_or_else(|| format!("color frame {} missing corners", f.file))?;
         let neg = decode(&m.dir, &f.file);
         let rep = score_color(&neg, base, &corners);
 
         // Overlay for human verification.
-        let positive = invert_image(&neg, &InversionParams { base, ..Default::default() }, Mode::D);
-        let spec = GridSpec { cols: 6, rows: 4, inset: 0.5 };
+        let positive = invert_image(
+            &neg,
+            &InversionParams {
+                base,
+                ..Default::default()
+            },
+            Mode::D,
+        );
+        let spec = GridSpec {
+            cols: 6,
+            rows: 4,
+            inset: 0.5,
+        };
         let ov = sampling_overlay(&positive, &corners, &spec, 1400);
         let ov_path = format!("{out_dir}/overlay_{}.png", sanitize(&f.file));
-        ov.save(&ov_path).map_err(|e| format!("save {ov_path}: {e}"))?;
+        ov.save(&ov_path)
+            .map_err(|e| format!("save {ov_path}: {e}"))?;
 
         json.push_str(&format!(
             "    {{ \"file\": {:?}, \"neutralized_mean\": {:.4}, \"neutralized_max\": {:.4}, \"chroma_mean\": {:.4}, \"as_shipped_mean\": {:.4}, \"flags\": {} }}{}\n",
@@ -68,7 +85,11 @@ pub fn run(manifest_path: &str, out_dir: &str) -> Result<(), String> {
         ));
         summary.push(format!(
             "  {}: neutralized ΔE mean {:.2} (chroma {:.2}, max {:.2}) | as-shipped {:.2}",
-            f.file, rep.neutralized.mean, rep.neutralized_chroma_only.mean, rep.neutralized.max, rep.as_shipped.mean
+            f.file,
+            rep.neutralized.mean,
+            rep.neutralized_chroma_only.mean,
+            rep.neutralized.max,
+            rep.as_shipped.mean
         ));
     }
     json.push_str("  ],\n  \"tone\": [\n");
@@ -76,7 +97,9 @@ pub fn run(manifest_path: &str, out_dir: &str) -> Result<(), String> {
     let wedge_frames: Vec<&Frame> = m.frames.iter().filter(|f| f.role == "wedge").collect();
     let mut csv = String::from("frame,step,ev,lstar\n");
     for (idx, f) in wedge_frames.iter().enumerate() {
-        let corners = f.corners.ok_or_else(|| format!("wedge frame {} missing corners", f.file))?;
+        let corners = f
+            .corners
+            .ok_or_else(|| format!("wedge frame {} missing corners", f.file))?;
         let neg = decode(&m.dir, &f.file);
         let rep = score_tone(
             &neg,
@@ -89,11 +112,23 @@ pub fn run(manifest_path: &str, out_dir: &str) -> Result<(), String> {
         );
 
         // Overlay for human verification (wedge: n_steps × 1 grid).
-        let positive = invert_image(&neg, &InversionParams { base, ..Default::default() }, Mode::D);
-        let spec = GridSpec { cols: f.n_steps.unwrap_or(10), rows: 1, inset: 0.5 };
+        let positive = invert_image(
+            &neg,
+            &InversionParams {
+                base,
+                ..Default::default()
+            },
+            Mode::D,
+        );
+        let spec = GridSpec {
+            cols: f.n_steps.unwrap_or(10),
+            rows: 1,
+            inset: 0.5,
+        };
         let ov = sampling_overlay(&positive, &corners, &spec, 1400);
         let ov_path = format!("{out_dir}/overlay_{}.png", sanitize(&f.file));
-        ov.save(&ov_path).map_err(|e| format!("save {ov_path}: {e}"))?;
+        ov.save(&ov_path)
+            .map_err(|e| format!("save {ov_path}: {e}"))?;
 
         for (i, (e, l)) in rep.ev.iter().zip(rep.lstar.iter()).enumerate() {
             csv.push_str(&format!("{},{},{},{:.3}\n", f.file, i, e, l));
@@ -111,8 +146,10 @@ pub fn run(manifest_path: &str, out_dir: &str) -> Result<(), String> {
     }
     json.push_str("  ]\n}\n");
 
-    std::fs::write(format!("{out_dir}/metrics.json"), json).map_err(|e| format!("write metrics: {e}"))?;
-    std::fs::write(format!("{out_dir}/tone_curve.csv"), csv).map_err(|e| format!("write csv: {e}"))?;
+    std::fs::write(format!("{out_dir}/metrics.json"), json)
+        .map_err(|e| format!("write metrics: {e}"))?;
+    std::fs::write(format!("{out_dir}/tone_curve.csv"), csv)
+        .map_err(|e| format!("write csv: {e}"))?;
 
     eprintln!("=== film-bench: {} ===", m.roll);
     for line in summary {

@@ -98,7 +98,10 @@ fn main() {
         let wb: [f32; 3] = std::array::from_fn(|c| fg / filmic_s(t0[c]).max(1e-6));
 
         println!("patch '{name}'  d={d:?}  wb(EV0)={wb:.4?}");
-        println!("   {:>5}   {:^22}  {:^22}", "", "CURRENT (invert_d)", "FIXED (invert_fixed)");
+        println!(
+            "   {:>5}   {:^22}  {:^22}",
+            "", "CURRENT (invert_d)", "FIXED (invert_fixed)"
+        );
         for ev in [-5.0_f32, 0.0, 5.0] {
             let p = InversionParams {
                 base,
@@ -117,7 +120,16 @@ fn main() {
         }
         let span = |f: &dyn Fn(f32) -> [f32; 3]| cct(f(5.0)) - cct(f(-5.0));
         let cur_span = span(&|ev| {
-            invert_d(scan, &InversionParams { base, d_max, print_exposure: 2f32.powf(ev), wb, ..Default::default() })
+            invert_d(
+                scan,
+                &InversionParams {
+                    base,
+                    d_max,
+                    print_exposure: 2f32.powf(ev),
+                    wb,
+                    ..Default::default()
+                },
+            )
         });
         let fix_span = span(&|ev| invert_fixed(scan, base, d_max, wb, ev));
         println!("   → CCT span EV−5..+5:  current {cur_span:+.0}K   fixed {fix_span:+.0}K\n");
@@ -135,8 +147,17 @@ fn main() {
         ([0.05, 0.04, 0.03], 2.0),
         ([0.012, 0.012, 0.012], -2.0),
     ] {
-        let p = InversionParams { base: pb, d_max, wb: pwb, print_exposure: 2f32.powf(ev), ..Default::default() };
+        let p = InversionParams {
+            base: pb,
+            d_max,
+            wb: pwb,
+            print_exposure: 2f32.powf(ev),
+            ..Default::default()
+        };
         let o = invert_d(scan, &p);
-        println!("  scan={scan:?} ev={ev:+.0}  -> [{:.6},{:.6},{:.6}]", o[0], o[1], o[2]);
+        println!(
+            "  scan={scan:?} ev={ev:+.0}  -> [{:.6},{:.6},{:.6}]",
+            o[0], o[1], o[2]
+        );
     }
 }

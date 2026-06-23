@@ -152,7 +152,11 @@ fn normalize_ifd_pointer_types(buf: &mut [u8]) {
                 let tag = rd_u16(buf, e, le);
                 if rd_u16(buf, e + 2, le) == 13 {
                     // IFD (13) -> LONG (4); identical 4-byte unsigned offset.
-                    let four = if le { 4u16.to_le_bytes() } else { 4u16.to_be_bytes() };
+                    let four = if le {
+                        4u16.to_le_bytes()
+                    } else {
+                        4u16.to_be_bytes()
+                    };
                     buf[e + 2] = four[0];
                     buf[e + 3] = four[1];
                 }
@@ -437,7 +441,7 @@ mod tests {
         buf.extend_from_slice(b"II"); // little-endian
         buf.extend_from_slice(&42u16.to_le_bytes()); // magic
         buf.extend_from_slice(&8u32.to_le_bytes()); // first IFD at offset 8
-        // IFD @ 8: 1 entry
+                                                    // IFD @ 8: 1 entry
         buf.extend_from_slice(&1u16.to_le_bytes()); // entry count
         buf.extend_from_slice(&330u16.to_le_bytes()); // tag = SubIFDs
         buf.extend_from_slice(&13u16.to_le_bytes()); // type = 13 (IFD)
@@ -446,7 +450,10 @@ mod tests {
         buf.extend_from_slice(&0u32.to_le_bytes()); // next IFD = 0
 
         let type_field = 8 + 2 + 2; // header(8) + count(2) + tag(2)
-        assert_eq!(u16::from_le_bytes([buf[type_field], buf[type_field + 1]]), 13);
+        assert_eq!(
+            u16::from_le_bytes([buf[type_field], buf[type_field + 1]]),
+            13
+        );
         normalize_ifd_pointer_types(&mut buf);
         assert_eq!(
             u16::from_le_bytes([buf[type_field], buf[type_field + 1]]),

@@ -23,7 +23,11 @@ pub enum Transfer {
 
 impl Transfer {
     pub fn default_filmic() -> Transfer {
-        Transfer::Filmic { k: 5.0, pivot: 0.44, white_t: 1.05 }
+        Transfer::Filmic {
+            k: 5.0,
+            pivot: 0.44,
+            white_t: 1.05,
+        }
     }
 }
 
@@ -174,12 +178,18 @@ pub fn fit_tone(points: &[TonePoint], mode: FitMode) -> FitResult {
     };
     let build = |p: &[f32; 4]| -> Transfer {
         match mode {
-            FitMode::Gamma => Transfer::Gamma { gamma: p[1].max(0.2) },
+            FitMode::Gamma => Transfer::Gamma {
+                gamma: p[1].max(0.2),
+            },
             FitMode::GammaShoulder => Transfer::GammaShoulder {
                 gamma: p[1].max(0.5),
                 knee: p[2].clamp(0.05, 0.98),
             },
-            _ => Transfer::Filmic { k: p[1].max(0.5), pivot: p[2], white_t: p[3].max(0.2) },
+            _ => Transfer::Filmic {
+                k: p[1].max(0.5),
+                pivot: p[2],
+                white_t: p[3].max(0.2),
+            },
         }
     };
     let cost = |p: &[f32; 4]| weighted_rms(points, p[0].max(1e-3), &build(p));
@@ -212,7 +222,11 @@ pub fn fit_tone(points: &[TonePoint], mode: FitMode) -> FitResult {
             }
         }
     }
-    FitResult { scale: p[0].max(1e-3), transfer: build(&p), residual_rms: best }
+    FitResult {
+        scale: p[0].max(1e-3),
+        transfer: build(&p),
+        residual_rms: best,
+    }
 }
 
 #[cfg(test)]
@@ -224,7 +238,10 @@ mod tests {
         let f = Transfer::default_filmic();
         // filmic_s(0) == 0 and filmic_s(WHITE_T=1.05) == 1 by construction.
         assert!(apply_transfer(0.0, &f).abs() < 1e-6, "t=0 -> 0");
-        assert!((apply_transfer(1.05, &f) - 1.0).abs() < 1e-6, "t=WHITE_T -> 1");
+        assert!(
+            (apply_transfer(1.05, &f) - 1.0).abs() < 1e-6,
+            "t=WHITE_T -> 1"
+        );
         // Monotonic increasing across the range.
         let mut prev = -1.0;
         for i in 0..=20 {
@@ -249,17 +266,26 @@ mod tests {
         let base = [0.42, 0.55, 0.26];
         let tr = Transfer::default_filmic();
         let dense = output_lstar([0.05, 0.06, 0.03], base, 1.0 / 1.5, &tr); // bright scene
-        let thin = output_lstar([0.40, 0.52, 0.24], base, 1.0 / 1.5, &tr);  // dark scene
-        assert!(dense > thin, "dense neg should render brighter: {dense} vs {thin}");
+        let thin = output_lstar([0.40, 0.52, 0.24], base, 1.0 / 1.5, &tr); // dark scene
+        assert!(
+            dense > thin,
+            "dense neg should render brighter: {dense} vs {thin}"
+        );
         assert!((0.0..=100.0).contains(&dense) && (0.0..=100.0).contains(&thin));
     }
 
     #[test]
     fn ev_weight_downweights_deep_shadows() {
         assert!((ev_weight(0.0) - 1.0).abs() < 1e-6, "bright = full weight");
-        assert!((ev_weight(-4.0) - 1.0).abs() < 1e-6, "above onset = full weight");
+        assert!(
+            (ev_weight(-4.0) - 1.0).abs() < 1e-6,
+            "above onset = full weight"
+        );
         assert!(ev_weight(-9.0) < 0.1, "deep shadow = low weight");
-        assert!(ev_weight(-7.0) < ev_weight(-5.0), "monotone down into shadows");
+        assert!(
+            ev_weight(-7.0) < ev_weight(-5.0),
+            "monotone down into shadows"
+        );
     }
 
     #[test]
@@ -291,10 +317,14 @@ mod tests {
         let base = [0.42, 0.55, 0.26];
         let tr = Transfer::default_filmic();
         let true_scale = 1.0 / 0.9; // the scale we'll hide in the targets
-        // Spread of negative patches across the range.
+                                    // Spread of negative patches across the range.
         let scans = [
-            [0.05, 0.06, 0.03], [0.10, 0.12, 0.06], [0.18, 0.22, 0.11],
-            [0.26, 0.33, 0.16], [0.34, 0.44, 0.21], [0.40, 0.52, 0.25],
+            [0.05, 0.06, 0.03],
+            [0.10, 0.12, 0.06],
+            [0.18, 0.22, 0.11],
+            [0.26, 0.33, 0.16],
+            [0.34, 0.44, 0.21],
+            [0.40, 0.52, 0.25],
         ];
         let pts: Vec<TonePoint> = scans
             .iter()
@@ -308,13 +338,24 @@ mod tests {
             })
             .collect();
         let fit = fit_tone(&pts, FitMode::ScaleOnly);
-        assert!(fit.residual_rms < 0.2, "should fit near-exactly: {}", fit.residual_rms);
-        assert!((fit.scale - true_scale).abs() < 0.05, "recover scale: {} vs {true_scale}", fit.scale);
+        assert!(
+            fit.residual_rms < 0.2,
+            "should fit near-exactly: {}",
+            fit.residual_rms
+        );
+        assert!(
+            (fit.scale - true_scale).abs() < 0.05,
+            "recover scale: {} vs {true_scale}",
+            fit.scale
+        );
     }
 
     #[test]
     fn gamma_shoulder_anchors_and_monotone() {
-        let gs = Transfer::GammaShoulder { gamma: 2.4, knee: 0.8 };
+        let gs = Transfer::GammaShoulder {
+            gamma: 2.4,
+            knee: 0.8,
+        };
         assert!(apply_transfer(0.0, &gs).abs() < 1e-6, "t=0 -> 0");
         // monotone non-decreasing across a wide range incl. above-white
         let mut prev = -1.0;
@@ -337,23 +378,44 @@ mod tests {
         let h = 1e-3;
         let below = (apply_transfer(t_knee, &gs) - apply_transfer(t_knee - h, &gs)) / h;
         let above = (apply_transfer(t_knee + h, &gs) - apply_transfer(t_knee, &gs)) / h;
-        assert!((below - above).abs() < 0.05, "slope continuous at knee: {below} vs {above}");
+        assert!(
+            (below - above).abs() < 0.05,
+            "slope continuous at knee: {below} vs {above}"
+        );
     }
 
     #[test]
     fn fit_gamma_shoulder_recovers() {
         let base = [0.42, 0.55, 0.26];
-        let tr = Transfer::GammaShoulder { gamma: 2.2, knee: 0.85 };
+        let tr = Transfer::GammaShoulder {
+            gamma: 2.2,
+            knee: 0.85,
+        };
         let scans = [
-            [0.05, 0.06, 0.03], [0.12, 0.14, 0.07], [0.20, 0.25, 0.12],
-            [0.30, 0.38, 0.18], [0.38, 0.49, 0.24], [0.42, 0.54, 0.26],
+            [0.05, 0.06, 0.03],
+            [0.12, 0.14, 0.07],
+            [0.20, 0.25, 0.12],
+            [0.30, 0.38, 0.18],
+            [0.38, 0.49, 0.24],
+            [0.42, 0.54, 0.26],
         ];
-        let pts: Vec<TonePoint> = scans.iter().enumerate().map(|(i, &scan)| TonePoint {
-            scan, base, target_l: output_lstar(scan, base, 1.0 / 1.0, &tr),
-            weight: 1.0, abs_ev: -(i as f32),
-        }).collect();
+        let pts: Vec<TonePoint> = scans
+            .iter()
+            .enumerate()
+            .map(|(i, &scan)| TonePoint {
+                scan,
+                base,
+                target_l: output_lstar(scan, base, 1.0 / 1.0, &tr),
+                weight: 1.0,
+                abs_ev: -(i as f32),
+            })
+            .collect();
         let fit = fit_tone(&pts, FitMode::GammaShoulder);
-        assert!(fit.residual_rms < 0.5, "gamma-shoulder fit converges: {}", fit.residual_rms);
+        assert!(
+            fit.residual_rms < 0.5,
+            "gamma-shoulder fit converges: {}",
+            fit.residual_rms
+        );
         assert!(matches!(fit.transfer, Transfer::GammaShoulder { .. }));
     }
 }

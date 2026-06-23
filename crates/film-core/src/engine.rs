@@ -310,7 +310,9 @@ pub fn invert_d(rgb: [f32; 3], p: &InversionParams) -> [f32; 3] {
                         // without moving hue (see the expo_gain note above).
                         filmic_s(filmic_inv(y) * expo_gain)
                     }
-                    WbMode::Subtractive => filmic_s(t * p.wb[c].max(EPS).powf(CMY_STRENGTH) * expo_gain),
+                    WbMode::Subtractive => {
+                        filmic_s(t * p.wb[c].max(EPS).powf(CMY_STRENGTH) * expo_gain)
+                    }
                 };
                 if p.hdr {
                     // HDR: expand the filmic shoulder above the knee into [knee, headroom]
@@ -343,11 +345,17 @@ pub fn invert_d(rgb: [f32; 3], p: &InversionParams) -> [f32; 3] {
                 let t_eff = (lit + 1.0).log10() * FAITHFUL_SCALE;
                 let core = match p.wb_mode {
                     WbMode::Gain => gamma_shoulder(t_eff, ceil) * p.wb[c],
-                    WbMode::Subtractive => gamma_shoulder(t_eff * p.wb[c].max(EPS).powf(CMY_STRENGTH), ceil),
+                    WbMode::Subtractive => {
+                        gamma_shoulder(t_eff * p.wb[c].max(EPS).powf(CMY_STRENGTH), ceil)
+                    }
                 };
                 // Look layer (clean-punchy S-curve), SDR only. HDR keeps the headroom-
                 // expanded value (look↔HDR reconciliation is a follow-up). Mirror: shaders.ts lookS.
-                if p.hdr { core } else { look_s(core) }
+                if p.hdr {
+                    core
+                } else {
+                    look_s(core)
+                }
             }
         };
         v
@@ -484,7 +492,7 @@ mod tests {
         // scales the WB-NEUTRALISED density, so a patch that is neutral at EV 0 stays
         // neutral at every exposure.
         let base = [0.90, 0.55, 0.35]; // orange C-41 mask
-        // A neutral patch with a realistic per-channel density imbalance (B thinner).
+                                       // A neutral patch with a realistic per-channel density imbalance (B thinner).
         let densities = [
             [0.34f32, 0.37, 0.28], // shadow
             [0.62, 0.66, 0.54],    // mid
@@ -494,7 +502,11 @@ mod tests {
             let scan: [f32; 3] = std::array::from_fn(|c| base[c] / 10f32.powf(d[c]));
             // WB that neutralises this patch at EV 0 (a post-curve gain, exactly how
             // auto_wb_gains / the gray-point picker produce gains).
-            let p0 = InversionParams { base, d_max: 1.5, ..Default::default() };
+            let p0 = InversionParams {
+                base,
+                d_max: 1.5,
+                ..Default::default()
+            };
             let n = invert_d(scan, &p0);
             let g = (n[0] + n[1] + n[2]) / 3.0;
             let wb = [g / n[0], g / n[1], g / n[2]];
@@ -517,7 +529,10 @@ mod tests {
                         // drift. The old pre-curve coupling pushed this to several %
                         // (hundreds of K); the fix holds it near machine epsilon.
                         let dev = (out[c] - m).abs() / m;
-                        assert!(dev < 1e-3, "EV{ev} d={d:?} chan {c} hue drift {dev}: {out:?}");
+                        assert!(
+                            dev < 1e-3,
+                            "EV{ev} d={d:?} chan {c} hue drift {dev}: {out:?}"
+                        );
                     }
                 }
                 refs.push(out);
@@ -533,7 +548,12 @@ mod tests {
         // on). Probe coloured pixels with a non-trivial WB.
         let base = [0.8, 0.6, 0.4];
         let wb = [1.15, 1.0, 0.7];
-        let p = InversionParams { base, d_max: 1.5, wb, ..Default::default() };
+        let p = InversionParams {
+            base,
+            d_max: 1.5,
+            wb,
+            ..Default::default()
+        };
         for scan in [[0.4f32, 0.3, 0.2], [0.1, 0.25, 0.5], [0.05, 0.05, 0.05]] {
             let out = invert_d(scan, &p);
             for c in 0..3 {
@@ -1000,7 +1020,13 @@ mod tests {
     }
 
     fn sub_params(wb: [f32; 3]) -> InversionParams {
-        InversionParams { base: [0.9, 0.9, 0.9], d_max: 1.5, wb, wb_mode: WbMode::Subtractive, ..Default::default() }
+        InversionParams {
+            base: [0.9, 0.9, 0.9],
+            d_max: 1.5,
+            wb,
+            wb_mode: WbMode::Subtractive,
+            ..Default::default()
+        }
     }
 
     #[test]
@@ -1009,15 +1035,28 @@ mod tests {
         // channel regardless of the WB filter. No "yellow shadow".
         let p = sub_params([1.3, 1.0, 0.7]);
         let out = invert_d(p.base, &p);
-        assert_eq!(out, [0.0, 0.0, 0.0], "subtractive black must be pure neutral, got {out:?}");
+        assert_eq!(
+            out,
+            [0.0, 0.0, 0.0],
+            "subtractive black must be pure neutral, got {out:?}"
+        );
     }
 
     #[test]
     fn subtractive_neutral_wb_equals_gain() {
         // With wb = [1,1,1] the subtractive and gain paths both reduce to filmic_s(t).
         let scan = [0.25_f32, 0.30, 0.18];
-        let gain = InversionParams { base: [0.9, 0.9, 0.9], d_max: 1.5, wb: [1.0, 1.0, 1.0], wb_mode: WbMode::Gain, ..Default::default() };
-        let sub = InversionParams { wb_mode: WbMode::Subtractive, ..gain.clone() };
+        let gain = InversionParams {
+            base: [0.9, 0.9, 0.9],
+            d_max: 1.5,
+            wb: [1.0, 1.0, 1.0],
+            wb_mode: WbMode::Gain,
+            ..Default::default()
+        };
+        let sub = InversionParams {
+            wb_mode: WbMode::Subtractive,
+            ..gain.clone()
+        };
         let a = invert_d(scan, &gain);
         let b = invert_d(scan, &sub);
         for c in 0..3 {
@@ -1034,17 +1073,27 @@ mod tests {
         let warm = sub_params([1.3, 1.0, 0.8]);
         let n = invert_d(scan, &neutral);
         let w = invert_d(scan, &warm);
-        assert!(w[0] > n[0] + 1e-4, "red filter should brighten red mid: {n:?} -> {w:?}");
-        assert!(w[2] < n[2] - 1e-4, "blue cut should darken blue mid: {n:?} -> {w:?}");
+        assert!(
+            w[0] > n[0] + 1e-4,
+            "red filter should brighten red mid: {n:?} -> {w:?}"
+        );
+        assert!(
+            w[2] < n[2] - 1e-4,
+            "blue cut should darken blue mid: {n:?} -> {w:?}"
+        );
     }
 
     #[test]
     fn filmic_mode_is_unchanged_default() {
         // Default tone_mode must be Filmic and produce the SAME output as before the feature.
-        let p = InversionParams { base: [0.5, 0.5, 0.5], d_max: 1.5, ..Default::default() };
+        let p = InversionParams {
+            base: [0.5, 0.5, 0.5],
+            d_max: 1.5,
+            ..Default::default()
+        };
         assert!(matches!(p.tone_mode, ToneMode::Filmic));
         let before = invert_d([0.2, 0.18, 0.1], &p); // value captured from current engine
-        // Re-running must be deterministic and identical:
+                                                     // Re-running must be deterministic and identical:
         assert_eq!(before, invert_d([0.2, 0.18, 0.1], &p));
     }
 
@@ -1056,11 +1105,27 @@ mod tests {
         // whose d_max was 2.896 and blowing highlights everywhere else (default d_max 1.5 →
         // ~2× too bright). Faithful output MUST be identical across any d_max for one negative.
         let base = [0.42, 0.55, 0.26];
-        let p = |dm: f32| InversionParams { base, d_max: dm, tone_mode: ToneMode::Faithful, ..Default::default() };
-        for scan in [[0.08f32, 0.09, 0.05], [0.20, 0.25, 0.12], [0.34, 0.44, 0.21]] {
-            let (a, b, c) = (invert_d(scan, &p(0.60)), invert_d(scan, &p(1.50)), invert_d(scan, &p(2.896)));
+        let p = |dm: f32| InversionParams {
+            base,
+            d_max: dm,
+            tone_mode: ToneMode::Faithful,
+            ..Default::default()
+        };
+        for scan in [
+            [0.08f32, 0.09, 0.05],
+            [0.20, 0.25, 0.12],
+            [0.34, 0.44, 0.21],
+        ] {
+            let (a, b, c) = (
+                invert_d(scan, &p(0.60)),
+                invert_d(scan, &p(1.50)),
+                invert_d(scan, &p(2.896)),
+            );
             for ch in 0..3 {
-                assert!((a[ch] - b[ch]).abs() < 1e-6 && (b[ch] - c[ch]).abs() < 1e-6, "faithful must ignore d_max (ch {ch}): {a:?} {b:?} {c:?}");
+                assert!(
+                    (a[ch] - b[ch]).abs() < 1e-6 && (b[ch] - c[ch]).abs() < 1e-6,
+                    "faithful must ignore d_max (ch {ch}): {a:?} {b:?} {c:?}"
+                );
             }
         }
     }
@@ -1077,8 +1142,20 @@ mod tests {
         // below pure white (not clipped to 1.0)", threshold relaxed from <0.99 to <0.999.
         let base = [1.0, 1.0, 1.0];
         let bright = [10f32.powf(-0.85); 3]; // d ≈ 0.85 — a bright midtone/highlight
-        let out = invert_d(bright, &InversionParams { base, d_max: 1.5, tone_mode: ToneMode::Faithful, ..Default::default() });
-        assert!(out[0] < 0.999, "bright tone must keep highlight headroom, not blow to white: {}", out[0]);
+        let out = invert_d(
+            bright,
+            &InversionParams {
+                base,
+                d_max: 1.5,
+                tone_mode: ToneMode::Faithful,
+                ..Default::default()
+            },
+        );
+        assert!(
+            out[0] < 0.999,
+            "bright tone must keep highlight headroom, not blow to white: {}",
+            out[0]
+        );
     }
 
     #[test]
@@ -1091,14 +1168,23 @@ mod tests {
         let base = [1.0, 1.0, 1.0];
         let mid = [10f32.powf(-0.45); 3]; // a midtone (d ≈ 0.45)
         let at = |ev: f32| {
-            invert_d(mid, &InversionParams {
-                base, d_max: 1.5, tone_mode: ToneMode::Faithful,
-                print_exposure: 2f32.powf(ev), ..Default::default()
-            })[0]
+            invert_d(
+                mid,
+                &InversionParams {
+                    base,
+                    d_max: 1.5,
+                    tone_mode: ToneMode::Faithful,
+                    print_exposure: 2f32.powf(ev),
+                    ..Default::default()
+                },
+            )[0]
         };
         let (e0, em1) = (at(0.0), at(-1.0));
         assert!(em1 < e0, "EV-1 must darken: {e0} -> {em1}");
-        assert!(e0 - em1 > 0.10, "one stop must move brightness a real amount (not ~0.02): {e0} -> {em1}");
+        assert!(
+            e0 - em1 > 0.10,
+            "one stop must move brightness a real amount (not ~0.02): {e0} -> {em1}"
+        );
     }
 
     #[test]
@@ -1109,17 +1195,36 @@ mod tests {
         // (the black pivot the linear gain guarantees — no shadow lift/crush under exposure).
         let base = [0.42, 0.55, 0.26];
         let at = |ev: f32, scan: [f32; 3]| {
-            invert_d(scan, &InversionParams {
-                base, d_max: 1.5, tone_mode: ToneMode::Faithful,
-                print_exposure: 2f32.powf(ev), ..Default::default()
-            })
+            invert_d(
+                scan,
+                &InversionParams {
+                    base,
+                    d_max: 1.5,
+                    tone_mode: ToneMode::Faithful,
+                    print_exposure: 2f32.powf(ev),
+                    ..Default::default()
+                },
+            )
         };
-        let mid = [base[0] * 10f32.powf(-0.45), base[1] * 10f32.powf(-0.45), base[2] * 10f32.powf(-0.45)];
-        assert!(at(1.0, mid)[0] > at(0.0, mid)[0], "+EV brightens the midtone");
-        assert!(at(-1.0, mid)[0] < at(0.0, mid)[0], "−EV darkens the midtone");
+        let mid = [
+            base[0] * 10f32.powf(-0.45),
+            base[1] * 10f32.powf(-0.45),
+            base[2] * 10f32.powf(-0.45),
+        ];
+        assert!(
+            at(1.0, mid)[0] > at(0.0, mid)[0],
+            "+EV brightens the midtone"
+        );
+        assert!(
+            at(-1.0, mid)[0] < at(0.0, mid)[0],
+            "−EV darkens the midtone"
+        );
         for ev in [-3.0, -1.0, 0.0, 2.0, 4.0] {
             let b = at(ev, base); // scan == base → d == 0 → L == 0
-            assert!(b.iter().all(|&v| v.abs() < 1e-6), "scene black must pivot at black at EV {ev}: {b:?}");
+            assert!(
+                b.iter().all(|&v| v.abs() < 1e-6),
+                "scene black must pivot at black at EV {ev}: {b:?}"
+            );
         }
     }
 
@@ -1128,20 +1233,52 @@ mod tests {
         // A mid-shadow scene tone: Faithful (gamma body) lifts shadows above Filmic (S toe crush).
         let scan = [0.30, 0.36, 0.18];
         let base = [0.42, 0.55, 0.26];
-        let filmic = invert_d(scan, &InversionParams { base, d_max: 1.5, ..Default::default() });
-        let faithful = invert_d(scan, &InversionParams { base, d_max: 1.5, tone_mode: ToneMode::Faithful, ..Default::default() });
+        let filmic = invert_d(
+            scan,
+            &InversionParams {
+                base,
+                d_max: 1.5,
+                ..Default::default()
+            },
+        );
+        let faithful = invert_d(
+            scan,
+            &InversionParams {
+                base,
+                d_max: 1.5,
+                tone_mode: ToneMode::Faithful,
+                ..Default::default()
+            },
+        );
         let luma = |p: [f32; 3]| 0.2627 * p[0] + 0.678 * p[1] + 0.0593 * p[2];
-        assert!(luma(faithful) > luma(filmic), "faithful opens shadows: {} vs {}", luma(faithful), luma(filmic));
+        assert!(
+            luma(faithful) > luma(filmic),
+            "faithful opens shadows: {} vs {}",
+            luma(faithful),
+            luma(filmic)
+        );
     }
 
     #[test]
     fn look_s_anchors_and_pins() {
         assert!(look_s(0.0).abs() < 1e-6, "0->0: {}", look_s(0.0));
-        assert!((look_s(0.5) - 0.5).abs() < 1e-6, "0.5->0.5: {}", look_s(0.5));
+        assert!(
+            (look_s(0.5) - 0.5).abs() < 1e-6,
+            "0.5->0.5: {}",
+            look_s(0.5)
+        );
         assert!((look_s(1.0) - 1.0).abs() < 1e-6, "1->1: {}", look_s(1.0));
         // pinned values (also pin the GPU GLSL mirror) for LOOK_K = 2.0
-        assert!((look_s(0.25) - 0.196_61).abs() < 1e-4, "0.25: {}", look_s(0.25));
-        assert!((look_s(0.75) - 0.803_39).abs() < 1e-4, "0.75: {}", look_s(0.75));
+        assert!(
+            (look_s(0.25) - 0.196_61).abs() < 1e-4,
+            "0.25: {}",
+            look_s(0.25)
+        );
+        assert!(
+            (look_s(0.75) - 0.803_39).abs() < 1e-4,
+            "0.75: {}",
+            look_s(0.75)
+        );
     }
 
     #[test]
@@ -1171,14 +1308,29 @@ mod tests {
         // neutral negative stays neutral (per-channel curve preserves equal channels).
         let base = [0.42, 0.55, 0.26];
         let scan = [0.30, 0.36, 0.18];
-        let p = InversionParams { base, d_max: 1.5, tone_mode: ToneMode::Faithful, ..Default::default() };
+        let p = InversionParams {
+            base,
+            d_max: 1.5,
+            tone_mode: ToneMode::Faithful,
+            ..Default::default()
+        };
         let out = invert_d(scan, &p);
         // neutral scan (equal density vs base) -> equal output channels
-        let neg = [base[0] * 10f32.powf(-0.5), base[1] * 10f32.powf(-0.5), base[2] * 10f32.powf(-0.5)];
+        let neg = [
+            base[0] * 10f32.powf(-0.5),
+            base[1] * 10f32.powf(-0.5),
+            base[2] * 10f32.powf(-0.5),
+        ];
         let nout = invert_d(neg, &p);
-        let (mx, mn) = (nout.iter().cloned().fold(f32::MIN, f32::max), nout.iter().cloned().fold(f32::MAX, f32::min));
+        let (mx, mn) = (
+            nout.iter().cloned().fold(f32::MIN, f32::max),
+            nout.iter().cloned().fold(f32::MAX, f32::min),
+        );
         assert!(mx - mn < 1e-3, "neutral stays neutral under look: {nout:?}");
-        assert!(out.iter().all(|&v| (0.0..=1.0).contains(&v)), "in range: {out:?}");
+        assert!(
+            out.iter().all(|&v| (0.0..=1.0).contains(&v)),
+            "in range: {out:?}"
+        );
     }
 
     #[test]
@@ -1187,9 +1339,29 @@ mod tests {
         // neg exceeds 1.0 under HDR but is capped at 1.0 under SDR.
         let base = [1.0, 1.0, 1.0];
         let bright = [10f32.powf(-1.6); 3];
-        let sdr = invert_d(bright, &InversionParams { base, tone_mode: ToneMode::Faithful, hdr: false, ..Default::default() });
-        let hdr = invert_d(bright, &InversionParams { base, tone_mode: ToneMode::Faithful, hdr: true, ..Default::default() });
+        let sdr = invert_d(
+            bright,
+            &InversionParams {
+                base,
+                tone_mode: ToneMode::Faithful,
+                hdr: false,
+                ..Default::default()
+            },
+        );
+        let hdr = invert_d(
+            bright,
+            &InversionParams {
+                base,
+                tone_mode: ToneMode::Faithful,
+                hdr: true,
+                ..Default::default()
+            },
+        );
         assert!(sdr[0] <= 1.0001, "SDR capped: {}", sdr[0]);
-        assert!(hdr[0] > 1.0001, "HDR exceeds SDR white (look bypassed): {}", hdr[0]);
+        assert!(
+            hdr[0] > 1.0001,
+            "HDR exceeds SDR white (look bypassed): {}",
+            hdr[0]
+        );
     }
 }

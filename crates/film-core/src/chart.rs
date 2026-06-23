@@ -15,7 +15,10 @@ fn bilerp(corners: &[[f32; 2]; 4], u: f32, v: f32) -> [f32; 2] {
     let [tl, tr, br, bl] = corners;
     let top = [tl[0] * (1.0 - u) + tr[0] * u, tl[1] * (1.0 - u) + tr[1] * u];
     let bot = [bl[0] * (1.0 - u) + br[0] * u, bl[1] * (1.0 - u) + br[1] * u];
-    [top[0] * (1.0 - v) + bot[0] * v, top[1] * (1.0 - v) + bot[1] * v]
+    [
+        top[0] * (1.0 - v) + bot[0] * v,
+        top[1] * (1.0 - v) + bot[1] * v,
+    ]
 }
 
 #[inline]
@@ -31,7 +34,14 @@ fn at(img: &Image, x: f32, y: f32) -> Option<[f32; 3]> {
 }
 
 /// Sample one cell: gather an N×N grid of samples in the inset window, trimmed-mean by luma.
-fn sample_cell(img: &Image, corners: &[[f32; 2]; 4], spec: &GridSpec, col: usize, row: usize, trim: f32) -> [f32; 3] {
+fn sample_cell(
+    img: &Image,
+    corners: &[[f32; 2]; 4],
+    spec: &GridSpec,
+    col: usize,
+    row: usize,
+    trim: f32,
+) -> [f32; 3] {
     debug_assert!(trim < 0.5, "trim must be in [0, 0.5); got {trim}");
     const N: usize = 11; // 11x11 sub-samples per patch
     let cu = (col as f32 + 0.5) / spec.cols as f32;
@@ -68,7 +78,12 @@ fn sample_cell(img: &Image, corners: &[[f32; 2]; 4], spec: &GridSpec, col: usize
 }
 
 /// Sample all patches, row-major (row 0 left→right, then row 1, …).
-pub fn sample_grid(img: &Image, corners: &[[f32; 2]; 4], spec: &GridSpec, trim: f32) -> Vec<[f32; 3]> {
+pub fn sample_grid(
+    img: &Image,
+    corners: &[[f32; 2]; 4],
+    spec: &GridSpec,
+    trim: f32,
+) -> Vec<[f32; 3]> {
     let mut out = Vec::with_capacity(spec.cols * spec.rows);
     for row in 0..spec.rows {
         for col in 0..spec.cols {
@@ -176,14 +191,23 @@ mod tests {
         // Dust: a white and a black speck inside the TL cell center.
         px[10 * w + 10] = [1.0, 1.0, 1.0];
         px[11 * w + 11] = [0.0, 0.0, 0.0];
-        Image { width: w, height: h, pixels: px, ir: None }
+        Image {
+            width: w,
+            height: h,
+            pixels: px,
+            ir: None,
+        }
     }
 
     #[test]
     fn samples_row_major_means() {
         let img = synth();
         let corners = [[0.0, 0.0], [40.0, 0.0], [40.0, 40.0], [0.0, 40.0]];
-        let spec = GridSpec { cols: 2, rows: 2, inset: 0.5 };
+        let spec = GridSpec {
+            cols: 2,
+            rows: 2,
+            inset: 0.5,
+        };
         let got = sample_grid(&img, &corners, &spec, 0.2);
         assert_eq!(got.len(), 4);
         // Row-major: [TL, TR, BL, BR] = red, green, blue, yellow.
@@ -198,7 +222,11 @@ mod tests {
     fn overlay_downscales_and_is_rgb() {
         let img = synth();
         let corners = [[0.0, 0.0], [40.0, 0.0], [40.0, 40.0], [0.0, 40.0]];
-        let spec = GridSpec { cols: 2, rows: 2, inset: 0.5 };
+        let spec = GridSpec {
+            cols: 2,
+            rows: 2,
+            inset: 0.5,
+        };
         let ov = sampling_overlay(&img, &corners, &spec, 20);
         assert!(ov.width().max(ov.height()) <= 20);
         assert!(ov.width() > 0 && ov.height() > 0);

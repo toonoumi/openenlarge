@@ -9,30 +9,102 @@ pub struct RefPatch {
 }
 
 pub const CLASSIC24: [RefPatch; 24] = [
-    RefPatch { name: "Dark Skin", srgb: [115, 82, 68] },
-    RefPatch { name: "Light Skin", srgb: [194, 150, 130] },
-    RefPatch { name: "Blue Sky", srgb: [98, 122, 157] },
-    RefPatch { name: "Foliage", srgb: [87, 108, 67] },
-    RefPatch { name: "Blue Flower", srgb: [133, 128, 177] },
-    RefPatch { name: "Bluish Green", srgb: [103, 189, 170] },
-    RefPatch { name: "Orange", srgb: [214, 126, 44] },
-    RefPatch { name: "Purplish Blue", srgb: [80, 91, 166] },
-    RefPatch { name: "Moderate Red", srgb: [193, 90, 99] },
-    RefPatch { name: "Purple", srgb: [94, 60, 108] },
-    RefPatch { name: "Yellow Green", srgb: [157, 188, 64] },
-    RefPatch { name: "Orange Yellow", srgb: [224, 163, 46] },
-    RefPatch { name: "Blue", srgb: [56, 61, 150] },
-    RefPatch { name: "Green", srgb: [70, 148, 73] },
-    RefPatch { name: "Red", srgb: [175, 54, 60] },
-    RefPatch { name: "Yellow", srgb: [231, 199, 31] },
-    RefPatch { name: "Magenta", srgb: [187, 86, 149] },
-    RefPatch { name: "Cyan", srgb: [8, 133, 161] },
-    RefPatch { name: "White", srgb: [243, 243, 242] },
-    RefPatch { name: "Neutral 8", srgb: [200, 200, 200] },
-    RefPatch { name: "Neutral 6.5", srgb: [160, 160, 160] },
-    RefPatch { name: "Neutral 5", srgb: [122, 122, 121] },
-    RefPatch { name: "Neutral 3.5", srgb: [85, 85, 85] },
-    RefPatch { name: "Black", srgb: [52, 52, 52] },
+    RefPatch {
+        name: "Dark Skin",
+        srgb: [115, 82, 68],
+    },
+    RefPatch {
+        name: "Light Skin",
+        srgb: [194, 150, 130],
+    },
+    RefPatch {
+        name: "Blue Sky",
+        srgb: [98, 122, 157],
+    },
+    RefPatch {
+        name: "Foliage",
+        srgb: [87, 108, 67],
+    },
+    RefPatch {
+        name: "Blue Flower",
+        srgb: [133, 128, 177],
+    },
+    RefPatch {
+        name: "Bluish Green",
+        srgb: [103, 189, 170],
+    },
+    RefPatch {
+        name: "Orange",
+        srgb: [214, 126, 44],
+    },
+    RefPatch {
+        name: "Purplish Blue",
+        srgb: [80, 91, 166],
+    },
+    RefPatch {
+        name: "Moderate Red",
+        srgb: [193, 90, 99],
+    },
+    RefPatch {
+        name: "Purple",
+        srgb: [94, 60, 108],
+    },
+    RefPatch {
+        name: "Yellow Green",
+        srgb: [157, 188, 64],
+    },
+    RefPatch {
+        name: "Orange Yellow",
+        srgb: [224, 163, 46],
+    },
+    RefPatch {
+        name: "Blue",
+        srgb: [56, 61, 150],
+    },
+    RefPatch {
+        name: "Green",
+        srgb: [70, 148, 73],
+    },
+    RefPatch {
+        name: "Red",
+        srgb: [175, 54, 60],
+    },
+    RefPatch {
+        name: "Yellow",
+        srgb: [231, 199, 31],
+    },
+    RefPatch {
+        name: "Magenta",
+        srgb: [187, 86, 149],
+    },
+    RefPatch {
+        name: "Cyan",
+        srgb: [8, 133, 161],
+    },
+    RefPatch {
+        name: "White",
+        srgb: [243, 243, 242],
+    },
+    RefPatch {
+        name: "Neutral 8",
+        srgb: [200, 200, 200],
+    },
+    RefPatch {
+        name: "Neutral 6.5",
+        srgb: [160, 160, 160],
+    },
+    RefPatch {
+        name: "Neutral 5",
+        srgb: [122, 122, 121],
+    },
+    RefPatch {
+        name: "Neutral 3.5",
+        srgb: [85, 85, 85],
+    },
+    RefPatch {
+        name: "Black",
+        srgb: [52, 52, 52],
+    },
 ];
 
 /// The 24 reference patches as Lab (D65), row-major.
