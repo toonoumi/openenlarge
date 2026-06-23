@@ -4,8 +4,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Roll — OpenEnlarge Docs</title>
-<meta name="description" content="The contact-sheet view and live mirror mode — edit one frame and preview it across the whole roll — plus copy/apply-to-roll groups and film-edge rendering.">
+<title>ロール — OpenEnlarge Docs</title>
+<meta name="description" content="コンタクトシートビューとライブミラーモード — 1フレームを編集してロール全体にプレビュー — コピー/ロール全体への適用グループとフィルムエッジレンダリング。">
 <meta name="robots" content="noindex,follow">
 <meta name="theme-color" content="#0a0a0c">
 <link rel="icon" href="../../../img/favicon.png">
@@ -13,51 +13,51 @@
 <link rel="alternate" hreflang="en" href="https://openenlarge.io/docs/tools/roll.html">
 <link rel="alternate" hreflang="zh-Hans" href="https://openenlarge.io/docs/zh/tools/roll.html">
 <link rel="alternate" hreflang="x-default" href="https://openenlarge.io/docs/tools/roll.html">
-<meta property="og:type" content="article"><meta property="og:title" content="Roll — OpenEnlarge Docs"><meta property="og:description" content="The contact-sheet view and live mirror mode — edit one frame and preview it across the whole roll — plus copy/apply-to-roll groups and film-edge rendering."><meta property="og:url" content="https://openenlarge.io/docs/ja/tools/roll.html"><meta property="og:image" content="https://openenlarge.io/docs/og/cover.png"><meta name="twitter:card" content="summary_large_image">
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "Roll", "description": "The contact-sheet view and live mirror mode — edit one frame and preview it across the whole roll — plus copy/apply-to-roll groups and film-edge rendering.", "inLanguage": "ja", "url": "https://openenlarge.io/docs/ja/tools/roll.html", "isPartOf": {"@type": "WebSite", "name": "OpenEnlarge", "url": "https://openenlarge.io"}}</script>
+<meta property="og:type" content="article"><meta property="og:title" content="ロール — OpenEnlarge Docs"><meta property="og:description" content="コンタクトシートビューとライブミラーモード — 1フレームを編集してロール全体にプレビュー — コピー/ロール全体への適用グループとフィルムエッジレンダリング。"><meta property="og:url" content="https://openenlarge.io/docs/ja/tools/roll.html"><meta property="og:image" content="https://openenlarge.io/docs/og/cover.png"><meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "ロール", "description": "コンタクトシートビューとライブミラーモード — 1フレームを編集してロール全体にプレビュー — コピー/ロール全体への適用グループとフィルムエッジレンダリング。", "inLanguage": "ja", "url": "https://openenlarge.io/docs/ja/tools/roll.html", "isPartOf": {"@type": "WebSite", "name": "OpenEnlarge", "url": "https://openenlarge.io"}}</script>
 <link rel="stylesheet" href="../../docs.css">
 </head>
 <body>
-<a class="skip" href="#content">Skip to content</a>
+<a class="skip" href="#content">本文へスキップ</a>
 <nav class="docnav"><div class="navbar glass wrap">
-  <a class="brand" href="../../../index.html"><img class="mark" src="../../../img/icon.png" alt=""> OpenEnlarge <span class="brand-docs">Docs</span></a>
-  <button class="menu-btn" id="menu-btn" type="button" aria-label="Menu" aria-expanded="false">☰</button>
+  <a class="brand" href="../../../index.html"><img class="mark" src="../../../img/icon.png" alt=""> OpenEnlarge <span class="brand-docs">ドキュメント</span></a>
+  <button class="menu-btn" id="menu-btn" type="button" aria-label="メニュー" aria-expanded="false">☰</button>
   <div class="navlinks">
-    <a href="../../../index.html">Home</a>
+    <a href="../../../index.html">ホーム</a>
     <a href="https://github.com/mohaelder/openenlarge">GitHub</a>
     <details class="langmenu"><summary>日本語</summary><div class="langmenu-list"><a href="../../tools/roll.html">English</a><a href="../../zh/tools/roll.html">中文</a><a aria-current="true" href="../../ja/tools/roll.html">日本語</a><a href="../../ko/tools/roll.html">한국어</a></div></details>
   </div>
 </div></nav>
 <div class="doclayout wrap">
-  <aside class="sidebar" id="sidebar"><div class="side-sec"><div class="side-h">Overview</div>
-<a href="../index.html">Documentation</a>
-<a href="../workflow.html">The workflow</a>
+  <aside class="sidebar" id="sidebar"><div class="side-sec"><div class="side-h">概要</div>
+<a href="../index.html">ドキュメント</a>
+<a href="../workflow.html">ワークフロー</a>
 </div>
-<div class="side-sec"><div class="side-h">The Science</div>
-<a href="../science/negatives.html">How color negatives work</a>
-<a href="../science/inversion.html">The inversion pipeline</a>
-<a href="../science/density.html">Density &amp; log space</a>
-<a href="../science/tone-curve.html">The tone curve (the Faithful look)</a>
-<a href="../science/color.html">Color &amp; white balance</a>
-<a href="../science/base-calibration.html">Film-base calibration</a>
+<div class="side-sec"><div class="side-h">仕組み</div>
+<a href="../science/negatives.html">カラーネガの仕組み</a>
+<a href="../science/inversion.html">反転パイプライン</a>
+<a href="../science/density.html">濃度と対数空間</a>
+<a href="../science/tone-curve.html">トーン曲線（Faithfulルック）</a>
+<a href="../science/color.html">色彩とホワイトバランス</a>
+<a href="../science/base-calibration.html">フィルムベースのキャリブレーション</a>
 </div>
-<div class="side-sec"><div class="side-h">Tools</div>
-<a href="../tools/develop-basic.html">Develop · Basic</a>
-<a href="../tools/tune.html">Tune</a>
-<a href="../tools/crop-dust.html">Crop &amp; dust</a>
-<a href="../tools/ai.html">AI tools</a>
-<a href="../tools/library.html">Library</a>
-<a class="on" href="../tools/roll.html">Roll</a>
-<a href="../tools/export.html">Export</a>
+<div class="side-sec"><div class="side-h">ツール</div>
+<a href="../tools/develop-basic.html">現像・基本</a>
+<a href="../tools/tune.html">チューン</a>
+<a href="../tools/crop-dust.html">クロップと除塵</a>
+<a href="../tools/ai.html">AI ツール</a>
+<a href="../tools/library.html">ライブラリ</a>
+<a class="on" href="../tools/roll.html">ロール</a>
+<a href="../tools/export.html">エクスポート</a>
 </div>
-<div class="side-sec"><div class="side-h">Reference</div>
-<a href="../reference/glossary.html">Glossary</a>
-<a href="../reference/faq.html">FAQ</a>
-<a href="../reference/storage.html">Storage &amp; clearing data</a>
+<div class="side-sec"><div class="side-h">リファレンス</div>
+<a href="../reference/glossary.html">用語集</a>
+<a href="../reference/faq.html">よくある質問</a>
+<a href="../reference/storage.html">ストレージとデータ消去</a>
 </div></aside>
   <main class="content" id="content">
-    <nav class="crumbs" aria-label="Breadcrumb"><a href="../index.html">Docs</a> <span class="sep">/</span> <span>Roll</span></nav>
-    <article class="prose"><h1>Roll</h1>
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="../index.html">ドキュメント</a> <span class="sep">/</span> <span>ロール</span></nav>
+    <article class="prose"><div class="pending-notice">このページはまだ翻訳されていません — 英語版を表示しています。</div><h1>Roll</h1>
 <p class="lead">The Roll tab shows every developed frame in the current folder as a contact sheet. From here you can apply a unified look across the whole roll — tone, color, crop, and film base — with a live two-pass preview that shows the result on every frame as you move a slider, then persists it automatically once you stop. You can also copy develop settings from a single frame and apply selected groups to the whole roll from the <a href="develop-basic.html">Basic</a> panel.</p>
 
 <h2>The contact sheet</h2>
@@ -128,9 +128,9 @@
 
 <p class="next"><a href="export.html">Next: Export →</a></p>
 </article>
-    <footer class="docfoot">OpenEnlarge — open-source film scan editor · MIT licensed</footer>
+    <footer class="docfoot">OpenEnlarge — オープンソースのフィルムスキャン編集 · MITライセンス</footer>
   </main>
-  <aside class="toc" id="toc" aria-label="On this page"><div class="toc-title">On this page</div><div id="toc-list"></div></aside>
+  <aside class="toc" id="toc" aria-label="このページの内容"><div class="toc-title">このページの内容</div><div id="toc-list"></div></aside>
 </div>
 <script src="../../docs.js" defer></script>
 </body>

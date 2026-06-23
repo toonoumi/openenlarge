@@ -219,5 +219,25 @@ class TestLangMenu(unittest.TestCase):
         self.assertIn('aria-current="true"', html)
 
 
+class TestChrome(unittest.TestCase):
+    def setUp(self): gen.build()
+    def test_nav_titles_have_ja_ko(self):
+        nav = gen.load_nav()
+        for slug, page in nav["pages"].items():
+            self.assertIn("ja", page["title"], f"{slug} title missing ja")
+            self.assertIn("ko", page["title"], f"{slug} title missing ko")
+    def test_strings_have_ja_ko(self):
+        s = gen.load_strings()
+        self.assertIn("ja", s); self.assertIn("ko", s)
+        self.assertIn("pendingNotice", s["ja"])
+    def test_fallback_page_shows_notice(self):
+        html = (ROOT / "web/docs/ja/index.html").read_text()
+        self.assertIn(gen.load_strings()["ja"]["pendingNotice"], html)
+    def test_translated_page_no_notice(self):
+        # EN page is canonical -> never shows the notice
+        html = (ROOT / "web/docs/index.html").read_text()
+        self.assertNotIn('class="pending-notice"', html)
+
+
 if __name__ == "__main__":
     unittest.main()

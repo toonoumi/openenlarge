@@ -4,8 +4,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Density &amp; log space — OpenEnlarge Docs</title>
-<meta name="description" content="Why OpenEnlarge works in optical density and log space, what a photographic stop is, and how the d_max white point is set.">
+<title>농도와 로그 공간 — OpenEnlarge Docs</title>
+<meta name="description" content="OpenEnlarge가 광학 농도 및 로그 공간에서 작동하는 이유, 촬영 스톱이란 무엇인지, d_max 화이트 포인트 설정 방법.">
 <meta name="robots" content="noindex,follow">
 <meta name="theme-color" content="#0a0a0c">
 <link rel="icon" href="../../../img/favicon.png">
@@ -13,51 +13,51 @@
 <link rel="alternate" hreflang="en" href="https://openenlarge.io/docs/science/density.html">
 <link rel="alternate" hreflang="zh-Hans" href="https://openenlarge.io/docs/zh/science/density.html">
 <link rel="alternate" hreflang="x-default" href="https://openenlarge.io/docs/science/density.html">
-<meta property="og:type" content="article"><meta property="og:title" content="Density &amp; log space — OpenEnlarge Docs"><meta property="og:description" content="Why OpenEnlarge works in optical density and log space, what a photographic stop is, and how the d_max white point is set."><meta property="og:url" content="https://openenlarge.io/docs/ko/science/density.html"><meta property="og:image" content="https://openenlarge.io/docs/og/cover.png"><meta name="twitter:card" content="summary_large_image">
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "Density & log space", "description": "Why OpenEnlarge works in optical density and log space, what a photographic stop is, and how the d_max white point is set.", "inLanguage": "ko", "url": "https://openenlarge.io/docs/ko/science/density.html", "isPartOf": {"@type": "WebSite", "name": "OpenEnlarge", "url": "https://openenlarge.io"}}</script>
+<meta property="og:type" content="article"><meta property="og:title" content="농도와 로그 공간 — OpenEnlarge Docs"><meta property="og:description" content="OpenEnlarge가 광학 농도 및 로그 공간에서 작동하는 이유, 촬영 스톱이란 무엇인지, d_max 화이트 포인트 설정 방법."><meta property="og:url" content="https://openenlarge.io/docs/ko/science/density.html"><meta property="og:image" content="https://openenlarge.io/docs/og/cover.png"><meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "농도와 로그 공간", "description": "OpenEnlarge가 광학 농도 및 로그 공간에서 작동하는 이유, 촬영 스톱이란 무엇인지, d_max 화이트 포인트 설정 방법.", "inLanguage": "ko", "url": "https://openenlarge.io/docs/ko/science/density.html", "isPartOf": {"@type": "WebSite", "name": "OpenEnlarge", "url": "https://openenlarge.io"}}</script>
 <link rel="stylesheet" href="../../docs.css">
 </head>
 <body>
-<a class="skip" href="#content">Skip to content</a>
+<a class="skip" href="#content">본문으로 건너뛰기</a>
 <nav class="docnav"><div class="navbar glass wrap">
-  <a class="brand" href="../../../index.html"><img class="mark" src="../../../img/icon.png" alt=""> OpenEnlarge <span class="brand-docs">Docs</span></a>
-  <button class="menu-btn" id="menu-btn" type="button" aria-label="Menu" aria-expanded="false">☰</button>
+  <a class="brand" href="../../../index.html"><img class="mark" src="../../../img/icon.png" alt=""> OpenEnlarge <span class="brand-docs">문서</span></a>
+  <button class="menu-btn" id="menu-btn" type="button" aria-label="메뉴" aria-expanded="false">☰</button>
   <div class="navlinks">
-    <a href="../../../index.html">Home</a>
+    <a href="../../../index.html">홈</a>
     <a href="https://github.com/mohaelder/openenlarge">GitHub</a>
     <details class="langmenu"><summary>한국어</summary><div class="langmenu-list"><a href="../../science/density.html">English</a><a href="../../zh/science/density.html">中文</a><a href="../../ja/science/density.html">日本語</a><a aria-current="true" href="../../ko/science/density.html">한국어</a></div></details>
   </div>
 </div></nav>
 <div class="doclayout wrap">
-  <aside class="sidebar" id="sidebar"><div class="side-sec"><div class="side-h">Overview</div>
-<a href="../index.html">Documentation</a>
-<a href="../workflow.html">The workflow</a>
+  <aside class="sidebar" id="sidebar"><div class="side-sec"><div class="side-h">개요</div>
+<a href="../index.html">문서</a>
+<a href="../workflow.html">워크플로</a>
 </div>
-<div class="side-sec"><div class="side-h">The Science</div>
-<a href="../science/negatives.html">How color negatives work</a>
-<a href="../science/inversion.html">The inversion pipeline</a>
-<a class="on" href="../science/density.html">Density &amp; log space</a>
-<a href="../science/tone-curve.html">The tone curve (the Faithful look)</a>
-<a href="../science/color.html">Color &amp; white balance</a>
-<a href="../science/base-calibration.html">Film-base calibration</a>
+<div class="side-sec"><div class="side-h">과학적 원리</div>
+<a href="../science/negatives.html">컬러 네거티브의 원리</a>
+<a href="../science/inversion.html">반전 파이프라인</a>
+<a class="on" href="../science/density.html">농도와 로그 공간</a>
+<a href="../science/tone-curve.html">톤 커브 (Faithful 룩)</a>
+<a href="../science/color.html">색상 및 화이트 밸런스</a>
+<a href="../science/base-calibration.html">필름 베이스 캘리브레이션</a>
 </div>
-<div class="side-sec"><div class="side-h">Tools</div>
-<a href="../tools/develop-basic.html">Develop · Basic</a>
-<a href="../tools/tune.html">Tune</a>
-<a href="../tools/crop-dust.html">Crop &amp; dust</a>
-<a href="../tools/ai.html">AI tools</a>
-<a href="../tools/library.html">Library</a>
-<a href="../tools/roll.html">Roll</a>
-<a href="../tools/export.html">Export</a>
+<div class="side-sec"><div class="side-h">도구</div>
+<a href="../tools/develop-basic.html">현상 · 기본</a>
+<a href="../tools/tune.html">튜닝</a>
+<a href="../tools/crop-dust.html">크롭 및 먼지 제거</a>
+<a href="../tools/ai.html">AI 도구</a>
+<a href="../tools/library.html">라이브러리</a>
+<a href="../tools/roll.html">롤</a>
+<a href="../tools/export.html">내보내기</a>
 </div>
-<div class="side-sec"><div class="side-h">Reference</div>
-<a href="../reference/glossary.html">Glossary</a>
-<a href="../reference/faq.html">FAQ</a>
-<a href="../reference/storage.html">Storage &amp; clearing data</a>
+<div class="side-sec"><div class="side-h">참고</div>
+<a href="../reference/glossary.html">용어집</a>
+<a href="../reference/faq.html">자주 묻는 질문</a>
+<a href="../reference/storage.html">저장소 및 데이터 삭제</a>
 </div></aside>
   <main class="content" id="content">
-    <nav class="crumbs" aria-label="Breadcrumb"><a href="../index.html">Docs</a> <span class="sep">/</span> <span>Density &amp; log space</span></nav>
-    <article class="prose"><h1>Density &amp; log space</h1>
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="../index.html">문서</a> <span class="sep">/</span> <span>농도와 로그 공간</span></nav>
+    <article class="prose"><div class="pending-notice">이 페이지는 아직 번역되지 않았습니다 — 영어 버전을 표시합니다.</div><h1>Density &amp; log space</h1>
 <p class="lead">Film does not respond to light linearly — it responds <em>logarithmically</em>. That makes optical density, not raw brightness, the natural domain for film inversion: equal density steps are equal photographic stops, and every slider in OpenEnlarge works in this space.</p>
 
 <h2>Optical density</h2>
@@ -186,9 +186,9 @@
 
 <p class="next"><a href="tone-curve.html">Next: the tone curve →</a></p>
 </article>
-    <footer class="docfoot">OpenEnlarge — open-source film scan editor · MIT licensed</footer>
+    <footer class="docfoot">OpenEnlarge — 오픈소스 필름 스캔 편집기 · MIT 라이선스</footer>
   </main>
-  <aside class="toc" id="toc" aria-label="On this page"><div class="toc-title">On this page</div><div id="toc-list"></div></aside>
+  <aside class="toc" id="toc" aria-label="이 페이지에서"><div class="toc-title">이 페이지에서</div><div id="toc-list"></div></aside>
 </div>
 <script src="../../docs.js" defer></script>
 </body>

@@ -3,12 +3,28 @@
     "brand": "OpenEnlarge", "docs": "Docs", "onThisPage": "On this page",
     "site": "Home", "github": "GitHub", "download": "Download",
     "langSwitch": "中文", "footer": "OpenEnlarge — open-source film scan editor · MIT licensed",
-    "skip": "Skip to content", "menu": "Menu"
+    "skip": "Skip to content", "menu": "Menu",
+    "pendingNotice": "This page isn't translated yet — showing the English version."
   },
   "zh": {
     "brand": "OpenEnlarge", "docs": "文档", "onThisPage": "本页目录",
     "site": "主页", "github": "GitHub", "download": "下载",
     "langSwitch": "EN", "footer": "OpenEnlarge —— 开源胶片扫描编辑器 · MIT 许可",
-    "skip": "跳到正文", "menu": "菜单"
+    "skip": "跳到正文", "menu": "菜单",
+    "pendingNotice": "本页尚未翻译 —— 显示英文版本。"
+  },
+  "ja": {
+    "brand": "OpenEnlarge", "docs": "ドキュメント", "onThisPage": "このページの内容",
+    "site": "ホーム", "github": "GitHub", "download": "ダウンロード",
+    "langSwitch": "EN", "footer": "OpenEnlarge — オープンソースのフィルムスキャン編集 · MITライセンス",
+    "skip": "本文へスキップ", "menu": "メニュー",
+    "pendingNotice": "このページはまだ翻訳されていません — 英語版を表示しています。"
+  },
+  "ko": {
+    "brand": "OpenEnlarge", "docs": "문서", "onThisPage": "이 페이지에서",
+    "site": "홈", "github": "GitHub", "download": "다운로드",
+    "langSwitch": "EN", "footer": "OpenEnlarge — 오픈소스 필름 스캔 편집기 · MIT 라이선스",
+    "skip": "본문으로 건너뛰기", "menu": "메뉴",
+    "pendingNotice": "이 페이지는 아직 번역되지 않았습니다 — 영어 버전을 표시합니다."
   }
 }

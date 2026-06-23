@@ -4,8 +4,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Storage &amp; clearing data — OpenEnlarge Docs</title>
-<meta name="description" content="Where OpenEnlarge keeps your catalog and image cache, what an uninstall does and doesn&#x27;t remove, and how to clear the cache or reset all data from Settings.">
+<title>ストレージとデータ消去 — OpenEnlarge Docs</title>
+<meta name="description" content="OpenEnlarge がカタログと画像キャッシュを保存する場所、アンインストールで削除されるものとされないもの、設定からキャッシュをクリアまたは全データをリセットする方法。">
 <meta name="robots" content="noindex,follow">
 <meta name="theme-color" content="#0a0a0c">
 <link rel="icon" href="../../../img/favicon.png">
@@ -13,51 +13,51 @@
 <link rel="alternate" hreflang="en" href="https://openenlarge.io/docs/reference/storage.html">
 <link rel="alternate" hreflang="zh-Hans" href="https://openenlarge.io/docs/zh/reference/storage.html">
 <link rel="alternate" hreflang="x-default" href="https://openenlarge.io/docs/reference/storage.html">
-<meta property="og:type" content="article"><meta property="og:title" content="Storage &amp; clearing data — OpenEnlarge Docs"><meta property="og:description" content="Where OpenEnlarge keeps your catalog and image cache, what an uninstall does and doesn&#x27;t remove, and how to clear the cache or reset all data from Settings."><meta property="og:url" content="https://openenlarge.io/docs/ja/reference/storage.html"><meta property="og:image" content="https://openenlarge.io/docs/og/cover.png"><meta name="twitter:card" content="summary_large_image">
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "Storage & clearing data", "description": "Where OpenEnlarge keeps your catalog and image cache, what an uninstall does and doesn't remove, and how to clear the cache or reset all data from Settings.", "inLanguage": "ja", "url": "https://openenlarge.io/docs/ja/reference/storage.html", "isPartOf": {"@type": "WebSite", "name": "OpenEnlarge", "url": "https://openenlarge.io"}}</script>
+<meta property="og:type" content="article"><meta property="og:title" content="ストレージとデータ消去 — OpenEnlarge Docs"><meta property="og:description" content="OpenEnlarge がカタログと画像キャッシュを保存する場所、アンインストールで削除されるものとされないもの、設定からキャッシュをクリアまたは全データをリセットする方法。"><meta property="og:url" content="https://openenlarge.io/docs/ja/reference/storage.html"><meta property="og:image" content="https://openenlarge.io/docs/og/cover.png"><meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "ストレージとデータ消去", "description": "OpenEnlarge がカタログと画像キャッシュを保存する場所、アンインストールで削除されるものとされないもの、設定からキャッシュをクリアまたは全データをリセットする方法。", "inLanguage": "ja", "url": "https://openenlarge.io/docs/ja/reference/storage.html", "isPartOf": {"@type": "WebSite", "name": "OpenEnlarge", "url": "https://openenlarge.io"}}</script>
 <link rel="stylesheet" href="../../docs.css">
 </head>
 <body>
-<a class="skip" href="#content">Skip to content</a>
+<a class="skip" href="#content">本文へスキップ</a>
 <nav class="docnav"><div class="navbar glass wrap">
-  <a class="brand" href="../../../index.html"><img class="mark" src="../../../img/icon.png" alt=""> OpenEnlarge <span class="brand-docs">Docs</span></a>
-  <button class="menu-btn" id="menu-btn" type="button" aria-label="Menu" aria-expanded="false">☰</button>
+  <a class="brand" href="../../../index.html"><img class="mark" src="../../../img/icon.png" alt=""> OpenEnlarge <span class="brand-docs">ドキュメント</span></a>
+  <button class="menu-btn" id="menu-btn" type="button" aria-label="メニュー" aria-expanded="false">☰</button>
   <div class="navlinks">
-    <a href="../../../index.html">Home</a>
+    <a href="../../../index.html">ホーム</a>
     <a href="https://github.com/mohaelder/openenlarge">GitHub</a>
     <details class="langmenu"><summary>日本語</summary><div class="langmenu-list"><a href="../../reference/storage.html">English</a><a href="../../zh/reference/storage.html">中文</a><a aria-current="true" href="../../ja/reference/storage.html">日本語</a><a href="../../ko/reference/storage.html">한국어</a></div></details>
   </div>
 </div></nav>
 <div class="doclayout wrap">
-  <aside class="sidebar" id="sidebar"><div class="side-sec"><div class="side-h">Overview</div>
-<a href="../index.html">Documentation</a>
-<a href="../workflow.html">The workflow</a>
+  <aside class="sidebar" id="sidebar"><div class="side-sec"><div class="side-h">概要</div>
+<a href="../index.html">ドキュメント</a>
+<a href="../workflow.html">ワークフロー</a>
 </div>
-<div class="side-sec"><div class="side-h">The Science</div>
-<a href="../science/negatives.html">How color negatives work</a>
-<a href="../science/inversion.html">The inversion pipeline</a>
-<a href="../science/density.html">Density &amp; log space</a>
-<a href="../science/tone-curve.html">The tone curve (the Faithful look)</a>
-<a href="../science/color.html">Color &amp; white balance</a>
-<a href="../science/base-calibration.html">Film-base calibration</a>
+<div class="side-sec"><div class="side-h">仕組み</div>
+<a href="../science/negatives.html">カラーネガの仕組み</a>
+<a href="../science/inversion.html">反転パイプライン</a>
+<a href="../science/density.html">濃度と対数空間</a>
+<a href="../science/tone-curve.html">トーン曲線（Faithfulルック）</a>
+<a href="../science/color.html">色彩とホワイトバランス</a>
+<a href="../science/base-calibration.html">フィルムベースのキャリブレーション</a>
 </div>
-<div class="side-sec"><div class="side-h">Tools</div>
-<a href="../tools/develop-basic.html">Develop · Basic</a>
-<a href="../tools/tune.html">Tune</a>
-<a href="../tools/crop-dust.html">Crop &amp; dust</a>
-<a href="../tools/ai.html">AI tools</a>
-<a href="../tools/library.html">Library</a>
-<a href="../tools/roll.html">Roll</a>
-<a href="../tools/export.html">Export</a>
+<div class="side-sec"><div class="side-h">ツール</div>
+<a href="../tools/develop-basic.html">現像・基本</a>
+<a href="../tools/tune.html">チューン</a>
+<a href="../tools/crop-dust.html">クロップと除塵</a>
+<a href="../tools/ai.html">AI ツール</a>
+<a href="../tools/library.html">ライブラリ</a>
+<a href="../tools/roll.html">ロール</a>
+<a href="../tools/export.html">エクスポート</a>
 </div>
-<div class="side-sec"><div class="side-h">Reference</div>
-<a href="../reference/glossary.html">Glossary</a>
-<a href="../reference/faq.html">FAQ</a>
-<a class="on" href="../reference/storage.html">Storage &amp; clearing data</a>
+<div class="side-sec"><div class="side-h">リファレンス</div>
+<a href="../reference/glossary.html">用語集</a>
+<a href="../reference/faq.html">よくある質問</a>
+<a class="on" href="../reference/storage.html">ストレージとデータ消去</a>
 </div></aside>
   <main class="content" id="content">
-    <nav class="crumbs" aria-label="Breadcrumb"><a href="../index.html">Docs</a> <span class="sep">/</span> <span>Storage &amp; clearing data</span></nav>
-    <article class="prose"><h1>Storage &amp; clearing data</h1>
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="../index.html">ドキュメント</a> <span class="sep">/</span> <span>ストレージとデータ消去</span></nav>
+    <article class="prose"><div class="pending-notice">このページはまだ翻訳されていません — 英語版を表示しています。</div><h1>Storage &amp; clearing data</h1>
 <p class="lead">OpenEnlarge keeps everything it remembers in a single per-user app-data folder. This page explains what lives there, why an uninstall may leave some of it behind, and how to clear the cache or reset all data from Settings.</p>
 
 <h2>Where your data lives</h2>
@@ -83,9 +83,9 @@
 
 <p class="next"><a href="../index.html">← Back to the docs home</a></p>
 </article>
-    <footer class="docfoot">OpenEnlarge — open-source film scan editor · MIT licensed</footer>
+    <footer class="docfoot">OpenEnlarge — オープンソースのフィルムスキャン編集 · MITライセンス</footer>
   </main>
-  <aside class="toc" id="toc" aria-label="On this page"><div class="toc-title">On this page</div><div id="toc-list"></div></aside>
+  <aside class="toc" id="toc" aria-label="このページの内容"><div class="toc-title">このページの内容</div><div id="toc-list"></div></aside>
 </div>
 <script src="../../docs.js" defer></script>
 </body>

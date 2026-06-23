@@ -176,6 +176,8 @@ def render_page(nav, strings, slug, locale):
         "OG": og, "JSONLD": jsonld,
         "SIDEBAR": sidebar_html(nav, strings, locale, slug),
         "CRUMBS": crumbs_html(nav, strings, locale, slug),
+        "NOTICE": (f'<div class="pending-notice">{html.escape(strings[locale]["pendingNotice"])}</div>'
+                   if not is_translated(slug, locale) else ""),
         "BODY": body,
         "LANGMENU": langmenu_html(nav, strings, slug, locale),
     }
