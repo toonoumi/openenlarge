@@ -6,10 +6,10 @@
   import { t } from "$lib/i18n";
   import { developedFolderImages } from "$lib/export/eligible";
   import { editsById, cropById, images, activeId, setActive, rollOverwriteSkip, module, deleteTarget, selectedFolder, folderImages } from "$lib/store";
-  import { rollReferenceId, enterRollDraft, rollDraft, rollDraftTouched } from "$lib/roll/draft";
+  import { rollReferenceId, enterRollDraft, rollDraft, rollDraftTouched, rollApplied } from "$lib/roll/draft";
   import RollAdjust from "$lib/roll/RollAdjust.svelte";
-  import { applyToneColorToAll, applyBaseToAll, applyWhitePointToAll, applyExposureToAll, applyCropToAll, framesWithToneColor, framesWithCrop, framesWithBase, framesWithWhitePoint } from "$lib/roll/apply";
-  import { livePreviewParams, draftThumbView } from "$lib/roll/livePreview";
+  import { applyBaseToAll, applyWhitePointToAll, applyCropToAll, applyRollDelta, rollPreviewFrame, framesWithToneColor, framesWithCrop, framesWithBase, framesWithWhitePoint } from "$lib/roll/apply";
+  import { draftThumbView } from "$lib/roll/livePreview";
   import { withEffectiveBase, setFolderBase } from "$lib/develop/base";
   import { reseedRollProtectedFree } from "$lib/roll/rollBase";
   import { imageDir } from "$lib/library/folderScope";
@@ -206,10 +206,10 @@
         // and use the draft crop if set (else fall back to each frame's own crop).
         const baseParams = touched
           ? {
-              ...livePreviewParams(draft.params, own),
-              // exposure is per-image (Auto-Brightness); only mirror a roll-wide value
-              // the user actually set, else keep each frame's own.
-              ...(draft.params.exposure !== defaultParams().exposure ? { exposure: draft.params.exposure } : {}),
+              // Relative roll adjust: scalar sliders (incl. exposure) offset each frame's own
+              // value (preserve per-frame diffs); the structured look broadcasts absolute.
+              ...rollPreviewFrame(own, draft.params, get(rollApplied)),
+              // Base / white-point stay absolute roll-wide overrides when the user set one.
               ...(draft.params.base_override != null ? { base_override: draft.params.base_override } : {}),
               ...(draft.params.d_max_override != null ? { d_max_override: draft.params.d_max_override } : {}),
             }
@@ -275,20 +275,22 @@
     const frames = get(developedFolderImages);
     const ids = frames.map((f) => f.id);
 
-    // Compute the next edits — apply tone/color look into every frame's edits.
-    let nextEdits = applyToneColorToAll(get(editsById), ids, draft.params);
-    // Also apply base/dmax overrides when set in the draft (null-guarded).
+    // Compute the next edits. Scalar sliders (incl. exposure) fold in RELATIVELY — the delta
+    // since the last applied offset, on top of each frame's own value — so per-frame
+    // differences survive. The structured look broadcasts absolute.
+    const applied = get(rollApplied);
+    let nextEdits = applyRollDelta(get(editsById), ids, draft.params, applied);
+    // Base / white-point stay absolute roll-wide overrides when set (null-guarded).
     if (draft.params.base_override != null) nextEdits = applyBaseToAll(nextEdits, ids, draft.params.base_override);
     if (draft.params.d_max_override != null) nextEdits = applyWhitePointToAll(nextEdits, ids, draft.params.d_max_override);
-    // Exposure is per-image (Auto-Brightness solves it per frame); only mirror a
-    // roll-wide exposure the user deliberately set, so per-image values aren't lost.
-    if (draft.params.exposure !== defaultParams().exposure) nextEdits = applyExposureToAll(nextEdits, ids, draft.params.exposure);
 
     // Guard: discard stale batch BEFORE writing stores so a stale run doesn't clobber newer state.
     if (persistToken !== token || destroyed) return;
 
-    // Write tone/color look into every frame's edits (persisted automatically via write-through).
+    // Write the folded look into every frame's edits (persisted via write-through), then
+    // advance the applied offset so the same draft won't re-apply (idempotent, no compounding).
     editsById.set(nextEdits);
+    rollApplied.set(JSON.parse(JSON.stringify(draft.params)));
 
     // Persist crop to all frames when the draft has a crop set (null-guarded).
     if (draft.crop != null) cropById.set(applyCropToAll(get(cropById), ids, draft.crop));

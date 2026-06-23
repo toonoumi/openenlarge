@@ -1,4 +1,4 @@
-import { writable, type Writable } from "svelte/store";
+import { writable, get, type Writable } from "svelte/store";
 import { defaultParams, type InvertParams } from "../api";
 import type { CropRect } from "../crop/types";
 
@@ -11,6 +11,14 @@ export interface RollDraft {
 }
 
 export const rollDraft: Writable<RollDraft> = writable({ params: defaultParams(), crop: null });
+
+/** The roll draft's relative-scalar offset already folded into the per-frame edits this
+ * session (Temp/Tint/Exposure/Contrast/…). Roll scalar sliders are RELATIVE: each persist
+ * applies `draft − rollApplied` on top of every frame, then advances this to `draft`, so the
+ * offset is idempotent (no compounding) and per-frame differences survive. Set equal to the
+ * draft on entry so nothing re-applies until the user moves a control. */
+export const rollApplied: Writable<InvertParams> = writable(defaultParams());
+const cloneParams = (p: InvertParams): InvertParams => JSON.parse(JSON.stringify(p));
 
 /** True once the user has actually touched a control (slider, crop, base, wp).
  * False on fresh entry / after resetRollDraft(). The preview + persist passes
@@ -25,6 +33,7 @@ export const rollReferenceId: Writable<string | null> = writable<string | null>(
 /** Reset the draft to a fresh default look. */
 export function resetRollDraft(): void {
   rollDraft.set({ params: defaultParams(), crop: null });
+  rollApplied.set(defaultParams());
   rollDraftTouched.set(false);
 }
 
@@ -41,5 +50,8 @@ export function enterRollDraft(folder: string | null): void {
     rollDraft.set({ params: defaultParams(), crop: null });
     draftFolder = folder;
   }
+  // The offset held in the draft is already folded into the per-frame edits, so mark it as
+  // applied (delta 0) — nothing re-applies until the user moves a control again.
+  rollApplied.set(cloneParams(get(rollDraft).params));
   rollDraftTouched.set(false);
 }

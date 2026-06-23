@@ -115,3 +115,62 @@ export function applyWhitePointToAll(
   for (const id of ids) next[id] = { ...entry(edits, id), d_max_override: dmax };
   return next;
 }
+
+// --- Relative roll adjustment (scalar sliders apply as an offset, preserving per-frame diffs) ---
+
+/** Roll-panel scalar sliders applied RELATIVELY: the roll value is an offset added to each
+ *  frame's own value (so per-frame differences survive), clamped to the slider range. `neutral`
+ *  is the no-op default; ranges mirror the Frame sliders. The structured look (tone curve, color
+ *  grade, …) and base/d_max/crop stay broadcast-absolute. */
+export const ROLL_RELATIVE: { key: keyof InvertParams; neutral: number; min: number; max: number }[] = [
+  { key: "temp", neutral: 5500, min: 3793, max: 10000 },
+  { key: "tint", neutral: 0, min: -100, max: 100 },
+  { key: "exposure", neutral: 0, min: -5, max: 5 },
+  { key: "contrast", neutral: 0, min: -100, max: 100 },
+  { key: "highlights", neutral: 0, min: -100, max: 100 },
+  { key: "shadows", neutral: 0, min: -100, max: 100 },
+  { key: "whites", neutral: 0, min: -100, max: 100 },
+  { key: "blacks", neutral: 0, min: -100, max: 100 },
+  { key: "vibrance", neutral: 0, min: -100, max: 100 },
+  { key: "saturation", neutral: 0, min: -100, max: 100 },
+];
+const RELATIVE_KEYS = new Set<string>(ROLL_RELATIVE.map((r) => r.key as string));
+const clampN = (v: number, lo: number, hi: number) => (v < lo ? lo : v > hi ? hi : v);
+
+/** The structured/absolute look broadcast to every frame (tone curve, color grade, mixer, …):
+ *  the tone/color subset MINUS the relative scalars. */
+export function rollAbsoluteLook(p: InvertParams): Partial<InvertParams> {
+  const tc = toneColorOf(p) as Record<string, unknown>;
+  for (const k of RELATIVE_KEYS) delete tc[k];
+  return tc as Partial<InvertParams>;
+}
+
+/** Persist pass: fold the roll draft into every frame. Each relative scalar applies the DELTA
+ *  since `applied` (the offset already baked in) on top of each frame's current value; the
+ *  structured look is broadcast absolutely. The caller advances `applied` to `draft` after. */
+export function applyRollDelta(
+  edits: Record<string, InvertParams>, ids: string[], draft: InvertParams, applied: InvertParams,
+): Record<string, InvertParams> {
+  const next = { ...edits };
+  const abs = clone(rollAbsoluteLook(draft));
+  for (const id of ids) {
+    const cur = entry(edits, id);
+    const merged = { ...cur, ...clone(abs) } as Record<string, unknown>;
+    for (const r of ROLL_RELATIVE) {
+      const delta = (draft[r.key] as number) - (applied[r.key] as number);
+      merged[r.key as string] = clampN((cur[r.key] as number) + delta, r.min, r.max);
+    }
+    next[id] = merged as unknown as InvertParams;
+  }
+  return next;
+}
+
+/** Live-preview for ONE frame: same math as applyRollDelta, against the frame's own params. */
+export function rollPreviewFrame(frame: InvertParams, draft: InvertParams, applied: InvertParams): InvertParams {
+  const merged = { ...frame, ...rollAbsoluteLook(draft) } as Record<string, unknown>;
+  for (const r of ROLL_RELATIVE) {
+    const delta = (draft[r.key] as number) - (applied[r.key] as number);
+    merged[r.key as string] = clampN((frame[r.key] as number) + delta, r.min, r.max);
+  }
+  return merged as unknown as InvertParams;
+}
