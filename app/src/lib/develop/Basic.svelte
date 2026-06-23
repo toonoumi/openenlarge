@@ -131,6 +131,10 @@
     try {
       const wb = await api.asShotWb(id!, withEffectiveBase(get(params), dir), imageCrop, geom);
       params.update((p) => ({ ...applyAsShotWb(p, wb), wb_manual: false }));
+      // Seed per-zone WB gains from the freshly balanced params so the initial
+      // develop has residual-cast corrections applied from the start.
+      const pz = await api.perZoneWb(id!, get(params), imageCrop, geom);
+      params.update((p) => ({ ...p, pz_sh: pz.sh, pz_mid: pz.mid, pz_hi: pz.hi }));
       // Auto-exposure on initial develop: fold a highlight-preserving exposure into the
       // baseline (after WB, so it measures the balanced positive) the first time a frame
       // is shown — so a fresh inversion opens at a sensible brightness, like auto-WB.
@@ -224,6 +228,22 @@
   // auto-reseed). Fires only on real input events, not programmatic seed updates.
   function markWbManual() {
     params.update((p) => (p.wb_manual ? p : { ...p, wb_manual: true }));
+  }
+
+  // Re-estimate per-zone WB gains when pz_strength changes. Debounced so rapid
+  // slider sweeps don't flood the backend. Uses the same imageCrop/geom/id the
+  // main seed call uses (no special guard — the result just overwrites the stored
+  // gains; if it fails the existing gains stay in place).
+  let pzDebounce: ReturnType<typeof setTimeout> | null = null;
+  function reestimatePerZoneWb() {
+    const id = get(activeId); if (!id) return;
+    if (pzDebounce) clearTimeout(pzDebounce);
+    pzDebounce = setTimeout(async () => {
+      try {
+        const pz = await api.perZoneWb(id, get(params), imageCrop, geom);
+        params.update((p) => ({ ...p, pz_sh: pz.sh, pz_mid: pz.mid, pz_hi: pz.hi }));
+      } catch { /* not developed yet */ }
+    }, 200);
   }
 
   // Reset every Basic-section control to its default, leaving all other develop
@@ -350,6 +370,22 @@
         bind:value={$params.temp} def={5500} gradient={TEMP_GRADIENT} format={(v) => relKelvin(v - TEMP_NEUTRAL)} on:input={markWbManual} />
       <Slider label={$t('basic.tint')} min={-100} max={100} step={0.1}
         bind:value={$params.tint} def={0} gradient={TINT_GRADIENT} format={signed} on:input={markWbManual} />
+
+      <!-- Per-zone WB: toggle enable + strength slider -->
+      <div class="wbhead pzhead">
+        <span>{$t('basic.perZone')}</span>
+        <button class="auto" class:on={$params.pz_enabled}
+                title={$t('basic.perZone')} aria-pressed={$params.pz_enabled}
+                on:click={() => { params.update((p) => ({ ...p, pz_enabled: !p.pz_enabled })); commitActive(); }}>
+          {$params.pz_enabled ? $t('basic.auto') : 'Off'}
+        </button>
+      </div>
+      {#if $params.pz_enabled}
+        <Slider label={$t('basic.perZoneStrength')} min={0} max={1} step={0.01}
+          bind:value={$params.pz_strength} def={0.7}
+          format={(v) => Math.round(v * 100) + '%'}
+          on:input={reestimatePerZoneWb} />
+      {/if}
 
       <!-- Tone -->
       <div class="sub tonehead">

@@ -247,6 +247,8 @@ basic.grayPick,"Pick a neutral gray","拾取中性灰","src/lib/develop/Basic.sv
 basic.grayPickHelp,"Sets white balance. Click something that should be neutral gray in the final photo.","设置白平衡。点击最终照片中应为中性灰的区域。","src/lib/develop/Basic.svelte","help tooltip"
 basic.temp,"Temp","色温","src/lib/develop/Basic.svelte","label"
 basic.tint,"Tint","色调","src/lib/develop/Basic.svelte","label"
+basic.perZone,"Per-zone WB","分区白平衡","src/lib/develop/Basic.svelte","label"
+basic.perZoneStrength,"Per-zone strength","分区强度","src/lib/develop/Basic.svelte","label"
 basic.tone,"Tone","影调","src/lib/develop/Basic.svelte","label"
 basic.exposure,"Exposure","曝光","src/lib/develop/Basic.svelte","label"
 basic.brightness,"Brightness","亮度","src/lib/develop/Basic.svelte","label"
