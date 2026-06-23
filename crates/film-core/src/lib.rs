@@ -31,4 +31,8 @@ pub use engine::ToneMode;
 /// 3 = Faithful exposure made photographic (FAITHFUL_EXPO_K=1.0) so auto-exposure can
 /// actually land; stale exposures are reset by the catalog migration and the grid
 /// re-solves auto-exposure on entry (2026-06-21).
-pub const ENGINE_VERSION: u32 = 3;
+/// 4 = Faithful exposure changed to a LINEAR-LIGHT gain (×2^EV on the reconstructed scene
+/// `L = 10^d − 1`, applied before the contrast curve — "expose the log-inverted negative like a
+/// TIFF") in place of the old density-multiply that scaled contrast. The gamma_shoulder + look_s
+/// core is unchanged and EV 0 is identical; only edits with exposure ≠ 0 re-render (2026-06-22).
+pub const ENGINE_VERSION: u32 = 4;
