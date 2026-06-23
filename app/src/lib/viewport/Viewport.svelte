@@ -478,7 +478,7 @@
   $: if (!gpuEligible) uploadKey = "";
 
   // Inversion params now drive GPU uniforms (no backend pixel fetch) when eligible.
-  $: invKey = `${params.mode}|${params.stock}|${params.exposure}|${params.temp}|${params.tint}|${params.black}|${params.gamma}|${params.positive}|${JSON.stringify(params.base_override)}`;
+  $: invKey = `${params.mode}|${params.stock}|${params.exposure}|${params.temp}|${params.tint}|${params.black}|${params.gamma}|${params.positive}|${JSON.stringify(params.base_override)}|${JSON.stringify(params.wb_baseline)}`;
   $: if (gpuEligible) { invKey; refreshInversion().then(applyGeometryAndDraw).catch((e) => {
     if (!(typeof e === "string" && e === "not developed")) console.error("refreshInversion failed", e);
   }); }

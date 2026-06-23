@@ -159,6 +159,17 @@
 
   function autoWb() { seed($activeId, $params.stock, JSON.stringify(effBase), true); }
 
+  // Manual auto-exposure: unlike seedExposure (one-shot on first develop), this re-runs
+  // the auto-brightness estimate on demand and writes the slider every time the user asks.
+  async function autoExposure() {
+    const id = $activeId; if (!id) return;
+    try {
+      const { exposure } = await api.autoBrightness(id, withEffectiveBase(get(params), dir), imageCrop, geom);
+      params.update((p) => ({ ...p, exposure }));
+      commitActive();
+    } catch { /* not developed yet */ }
+  }
+
   // Temp is shown as a signed ± offset from this fixed neutral. Under re-zero
   // (Phase 1), params.temp=5500 always means "no trim / neutral" — the per-image
   // auto-WB correction lives in the hidden wb_baseline gains param — so no
@@ -351,12 +362,6 @@
           <button class="auto autowb" title={$t('basic.autoWbTitle')} on:click={autoWb}>
             <Icon name="sparkles" size={12} />{$t('basic.auto')}
           </button>
-          <button class="auto" class:on={$params.wb_mode === 'subtractive'}
-                  title={$t('basic.colorHeadTitle')} aria-pressed={$params.wb_mode === 'subtractive'}
-                  on:click={() => { params.update((p) => ({ ...p, wb_mode: p.wb_mode === 'subtractive' ? 'gain' : 'subtractive' })); commitActive(); }}>
-            {$t('basic.colorHead')}
-          </button>
-
         </span>
       </div>
       <!-- Temp: 3793–10000 K on the reciprocal track so neutral 5500 K sits at the
@@ -387,6 +392,9 @@
       <!-- Tone -->
       <div class="sub tonehead">
         <span>{$t('basic.tone')}</span>
+        <button class="auto" title={$t('basic.autoExpTitle')} on:click={autoExposure}>
+          <Icon name="sparkles" size={12} />{$t('basic.autoExp')}
+        </button>
       </div>
       <Slider label={$t('basic.exposure')} min={-5} max={5} step={0.01} bind:value={$params.exposure} def={0} format={ev} />
       <Slider label={$t('basic.brightness')} min={-100} max={100} bind:value={$params.brightness} def={0} format={signed} />

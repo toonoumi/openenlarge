@@ -34,7 +34,6 @@
   <Slider label={$t('basic.shadows')} min={-100} max={100} bind:value={$ps.shadows} def={0} format={signed} />
   <Slider label={$t('basic.whites')} min={-100} max={100} bind:value={$ps.whites} def={0} format={signed} />
   <Slider label={$t('basic.blacks')} min={-100} max={100} bind:value={$ps.blacks} def={0} format={signed} />
-  <Slider label={$t('basic.texture')} min={-100} max={100} bind:value={$ps.texture} def={0} format={signed} />
   <Slider label={$t('basic.vibrance')} min={-100} max={100} bind:value={$ps.vibrance} def={0} gradient={SAT_GRADIENT} format={signed} />
   <Slider label={$t('basic.saturation')} min={-100} max={100} bind:value={$ps.saturation} def={0} gradient={SAT_GRADIENT} format={signed} />
 
