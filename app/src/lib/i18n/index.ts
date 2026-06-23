@@ -1,12 +1,14 @@
 import { derived, get, writable } from "svelte/store";
 import { dict } from "./dict";
 
-export type Locale = "en" | "zh";
+export type Locale = "en" | "zh" | "ja" | "ko";
 
 /** Selectable UI languages, in display order. */
 export const LOCALES: { id: Locale; label: string }[] = [
   { id: "en", label: "English" },
   { id: "zh", label: "中文" },
+  { id: "ja", label: "日本語" },
+  { id: "ko", label: "한국어" },
 ];
 
 /** Active UI language. Persisted via the catalog (see catalog.ts). */

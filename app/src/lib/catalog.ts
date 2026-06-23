@@ -9,7 +9,7 @@ import {
   telemetryEnabled, telemetryDecided, rollOverwriteSkip,
   rollFilmEdge, rollEdgeText, undevelopableIds, hotkeyBindings,
 } from "./store";
-import { locale } from "./i18n";
+import { locale, LOCALES, type Locale } from "./i18n";
 
 /** A debounced function with a `flush()` that fires any pending call now. */
 export interface Debounced<A extends unknown[]> {
@@ -66,8 +66,8 @@ export function applySnapshot(snap: CatalogSnapshot): void {
   dustById.set(dustMap);
   metaById.set(metaMap);
 
-  if (snap.prefs.locale === "en" || snap.prefs.locale === "zh")
-    locale.set(snap.prefs.locale);
+  if (LOCALES.some((l) => l.id === snap.prefs.locale))
+    locale.set(snap.prefs.locale as Locale);
   if (typeof snap.prefs.openai_api_key === "string")
     openaiApiKey.set(snap.prefs.openai_api_key);
   // Absent → keep the default (on); only an explicit "false" turns it off.
