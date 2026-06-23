@@ -94,6 +94,16 @@ def rel_href(from_slug, to_slug):
 
 LOCALE_LABELS = {"en": "English", "zh": "中文", "ja": "日本語", "ko": "한국어"}
 
+# Globe icon for the language switcher trigger. Inline SVG (renders on every platform —
+# unlike flag emoji, which Windows shows as plain letters) and sidesteps the "which flag
+# for English?" problem. Shared verbatim with scripts/gen-web.py.
+GLOBE_SVG = (
+    '<svg class="globe" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" '
+    'fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">'
+    '<circle cx="12" cy="12" r="9"/><path d="M3 12h18"/>'
+    '<path d="M12 3c2.7 2.6 2.7 15.4 0 18c-2.7-2.6-2.7-15.4 0-18z"/></svg>'
+)
+
 def lang_href(from_slug, from_locale, to_locale):
     """Relative href from the current page to the same slug in another locale."""
     up = "../" * depth(from_slug)          # back to /docs/<from_locale>/ root
@@ -109,8 +119,7 @@ def langmenu_html(nav, strings, slug, locale):
         cur = ' aria-current="true"' if lc == locale else ""
         href = lang_href(slug, locale, lc)
         items.append(f'<a{cur} href="{href}">{LOCALE_LABELS[lc]}</a>')
-    label = LOCALE_LABELS[locale]
-    return ('<details class="langmenu"><summary>' + label + '</summary>'
+    return ('<details class="langmenu"><summary aria-label="Language">' + GLOBE_SVG + '</summary>'
             '<div class="langmenu-list">' + "".join(items) + '</div></details>')
 
 def crumbs_html(nav, strings, locale, slug):

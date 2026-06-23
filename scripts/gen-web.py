@@ -15,11 +15,35 @@ WEB = ROOT / "web"
 SITE = "https://openenlarge.io"
 LOCALES = ["en", "zh", "ja", "ko"]
 HREFLANG = {"en": "en", "zh": "zh-Hans", "ja": "ja", "ko": "ko"}
+LABELS = {"en": "English", "zh": "中文", "ja": "日本語", "ko": "한국어"}
+# Globe icon for the language switcher (kept verbatim in sync with scripts/gen-docs.py).
+# Inline SVG renders on every platform; flag emoji do not (Windows shows letters), and a
+# globe avoids the "which flag for English?" problem.
+GLOBE_SVG = (
+    '<svg class="globe" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" '
+    'fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">'
+    '<circle cx="12" cy="12" r="9"/><path d="M3 12h18"/>'
+    '<path d="M12 3c2.7 2.6 2.7 15.4 0 18c-2.7-2.6-2.7-15.4 0-18z"/></svg>'
+)
 # page -> (template filename, title key, desc key, site path stem)
 PAGES = {
     "index": ("index.html", "meta.title", "meta.desc", ""),
     "blog":  ("blog.html", "blog.metaTitle", "blog.metaDesc", "blog.html"),
 }
+
+def langswitch_url(page, locale):
+    """Root-absolute URL to the same page in another locale (en at root, else /<locale>/)."""
+    stem = PAGES[page][3]
+    return ("/" if locale == "en" else f"/{locale}/") + stem
+
+def langswitch_html(page, locale):
+    """Globe-triggered language dropdown, baked per page+locale (current marked, real links)."""
+    items = []
+    for lc in LOCALES:
+        cur = ' aria-current="true"' if lc == locale else ""
+        items.append(f'<a{cur} href="{langswitch_url(page, lc)}">{LABELS[lc]}</a>')
+    return ('<details class="langmenu"><summary aria-label="Language">' + GLOBE_SVG + '</summary>'
+            '<div class="langmenu-list">' + "".join(items) + '</div></details>')
 
 def strings():
     return json.loads((WEB / "landing-strings.json").read_text())
@@ -92,14 +116,20 @@ def apply_strings(doc, st, locale, page):
 def render(page, locale, st):
     template = (WEB / PAGES[page][0]).read_text()
     doc = template
-    # Normalize: collapse a previously generated canonical+hreflang block back to the marker,
-    # so re-running build() on the in-place English file stays idempotent.
+    # Normalize: collapse previously generated blocks back to their markers so re-running
+    # build() on the in-place English root file stays idempotent.
     doc = re.sub(r'<link rel="canonical"[^>]*>(?:\s*<link rel="alternate"[^>]*>)+',
                  "<!--OE-SEO-->", doc, count=1)
+    doc = re.sub(r'<details class="langmenu">.*?</details>',
+                 "<!--OE-LANGSWITCH-->", doc, count=1, flags=re.S)
     doc = apply_strings(doc, st, locale, page)
     doc = doc.replace("<!--OE-SEO-->", seo_head(page, locale))
     doc = localize_links(doc, locale)
     doc = fix_asset_paths(doc, locale)
+    # Expand the language switcher LAST: its links are already locale-correct
+    # (root-absolute /, /zh/, …), so they must bypass localize_links / fix_asset_paths,
+    # which would otherwise rewrite the English "/" link to "/<locale>/".
+    doc = doc.replace("<!--OE-LANGSWITCH-->", langswitch_html(page, locale))
     return doc
 
 def write_sitemap():
