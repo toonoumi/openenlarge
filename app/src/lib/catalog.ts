@@ -1,4 +1,3 @@
-import { get } from "svelte/store";
 import { api, defaultParams, type InvertParams, type CatalogSnapshot, type ImageEntry, type MetaOverride } from "./api";
 import type { CropRect } from "./crop/types";
 import { emptyDust, type DustEdits } from "./develop/dust";
