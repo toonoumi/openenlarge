@@ -363,7 +363,7 @@
            visual centre (50%) of the thumb travel. Label shown as ± offset from 5500.
            Tint: range trimmed to ±100 and stepped finely (0.1) to kill the
            banding a coarse 1-unit step produced across a sweep (I2). -->
-      <Slider label={$t('basic.temp')} min={2800} max={10000} step={0.5} scale="reciprocal" scrubStep={10}
+      <Slider label={$t('basic.temp')} min={3793} max={10000} step={0.5} scale="reciprocal" scrubStep={10}
         bind:value={$params.temp} def={TEMP_NEUTRAL} gradient={TEMP_GRADIENT} format={(v) => relKelvin(v - TEMP_NEUTRAL)} on:input={markWbManual} />
       <Slider label={$t('basic.tint')} min={-100} max={100} step={0.1}
         bind:value={$params.tint} def={0} gradient={TINT_GRADIENT} format={signed} on:input={markWbManual} />
@@ -374,7 +374,7 @@
         <button class="auto" class:on={$params.pz_enabled}
                 title={$t('basic.perZone')} aria-pressed={$params.pz_enabled}
                 on:click={() => { params.update((p) => ({ ...p, pz_enabled: !p.pz_enabled })); commitActive(); }}>
-          {$params.pz_enabled ? $t('basic.auto') : 'Off'}
+          {$params.pz_enabled ? $t('basic.auto') : $t('basic.off')}
         </button>
       </div>
       {#if $params.pz_enabled}
