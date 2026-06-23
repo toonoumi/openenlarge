@@ -28,12 +28,17 @@ describe("relative roll adjustment", () => {
     expect(out.a.contrast).toBe(100); // 95 + 30 clamped to 100
   });
 
-  it("treats temp/exposure as relative offsets from their neutrals", () => {
+  it("offsets Temp in mired (consistent colour shift across base temps); Exposure adds linearly", () => {
     const edits = { a: frame({ temp: 5500, exposure: 0.2 }), b: frame({ temp: 5200, exposure: -0.3 }) };
-    const draft = frame({ temp: 6500, exposure: 1 }); // +1000 K, +1 EV
+    const draft = frame({ temp: 6500, exposure: 1 }); // roll offset
     const out = applyRollDelta(edits, ["a", "b"], draft, defaultParams());
-    expect(out.a.temp).toBe(6500);
-    expect(out.b.temp).toBe(6200);
+    // Temp: every frame shifts by the SAME mired amount (not the same Kelvin amount).
+    const mired = (k: number) => 1e6 / k;
+    const rollShift = mired(6500) - mired(5500);
+    expect(mired(out.a.temp) - mired(5500)).toBeCloseTo(rollShift, 4);
+    expect(mired(out.b.temp) - mired(5200)).toBeCloseTo(rollShift, 4);
+    expect(out.b.temp).not.toBeCloseTo(6200, 0); // NOT the naive Kelvin-additive 5200+1000
+    // Exposure (and the other scalars) add linearly.
     expect(out.a.exposure).toBeCloseTo(1.2);
     expect(out.b.exposure).toBeCloseTo(0.7);
   });

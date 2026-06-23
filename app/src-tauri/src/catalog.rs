@@ -55,7 +55,7 @@ pub struct Catalog {
     conn: Mutex<Connection>,
 }
 
-const SCHEMA_VERSION: i64 = 4;
+const SCHEMA_VERSION: i64 = 5;
 
 impl Catalog {
     /// Open (creating if absent) the catalog at `db_path`. Enables WAL and migrates.
@@ -369,7 +369,56 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
                AND json_extract(params_json, '$.exposure') IS NOT NULL;",
         )?;
     }
+    if version < 5 {
+        // Absolute white balance: fold the hidden `wb_baseline` gains into the visible Temp/Tint
+        // so the sliders carry the white balance (the absolute-WB model). Old frames stored WB in
+        // wb_baseline with temp=5500/tint=0; the render — wb_baseline × wb_from_kelvin(temp,tint) —
+        // is unchanged because the folded Temp/Tint reproduce the same gains. Folding makes every
+        // frame new-model (identity baseline) so copy/apply can't double-apply a baseline. Done in
+        // Rust because it needs gains_to_cct, not SQL.
+        migrate_wb_to_absolute(conn)?;
+    }
     conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;
+    Ok(())
+}
+
+/// v5 fold: rewrite each edit's `wb_baseline`/`temp`/`tint` so the visible Temp/Tint carry the
+/// full white balance and `wb_baseline` is identity, preserving the rendered gains. Frames already
+/// at an identity baseline are left untouched (no round-trip drift).
+fn migrate_wb_to_absolute(conn: &Connection) -> rusqlite::Result<()> {
+    let rows: Vec<(String, String)> = {
+        let mut stmt = conn.prepare(
+            "SELECT image_id, params_json FROM edits \
+             WHERE params_json IS NOT NULL AND json_valid(params_json)",
+        )?;
+        let it = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
+        it.collect::<rusqlite::Result<Vec<_>>>()?
+    };
+    let rgb = |v: &Value, k: &str| -> Option<[f32; 3]> {
+        let a = v.get(k)?.as_array()?;
+        if a.len() != 3 { return None; }
+        Some([a[0].as_f64()? as f32, a[1].as_f64()? as f32, a[2].as_f64()? as f32])
+    };
+    for (id, json) in rows {
+        let Ok(mut v) = serde_json::from_str::<Value>(&json) else { continue };
+        let base = rgb(&v, "wb_baseline").unwrap_or([1.0, 1.0, 1.0]);
+        // Already identity (new-model frame) → skip, so we don't introduce round-trip drift.
+        if base.iter().all(|c| (c - 1.0).abs() < 1e-4) { continue; }
+        let temp = v.get("temp").and_then(|x| x.as_f64()).unwrap_or(5500.0) as f32;
+        let tint = v.get("tint").and_then(|x| x.as_f64()).unwrap_or(0.0) as f32;
+        let slider = film_core::wb::wb_from_kelvin(temp, tint / 150.0);
+        let total = [base[0] * slider[0], base[1] * slider[1], base[2] * slider[2]];
+        let (t2, ti2) = film_core::wb::gains_to_cct(total);
+        v["temp"] = serde_json::json!(t2);
+        v["tint"] = serde_json::json!(ti2 * 150.0);
+        v["wb_baseline"] = serde_json::json!([1.0, 1.0, 1.0]);
+        if let Ok(out) = serde_json::to_string(&v) {
+            conn.execute(
+                "UPDATE edits SET params_json = ?2 WHERE image_id = ?1",
+                rusqlite::params![id, out],
+            )?;
+        }
+    }
     Ok(())
 }
 
@@ -412,6 +461,35 @@ mod tests {
         assert_eq!(p.get("exposure").unwrap().as_f64().unwrap(), 0.0, "stale exposure reset to 0");
         assert_eq!(p.get("black").unwrap().as_f64().unwrap(), 0.1, "other params preserved");
         assert_eq!(p.get("temp").unwrap().as_f64().unwrap(), 5500.0, "other params preserved");
+    }
+
+    #[test]
+    fn migration_folds_wb_baseline_into_temp_tint() {
+        let cat = Catalog::open_in_memory().unwrap();
+        {
+            let conn = cat.conn.lock().unwrap();
+            // Pre-v5 old-model edit: WB lives in the hidden baseline, sliders neutral.
+            conn.execute(
+                "INSERT INTO edits (image_id, params_json) VALUES ('x', ?1)",
+                [r#"{"wb_baseline":[1.2,1.0,0.8],"temp":5500,"tint":0,"contrast":15}"#],
+            )
+            .unwrap();
+            conn.pragma_update(None, "user_version", 4i64).unwrap(); // pre-v5
+            migrate(&conn).unwrap();
+        }
+        let edits = cat.load_edits().unwrap();
+        let p = edits.iter().find(|e| e.image_id == "x").unwrap().params.clone().unwrap();
+        // Baseline reset to identity; other params preserved.
+        let b = p.get("wb_baseline").unwrap().as_array().unwrap();
+        assert!((b[0].as_f64().unwrap() - 1.0).abs() < 1e-6 && (b[2].as_f64().unwrap() - 1.0).abs() < 1e-6);
+        assert_eq!(p.get("contrast").unwrap().as_f64().unwrap(), 15.0);
+        // The folded Temp/Tint reproduce the original gains (render unchanged).
+        let temp = p.get("temp").unwrap().as_f64().unwrap() as f32;
+        let tint = p.get("tint").unwrap().as_f64().unwrap() as f32;
+        let g = film_core::wb::wb_from_kelvin(temp, tint / 150.0);
+        for (c, want) in [1.2f32, 1.0, 0.8].iter().enumerate() {
+            assert!((g[c] / g[1] - want / 1.0).abs() < 0.03, "ch {c}: gains {g:?} vs [1.2,1,0.8]");
+        }
     }
 
     #[test]

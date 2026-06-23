@@ -137,6 +137,18 @@ export const ROLL_RELATIVE: { key: keyof InvertParams; neutral: number; min: num
 const RELATIVE_KEYS = new Set<string>(ROLL_RELATIVE.map((r) => r.key as string));
 const clampN = (v: number, lo: number, hi: number) => (v < lo ? lo : v > hi ? hi : v);
 
+/** Apply one relative field's roll offset to a frame's own value. Temp offsets in MIRED
+ *  (1e6/K) — linear in colour shift, so the same roll nudge looks the same on a 5000 K and an
+ *  8000 K frame; a raw Kelvin offset would not (that was the old asShotTemp bug). Other fields
+ *  add linearly. `applied` is the offset already folded in (incremental delta). */
+function relField(key: string, cur: number, draft: number, applied: number, min: number, max: number): number {
+  if (key === "temp") {
+    const dM = 1e6 / draft - 1e6 / applied;        // roll offset, in mired
+    return clampN(1e6 / (1e6 / cur + dM), min, max);
+  }
+  return clampN(cur + (draft - applied), min, max);
+}
+
 /** The structured/absolute look broadcast to every frame (tone curve, color grade, mixer, …):
  *  the tone/color subset MINUS the relative scalars. */
 export function rollAbsoluteLook(p: InvertParams): Partial<InvertParams> {
@@ -157,8 +169,7 @@ export function applyRollDelta(
     const cur = entry(edits, id);
     const merged = { ...cur, ...clone(abs) } as Record<string, unknown>;
     for (const r of ROLL_RELATIVE) {
-      const delta = (draft[r.key] as number) - (applied[r.key] as number);
-      merged[r.key as string] = clampN((cur[r.key] as number) + delta, r.min, r.max);
+      merged[r.key as string] = relField(r.key as string, cur[r.key] as number, draft[r.key] as number, applied[r.key] as number, r.min, r.max);
     }
     next[id] = merged as unknown as InvertParams;
   }
@@ -169,8 +180,7 @@ export function applyRollDelta(
 export function rollPreviewFrame(frame: InvertParams, draft: InvertParams, applied: InvertParams): InvertParams {
   const merged = { ...frame, ...rollAbsoluteLook(draft) } as Record<string, unknown>;
   for (const r of ROLL_RELATIVE) {
-    const delta = (draft[r.key] as number) - (applied[r.key] as number);
-    merged[r.key as string] = clampN((frame[r.key] as number) + delta, r.min, r.max);
+    merged[r.key as string] = relField(r.key as string, frame[r.key] as number, draft[r.key] as number, applied[r.key] as number, r.min, r.max);
   }
   return merged as unknown as InvertParams;
 }
