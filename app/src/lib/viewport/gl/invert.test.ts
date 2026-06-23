@@ -16,6 +16,8 @@ const RES: ResolvedInversion = {
   paper_grade: 0.5,
   soft_clip: 0.9,
   positive: false,
+  wb_mode: 0,
+  tone_mode: 1,
 };
 
 describe("positive flag", () => {
@@ -23,6 +25,7 @@ describe("positive flag", () => {
     base: [0.7, 0.6, 0.5], wb: [1, 1, 1], m_pre: Array(9).fill(0), m_post: Array(9).fill(0),
     exposure: 1, black: 0, gamma: 0.4545, mode: 3, d_max: 1.5,
     print_exposure: 1, paper_black: 0, paper_grade: 0.95, soft_clip: 0.9, positive: true,
+    wb_mode: 0, tone_mode: 1,
   };
   it("round-trips positive through toInversionUniforms", () => {
     expect(toInversionUniforms(base).positive).toBe(true);

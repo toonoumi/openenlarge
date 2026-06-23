@@ -328,13 +328,19 @@ pub fn invert_d(rgb: [f32; 3], p: &InversionParams) -> [f32; 3] {
             ToneMode::Faithful => {
                 let ceil = if p.hdr { HDR_HEADROOM } else { 1.0 };
                 // Faithful uses a FIXED density scale on the raw density `d` (NOT the
-                // per-frame `t = d/d_max`): a frozen, faithful transfer identical on every
-                // frame. See FAITHFUL_SCALE. (`t` above is still used by the Filmic arm.)
-                // Faithful exposure uses FAITHFUL_EXPO_K (photographic ~1 stop/EV), not the
-                // weak shared EXPO_K — so auto-exposure + the slider can actually move
-                // brightness. (`expo_gain` above is the EXPO_K one, used by the Filmic arm.)
-                let expo_gain_f = 2f32.powf(FAITHFUL_EXPO_K * ev);
-                let t_eff = d * FAITHFUL_SCALE * expo_gain_f;
+                // per-frame `t = d/d_max`): a frozen, faithful transfer identical on every frame.
+                //
+                // Exposure is a LINEAR-LIGHT gain on the reconstructed scene, applied BEFORE the
+                // contrast curve — we treat the log-inverted negative as a positive and "expose"
+                // it like a TIFF. Black-anchored linear scene `L = 10^d − 1` (d = 0 → L = 0, so
+                // scene black pivots and stays black at every EV); gain ×2^EV (FAITHFUL_EXPO_K is
+                // the per-stop sensitivity, 1.0 = photographic); then back to density. EV 0 is the
+                // identity `d' = d`, so the EV-0 look is unchanged, and `gamma_shoulder` supplies
+                // the highlight rolloff (no hard clip). (The old code MULTIPLIED density by 2^EV,
+                // which scales contrast, not exposure.) MUST be mirrored in shaders.ts.
+                let l = (10f32.powf(d) - 1.0).max(0.0);
+                let lit = l * 2f32.powf(FAITHFUL_EXPO_K * ev);
+                let t_eff = (lit + 1.0).log10() * FAITHFUL_SCALE;
                 let core = match p.wb_mode {
                     WbMode::Gain => gamma_shoulder(t_eff, ceil) * p.wb[c],
                     WbMode::Subtractive => gamma_shoulder(t_eff * p.wb[c].max(EPS).powf(CMY_STRENGTH), ceil),
@@ -1093,6 +1099,28 @@ mod tests {
         let (e0, em1) = (at(0.0), at(-1.0));
         assert!(em1 < e0, "EV-1 must darken: {e0} -> {em1}");
         assert!(e0 - em1 > 0.10, "one stop must move brightness a real amount (not ~0.02): {e0} -> {em1}");
+    }
+
+    #[test]
+    fn faithful_exposure_is_linear_gain_pivoting_black() {
+        // Exposure is a linear-light gain (×2^EV) on the reconstructed scene, applied before the
+        // contrast curve: +EV brightens / −EV darkens a midtone monotonically, and scene black
+        // (d = 0, scan == base) reconstructs to L = 0 and so stays pure neutral black at EVERY EV
+        // (the black pivot the linear gain guarantees — no shadow lift/crush under exposure).
+        let base = [0.42, 0.55, 0.26];
+        let at = |ev: f32, scan: [f32; 3]| {
+            invert_d(scan, &InversionParams {
+                base, d_max: 1.5, tone_mode: ToneMode::Faithful,
+                print_exposure: 2f32.powf(ev), ..Default::default()
+            })
+        };
+        let mid = [base[0] * 10f32.powf(-0.45), base[1] * 10f32.powf(-0.45), base[2] * 10f32.powf(-0.45)];
+        assert!(at(1.0, mid)[0] > at(0.0, mid)[0], "+EV brightens the midtone");
+        assert!(at(-1.0, mid)[0] < at(0.0, mid)[0], "−EV darkens the midtone");
+        for ev in [-3.0, -1.0, 0.0, 2.0, 4.0] {
+            let b = at(ev, base); // scan == base → d == 0 → L == 0
+            assert!(b.iter().all(|&v| v.abs() < 1e-6), "scene black must pivot at black at EV {ev}: {b:?}");
+        }
     }
 
     #[test]

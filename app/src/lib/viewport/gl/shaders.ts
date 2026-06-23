@@ -508,14 +508,15 @@ vec3 invert(vec3 rgbIn) {
     //    folding exposure into the same t-multiply; anchored at black (t=0 → 0).
     vec3 v;
     if (u_tone_mode == 1) {
-      // Faithful: gamma body + soft shoulder. INVERT_FRAG is the SDR path
-      // (final clamp below), so ceil = 1.0 here — matches the engine's SDR Faithful;
-      // HDR is handled by the separate gain-map path exactly as for Filmic.
-      // FIXED scale on raw density d (NOT per-frame t = d/u_d_max) — mirrors engine.rs.
-      // Faithful exposure uses FAITHFUL_EXPO_K (photographic), not the weak shared EXPO_K
-      // (which only drives the Filmic arm). Mirror: engine.rs expo_gain_f.
-      float expoGainF = exp2(FAITHFUL_EXPO_K * ev);
-      vec3 te = d * FAITHFUL_SCALE * expoGainF;
+      // Faithful: gamma body + soft shoulder. INVERT_FRAG is the SDR path (final clamp below),
+      // so ceil = 1.0 here — matches the engine's SDR Faithful; HDR uses the separate gain-map path.
+      // Exposure is a LINEAR-LIGHT gain on the reconstructed scene, BEFORE the contrast curve —
+      // treat the log-inverted negative as a positive and expose it like a TIFF. Black-anchored
+      // linear L = 10^d − 1 (d = 0 → 0, black pivots); gain ×2^EV; back to density. EV 0 is the
+      // identity; gammaShoulder supplies the highlight rolloff. Mirror: engine.rs invert_d Faithful.
+      vec3 lScene = max(pow(vec3(10.0), d) - 1.0, 0.0);
+      vec3 lit = lScene * exp2(FAITHFUL_EXPO_K * ev);
+      vec3 te = log2(lit + 1.0) * LOG10 * FAITHFUL_SCALE; // log10(lit+1) = log2(lit+1)·LOG10
       float ceil_val = 1.0;
       if (u_wb_mode == 1) {
         vec3 s = pow(max(u_wb, vec3(EPS)), vec3(CMY_STRENGTH));
