@@ -518,6 +518,8 @@
     params.cm_purple_hue, params.cm_purple_sat, params.cm_purple_lum,
     params.cm_magenta_hue, params.cm_magenta_sat, params.cm_magenta_lum,
     JSON.stringify(params.pc_samples),
+    params.pz_enabled,
+    JSON.stringify(params.pz_sh), JSON.stringify(params.pz_mid), JSON.stringify(params.pz_hi),
     clipHigh, clipLow, clipStrict,
   ].join("|");
   // On the GPU develop path, suppress finishing redraws until the new image's frame
