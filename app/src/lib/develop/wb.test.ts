@@ -3,12 +3,13 @@ import { applyAsShotWb } from "./wb";
 import { defaultParams } from "../api";
 
 describe("applyAsShotWb", () => {
-  it("stores gains as wb_baseline and re-zeros temp/tint to neutral center", () => {
+  it("sets the visible Temp/Tint to the estimate and resets the baseline to identity", () => {
     const p = defaultParams();
     const out = applyAsShotWb(p, { temp: 7200, tint: 30, gains: [1.2, 1, 0.8] });
-    expect(out.wb_baseline).toEqual([1.2, 1, 0.8]);
-    expect(out.temp).toBe(5500);
-    expect(out.tint).toBe(0);
+    // Absolute-WB model: the sliders carry the white balance; the hidden baseline is identity.
+    expect(out.temp).toBe(7200);
+    expect(out.tint).toBe(30);
+    expect(out.wb_baseline).toEqual([1, 1, 1]);
   });
 
   it("preserves all other params unchanged", () => {

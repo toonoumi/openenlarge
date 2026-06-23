@@ -13,5 +13,11 @@ import type { InvertParams, AsShotWb } from "../api";
  * @returns   a new InvertParams with wb_baseline set and temp/tint at neutral
  */
 export function applyAsShotWb(p: InvertParams, wb: AsShotWb): InvertParams {
-  return { ...p, wb_baseline: wb.gains, temp: 5500, tint: 0 };
+  // Absolute-WB model: the visible Temp/Tint sliders ARE the white balance. Auto-WB and the
+  // gray-point picker set the sliders to the estimated absolute values (no more re-zero to
+  // 5500/0), and the hidden baseline is reset to identity so it doesn't double-count. The
+  // render composes wb_baseline × wb_from_kelvin(temp,tint); with identity baseline that's
+  // exactly the sliders. (Old frames with a non-identity baseline still render correctly
+  // until re-auto'd — migration + relative copy/roll land in the follow-up.)
+  return { ...p, temp: wb.temp, tint: wb.tint, wb_baseline: [1, 1, 1] };
 }

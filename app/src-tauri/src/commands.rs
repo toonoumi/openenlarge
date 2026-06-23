@@ -2182,14 +2182,15 @@ fn gray_point_temp_tint(params: &InvertParams, rgb: [f32; 3]) -> (f32, f32) {
 #[tauri::command]
 pub fn gray_point_wb(params: InvertParams, rgb: [f32; 3]) -> AsShotWb {
     // Additional gains (relative to the current WB) that neutralise the clicked pixel.
-    let (temp, tint) = gray_point_temp_tint(&params, rgb);
-    let gp = wb_from_params(temp, tint);
-    // Current total WB = baseline × slider. New baseline = current_total × gp, so the
-    // pick becomes the new neutral and the frontend can re-zero the sliders.
+    let (gtemp, gtint) = gray_point_temp_tint(&params, rgb);
+    let gp = wb_from_params(gtemp, gtint);
+    // The full WB that makes the picked pixel neutral = current total × gp.
     let slider = wb_from_params(params.temp, params.tint);
-    let new_baseline: [f32; 3] =
-        std::array::from_fn(|c| params.wb_baseline[c] * slider[c] * gp[c]);
-    AsShotWb { temp, tint: tint * 150.0, gains: new_baseline }
+    let total: [f32; 3] = std::array::from_fn(|c| params.wb_baseline[c] * slider[c] * gp[c]);
+    // Return the ABSOLUTE Temp/Tint of that total WB so the frontend sets the visible
+    // sliders to it (absolute-WB model: the slider IS the white balance, no hidden baseline).
+    let (temp, tint) = gains_to_cct(total);
+    AsShotWb { temp, tint: tint * 150.0, gains: total }
 }
 
 /// Load the whole catalog at launch: return the snapshot to the frontend AND
