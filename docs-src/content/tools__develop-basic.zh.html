@@ -7,16 +7,16 @@
 <p><strong>反相</strong>按钮将当前帧在负片（Cineon 反转）与正片（直通）模式之间切换。正片模式下，扫描图像直接进行显示编码，不经过任何反转，仅施加 <code>exposure</code>（曝光）与白平衡。适用于幻灯片或正片原稿——当你希望跳过反转、直接处理已是正片的来源时。该切换为逐帧设置，可撤销，立即生效。</p>
 
 <h2>曝光</h2>
-<p>曝光是最主要的亮度控件，也是首先应该调整的。它以 EV 档位调整 <code>exposure</code> 参数（滑块范围 −5 至 +5）。在引擎内部，EV 值驱动 <code>print_exposure = 2^EV</code>，用于在色调曲线之前缩放归一化对数密度。提高曝光将色调沿曲线推向高光；降低曝光将色调下拉，而已经溢出的高光仍保持在白点——该控件具有高光保护性，在完整的 ±5 范围内均有响应，不存在死区。</p>
+<p>曝光是最主要的亮度控件，也是首先应该调整的。它以 EV 档位调整 <code>exposure</code> 参数（滑块范围 −5 至 +5）。在引擎内部，EV 值驱动 <code>print_exposure = 2^EV</code>，引擎将其作为<strong>场景线性光中的增益</strong>施加（Adobe 模型 <span class="formula">L_out = f(L_in · 2^EV)</span>），而非对胶片密度做缩放。提高曝光以平滑的高光滚降抬升色调；降低曝光将其下拉。增益在线性光中进行，因此曝光只改变亮度，没有旧版密度乘法带来的对比度变化，高光也沿肩部滚降而非硬裁切。</p>
 
 <p>首次显影时会自动运行一次自动曝光，选取一个使关键色调处于合理亮度的值，类似于自动白平衡确定中性点的方式。之后可自由调整；起始值已折入基线，不构成单独的撤销步骤。</p>
 
 <p>当前激活的 Faithful 色调路径使用感光强度 <strong>FAITHFUL_EXPO_K = 1.0</strong>，因此每一 EV 档大约对应一个摄影档的亮度变化。这与旧版 Filmic 路径较弱的 EXPO_K = 0.14 有意不同，后者在明亮内容上会让滑块感觉反应迟钝。</p>
 
 <details class="hood"><summary>深入原理</summary><div class="hood-body">
-<p><strong>曝光机制：</strong>滑块以 EV 记录 <code>exposure</code>。引擎计算 <code>ev = log2(print_exposure)</code>，再得出 <code>expo_gain_f = 2^(FAITHFUL_EXPO_K · ev)</code>，其中 <code>FAITHFUL_EXPO_K = 1.0</code>。输入 Faithful 伽马肩部曲线的有效密度为 <span class="formula">t_eff = d · FAITHFUL_SCALE · expo_gain_f</span>，其中 <code>FAITHFUL_SCALE = 1/0.700</code> 是根据 C400 数字 SDR 参考校准的固定密度刻度。这使色调还原在每一帧上保持冻结且完全一致；逐帧亮度完全由曝光增益负责。</p>
+<p><strong>曝光机制：</strong>滑块以 EV 记录 <code>exposure</code>。扫描负片本就是对数反转的正片（<span class="formula">d = log10(base/scan)</span>），因此引擎重建一个以黑为锚的线性场景 <span class="formula">L = 10^d − 1</span>，在线性光中施加曝光增益 <span class="formula">L' = L · 2^EV</span>，再回到密度 <span class="formula">d' = log10(L' + 1)</span>，并喂入 Faithful 伽马肩部曲线（固定刻度 <code>FAITHFUL_SCALE = 1/0.700</code>，按 C400 数字 SDR 参考校准）。EV 0 为恒等，故 EV-0 观感不变；伽马肩部提供高光滚降，因此推高曝光是滚降而非硬裁切。</p>
 <p><strong>高光保护：</strong>伽马肩部曲线的渐近肩部平滑压缩接近白点的密度。降低曝光可将过曝色调从肩部拉回曲线体部，恢复丢失的层次——前提是负片中确实存在细节。已饱和的高光（密度远超肩部）会保持接近白点：滑块可以压暗中调而不将白点一并拖低。</p>
-<p><strong>白点与曝光：</strong>Faithful 路径使用固定密度刻度（<code>FAITHFUL_SCALE</code>）而非逐帧 <code>d_max</code>——因此白点不随曝光移动。亮度由滑块负责；白点定位在显影时分析阶段完成。详见 <a href="../science/density.html">密度与对数空间</a> 和 <a href="../science/tone-curve.html">色调曲线</a>。</p>
+<p><strong>白点与曝光：</strong>Faithful 路径使用固定密度刻度（<code>FAITHFUL_SCALE</code>）而非逐帧 <code>d_max</code>——因此白点不随曝光移动。亮度由滑块负责；白点在显影时分析阶段自动确定（不再有手动白点拾取——Faithful 曲线不使用逐帧 d_max）。详见 <a href="../science/density.html">密度与对数空间</a> 和 <a href="../science/tone-curve.html">色调曲线</a>。</p>
 </div></details>
 
 <h2>影调 —— 亮度、对比度、高光、阴影、白色、黑色</h2>
@@ -46,20 +46,18 @@
 <p>高光与阴影的增益上限 0.18 确保即使对立滑块同时推至最大，曲线仍保持单调——不会出现色调反转伪影。</p>
 </div></details>
 
-<h2>白平衡 —— 色温、色调、自动、灰点拾取、彩色头</h2>
-<p>「单帧」标签页中的白平衡通过<strong>色温</strong>（2800–10000 K）和<strong>色调</strong>（绿色/品红轴，−100 至 +100）滑块控制，两者共同决定逐通道的白平衡增益。色温的读数以相对于自动检测到的原始中性点的 ± 偏移量显示，便于查看偏移程度，而非难以直觉理解的绝对开尔文值。</p>
+<h2>白平衡 —— 色温、色调、自动、灰点拾取</h2>
+<p>「单帧」标签页中的白平衡通过<strong>色温</strong>（2800–10000 K）和<strong>色调</strong>（绿色/品红轴，−100 至 +100）滑块控制，两者共同决定逐通道的白平衡增益。滑块显示<strong>真实</strong>的白平衡：自动白平衡与灰点拾取会把色温/色调设到估算值，因此数值稳定，同一色温每次含义一致。</p>
 
 <p>滑块上方有三个一键辅助工具：</p>
 <ul>
-  <li><strong>自动白平衡</strong> —— 对当前帧与片基重新运行灰世界估算，将色温和色调重新设定到检测到的中性点。在更改片边颜色后，可用此功能重新定中平衡。</li>
-  <li><strong>灰点拾取器</strong>（十字准星图标）—— 在预览视口中点击一处在最终照片中应为中性灰的区域。引擎测量该像素的值，计算令其中性化所需的白平衡增益，再以此设定色温和色调。增益的施加方式与手动调整色温/色调保持一致：增益模式为曲线后乘法，彩色头模式为曲线前密度缩放。</li>
-  <li><strong>彩色头</strong>开关 —— 在<em>增益</em>（曲线后线性乘法，字段 <code>wb_mode: "gain"</code>）和<em>减色</em>（曲线前密度缩放，字段 <code>wb_mode: "subtractive"</code>）模式之间切换白平衡的施加方式。两者区别详见 <a href="../science/color.html">色彩与白平衡</a>。</li>
+  <li><strong>自动白平衡</strong> —— 对当前帧与片基重新运行灰世界估算，将色温和色调设定到检测到的中性点。在更改片边颜色后，可用此功能重新平衡。</li>
+  <li><strong>灰点拾取器</strong>（十字准星图标）—— 在预览视口中点击一处在最终照片中应为中性灰的区域。引擎测量该像素的值，计算令其中性化所需的白平衡增益，再据此把色温/色调设为使该像素中性的绝对值。</li>
 </ul>
 
 <details class="hood"><summary>深入原理</summary><div class="hood-body">
 <p><strong>增益模式：</strong>逐通道白平衡增益作为曲线后乘法施加于正片输出。纯黑（输出 = 0）不受影响：0 × 增益 = 0，因此暗部始终保持中性。</p>
-<p><strong>减色（彩色头）模式：</strong>增益在色调曲线之前作为密度缩放施加：<span class="formula">t_eff = t · gain^CMY_STRENGTH</span>，其中 <code>CMY_STRENGTH = 1.6</code>。等效于更换二向色放大机上的 CMY 滤镜组——色调与色调曲线相互耦合，影响延伸至中调乃至较暗的调子区域。暗部仍精确锚定在黑点（密度 = 0 → 任何滤镜下均为 0）。</p>
-<p><strong>色温范围：</strong>滑块在倒数轨道（每色温倒数等量视觉步长）上跨越 2800–10000 K，步长 0.5 K。自动检测到的中性基线（日光型彩色负片约为 5500 K）是相对 ± 显示的零点。</p>
+<p><strong>色温范围：</strong>滑块在倒数轨道上跨越 3793–10000 K（使中性 5500 K 位于视觉中心），步长 0.5 K，显示绝对色温。</p>
 <p><strong>色调范围：</strong>−100 至 +100，步长 0.1 单位。细步长可避免在大幅绿色/品红扫描时产生色带。</p>
 </div></details>
 
