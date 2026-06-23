@@ -70,6 +70,10 @@
         const seed = withEffectiveBase({ ...defaultParams(), positive: img.positive }, dir);
         const wb = await api.asShotWb(img.id, seed, null, { rot90: 0, flip_h: false, flip_v: false, angle: 0 });
         params = applyAsShotWb(seed, wb);
+        try {
+          const pz = await api.perZoneWb(img.id, params, null, { rot90: 0, flip_h: false, flip_v: false, angle: 0 });
+          params = { ...params, pz_sh: pz.sh, pz_mid: pz.mid, pz_hi: pz.hi };
+        } catch { /* keep identity pz on failure */ }
       }
       const view = gridThumbView(get(cropById)[img.id], get(dustById)[img.id], GRID_STATIC_EDGE);
       const url = await api.thumbnail(img.id, params, view);

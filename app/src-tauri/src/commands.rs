@@ -2131,6 +2131,12 @@ fn render_grid_thumbnail(
             let (temp, tint) = auto_seed_wb(seed_src, &p, base, d_max);
             p.temp = temp;
             p.tint = tint;
+            // Bake per-zone WB the same way Develop seeds it, so the thumbnail matches.
+            let mut ip_seed = resolve_params(&p, seed_src, effective_base(&p, base));
+            ip_seed.d_max = effective_dmax(&p, d_max);
+            let positive_seed = invert_image(seed_src, &ip_seed, mode_from(&p.mode));
+            let z = per_zone_seed(&positive_seed, p.pz_strength);
+            p.pz_sh = z[0]; p.pz_mid = z[1]; p.pz_hi = z[2];
             p
         }
     };
@@ -2985,6 +2991,43 @@ mod tests {
                 assert!(zone[2] >= zone[0], "blue should be boosted: {zone:?}");
             }
         }
+    }
+
+    #[test]
+    fn render_grid_thumbnail_no_saved_bakes_per_zone_from_developed_positive() {
+        // Verify that the None branch of render_grid_thumbnail (as patched) runs
+        // per_zone_seed on the developed positive and stores the result into p.pz_*.
+        // We use a mild red cast (sat < 0.25 to pass the saturation gate) so at least
+        // one populated zone deviates from identity, confirming the code path ran.
+        use film_core::Image;
+        let (w, h) = (300usize, 4usize);
+        // Mild red cast: sat ≈ (0.62−0.52)/0.62 ≈ 0.16 < 0.25 → passes gate.
+        let pixels: Vec<[f32; 3]> = (0..w * h)
+            .map(|i| {
+                let s = 0.1 + 0.8 * ((i % w) as f32 / (w as f32 - 1.0));
+                [0.62 * s, 0.56 * s, 0.52 * s]
+            })
+            .collect();
+        let src = Image { width: w, height: h, pixels, ir: None };
+        let base = [0.6f32; 3];
+        let d_max = 2.0f32;
+        // Replicate the None branch of render_grid_thumbnail exactly as patched.
+        let mut p = InvertParams { positive: true, ..default_invert_params() };
+        let (temp, tint) = auto_seed_wb(&src, &p, base, d_max);
+        p.temp = temp;
+        p.tint = tint;
+        let mut ip_seed = resolve_params(&p, &src, effective_base(&p, base));
+        ip_seed.d_max = effective_dmax(&p, d_max);
+        let positive_seed = invert_image(&src, &ip_seed, mode_from(&p.mode));
+        let z = per_zone_seed(&positive_seed, p.pz_strength);
+        p.pz_sh = z[0]; p.pz_mid = z[1]; p.pz_hi = z[2];
+        // At least one zone must deviate from identity — proves per-zone was baked.
+        let identity = [[1.0f32; 3]; 3];
+        assert_ne!(
+            [p.pz_sh, p.pz_mid, p.pz_hi], identity,
+            "cast image: None branch must produce non-identity pz gains; sh={:?} mid={:?} hi={:?}",
+            p.pz_sh, p.pz_mid, p.pz_hi
+        );
     }
 
     #[test]

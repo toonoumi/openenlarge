@@ -168,6 +168,10 @@ export async function seedFrame(id: string, img: ImageEntry, solveExposure: bool
       Object.assign(seed, applyAsShotWb(seed, wb2), { wb_manual: false });
     } catch { /* not resident */ }
   }
+  try {
+    const pz = await api.perZoneWb(id, withEffectiveBase(seed, dir));
+    seed.pz_sh = pz.sh; seed.pz_mid = pz.mid; seed.pz_hi = pz.hi;
+  } catch { /* keep identity pz on failure */ }
   editsById.update((m) => ({ ...m, [id]: seed }));
   try {
     const params = withEffectiveBase(get(editsById)[id] ?? seed, dir);
