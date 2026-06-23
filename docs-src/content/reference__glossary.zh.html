@@ -22,7 +22,7 @@
   <dd>叠加在 Faithful 色调曲线之上的归一化 tanh 风格层强度。该层锚定为 0 → 0、1 → 1；<code>LOOK_K = 2.0</code> 在不移动黑白点的前提下增加了干净的 S 形对比度推进。Faithful 路径中始终生效。参见 <a href="../science/tone-curve.html">色调曲线</a>。</dd>
 
   <dt><code>CMY_STRENGTH</code> = 1.6</dt>
-  <dd>减色（彩色头）白平衡模式中使用的指数：<span class="formula">t_eff = t · gain<sup>CMY_STRENGTH</sup></span>。1.6 这一值使密度空间中的色调产生轻微非线性耦合，比简单的线性缩放更贴近真实二向色放大机滤镜的行为。参见 <a href="../science/color.html">色彩与白平衡</a>。</dd>
+  <dd>减色（彩色头）白平衡模式中使用的指数——目前为引擎中的休眠模式，未在 UI 中暴露：<span class="formula">t_eff = t · gain<sup>CMY_STRENGTH</sup></span>。1.6 这一值使密度空间中的色调产生轻微非线性耦合，比简单的线性缩放更贴近真实二向色放大机滤镜的行为。参见 <a href="../science/color.html">色彩与白平衡</a>。</dd>
 
   <dt><code>EXPO_K</code> = 0.14 <em>（旧 Filmic 路径，已停用）</em></dt>
   <dd>旧 Filmic 路径使用的曝光灵敏度。在 0.14 时，每一 EV 档仅使亮度变化约 10%，导致滑块反应迟钝。源码中保留作历史参考；当前活跃的 Faithful 路径改用 <code>FAITHFUL_EXPO_K</code>。</dd>

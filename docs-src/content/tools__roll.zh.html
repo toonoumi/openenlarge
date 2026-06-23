@@ -1,5 +1,5 @@
 <h1>整卷</h1>
-<p class="lead">整卷标签页将当前文件夹中的所有已显影帧以印样表形式展示。在此可对整卷应用统一的色调效果——色调、颜色、裁剪、片基与白点——实时双通道预览会在您移动滑块时立即在每一帧上呈现效果，停止操作后自动持久化。您也可以从<a href="develop-basic.html">基础</a>面板复制单帧的显影设置，并按分组应用到整卷。</p>
+<p class="lead">整卷标签页将当前文件夹中的所有已显影帧以印样表形式展示。在此可对整卷应用统一的色调效果——色调、颜色、裁剪与片基——实时双通道预览会在您移动滑块时立即在每一帧上呈现效果，停止操作后自动持久化。您也可以从<a href="develop-basic.html">基础</a>面板复制单帧的显影设置，并按分组应用到整卷。</p>
 
 <h2>印样表</h2>
 <p>印样表占据整卷标签页的主区域。胶片按六帧一行横向排列，每行称为一个<strong>条</strong>，与 35 mm 胶卷的实际条长对应。图块的纵横比会自动适应本卷的实际帧形：通过 <code>contactSheet.ts</code> 中的 <code>pickTileAspect()</code> 计算所有横向帧的中位纵横比，使横向帧恰好填满图块边缘。纵向帧则在同等图块高度内信箱式显示，确保无论方向如何，每行高度保持一致。</p>
@@ -25,20 +25,19 @@
 <h2>整卷控件</h2>
 <p>右侧面板（由 <code>RollAdjust.svelte</code> 渲染）标题为<strong>「整卷色调」</strong>（<code>roll.adjust.heading</code>），包含与单帧基础面板相同的滑块：色温、色调、曝光、对比度、高光、阴影、白色、黑色、自然饱和度与饱和度，以及色调曲线。<strong>重置</strong>按钮（<code>basic.reset</code>）将外观恢复默认，同时保留草稿中的片基与白点不变。</p>
 
-<p>标题下方、滑块上方有三个图标工具按钮，分别开启参考帧编辑模式：</p>
+<p>标题下方、滑块上方有两个图标工具按钮，分别开启参考帧编辑模式：</p>
 <ul>
   <li><strong>裁剪</strong>（<code>roll.crop.tool</code>）——在参考帧上打开完整裁剪编辑器；结果应用到所有帧。</li>
   <li><strong>片基</strong>（<code>roll.base.heading</code>）——在参考帧上打开片基采样模式，并以拾取值重新校准整卷片基；新片基将设为文件夹默认值并重新播种到所有帧。用于覆盖自动计算的整卷片基（详见下文）。</li>
-  <li><strong>白点</strong>（<code>roll.wp.heading</code>）——在参考帧上打开白点拾取模式；拾取到的 D-max 值应用到所有帧。</li>
 </ul>
 
 <p><strong>自动整卷片基：</strong>显影一卷胶片时，OpenEnlarge 会自动计算统一的整卷片基——即各帧自动检测到的片基样本经置信度过滤后的逐通道中位值——并将其存储为文件夹默认值。所有帧随后以该共享片基播种。已设置逐帧 <code>base_override</code> 或手动选取白平衡的帧不受影响。首次打开时，尚无存储片基的旧卷将自动迁移。上方的<strong>片基</strong>参考帧编辑模式是在自动片基需要修正时使用的<em>手动重新校准</em>工具；它将替换存储的文件夹片基并重新播种整卷。</p>
 
-<p>三种模式均采用相同的参考帧编辑布局：所选帧占据主区域，所有帧的横向胶片条沿底部排列，可在不退出模式的情况下切换参考帧；右侧面板显示相应控件，或在片基与白点模式下保持为空（单次拾取后自动关闭）。裁剪模式下，按 <kbd>Enter</kbd> 或点击<strong>裁剪</strong>按钮提交几何设置；按 <kbd>Esc</kbd> 放弃。</p>
+<p>两种模式均采用相同的参考帧编辑布局：所选帧占据主区域，所有帧的横向胶片条沿底部排列，可在不退出模式的情况下切换参考帧；右侧面板显示相应控件，或在片基模式下保持为空（单次拾取后自动关闭）。裁剪模式下，按 <kbd>Enter</kbd> 或点击<strong>裁剪</strong>按钮提交几何设置；按 <kbd>Esc</kbd> 放弃。</p>
 
-<p><strong>曝光的处理方式：</strong>由于单帧标签页中的自动亮度功能会为每帧独立求解曝光值，整卷曝光滑块仅在您主动将其从默认值（0 EV）移开时才向所有帧传播。由自动亮度设定的各帧曝光值将被保留，除非您在此处明确覆盖。</p>
+<p><strong>标量滑块是相对的。</strong>色温、色调、曝光、对比度、高光、阴影、白色、黑色、自然饱和度与饱和度都以<em>偏移</em>方式叠加在每帧自身值之上，而非覆盖——因此逐帧差异得以保留（每帧保留自己的自动亮度曝光与白平衡；本就更通透的帧仍相对更通透）。移动整卷滑块会让每帧偏移相同的量，打开某帧即可看到其偏移后的值。色调曲线与片基对每帧一致施加。</p>
 
-<p><strong>复制设置时色温的处理方式：</strong>当您在「基础」面板使用<strong>应用到整卷…</strong>（<code>basic.applyToRoll</code>）并勾选「色调与颜色」分组时，色温会针对每帧重新基准化。源帧的色温被记录为相对于其自身原始中性点的偏移量（即 <code>SettingsSnapshot</code> 中的 <code>tempOffset</code>）；每个目标帧将该偏移量叠加到其自身的原始基准色温上。这意味着复制的「比中性点暖 +1000 K」会在每个目标帧上落地为「比其自身中性点暖 +1000 K」——而非与源帧绝对色温相同。</p>
+<p><strong>用「色调与颜色」分组复制色温：</strong><strong>应用到整卷…</strong>（<code>basic.applyToRoll</code>）会让色温/色调随「色调与颜色」分组一起携带。（针对每帧的相对偏移复制——以 mired 进行，使偏移在不同基准色温下保持一致——计划中；在此之前色温按其滑块值复制。）</p>
 
 <h2>复制并应用到整卷</h2>
 <p>您也可以从整卷标签页之外将单帧的显影设置推送到整卷。在<a href="develop-basic.html">基础</a>面板中，点击<strong>应用到整卷…</strong>按钮（<code>basic.applyToRoll</code>）将打开分组选择对话框——<strong>「应用到本胶卷的全部 N 张？」</strong>（<code>confirmApply.rollTitle</code>）——包含五个复选框：</p>
@@ -63,9 +62,9 @@
 <details class="hood"><summary>深入原理</summary><div class="hood-body">
 <p><strong>草稿状态（<code>roll/draft.ts</code>）：</strong><code>rollDraft</code>（类型为 <code>RollDraft</code> 的 Svelte writable store）持有 <code>params: InvertParams</code> 与 <code>crop: CropRect | null</code>。<code>rollDraftTouched</code> 是一个布尔 store，每次进入整卷标签页时初始值为 <code>false</code>；用户首次触动任意滑块、裁剪、片基采样或白点拾取后置为 <code>true</code>。<code>Roll.svelte</code> 中的双通道预览/持久化响应链（<code>$: if (mirrorEnabled) { schedulePreview($rollDraft); schedulePersist($rollDraft); }</code>）在 <code>rollDraftTouched</code> 为 false 时处于休眠状态。<code>enterRollDraft(folder)</code> 仅在文件夹切换时重置草稿；重新进入同一卷时保留滑块位置。</p>
 <p><strong>实时预览并发（<code>Roll.svelte</code>）：</strong>预览批次最多以 5 个 <code>api.thumbnail()</code> 调用并行运行。单调递增的 <code>previewToken</code> 用于丢弃过时批次，防止慢速渲染覆盖更新结果。<code>requestAnimationFrame</code> 合并循环以最高约 60 次/秒的频率提交累积中的 <code>previewMap</code>。若批次进行中到达新草稿，将排入 <code>previewPending</code>，在当前批次完成后立即启动。</p>
-<p><strong>色调/颜色子集（<code>roll/apply.ts</code>）：</strong><code>toneColorOf(p)</code> 从 <code>InvertParams</code> 对象中去除 <code>EXCLUDE</code> 集合（<code>mode</code>、<code>stock</code>、<code>base_override</code>、<code>d_max_override</code>、<code>hdr</code>、<code>positive</code>、<code>exposure</code>）。这是跨所有帧镜像的「共享外观」；片基、白点、曝光等逐帧校准字段仅在明确勾选时才传播。<code>livePreview.ts</code> 中的 <code>livePreviewParams(draft, frame)</code> 将草稿的色调/颜色子集叠加到每帧自身的参数上，确保预览始终以每帧自身的片基校准来评估外观。</p>
+<p><strong>色调/颜色子集（<code>roll/apply.ts</code>）：</strong><code>toneColorOf(p)</code> 从 <code>InvertParams</code> 对象中去除 <code>EXCLUDE</code> 集合（<code>mode</code>、<code>stock</code>、<code>base_override</code>、<code>d_max_override</code>、<code>hdr</code>、<code>positive</code>、<code>exposure</code>）。这是跨所有帧镜像的「共享外观」；片基、白点、曝光等逐帧校准字段仅在明确勾选时才传播。整卷面板的标量滑块以<strong>相对</strong>方式施加：<code>apply.ts</code> 中的 <code>applyRollDelta</code> / <code>rollPreviewFrame</code> 把滑块偏移（自上次已施加偏移以来的增量，由 <code>rollApplied</code> 跟踪）叠加到每帧自身值上，逐帧差异得以保留；结构性外观（色调曲线、颜色分级）仍对每帧一致广播。</p>
 <p><strong>图块纵横比（<code>contactSheet.ts</code>）：</strong><code>pickTileAspect(aspects)</code> 取所有横向帧（纵横比 ≥ 1）的中位值，若全为纵向或卷为空则回退到全帧或默认 3:2。每帧的有效纵横比在 <code>Roll.svelte</code> 中通过结合原始元数据尺寸 <code>orientDims(w, h, rot90)</code> 与归一化裁剪矩形尺寸（<code>ow*rw / oh*rh</code>）计算得出。</p>
-<p><strong>裁剪后白点重分析（<code>Roll.svelte</code> <code>applyCropAndExit()</code>）：</strong>用户提交整卷裁剪且未手动拾取白点时，该函数通过 <code>api.analyze()</code> 对参考帧的新裁剪重新分析 D-max，并将结果写入草稿。<code>wpManual</code> 标志（用户通过吸管拾取白点后置为 true）会阻止此重分析，在后续裁剪调整中保留用户的主动选择。</p>
+<p><strong>裁剪后 D-max 重分析（<code>Roll.svelte</code> <code>applyCropAndExit()</code>）：</strong>用户提交整卷裁剪时，该函数通过 <code>api.analyze()</code> 对参考帧的新裁剪区域重新分析 D-max，并将结果写入草稿。若分析失败（例如该帧尚未显影），则保留原有值。</p>
 </div></details>
 
 <p class="next"><a href="export.html">下一篇：导出 →</a></p>
