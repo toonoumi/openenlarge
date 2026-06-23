@@ -22,6 +22,7 @@
   }
 
   var os = detectOS();
+  var REL_BASE = (window.OE && window.OE.locale && window.OE.locale !== "en") ? "../" : "./";
   var heroBtn = document.getElementById("hero-download");
   var dlBtn = document.getElementById("dl-download");
   var navBtn = document.getElementById("nav-download");
@@ -50,7 +51,7 @@
   });
 
   // releases.json shape: { "tag": "vX.Y.Z", "assets": { "macos": url, "windows": url, "linux": url } }
-  fetch("./releases.json", { cache: "no-cache" })
+  fetch(REL_BASE + "releases.json", { cache: "no-cache" })
     .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
     .then(function (rel) {
       var assets = rel.assets || {};
@@ -75,7 +76,7 @@
 
   // Testing channel: reveal the alpha block only when releases-alpha.json exists
   // and carries assets. Absent/empty => the block stays hidden (default).
-  fetch("./releases-alpha.json", { cache: "no-cache" })
+  fetch(REL_BASE + "releases-alpha.json", { cache: "no-cache" })
     .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
     .then(function (rel) {
       var assets = rel.assets || {};
