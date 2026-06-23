@@ -2037,10 +2037,12 @@ pub fn auto_brightness(
 }
 
 /// Solve the exposure (EV) that maps the `AUTO_PCT`-th luminance percentile of the
-/// finished display positive to `AUTO_TARGET`. Exposure feeds the filmic curve
-/// non-linearly, so this is a short secant fit running a few cheap invert+finish
-/// passes on the small proxy. All other params (WB, contrast, tone curve, brightness)
-/// are held at their current values, so the auto value composes with the user's look.
+/// FINISHED display positive (the user's full look — contrast, tone curve, brightness)
+/// to `AUTO_TARGET`, so the auto value suits the final image. The metric is monotonic
+/// non-decreasing in EV and saturates at 1.0 once a strong Contrast clamps the brights,
+/// so we BISECT for the target rather than fit a secant: the secant's derivative step
+/// stalls in that flat clamped region and froze at its seed (a fixed ~-0.32 EV) when
+/// contrast was high. A few cheap invert+finish passes on the small proxy.
 pub(crate) fn auto_brightness_value(
     src: &film_core::Image,
     params: &InvertParams,
@@ -2052,7 +2054,8 @@ pub(crate) fn auto_brightness_value(
     const TOL: f32 = 0.01;
     const EV_CLAMP: f32 = 3.0;
 
-    // Finished-positive luminance percentile at a candidate exposure.
+    // Finished-positive luminance percentile at a candidate exposure (the FULL look,
+    // so the target reflects what the user actually sees).
     let measure = |ev: f32| -> f32 {
         let mut p = params.clone();
         p.exposure = ev;
@@ -2063,31 +2066,37 @@ pub(crate) fn auto_brightness_value(
         percentile_luma(&pos, AUTO_PCT)
     };
 
-    let y0 = measure(0.0);
-    if y0 < 1e-4 {
-        return 0.0; // degenerate / near-black frame — don't rescale on noise
+    // Bracket the achievable range at the EV clamp. `measure` is monotonic in EV, so
+    // these bound the percentile; the target lives between them in the normal case.
+    let y_lo = measure(-EV_CLAMP); // darkest
+    if y_lo >= AUTO_TARGET {
+        return -EV_CLAMP; // even the darkest allowed exposure is already too bright
     }
-    if (y0 - AUTO_TARGET).abs() <= TOL {
-        return 0.0;
+    let y_hi = measure(EV_CLAMP); // brightest
+    if y_hi < 1e-4 {
+        return 0.0; // degenerate / near-black frame — don't crank exposure on noise
     }
-    // Secant from (0, y0): seed with the linear-stop guess, refine through the curve.
-    let mut e_prev = 0.0f32;
-    let mut y_prev = y0;
-    let mut e = (AUTO_TARGET / y0).log2().clamp(-EV_CLAMP, EV_CLAMP);
-    for _ in 0..3 {
+    if y_hi <= AUTO_TARGET {
+        return EV_CLAMP; // can't reach the target even at the brightest allowed exposure
+    }
+
+    // Bisection: the first midpoint is EV 0, so an already-balanced frame returns ~0.
+    // Monotonic metric ⇒ the target stays bracketed by [lo, hi] throughout. ~14 steps
+    // resolve well below the 0.01-EV slider step over the ±3 EV range.
+    let mut lo = -EV_CLAMP;
+    let mut hi = EV_CLAMP;
+    let mut e = 0.0f32;
+    for _ in 0..14 {
+        e = 0.5 * (lo + hi);
         let y = measure(e);
         if (y - AUTO_TARGET).abs() <= TOL {
             break;
         }
-        let denom = y - y_prev;
-        let next = if denom.abs() < 1e-5 {
-            e
+        if y < AUTO_TARGET {
+            lo = e;
         } else {
-            e + (AUTO_TARGET - y) * (e - e_prev) / denom
-        };
-        e_prev = e;
-        y_prev = y;
-        e = next.clamp(-EV_CLAMP, EV_CLAMP);
+            hi = e;
+        }
     }
     (e * 100.0).round() / 100.0 // exposure slider step is 0.01
 }
@@ -2972,6 +2981,48 @@ mod tests {
         let n = imbalance(render(&default_invert_params()));
         let s = imbalance(render(&seeded));
         assert!(s < n, "seeded imbalance {s} must be < neutral {n}");
+    }
+
+    #[test]
+    fn auto_brightness_hits_target_under_high_contrast() {
+        // Auto-exposure must leave the FINAL image (the user's full look, including a
+        // strong Contrast) well-exposed — its 90th-pct luminance near the 0.80 target,
+        // not blown. The bug: the secant measured that same clamped metric and froze at
+        // its seed (~-0.32 EV) regardless of the image, leaving highlights pinned at 1.0
+        // ("super bright"). Bisection over the monotonic metric finds the real exposure.
+        use film_core::Image;
+        let w = 256usize;
+        let pixels: Vec<[f32; 3]> = (0..w)
+            .map(|i| {
+                let v = 0.10 + 0.45 * (i as f32 / (w as f32 - 1.0)); // negative density ramp
+                [v, v, v]
+            })
+            .collect();
+        let neg = Image { width: w, height: 1, pixels, ir: None };
+        let base = [0.7f32, 0.7, 0.7];
+        let dmax = 2.0f32;
+
+        let mut pc = default_invert_params();
+        pc.contrast = 100.0; // maximum contrast
+        let evc = auto_brightness_value(&neg, &pc, base, dmax);
+
+        // Render the full finish (with the contrast) at the solved EV and check the
+        // 90th-pct lands near target — i.e. neither frozen-bright nor crushed-dark.
+        pc.exposure = evc;
+        let mut ip = resolve_params(&pc, &neg, effective_base(&pc, base));
+        ip.d_max = effective_dmax(&pc, dmax);
+        let inv = invert_image(&neg, &ip, mode_from(&pc.mode));
+        let pos = finish_image(&inv, &finish_from(&pc));
+        let p90 = percentile_luma(&pos, 0.90);
+        assert!(
+            (p90 - 0.80).abs() < 0.05,
+            "final 90th-pct {p90} should sit near the 0.80 target (evc={evc})"
+        );
+        // And the solve must not be the frozen seed value.
+        assert!(
+            (evc - (-0.32)).abs() > 0.02,
+            "evc {evc} looks like the old frozen secant seed"
+        );
     }
 
     #[test]
