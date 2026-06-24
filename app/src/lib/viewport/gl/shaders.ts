@@ -398,6 +398,7 @@ uniform bool u_raw;           // true → output the scan (display gamma), no in
 uniform bool u_positive;      // true → positive passthrough (no inversion), WB+exposure only
 uniform int u_wb_mode;        // 0 = gain (post-curve), 1 = subtractive (pre-curve)
 uniform int u_tone_mode;      // 0 = filmic (default), 1 = faithful (gamma+shoulder)
+uniform float u_hi_recovery, u_lo_recovery; // [0,1] SDR Faithful highlight/shadow recovery
 // Geometry: output→source UV mapping. The output is the crop sub-rect of the
 // (straightened) oriented image, so we invert the backend's source→output order
 // (orient → straighten → crop) by going crop → un-straighten → un-orient.
@@ -428,16 +429,24 @@ const float FAITHFUL_KNEE   = 0.892;
 const float FAITHFUL_SCALE  = 1.0 / 0.700;
 // Look-layer strength -- MUST equal engine.rs LOOK_K (the clean-punchy MEDIUM).
 const float LOOK_K = 2.0;
-// Clean-punchy look curve -- MUST equal engine.rs look_s. Normalized symmetric tanh S on
-// the faithful core SDR value (pivot 0.5, anchored 0->0 / 1->1, soft toe+shoulder).
-float lookS(float v) {
-  return clamp(0.5 + 0.5 * tanh(LOOK_K * (v - 0.5)) / tanh(LOOK_K * 0.5), 0.0, 1.0);
+const float REC_H_GAIN = 3.0; // MUST equal engine.rs REC_H_GAIN
+const float REC_S_GAIN = 0.6; // MUST equal engine.rs REC_S_GAIN
+float lookS(float v, float lo_recovery) {
+  // Shadow recovery softens the toe (v<0.5) via a smoothstep weight (1 deep-shadow
+  // → 0 by mid-gray); shoulder + mid slope untouched. lo_recovery=0 → original.
+  float s = clamp((0.5 - v) / 0.5, 0.0, 1.0);
+  float w = s * s * (3.0 - 2.0 * s);
+  float k = LOOK_K * (1.0 - REC_S_GAIN * lo_recovery * w);
+  // Per-point normaliser tanh(k·0.5) pins 0→0 / 1→1 for any k. MUST match engine.rs.
+  return clamp(0.5 + 0.5 * tanh(k * (v - 0.5)) / tanh(k * 0.5), 0.0, 1.0);
 }
-float gammaShoulder(float x, float ceil_val) {
+float gammaShoulder(float x, float ceil_val, float hi_recovery) {
   float raw = pow(max(x, 0.0), 1.0 / FAITHFUL_GAMMA);
   if (raw <= FAITHFUL_KNEE) return min(raw, ceil_val);
   float k = FAITHFUL_KNEE;
-  return k + (ceil_val - k) * (1.0 - exp(-(raw - k) / (1.0 - k)));
+  // Recovery widens the rolloff scale (hi_recovery=0 → (1−k), current curve).
+  float scale = (1.0 - k) * (1.0 + REC_H_GAIN * hi_recovery);
+  return k + (ceil_val - k) * (1.0 - exp(-(raw - k) / scale));
 }
 
 // Filmic display S-curve — MUST equal engine.rs FILMIC_K/FILMIC_PIVOT/FILMIC_WHITE_T
@@ -520,12 +529,12 @@ vec3 invert(vec3 rgbIn) {
       float ceil_val = 1.0;
       if (u_wb_mode == 1) {
         vec3 s = pow(max(u_wb, vec3(EPS)), vec3(CMY_STRENGTH));
-        v = vec3(gammaShoulder(te.r * s.r, ceil_val), gammaShoulder(te.g * s.g, ceil_val), gammaShoulder(te.b * s.b, ceil_val));
+        v = vec3(gammaShoulder(te.r * s.r, ceil_val, u_hi_recovery), gammaShoulder(te.g * s.g, ceil_val, u_hi_recovery), gammaShoulder(te.b * s.b, ceil_val, u_hi_recovery));
       } else {
-        v = vec3(gammaShoulder(te.r, ceil_val) * u_wb.r, gammaShoulder(te.g, ceil_val) * u_wb.g, gammaShoulder(te.b, ceil_val) * u_wb.b);
+        v = vec3(gammaShoulder(te.r, ceil_val, u_hi_recovery) * u_wb.r, gammaShoulder(te.g, ceil_val, u_hi_recovery) * u_wb.g, gammaShoulder(te.b, ceil_val, u_hi_recovery) * u_wb.b);
       }
       // Look layer (SDR; INVERT_FRAG is always SDR). Mirror: engine.rs look_s.
-      v = vec3(lookS(v.r), lookS(v.g), lookS(v.b));
+      v = vec3(lookS(v.r, u_lo_recovery), lookS(v.g, u_lo_recovery), lookS(v.b, u_lo_recovery));
     } else {
       // Filmic: logistic S-curve on WB-neutralised log-density.
       if (u_wb_mode == 1) {

@@ -169,6 +169,7 @@ export class FinishRenderer {
       "u_src","u_base","u_wb","u_m_pre","u_m_post","u_exposure","u_black","u_gamma",
       "u_mode","u_raw","u_positive","u_wb_mode","u_tone_mode","u_crop_off","u_crop_scale","u_angle","u_aspect","u_orient",
       "u_d_max","u_print_exposure","u_paper_black","u_paper_grade","u_soft_clip",
+      "u_hi_recovery","u_lo_recovery",
     ]) this.invLoc[n] = gl.getUniformLocation(ip, n);
     gl.useProgram(ip); gl.uniform1i(this.invLoc.u_src, 0);
 
@@ -388,6 +389,7 @@ export class FinishRenderer {
     gl.uniform1i(L.u_positive, u.positive ? 1 : 0);
     gl.uniform1i(L.u_wb_mode, u.wb_mode);
     gl.uniform1i(L.u_tone_mode, u.tone_mode ?? 0);
+    gl.uniform1f(L.u_hi_recovery, u.hi_recovery); gl.uniform1f(L.u_lo_recovery, u.lo_recovery);
     gl.uniform2fv(L.u_crop_off, this.geom.crop_off);
     gl.uniform2fv(L.u_crop_scale, this.geom.crop_scale);
     gl.uniform1f(L.u_angle, this.geom.angle);

@@ -12,8 +12,10 @@ export function finishUniforms(p: InvertParams): FinishUniforms {
   return {
     brightness: p.brightness / 100,
     contrast: p.contrast / 100,
-    highlights: p.highlights / 100,
-    shadows: p.shadows / 100,
+    // Negative half is engine recovery (resolve_to_uniforms); finish sees only the
+    // positive half. Mirrors finish_from in commands.rs.
+    highlights: Math.max(0, p.highlights / 100),
+    shadows: Math.max(0, p.shadows / 100),
     whites: p.whites / 100,
     blacks: p.blacks / 100,
     texture: p.texture / 100,
