@@ -407,6 +407,8 @@ uniform vec2 u_crop_scale;    // crop size in oriented-image UV
 uniform float u_angle;        // straighten radians (clockwise)
 uniform float u_aspect;       // oriented-image height/width (for pixel-space straighten)
 uniform mat2 u_orient;        // oriented-UV → source-UV (undoes rot90/flip)
+uniform vec2 u_view_off;      // deep-zoom visible-window origin (displayed-image UV, y-down)
+uniform vec2 u_view_scale;    // deep-zoom visible-window size (displayed-image UV)
 
 const float EPS = 1e-5;
 const float LOG10 = 0.30102999566; // 1/log2(10): log10(x) = log2(x)*LOG10
@@ -576,6 +578,7 @@ vec2 sourceUV(vec2 uv) {
   // (row 0 = top). Convert before geometry so crop/orient/straighten operate in
   // the image-space convention the JS-side matrices (mirroring convert.rs) assume.
   uv.y = 1.0 - uv.y;
+  uv = u_view_off + uv * u_view_scale;   // deep-zoom window (identity = off 0, scale 1)
   // 1. map the output UV into the (straightened) oriented-image frame, centred.
   vec2 c = u_crop_off + uv * u_crop_scale - 0.5;
   // 2. un-straighten: the backend rotates in oriented PIXEL space, so scale by the
