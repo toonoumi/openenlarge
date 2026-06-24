@@ -14,6 +14,7 @@
 - Do NOT change the inversion/finish/tone math, the CPU-fallback `<img>` path, or the vector overlays (dust SVG, spots, brush, HDR) in this plan.
 - Follow existing patterns in `app/src/lib/viewport/`: pure helpers live in `view.ts` with co-located `*.test.ts`; run tests with `npx vitest run <path>` from `app/`.
 - Shader uniforms are registered by name in `renderer.ts`'s invert-program loop and set in `drawInvertPass`.
+- **Staging rule (BINDING):** the user commits to `main` in parallel and keeps long-lived uncommitted WIP in `app/src-tauri/*.rs`. Every commit MUST `git add` only the exact file paths the task changed — NEVER `git add -A` / `git add .` / `git add app`.
 
 ---
 
@@ -220,16 +221,16 @@ git commit -m "feat(viewport): INVERT_FRAG view-window pre-scale uniforms"
 
 **Interfaces:**
 - Consumes: `INVERT_FRAG` uniforms `u_view_off`, `u_view_scale` (Task 2).
-- Produces: `setGeometry` accepts two new fields and stores them; `drawInvertPass` sets the uniforms each draw. New `setGeometry` signature:
+- Produces: `setGeometry` accepts two new OPTIONAL fields and stores them (defaulting to identity so existing callers keep compiling and behaving as before); `drawInvertPass` sets the uniforms each draw. New `setGeometry` signature:
   ```ts
   setGeometry(g: {
     crop_off: [number, number]; crop_scale: [number, number];
     angle: number; aspect: number; orient: [number, number, number, number];
     raw: boolean; outW: number; outH: number;
-    view_off: [number, number]; view_scale: [number, number];
+    view_off?: [number, number]; view_scale?: [number, number];
   }): void
   ```
-  Every caller of `setGeometry` (in `Viewport.svelte`) MUST pass `view_off`/`view_scale` (Task 4).
+  The fields are optional (identity default), so Task 3 does NOT break the existing `Viewport.svelte` callers; Task 4 passes real values for the live window.
 
 - [ ] **Step 1: Register the uniform locations**
 
@@ -249,8 +250,8 @@ In the `private geom = { ... }` initializer, add:
 Update `setGeometry`'s parameter type to include `view_off: [number, number]; view_scale: [number, number];`, and in the body add:
 
 ```ts
-    this.geom.view_off = new Float32Array(g.view_off);
-    this.geom.view_scale = new Float32Array(g.view_scale);
+    this.geom.view_off = new Float32Array(g.view_off ?? [0, 0]);
+    this.geom.view_scale = new Float32Array(g.view_scale ?? [1, 1]);
 ```
 
 - [ ] **Step 4: Set the uniforms in `drawInvertPass`**
@@ -264,10 +265,8 @@ In `drawInvertPass`, after the existing `gl.uniformMatrix2fv(L.u_orient, false, 
 
 - [ ] **Step 5: Verify TS compiles**
 
-Run (from `app/`): `npx vitest run src/lib/viewport/hiTier.test.ts`
-Expected: PASS (module imports cleanly; this is a compile sanity check — `renderer.ts` must have no type errors).
-
-> Note: this task leaves `setGeometry` callers in `Viewport.svelte` missing the new required fields — TypeScript will flag them. That is fixed in Task 4; commit Tasks 3+4 together if the type error blocks the test run, otherwise commit now.
+Run (from `app/`): `npx svelte-check --threshold error 2>&1 | tail -5` (or `npx vitest run src/lib/viewport/hiTier.test.ts` if svelte-check is unavailable).
+Expected: no new type errors in `renderer.ts`. Because the new fields are OPTIONAL with identity defaults, the existing `Viewport.svelte` `setGeometry` callers still compile and behave exactly as before.
 
 - [ ] **Step 6: Commit**
 
@@ -447,8 +446,10 @@ At ~300% with the eraser/dust tool active: confirm dust-mask strokes, spot marke
 
 - [ ] **Step 4: Final commit (if any verification fixes were made)**
 
+Stage ONLY the files you changed, by exact path (never `git add -A`/`git add .` — the user keeps uncommitted WIP in `app/src-tauri/*.rs` that must not be swept in):
+
 ```bash
-git add -A
+git add app/src/lib/viewport/Viewport.svelte   # + any other exact paths you touched
 git commit -m "fix(viewport): deep-zoom verification follow-ups"
 ```
 
