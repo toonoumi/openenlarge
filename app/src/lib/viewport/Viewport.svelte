@@ -900,8 +900,8 @@
   .hint { color: var(--text-dim); position: absolute; inset: 0; display: grid; place-items: center; }
   .zoom { position: absolute; bottom: 8px; right: 10px; font-size: 11px; color: var(--text-dim);
     background: rgba(0,0,0,0.45); padding: 2px 8px; border-radius: 6px; z-index: 2; }
-  /* Render-in-flight pill: top-center, non-interactive, above the canvas + overlays. */
-  .rendering { position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+  /* Render-in-flight pill: centered, non-interactive, above the canvas + overlays. */
+  .rendering { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
     display: flex; align-items: center; gap: 8px; z-index: 6; pointer-events: none;
     font-size: 11px; color: var(--text); background: rgba(0,0,0,0.55);
     padding: 4px 10px; border-radius: 999px; box-shadow: 0 1px 6px rgba(0,0,0,0.4); }
