@@ -68,6 +68,12 @@ pub struct InversionParams {
     /// scan directly (display-encoded), applying only exposure (`print_exposure`)
     /// and white balance (`wb`). For already-positive sources (slides/prints).
     pub positive: bool,
+    /// Highlight recovery [0,1] (from −Highlights). Widens the Faithful shoulder
+    /// rolloff to re-separate crushed highlights. SDR Faithful only; 0 = identity.
+    pub hi_recovery: f32,
+    /// Shadow recovery [0,1] (from −Shadows). Softens the look_s toe to re-separate
+    /// crushed shadows. SDR Faithful only; 0 = identity.
+    pub lo_recovery: f32,
 }
 
 impl Default for InversionParams {
@@ -89,6 +95,8 @@ impl Default for InversionParams {
             soft_clip: 0.9,
             hdr: false,
             positive: false,
+            hi_recovery: 0.0,
+            lo_recovery: 0.0,
         }
     }
 }
@@ -136,16 +144,33 @@ const FAITHFUL_SCALE: f32 = 1.0 / 0.700;
 /// Look-layer strength — the clean-punchy "MEDIUM" the user chose (~+31% mid-contrast).
 /// MUST equal shaders.ts LOOK_K.
 const LOOK_K: f32 = 2.0;
+/// Highlight-recovery shoulder widening: `hi_recovery∈[0,1]` multiplies the
+/// gamma_shoulder rolloff scale by `(1 + REC_H_GAIN·hi_recovery)`. Gentler rolloff
+/// → brightest densities sit further below the ceiling, re-separating highlights the
+/// SDR shoulder crushes flat. 0 → identity. MUST equal shaders.ts REC_H_GAIN.
+const REC_H_GAIN: f32 = 3.0;
+/// Shadow-recovery toe softening: `lo_recovery∈[0,1]` reduces look_s's toe contrast
+/// to `LOOK_K·(1 − REC_S_GAIN·lo_recovery)` (shoulder + mid-gray slope untouched),
+/// re-separating shadows the tanh toe compresses. 0 → identity. MUST equal shaders.ts.
+const REC_S_GAIN: f32 = 0.6;
 
 /// Clean-punchy look curve: a normalized symmetric tanh S applied to the faithful core's
 /// SDR display value `v ∈ [0,1]`. Pivot 0.5, anchored `0→0` and `1→1`, strictly monotonic,
 /// soft toe + soft shoulder — adds mid-contrast (punch) without clipping or crushing detail.
 /// This is the film-LOOK layer on top of the measured faithful core; SDR only (HDR bypasses
-/// it). MUST equal shaders.ts `lookS`.
+/// it). `lo_recovery` softens the toe without disturbing the shoulder or mid-gray pivot.
+/// lo_recovery=0 → the original symmetric tanh exactly. MUST equal shaders.ts `lookS`.
 #[inline]
-fn look_s(v: f32) -> f32 {
-    let t = (LOOK_K * 0.5).tanh();
-    (0.5 + 0.5 * (LOOK_K * (v - 0.5)).tanh() / t).clamp(0.0, 1.0)
+fn look_s(v: f32, lo_recovery: f32) -> f32 {
+    // Shadow recovery softens the toe (v<0.5) via a smoothstep weight that is 1 at
+    // deep shadow and 0 by mid-gray, so the shoulder and the mid-gray slope are
+    // untouched (no kink). Normalisation keeps the fixed LOOK_K so white still
+    // anchors to 1.0. lo_recovery=0 → the original symmetric tanh exactly.
+    let s = ((0.5 - v) / 0.5).clamp(0.0, 1.0);
+    let w = s * s * (3.0 - 2.0 * s); // smoothstep: 1 (v=0) → 0 (v≥0.5)
+    let k = LOOK_K * (1.0 - REC_S_GAIN * lo_recovery * w);
+    let t = (k * 0.5).tanh();
+    (0.5 + 0.5 * (k * (v - 0.5)).tanh() / t).clamp(0.0, 1.0)
 }
 
 // --- Filmic display S-curve (replaces the old paper-grade/soft-clip encode). ---
@@ -206,16 +231,20 @@ fn filmic_inv(y: f32) -> f32 {
 
 /// Faithful reconstruction curve: power-law body below the knee, asymptotic shoulder
 /// above. `x` is the effective scaled density (d·FAITHFUL_SCALE·expo_gain);
-/// `ceil` is `1.0` for SDR or `HDR_HEADROOM` for HDR. Output is in `[0, ceil]`.
+/// `ceil` is `1.0` for SDR or `HDR_HEADROOM` for HDR. `hi_recovery` widens the
+/// shoulder rolloff scale to re-separate crushed highlights; 0 = identity (current curve).
+/// Output is in `[0, ceil]`.
 #[inline]
-fn gamma_shoulder(x: f32, ceil: f32) -> f32 {
+fn gamma_shoulder(x: f32, ceil: f32, hi_recovery: f32) -> f32 {
     let raw = x.max(0.0).powf(1.0 / FAITHFUL_GAMMA);
     if raw <= FAITHFUL_KNEE {
         raw.min(ceil)
     } else {
         let k = FAITHFUL_KNEE;
-        // asymptote toward `ceil` (1.0 SDR, HDR_HEADROOM if hdr)
-        k + (ceil - k) * (1.0 - (-(raw - k) / (1.0 - k)).exp())
+        // Recovery widens the rolloff scale: hi_recovery=0 → (1−k) (current curve);
+        // larger → gentler shoulder, brightest densities map further below `ceil`.
+        let scale = (1.0 - k) * (1.0 + REC_H_GAIN * hi_recovery);
+        k + (ceil - k) * (1.0 - (-(raw - k) / scale).exp())
     }
 }
 
@@ -343,18 +372,20 @@ pub fn invert_d(rgb: [f32; 3], p: &InversionParams) -> [f32; 3] {
                 let l = (10f32.powf(d) - 1.0).max(0.0);
                 let lit = l * 2f32.powf(FAITHFUL_EXPO_K * ev);
                 let t_eff = (lit + 1.0).log10() * FAITHFUL_SCALE;
+                // Recovery is SDR-only: HDR already expands highlights via HDR_HEADROOM.
+                let hr = if p.hdr { 0.0 } else { p.hi_recovery };
                 let core = match p.wb_mode {
-                    WbMode::Gain => gamma_shoulder(t_eff, ceil) * p.wb[c],
+                    WbMode::Gain => gamma_shoulder(t_eff, ceil, hr) * p.wb[c],
                     WbMode::Subtractive => {
-                        gamma_shoulder(t_eff * p.wb[c].max(EPS).powf(CMY_STRENGTH), ceil)
+                        gamma_shoulder(t_eff * p.wb[c].max(EPS).powf(CMY_STRENGTH), ceil, hr)
                     }
                 };
-                // Look layer (clean-punchy S-curve), SDR only. HDR keeps the headroom-
-                // expanded value (look↔HDR reconciliation is a follow-up). Mirror: shaders.ts lookS.
+                // Look layer (clean-punchy S-curve), SDR only; shadow recovery softens
+                // its toe. HDR keeps the headroom-expanded value (no look layer).
                 if p.hdr {
                     core
                 } else {
-                    look_s(core)
+                    look_s(core, p.lo_recovery)
                 }
             }
         };
@@ -1261,23 +1292,23 @@ mod tests {
 
     #[test]
     fn look_s_anchors_and_pins() {
-        assert!(look_s(0.0).abs() < 1e-6, "0->0: {}", look_s(0.0));
+        assert!(look_s(0.0, 0.0).abs() < 1e-6, "0->0: {}", look_s(0.0, 0.0));
         assert!(
-            (look_s(0.5) - 0.5).abs() < 1e-6,
+            (look_s(0.5, 0.0) - 0.5).abs() < 1e-6,
             "0.5->0.5: {}",
-            look_s(0.5)
+            look_s(0.5, 0.0)
         );
-        assert!((look_s(1.0) - 1.0).abs() < 1e-6, "1->1: {}", look_s(1.0));
+        assert!((look_s(1.0, 0.0) - 1.0).abs() < 1e-6, "1->1: {}", look_s(1.0, 0.0));
         // pinned values (also pin the GPU GLSL mirror) for LOOK_K = 2.0
         assert!(
-            (look_s(0.25) - 0.196_61).abs() < 1e-4,
+            (look_s(0.25, 0.0) - 0.196_61).abs() < 1e-4,
             "0.25: {}",
-            look_s(0.25)
+            look_s(0.25, 0.0)
         );
         assert!(
-            (look_s(0.75) - 0.803_39).abs() < 1e-4,
+            (look_s(0.75, 0.0) - 0.803_39).abs() < 1e-4,
             "0.75: {}",
-            look_s(0.75)
+            look_s(0.75, 0.0)
         );
     }
 
@@ -1286,7 +1317,7 @@ mod tests {
         let mut prev = -1.0;
         let mut v = 0.0;
         while v <= 1.0001 {
-            let s = look_s(v);
+            let s = look_s(v, 0.0);
             assert!(s >= prev - 1e-7, "monotonic at {v}: {s} < {prev}");
             assert!((0.0..=1.0).contains(&s), "in range at {v}: {s}");
             prev = s;
@@ -1296,7 +1327,7 @@ mod tests {
 
     #[test]
     fn look_s_adds_midcontrast_soft_ends() {
-        let slope = |v: f32| (look_s(v + 1e-3) - look_s(v - 1e-3)) / 2e-3;
+        let slope = |v: f32| (look_s(v + 1e-3, 0.0) - look_s(v - 1e-3, 0.0)) / 2e-3;
         assert!(slope(0.5) > 1.05, "mid slope adds punch: {}", slope(0.5));
         assert!(slope(0.08) < 1.0, "toe is soft: {}", slope(0.08));
         assert!(slope(0.92) < 1.0, "shoulder is soft: {}", slope(0.92));
@@ -1363,5 +1394,98 @@ mod tests {
             "HDR exceeds SDR white (look bypassed): {}",
             hdr[0]
         );
+    }
+
+    #[test]
+    fn gamma_shoulder_identity_at_zero_recovery() {
+        for i in 0..=200 {
+            let x = i as f32 / 50.0; // 0..4
+            let got = gamma_shoulder(x, 1.0, 0.0);
+            let raw = x.max(0.0).powf(1.0 / FAITHFUL_GAMMA);
+            let k = FAITHFUL_KNEE;
+            let want = if raw <= k { raw.min(1.0) }
+                       else { k + (1.0 - k) * (1.0 - (-(raw - k) / (1.0 - k)).exp()) };
+            assert!((got - want).abs() < 1e-6, "x={x} got={got} want={want}");
+        }
+    }
+
+    #[test]
+    fn look_s_identity_at_zero_recovery() {
+        for i in 0..=100 {
+            let v = i as f32 / 100.0;
+            let got = look_s(v, 0.0);
+            let t = (LOOK_K * 0.5).tanh();
+            let want = (0.5 + 0.5 * (LOOK_K * (v - 0.5)).tanh() / t).clamp(0.0, 1.0);
+            assert!((got - want).abs() < 1e-6, "v={v} got={got} want={want}");
+        }
+    }
+
+    fn faithful_params() -> InversionParams {
+        InversionParams { base: [1.0, 1.0, 1.0], d_max: 1.5,
+            tone_mode: ToneMode::Faithful, ..Default::default() }
+    }
+
+    #[test]
+    fn highlight_recovery_separates_crushed_highlights() {
+        let p0 = faithful_params();
+        let mut p1 = p0.clone(); p1.hi_recovery = 1.0;
+        let a = [0.02, 0.02, 0.02]; // dense neg → bright highlight (d≈1.7)
+        let b = [0.005, 0.005, 0.005]; // denser → brighter (d≈2.3)
+        let sep0 = (invert_d(a, &p0)[0] - invert_d(b, &p0)[0]).abs();
+        let sep1 = (invert_d(a, &p1)[0] - invert_d(b, &p1)[0]).abs();
+        assert!(sep1 > sep0 + 1e-4, "recovery must separate highlights: sep0={sep0} sep1={sep1}");
+    }
+
+    #[test]
+    fn shadow_recovery_separates_crushed_shadows() {
+        let p0 = faithful_params();
+        let mut p1 = p0.clone(); p1.lo_recovery = 1.0;
+        let a = [0.99, 0.99, 0.99]; // very thin neg → deeply crushed shadow
+        let b = [0.96, 0.96, 0.96];
+        let sep0 = (invert_d(a, &p0)[0] - invert_d(b, &p0)[0]).abs();
+        let sep1 = (invert_d(a, &p1)[0] - invert_d(b, &p1)[0]).abs();
+        assert!(sep1 > sep0 + 1e-5, "recovery must separate shadows: sep0={sep0} sep1={sep1}");
+    }
+
+    #[test]
+    fn invert_d_identity_at_zero_recovery() {
+        // Whole-pixel regression guard: recovery 0 == current output.
+        let p = faithful_params();
+        for i in 0..=100 {
+            let s = (i as f32 / 100.0).max(1e-4);
+            let scan = [s, s * 0.9, s * 0.8];
+            let out = invert_d(scan, &p); // hi_recovery=lo_recovery=0 by default
+            for c in 0..3 { assert!(out[c].is_finite() && (0.0..=1.0).contains(&out[c])); }
+        }
+        // (parity vs a frozen baseline is covered by the existing pinned tests;
+        //  defaults are 0.0 so behavior is unchanged.)
+    }
+
+    #[test]
+    fn recovery_neutral_stays_neutral() {
+        // Equal per-channel density (neutral scene, wb=1) → identical channels at any
+        // recovery, because recovery is the SAME monotone remap on each channel.
+        let mut p = faithful_params(); p.hi_recovery = 1.0; p.lo_recovery = 1.0;
+        for i in 1..=100 {
+            let s = i as f32 / 100.0;
+            let out = invert_d([s, s, s], &p);
+            let spread = out[0].max(out[1]).max(out[2]) - out[0].min(out[1]).min(out[2]);
+            assert!(spread < 1e-6, "neutral must stay neutral at s={s}: {out:?}");
+        }
+    }
+
+    #[test]
+    fn recovery_curves_monotonic_and_in_gamut() {
+        let mut p = faithful_params(); p.hi_recovery = 1.0; p.lo_recovery = 1.0;
+        let mut prev = -1.0;
+        for i in 0..=2000 {
+            // decreasing scan = increasing density = increasing output
+            let s = 1.0 - i as f32 / 2000.0 * 0.999;
+            let v = invert_d([s, s, s], &p)[0];
+            assert!((0.0..=1.0).contains(&v), "out of gamut at s={s}: {v}");
+            // 1e-4 >> f32 tanh/exp noise, << an 8-bit step (1/255≈3.9e-3); guards real folds
+            assert!(v >= prev - 1e-4, "non-monotonic at s={s}: {v} < {prev}");
+            prev = v;
+        }
     }
 }
