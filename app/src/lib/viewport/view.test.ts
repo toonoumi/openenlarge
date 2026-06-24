@@ -66,4 +66,13 @@ describe("viewWindow", () => {
     expect(w.off[0]).toBe(0); // clamped to the left edge
     expect(w.off[1]).toBe(0);
   });
+
+  it("backing cap preserves aspect when only one axis exceeds it", () => {
+    // Wide 4000x1000 image, 2300x1000 pane, dpr 2, cap 4096. At fit the window fills
+    // the pane: css ~2300x575 → device 4600x1150; width caps, height must scale with it.
+    const w = viewWindow(fitScale(4000, 1000, 2300, 1000), 2000, 500, 4000, 1000, 2300, 1000, 2, 4096);
+    expect(Math.max(w.backing.w, w.backing.h)).toBeLessThanOrEqual(4096);
+    // aspect preserved (within a 1px rounding tolerance)
+    expect(w.backing.w / w.backing.h).toBeCloseTo(w.css.width / w.css.height, 2);
+  });
 });

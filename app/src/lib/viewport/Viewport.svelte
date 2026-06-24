@@ -189,7 +189,7 @@
   $: left = vpW / 2 - cx * eff;
   $: top = vpH / 2 - cy * eff;
   $: dpr = typeof window !== "undefined" ? (window.devicePixelRatio || 1) : 1;
-  $: vw0 = (gpuEligible && imgW > 0 && imgH > 0 && vpW > 0 && vpH > 0)
+  $: vw0 = (gpuEligible && !bakeMode && imgW > 0 && imgH > 0 && vpW > 0 && vpH > 0)
     ? viewWindow(eff, cx, cy, imgW, imgH, vpW, vpH, dpr, MAX_BACKING)
     : null;
 

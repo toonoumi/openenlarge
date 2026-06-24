@@ -2,6 +2,14 @@ import type { ViewSpec } from "../api";
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
+/** Round (w,h) device px to integers, capped so the LONGER edge ≤ `cap` while
+ *  preserving aspect (uniform scale — never clamp axes independently, which would
+ *  distort the image when only one axis exceeds the cap). */
+function aspectCappedBacking(w: number, h: number, cap: number): { w: number; h: number } {
+  const k = Math.min(1, cap / Math.max(w, h, 1));
+  return { w: Math.max(1, Math.round(w * k)), h: Math.max(1, Math.round(h * k)) };
+}
+
 /** Scale that fits the whole image in the viewport (display px per image px). */
 export function fitScale(imgW: number, imgH: number, vpW: number, vpH: number): number {
   if (!imgW || !imgH || !vpW || !vpH) return 1;
@@ -61,10 +69,7 @@ export function viewWindow(
   return {
     off: [x / imgW, y / imgH],
     scale: [visW / imgW, visH / imgH],
-    backing: {
-      w: Math.min(Math.max(1, Math.round(width * dpr)), maxBacking),
-      h: Math.min(Math.max(1, Math.round(height * dpr)), maxBacking),
-    },
+    backing: aspectCappedBacking(width * dpr, height * dpr, maxBacking),
     css: { left, top, width, height },
   };
 }
