@@ -705,9 +705,11 @@
       if (canvas) {
         const rect = canvas.getBoundingClientRect();
         const px = e.clientX - rect.left, py = e.clientY - rect.top;
-        // Working-image UV of the click: the canvas is the crop window of the
-        // oriented image, so map the normalized click back through crop+orient.
-        const [u, v] = displayToSourceUV(px / rect.width, py / rect.height, imageCrop, rot90, flipH, flipV);
+        // Canvas covers only the visible window; map the in-canvas fraction to the
+        // displayed-image UV (window off + frac*scale) before crop/orient inversion.
+        const du = vw0 ? vw0.off[0] + (px / rect.width) * vw0.scale[0] : px / rect.width;
+        const dv = vw0 ? vw0.off[1] + (py / rect.height) * vw0.scale[1] : py / rect.height;
+        const [u, v] = displayToSourceUV(du, dv, imageCrop, rot90, flipH, flipV);
         // Clean image color (no clip overlay) so a point pick over a clipped
         // region samples the real pixel, not the warning color (B2). Alongside the
         // single center pixel we pass a grain-robust median over a small window
