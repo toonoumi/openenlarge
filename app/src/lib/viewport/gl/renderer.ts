@@ -112,6 +112,8 @@ export class FinishRenderer {
     aspect: 1,
     orient: new Float32Array([1, 0, 0, 1]),
     raw: false,
+    view_off: new Float32Array([0, 0]),
+    view_scale: new Float32Array([1, 1]),
   };
   private useFloat = false; // true once setSourceFloat is used
 
@@ -167,7 +169,7 @@ export class FinishRenderer {
     this.invProg = ip;
     for (const n of [
       "u_src","u_base","u_wb","u_m_pre","u_m_post","u_exposure","u_black","u_gamma",
-      "u_mode","u_raw","u_positive","u_wb_mode","u_tone_mode","u_crop_off","u_crop_scale","u_angle","u_aspect","u_orient",
+      "u_mode","u_raw","u_positive","u_wb_mode","u_tone_mode","u_crop_off","u_crop_scale","u_angle","u_aspect","u_orient","u_view_off","u_view_scale",
       "u_d_max","u_print_exposure","u_paper_black","u_paper_grade","u_soft_clip",
       "u_hi_recovery","u_lo_recovery",
     ]) this.invLoc[n] = gl.getUniformLocation(ip, n);
@@ -350,6 +352,7 @@ export class FinishRenderer {
     crop_off: [number, number]; crop_scale: [number, number];
     angle: number; aspect: number; orient: [number, number, number, number];
     raw: boolean; outW: number; outH: number;
+    view_off?: [number, number]; view_scale?: [number, number];
   }) {
     this.geom.crop_off = new Float32Array(g.crop_off);
     this.geom.crop_scale = new Float32Array(g.crop_scale);
@@ -357,6 +360,8 @@ export class FinishRenderer {
     this.geom.aspect = g.aspect;
     this.geom.orient = new Float32Array(g.orient);
     this.geom.raw = g.raw;
+    this.geom.view_off = new Float32Array(g.view_off ?? [0, 0]);
+    this.geom.view_scale = new Float32Array(g.view_scale ?? [1, 1]);
     this.canvas.width = g.outW; this.canvas.height = g.outH;
     this.allocInter(g.outW, g.outH);
     this.srcW = g.outW; this.srcH = g.outH; // finishing pass uses these for u_texel/viewport
@@ -395,6 +400,8 @@ export class FinishRenderer {
     gl.uniform1f(L.u_angle, this.geom.angle);
     gl.uniform1f(L.u_aspect, this.geom.aspect);
     gl.uniformMatrix2fv(L.u_orient, false, this.geom.orient);
+    gl.uniform2fv(L.u_view_off, this.geom.view_off);
+    gl.uniform2fv(L.u_view_scale, this.geom.view_scale);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   }
