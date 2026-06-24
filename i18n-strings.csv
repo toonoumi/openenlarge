@@ -447,11 +447,6 @@ histogram.clipLow,Shadow clipping (right-click: 2),暗部裁切（右键：2）,
 histogram.clipStrictHint,Strict 253/2 threshold,严格 253/2 阈值,厳密な 253/2 しきい値,엄격한 253/2 임계값,src/lib/viewport/Histogram.svelte,tooltip
 roll.adjust.heading,Roll look,整卷色调,ロールの色調,롤 톤,src/lib/roll/RollAdjust.svelte,heading
 roll.adjust.whitePoint,White point,白点,ホワイトポイント,화이트 포인트,src/lib/roll/RollAdjust.svelte,label
-confirmOverwrite.title,Overwrite {count} edited frame{plural}?,覆盖 {count} 张已编辑的胶片？,編集済みフレーム {count} 枚{plural}を上書きしますか？,편집된 프레임 {count}개{plural}를 덮어쓰시겠습니까?,src/lib/roll/ConfirmOverwrite.svelte,heading
-confirmOverwrite.sub,Some frames in this roll already have edits. Applying to the whole roll will replace them.,本卷中部分胶片已有编辑。应用到整卷将覆盖它们。,このロールの一部のフレームにはすでに編集があります。ロール全体に適用すると上書きされます。,이 롤의 일부 프레임에는 이미 편집 내용이 있습니다. 전체 롤에 적용하면 해당 편집이 교체됩니다.,src/lib/roll/ConfirmOverwrite.svelte,paragraph
-confirmOverwrite.cancel,Cancel,取消,キャンセル,취소,src/lib/roll/ConfirmOverwrite.svelte,button
-confirmOverwrite.overwrite,Overwrite all,全部覆盖,すべて上書き,모두 덮어쓰기,src/lib/roll/ConfirmOverwrite.svelte,button
-confirmOverwrite.dontAsk,Don't ask me again,不再询问,次回から表示しない,다시 묻지 않기,src/lib/roll/ConfirmOverwrite.svelte,checkbox
 toast.developFailed,Develop failed for {count} image(s) — {detail},显影失败 {count} 张 — {detail},{count} 枚の現像に失敗しました — {detail},{count}개 이미지 현상 실패 — {detail},src/lib/workflow.ts,toast
 toast.undo,Undo: {what},撤销：{what},元に戻す：{what},실행 취소: {what},src/lib/develop/historyStore.ts,toast
 toast.redo,Redo: {what},重做：{what},やり直し：{what},다시 실행: {what},src/lib/develop/historyStore.ts,toast

@@ -221,10 +221,6 @@ export const rollFilmEdge = writable<boolean>(true);
  * Persisted via prefs as `roll_edge_text`. */
 export const rollEdgeText = writable<string>("KODAK 400TX · SAFETY FILM · 5063");
 
-/** When true, skip the "overwrite edits?" confirm when entering the Develop roll
- * section. Persisted via prefs as `roll_overwrite_skip`. */
-export const rollOverwriteSkip = writable<boolean>(false);
-
 /** Film-base recalibration: armed from the Basic panel's Film Base section. While
  * true the viewport shows the drag-to-sample overlay (the sidebar stays in edit
  * mode). `sampledBase` holds the most recently sampled linear base, or null. */

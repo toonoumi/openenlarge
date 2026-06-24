@@ -5,10 +5,10 @@
   import { get } from "svelte/store";
   import { t } from "$lib/i18n";
   import { developedFolderImages } from "$lib/export/eligible";
-  import { editsById, cropById, images, activeId, setActive, rollOverwriteSkip, module, deleteTarget, selectedFolder, folderImages } from "$lib/store";
+  import { editsById, cropById, images, activeId, setActive, deleteTarget, selectedFolder, folderImages } from "$lib/store";
   import { rollReferenceId, enterRollDraft, rollDraft, rollDraftTouched, rollApplied } from "$lib/roll/draft";
   import RollAdjust from "$lib/roll/RollAdjust.svelte";
-  import { applyBaseToAll, applyWhitePointToAll, applyCropToAll, applyRollDelta, rollPreviewFrame, framesWithToneColor, framesWithCrop, framesWithBase, framesWithWhitePoint } from "$lib/roll/apply";
+  import { applyBaseToAll, applyWhitePointToAll, applyCropToAll, applyRollDelta, rollPreviewFrame } from "$lib/roll/apply";
   import { draftThumbView } from "$lib/roll/livePreview";
   import { withEffectiveBase, setFolderBase } from "$lib/develop/base";
   import { reseedRollProtectedFree } from "$lib/roll/rollBase";
@@ -17,7 +17,6 @@
   import { debounce } from "$lib/catalog";
   import { rollFilmEdge, rollEdgeText } from "$lib/store";
   import FramePreview from "$lib/roll/FramePreview.svelte";
-  import ConfirmOverwrite from "$lib/roll/ConfirmOverwrite.svelte";
   import BaseView from "$lib/develop/BaseView.svelte";
   import { exportContactSheet } from "$lib/roll/exportSheet";
   import { pickTileAspect } from "$lib/roll/contactSheet";
@@ -33,50 +32,16 @@
   import Icon from "$lib/icons/Icon.svelte";
   import QualityMenu from "$lib/viewport/QualityMenu.svelte";
 
-  // Entry gate: enabled after confirm (or if no conflicts / skip-pref set).
-  let mirrorEnabled = false;
-  let showEntryConfirm = false;
-  let entryConflictCount = 0;
-
   // Fresh roll draft each time the section opens (seed from defaults per spec).
   onMount(() => {
     // Keep the roll-wide slider values across re-entry to the same roll (start fresh on a
     // folder change); inert until the user edits, so it never re-applies/reverts per-frame edits.
     enterRollDraft(get(selectedFolder));
-
-    // Compute conflicts: union of frames with any edits across the developed folder.
-    const frames = get(developedFolderImages);
-    const ids = frames.map((f) => f.id);
-    const edits = get(editsById);
-    const crops = get(cropById);
-
-    const conflictSet = new Set<string>([
-      ...framesWithToneColor(edits, ids),
-      ...framesWithCrop(crops, ids),
-      ...framesWithBase(edits, ids),
-      ...framesWithWhitePoint(edits, ids),
-    ]);
-    const count = conflictSet.size;
-
-    if (count > 0 && !get(rollOverwriteSkip)) {
-      entryConflictCount = count;
-      showEntryConfirm = true;
-      // Do NOT enable mirroring yet — wait for confirm.
-    } else {
-      mirrorEnabled = true;
-    }
+    // No entry overwrite-confirm: roll slider edits apply RELATIVELY (applyRollDelta — each
+    // scalar is a delta on top of the frame's own value, preserving per-frame tweaks), so
+    // entering a roll with already-edited frames never silently replaces them. Per-frame
+    // tunes still surface in the contact-sheet preview without moving the roll sliders.
   });
-
-  function onEntryConfirm(e: CustomEvent<{ dontAsk: boolean }>) {
-    if (e.detail?.dontAsk) rollOverwriteSkip.set(true);
-    showEntryConfirm = false;
-    mirrorEnabled = true;
-  }
-
-  function onEntryCancel() {
-    showEntryConfirm = false;
-    module.set("library");
-  }
 
   function openFrame(id: string) {
     setActive(id);
@@ -305,9 +270,10 @@
     }
   }, 600);
 
-  // Mirror every rollDraft change (tone/color/base/dmax/crop) to all frames,
-  // but only once mirroring has been enabled (after entry confirm or no conflicts).
-  $: if (mirrorEnabled) { schedulePreview($rollDraft); schedulePersist($rollDraft); }
+  // Mirror every rollDraft change (tone/color/base/dmax/crop) to all frames. Inert until
+  // the user actually edits a roll slider (schedulePersist no-ops while !rollDraftTouched),
+  // so simply opening the roll never re-applies or reverts existing per-frame edits.
+  $: { schedulePreview($rollDraft); schedulePersist($rollDraft); }
 
   // --- Reference-edit mode (crop / base) ---------------------------------------
   type EditMode = "none" | "crop" | "base";
@@ -748,10 +714,6 @@
     </div>
   </div>
 
-{/if}
-
-{#if showEntryConfirm}
-  <ConfirmOverwrite count={entryConflictCount} on:confirm={onEntryConfirm} on:cancel={onEntryCancel} />
 {/if}
 
 {#if menu && editMode === "crop"}
