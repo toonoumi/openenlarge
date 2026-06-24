@@ -164,8 +164,9 @@ const REC_S_GAIN: f32 = 0.6;
 fn look_s(v: f32, lo_recovery: f32) -> f32 {
     // Shadow recovery softens the toe (v<0.5) via a smoothstep weight that is 1 at
     // deep shadow and 0 by mid-gray, so the shoulder and the mid-gray slope are
-    // untouched (no kink). Normalisation keeps the fixed LOOK_K so white still
-    // anchors to 1.0. lo_recovery=0 → the original symmetric tanh exactly.
+    // untouched (no kink). The per-point normaliser `t = tanh(k/2)` anchors
+    // look_s(0)=0 and look_s(1)=1 for any k, so recovery re-separates crushed darks
+    // without lifting black to a milky grey. lo_recovery=0 → k=LOOK_K → original tanh.
     let s = ((0.5 - v) / 0.5).clamp(0.0, 1.0);
     let w = s * s * (3.0 - 2.0 * s); // smoothstep: 1 (v=0) → 0 (v≥0.5)
     let k = LOOK_K * (1.0 - REC_S_GAIN * lo_recovery * w);
