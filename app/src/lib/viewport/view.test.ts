@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { fitScale, deriveView } from "./view";
+import { fitScale, deriveView, viewWindow } from "./view";
 
 describe("deriveView", () => {
   it("fit view covers the whole image", () => {
@@ -21,5 +21,49 @@ describe("deriveView", () => {
     const v = deriveView(1.0, 0, 0, 1000, 500, 250, 250);
     expect(v.crop[0]).toBe(0);
     expect(v.crop[1]).toBe(0);
+  });
+});
+
+describe("viewWindow", () => {
+  // 1000x500 image, 250x250 viewport, dpr 1, generous backing cap.
+  it("fit/zoomed-out: identity window, canvas = letterboxed image rect", () => {
+    const s = fitScale(1000, 500, 250, 250); // 0.25
+    const w = viewWindow(s, 500, 250, 1000, 500, 250, 250, 1, 8192);
+    expect(w.off).toEqual([0, 0]);
+    expect(w.scale).toEqual([1, 1]);
+    // dispW=250, dispH=125 → centered vertically in the 250 tall viewport.
+    expect(w.css).toEqual({ left: 0, top: 62.5, width: 250, height: 125 });
+    expect(w.backing).toEqual({ w: 250, h: 125 });
+  });
+
+  it("100% centered: full viewport canvas, centered half-ish window", () => {
+    const w = viewWindow(1, 500, 250, 1000, 500, 250, 250, 1, 8192);
+    // visW=250 of 1000 → scale .25, centered at x=375 → off .375; visH=250 of 500 → scale .5, off .25
+    expect(w.off[0]).toBeCloseTo(0.375, 6);
+    expect(w.scale[0]).toBeCloseTo(0.25, 6);
+    expect(w.off[1]).toBeCloseTo(0.25, 6);
+    expect(w.scale[1]).toBeCloseTo(0.5, 6);
+    expect(w.css).toEqual({ left: 0, top: 0, width: 250, height: 250 });
+    expect(w.backing).toEqual({ w: 250, h: 250 });
+  });
+
+  it("high zoom: backing stays bounded, window is a thin slice", () => {
+    // 8x zoom on a 1000px image → dispW 8000; viewport 250 → window 250/8000.
+    const w = viewWindow(8, 500, 250, 1000, 500, 250, 250, 2, 8192);
+    expect(w.scale[0]).toBeCloseTo(250 / 8000, 6);
+    expect(w.css.width).toBe(250);
+    expect(w.backing.w).toBe(500); // 250 css * dpr 2, under the 8192 cap
+  });
+
+  it("backing is capped at maxBacking", () => {
+    const w = viewWindow(8, 500, 250, 1000, 500, 250, 250, 2, 300);
+    expect(w.backing.w).toBe(300); // 500 would exceed the 300 cap
+  });
+
+  it("pan clamps the window inside the image", () => {
+    // 2x zoom, panned hard left/up past the edge.
+    const w = viewWindow(2, 0, 0, 1000, 500, 250, 250, 1, 8192);
+    expect(w.off[0]).toBe(0); // clamped to the left edge
+    expect(w.off[1]).toBe(0);
   });
 });

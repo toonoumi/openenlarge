@@ -29,3 +29,42 @@ export function deriveView(
     raw,
   };
 }
+
+export interface ViewWindow {
+  off: [number, number];
+  scale: [number, number];
+  backing: { w: number; h: number };
+  css: { left: number; top: number; width: number; height: number };
+}
+
+/**
+ * The visible window for the GL preview at a given zoom/pan, in the displayed
+ * (oriented+cropped) image of `imgW×imgH`. Mirrors `deriveView`'s visible-region
+ * math but returns the shader UV window, the bounded canvas backing size, and the
+ * on-screen CSS rect the canvas should occupy (the image's viewport-clipped box).
+ * Identity (`off=[0,0], scale=[1,1]`) at fit/100%-fitting zoom.
+ */
+export function viewWindow(
+  scale: number, cx: number, cy: number,
+  imgW: number, imgH: number, vpW: number, vpH: number,
+  dpr: number, maxBacking: number,
+): ViewWindow {
+  const visW = Math.min(vpW / scale, imgW);
+  const visH = Math.min(vpH / scale, imgH);
+  const x = clamp(cx - visW / 2, 0, Math.max(0, imgW - visW));
+  const y = clamp(cy - visH / 2, 0, Math.max(0, imgH - visH));
+  // On-screen position of the visible region: image origin is at vpW/2 - cx*scale.
+  const left = vpW / 2 + (x - cx) * scale;
+  const top = vpH / 2 + (y - cy) * scale;
+  const width = visW * scale;
+  const height = visH * scale;
+  return {
+    off: [x / imgW, y / imgH],
+    scale: [visW / imgW, visH / imgH],
+    backing: {
+      w: Math.min(Math.max(1, Math.round(width * dpr)), maxBacking),
+      h: Math.min(Math.max(1, Math.round(height * dpr)), maxBacking),
+    },
+    css: { left, top, width, height },
+  };
+}
