@@ -6,7 +6,7 @@
 
 use crate::Image;
 use std::path::Path;
-use tiff::decoder::{Decoder, DecodingResult};
+use tiff::decoder::{Decoder, DecodingResult, Limits};
 use tiff::ColorType;
 
 #[derive(Debug, thiserror::Error)]
@@ -38,7 +38,13 @@ fn srgb_to_linear(c: f32) -> f32 {
 /// A 4th (alpha/IR) channel, if present, is captured into `ir`.
 pub fn decode_tiff(path: &Path) -> Result<Image, DecodeError> {
     let file = std::fs::File::open(path)?;
-    let mut dec = Decoder::new(file)?;
+    // Lift the crate's default buffer caps (intermediate_buffer_size = 128 MiB,
+    // decoding_buffer_size = 256 MiB). Scanner TIFFs are routinely uncompressed,
+    // 16-bit, and stored as a SINGLE strip (RowsPerStrip == ImageLength), so one
+    // chunk can exceed 128 MiB — e.g. a 5958×3945 Nikon Coolscan scan is ~134 MiB
+    // in one strip, which trips `LimitsExceeded`. These are local, user-selected
+    // files (no untrusted-input DoS surface), so removing the cap is safe.
+    let mut dec = Decoder::new(file)?.with_limits(Limits::unlimited());
     let (w, h) = dec.dimensions()?;
     let color = dec.colortype()?;
     let (channels, max) = match color {
