@@ -13,6 +13,7 @@
   import { hiTierAction } from "./hiTier";
   import { pickPixel, sampleRobust } from "../develop/colorPick";
   import { orientUVMatrix, displayToSourceUV } from "../crop/transforms";
+  import { viewWindow, type ViewWindow } from "./view";
   import { t } from "$lib/i18n";
 
   export let id: string | null;
@@ -127,6 +128,9 @@
   // native pixels AND the source has more resolution to offer, request the high-res
   // texture. Hysteresis (enter > PROXY_EDGE, leave < 0.9×) avoids thrash at the edge.
   const PROXY_EDGE = 2560;
+  // Canvas backing never exceeds this — keeps the composited layer well under the
+  // WebKit/WebGL limits regardless of zoom. The visible window is rendered into it.
+  const MAX_BACKING = 4096;
   // Settle delay before a hi-res upgrade actually fires. The hi-res decode+upload is
   // heavy, so we never kick it off mid-gesture — only once zoom/pan has been quiet
   // for this long. Restarted by every wheel/pan event (see armHiTier).
@@ -184,6 +188,10 @@
   $: dispH = imgH * eff;
   $: left = vpW / 2 - cx * eff;
   $: top = vpH / 2 - cy * eff;
+  $: dpr = typeof window !== "undefined" ? (window.devicePixelRatio || 1) : 1;
+  $: vw0 = (gpuEligible && imgW > 0 && imgH > 0 && vpW > 0 && vpH > 0)
+    ? viewWindow(eff, cx, cy, imgW, imgH, vpW, vpH, dpr, MAX_BACKING)
+    : null;
 
   function measure() {
     if (!el) return;
@@ -449,6 +457,7 @@
       renderer.setGeometry({
         crop_off: [0, 0], crop_scale: [1, 1], angle: 0, aspect: 1,
         orient: [1, 0, 0, 1], raw, outW: texW, outH: texH,
+        view_off: [0, 0], view_scale: [1, 1],
       });
       drawGL();
       frameReady = true; // correct frame for the current image is now on screen
@@ -460,13 +469,18 @@
     // Oriented (pre-crop) pixel dims; for odd rot90 the source dims swap.
     const swap = (rot90 % 2) === 1;
     const oW = swap ? texH : texW, oH = swap ? texW : texH;
-    // Output canvas = the crop window of the oriented image.
+    // Output canvas = the crop window of the oriented image (used as fallback backing).
     const outW = Math.max(1, Math.round(oW * cropW));
     const outH = Math.max(1, Math.round(oH * cropH));
+    // If a view window is available, render only the visible sub-region into a
+    // viewport-sized backing; otherwise fall back to the full-image dims.
+    const win = vw0 ?? { off: [0, 0] as [number, number], scale: [1, 1] as [number, number],
+      backing: { w: outW, h: outH }, css: { left, top, width: dispW, height: dispH } };
     renderer.setGeometry({
       crop_off: [cropX, cropY], crop_scale: [cropW, cropH],
       angle: (angle * Math.PI) / 180, aspect: oH / oW, orient: o,
-      raw, outW, outH,
+      raw, outW: win.backing.w, outH: win.backing.h,
+      view_off: win.off, view_scale: win.scale,
     });
     drawGL();
     frameReady = true; // correct frame for the current image is now on screen
@@ -484,7 +498,7 @@
   }); }
 
   // Geometry also drives GPU uniforms (no fetch) when eligible.
-  $: geomKey = `${imageCrop ? imageCrop.join(',') : 'full'}|${rot90}|${flipH}|${flipV}|${angle}`;
+  $: geomKey = `${imageCrop ? imageCrop.join(',') : 'full'}|${rot90}|${flipH}|${flipV}|${angle}|${eff}|${cx}|${cy}|${vpW}|${vpH}`;
   // Raw-mode GPU geometry only: in bake mode geometry is baked into the texture and
   // the upload trigger handles re-draws, so this would otherwise double-draw.
   $: if (gpuEligible && !bakeMode) { geomKey; applyGeometryAndDraw(); }
@@ -807,7 +821,7 @@
   {#if useGL}
     <canvas
       bind:this={canvas} class:anim={animating}
-      style="position:absolute; width:{dispW}px; height:{dispH}px; left:{left}px; top:{top}px;"
+      style="position:absolute; left:{vw0 ? vw0.css.left : left}px; top:{vw0 ? vw0.css.top : top}px; width:{vw0 ? vw0.css.width : dispW}px; height:{vw0 ? vw0.css.height : dispH}px;"
     ></canvas>
     {#if switchPreview}
       <img
