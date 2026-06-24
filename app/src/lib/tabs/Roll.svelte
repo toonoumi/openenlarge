@@ -404,6 +404,12 @@
     if (!dir) return;
     setFolderBase(dir, base);
     await reseedRollProtectedFree(get(folderImages));
+    // Base sampling changes editsById + folderBaseByPath but NOT rollDraft, so the
+    // reactive preview trigger ($: schedulePreview($rollDraft)) never fires and the
+    // contact-sheet cells keep showing stale previewMap entries (which shadow the freshly
+    // baked thumbnails). Rebuild the preview explicitly so colors update immediately —
+    // without this you'd only see the new base after a crop nudged rollDraft.
+    runPreviewBatch(get(rollDraft));
   }
 
 
@@ -617,13 +623,8 @@
       <RollAdjust>
         <!-- Change A+D: tool row rendered in slot between heading and sliders -->
         <div class="tool-row">
-          <div class="tool">
-            <button class="tool-btn" on:click={enterCropMode} disabled={$developedFolderImages.length === 0}
-                    aria-label={$t('roll.crop.tool')}>
-              <Icon name="crop" size={20} />
-            </button>
-            <span class="tool-label">{$t('roll.crop.tool')}</span>
-          </div>
+          <!-- Film Base comes before Crop: calibrate the base first (no rotation), then
+               crop+rotate last so re-entering an un-rotated base view never disorients. -->
           <div class="tool">
             <button class="tool-btn" class:on={(editMode as string) === "base"}
                     on:click={enterBaseMode} disabled={$developedFolderImages.length === 0}
@@ -631,6 +632,13 @@
               <Icon name="droplet" size={20} />
             </button>
             <span class="tool-label">{$t('roll.base.heading')}</span>
+          </div>
+          <div class="tool">
+            <button class="tool-btn" on:click={enterCropMode} disabled={$developedFolderImages.length === 0}
+                    aria-label={$t('roll.crop.tool')}>
+              <Icon name="crop" size={20} />
+            </button>
+            <span class="tool-label">{$t('roll.crop.tool')}</span>
           </div>
         </div>
       </RollAdjust>
