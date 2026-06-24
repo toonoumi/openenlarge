@@ -131,6 +131,9 @@
   // Canvas backing never exceeds this — keeps the composited layer well under the
   // WebKit/WebGL limits regardless of zoom. The visible window is rendered into it.
   const MAX_BACKING = 4096;
+  // Hard upper zoom limit (200%). Beyond ~211% the CSS-scaled canvas/overlays exceed
+  // WebKit's compositor layer size and the preview corrupts ("flashing"); cap here.
+  const MAX_ZOOM = 2.0;
   // Settle delay before a hi-res upgrade actually fires. The hi-res decode+upload is
   // heavy, so we never kick it off mid-gesture — only once zoom/pan has been quiet
   // for this long. Restarted by every wheel/pan event (see armHiTier).
@@ -616,7 +619,7 @@
     stopAnim();
     e.preventDefault();
     const [ix, iy] = imgPoint(e);
-    const ns = Math.min(8, Math.max(fit, eff * Math.exp(-e.deltaY * 0.0015)));
+    const ns = Math.min(Math.max(MAX_ZOOM, fit), Math.max(fit, eff * Math.exp(-e.deltaY * 0.0015)));
     cx = ix + (cx - ix) * (eff / ns);
     cy = iy + (cy - iy) * (eff / ns);
     scale = ns;
@@ -787,7 +790,7 @@
         const dist = Math.hypot(mqCX - mqSX, mqCY - mqSY);
         if (dist >= 8) {
           const [bx, by] = imgPoint(e);
-          const z = marqueeZoom(mqStartImg[0], mqStartImg[1], bx, by, avW, avH, fit, 8);
+          const z = marqueeZoom(mqStartImg[0], mqStartImg[1], bx, by, avW, avH, fit, Math.max(MAX_ZOOM, fit));
           startAnim();
           scale = z.scale; cx = z.cx; cy = z.cy;
           clampCenter(z.scale);
