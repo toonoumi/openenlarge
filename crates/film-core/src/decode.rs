@@ -217,6 +217,83 @@ fn normalize_ifd_pointer_types(buf: &mut [u8]) {
 /// After demosaic the values remain in that range (bilinear/PPG only
 /// interpolate; they don't amplify). We clamp to [0, 1] as a safety net in
 /// case of hot pixels or sensor artefacts slightly above white level.
+/// Reconstruct a sensor-shift **pixel-shift high-res** CFA mosaic by 2×2 binning.
+///
+/// In an ordinary Bayer sensor the four sites of a 2×2 block sample four *adjacent*
+/// scene points, so colour must be interpolated (demosaiced). A pixel-shift high-res
+/// frame is different: the sensor is physically shifted by sub-pixel steps between
+/// sub-exposures so that **every** site of a 2×2 block measures the *same* scene point
+/// through a different colour filter. The correct reconstruction is therefore to
+/// *bin* each block — average the two greens, take the lone red and blue — yielding a
+/// true-colour pixel at quarter resolution. Running Bayer demosaic on such a frame
+/// instead cross-contaminates the channels (on a colour-negative scan it collapses
+/// R≈B, destroying the colour the inversion relies on).
+///
+/// `cfa.color_at(row, col)` maps a mosaic site to a colour index (0=R, 1=G, 2=B);
+/// `black`/`white` are per-RGB-channel levels in raw code values. Output values are
+/// `(v − black) / (white − black)`, clamped to `[0, 1]`, matching [`decode_raw`].
+fn bin_cfa_2x2(
+    data: &[u16],
+    width: usize,
+    height: usize,
+    cfa: &rawler::CFA,
+    black: [f32; 3],
+    white: [f32; 3],
+) -> (usize, usize, Vec<[f32; 3]>) {
+    let bw = width / 2;
+    let bh = height / 2;
+    let scale = [
+        1.0 / (white[0] - black[0]).max(1.0),
+        1.0 / (white[1] - black[1]).max(1.0),
+        1.0 / (white[2] - black[2]).max(1.0),
+    ];
+    let mut out = vec![[0.0f32; 3]; bw * bh];
+    for by in 0..bh {
+        for bx in 0..bw {
+            let (y, x) = (by * 2, bx * 2);
+            let mut sum = [0.0f32; 3];
+            let mut cnt = [0u32; 3];
+            for dy in 0..2 {
+                for dx in 0..2 {
+                    let c = cfa.color_at(y + dy, x + dx);
+                    if c < 3 {
+                        sum[c] += data[(y + dy) * width + (x + dx)] as f32;
+                        cnt[c] += 1;
+                    }
+                }
+            }
+            let mut px = [0.0f32; 3];
+            for c in 0..3 {
+                let v = if cnt[c] > 0 { sum[c] / cnt[c] as f32 } else { 0.0 };
+                px[c] = ((v - black[c]) * scale[c]).clamp(0.0, 1.0);
+            }
+            out[by * bw + bx] = px;
+        }
+    }
+    (bw, bh, out)
+}
+
+/// Extract the `cw × ch` sub-rectangle at `(cx, cy)` from a row-major RGB image,
+/// clamping the requested size to the available bounds (never panics on overflow).
+fn crop_image(
+    px: &[[f32; 3]],
+    w: usize,
+    h: usize,
+    cx: usize,
+    cy: usize,
+    cw: usize,
+    ch: usize,
+) -> (usize, usize, Vec<[f32; 3]>) {
+    let cw = cw.min(w.saturating_sub(cx));
+    let ch = ch.min(h.saturating_sub(cy));
+    let mut out = Vec::with_capacity(cw * ch);
+    for y in 0..ch {
+        let start = (cy + y) * w + cx;
+        out.extend_from_slice(&px[start..start + cw]);
+    }
+    (cw, ch, out)
+}
+
 pub fn decode_raw(path: &Path) -> Result<Image, DecodeError> {
     use rawler::imgop::develop::Intermediate;
     use rawler::imgop::develop::{ProcessingStep, RawDevelop};
@@ -234,6 +311,59 @@ pub fn decode_raw(path: &Path) -> Result<Image, DecodeError> {
     let source = rawler::rawsource::RawSource::new_from_shared_vec(Arc::new(bytes)).with_path(path);
     let raw = rawler::decode(&source, &rawler::decoders::RawDecodeParams::default())
         .map_err(|e| DecodeError::Raw(e.to_string()))?;
+
+    // Step 1.5: sensor-shift HIGH-RES frames need binning, not demosaic.
+    //
+    // Pixel-shift high-res modes (Olympus / OM "High Res Shot", etc.) store a frame
+    // whose 2×2 CFA blocks each sample the SAME scene point through R/G/G/B filters,
+    // not four adjacent points. rawler surfaces these via a "highres" camera mode but
+    // still tags them as an ordinary Bayer CFA, so its demosaic cross-contaminates the
+    // channels — on a colour-negative scan that collapses R≈B into a near-monochrome
+    // inversion. Reconstruct by 2×2 binning instead (see `bin_cfa_2x2`).
+    if raw.camera.mode == "highres" && raw.cpp == 1 {
+        if let rawler::RawImageData::Integer(ref data) = raw.data {
+            let cfa = &raw.camera.cfa;
+            // Black level is a positional 2×2 repeat pattern; average per colour via
+            // the CFA. White level is colour-indexed (RGBE order), single value when
+            // uniform.
+            let bl = raw.blacklevel.as_bayer_array();
+            let mut bsum = [0.0f32; 3];
+            let mut bcnt = [0u32; 3];
+            for (i, (r, c)) in [(0, 0), (0, 1), (1, 0), (1, 1)].iter().enumerate() {
+                let col = cfa.color_at(*r, *c);
+                if col < 3 {
+                    bsum[col] += bl[i];
+                    bcnt[col] += 1;
+                }
+            }
+            let black = [
+                if bcnt[0] > 0 { bsum[0] / bcnt[0] as f32 } else { 0.0 },
+                if bcnt[1] > 0 { bsum[1] / bcnt[1] as f32 } else { 0.0 },
+                if bcnt[2] > 0 { bsum[2] / bcnt[2] as f32 } else { 0.0 },
+            ];
+            let wl = &raw.whitelevel.0;
+            let wl_at = |c: usize| -> f32 { wl.get(c).or_else(|| wl.first()).copied().unwrap_or(0) as f32 };
+            let white = [wl_at(0), wl_at(1), wl_at(2)];
+
+            let (bw, bh, binned) = bin_cfa_2x2(data, raw.width, raw.height, cfa, black, white);
+
+            // Apply the camera's recommended crop (mosaic coords → halved for the
+            // binned grid) so framing matches the normal demosaic path.
+            let (width, height, pixels) = match raw.crop_area {
+                Some(rect) => crop_image(
+                    &binned,
+                    bw,
+                    bh,
+                    rect.p.x / 2,
+                    rect.p.y / 2,
+                    rect.d.w / 2,
+                    rect.d.h / 2,
+                ),
+                None => (bw, bh, binned),
+            };
+            return Ok(Image { width, height, pixels, ir: None });
+        }
+    }
 
     // Step 2: develop with only linear steps (no WB, no colour matrix, no gamma).
     let develop = RawDevelop {
@@ -429,6 +559,56 @@ pub fn decode_ldr(path: &Path) -> Result<Image, DecodeError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bin_cfa_2x2_separates_grbg_channels() {
+        // A pixel-shift high-res frame samples the same scene point through all
+        // four CFA sites, so 2x2 binning a GRBG block must recover true RGB.
+        // GRBG row-major: [G@(0,0), R@(0,1), B@(1,0), G@(1,1)].
+        // black=0, white=4000 → R=3000/4000=0.75, G=2000/4000=0.5, B=1000/4000=0.25.
+        let cfa = rawler::CFA::new("GRBG");
+        let data = vec![2000u16, 3000, 1000, 2000];
+        let (w, h, px) = bin_cfa_2x2(&data, 2, 2, &cfa, [0.0; 3], [4000.0; 3]);
+        assert_eq!((w, h), (1, 1));
+        let p = px[0];
+        assert!((p[0] - 0.75).abs() < 1e-4, "R = {}", p[0]);
+        assert!((p[1] - 0.50).abs() < 1e-4, "G = {}", p[1]);
+        assert!((p[2] - 0.25).abs() < 1e-4, "B = {}", p[2]);
+    }
+
+    #[test]
+    fn bin_cfa_2x2_applies_per_channel_black_and_white() {
+        // RGGB block with per-channel black/white levels.
+        // R@(0,0)=1100 (black100,white1100 → 1.0), G@(0,1)=G@(1,0)=600 (black100,white600 → 1.0),
+        // B@(1,1)=350 (black100,white600 → 0.5).
+        let cfa = rawler::CFA::new("RGGB");
+        let data = vec![1100u16, 600, 600, 350];
+        let (_, _, px) = bin_cfa_2x2(&data, 2, 2, &cfa, [100.0, 100.0, 100.0], [1100.0, 600.0, 600.0]);
+        let p = px[0];
+        assert!((p[0] - 1.0).abs() < 1e-4, "R = {}", p[0]);
+        assert!((p[1] - 1.0).abs() < 1e-4, "G = {}", p[1]);
+        assert!((p[2] - 0.5).abs() < 1e-4, "B = {}", p[2]);
+    }
+
+    #[test]
+    fn crop_image_extracts_subrect() {
+        // 3x2 image; R channel encodes the linear pixel index 0..6.
+        let px: Vec<[f32; 3]> = (0..6).map(|i| [i as f32, 0.0, 0.0]).collect();
+        // crop x=1,y=0,w=2,h=2 → indices (row0)1,2 (row1)4,5.
+        let (w, h, out) = crop_image(&px, 3, 2, 1, 0, 2, 2);
+        assert_eq!((w, h), (2, 2));
+        let got: Vec<i32> = out.iter().map(|p| p[0] as i32).collect();
+        assert_eq!(got, vec![1, 2, 4, 5]);
+    }
+
+    #[test]
+    fn crop_image_clamps_out_of_bounds() {
+        // Requesting a region past the right/bottom edge must clamp, not panic.
+        let px: Vec<[f32; 3]> = (0..6).map(|i| [i as f32, 0.0, 0.0]).collect();
+        let (w, h, out) = crop_image(&px, 3, 2, 2, 1, 5, 5);
+        assert_eq!((w, h), (1, 1));
+        assert_eq!(out[0][0] as i32, 5);
+    }
 
     #[test]
     fn srgb_to_linear_endpoints_and_midtone() {
