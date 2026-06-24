@@ -188,6 +188,10 @@ pub struct ResolvedInversion {
     pub wb_mode: u8,
     /// Tone mode for the shader: 0 = filmic (S-curve, default), 1 = faithful (gamma+shoulder).
     pub tone_mode: u8,
+    /// Highlight/shadow recovery [0,1] for the SDR Faithful shoulder/toe. Mirrors
+    /// InversionParams.hi_recovery/lo_recovery; consumed by INVERT_FRAG.
+    pub hi_recovery: f32,
+    pub lo_recovery: f32,
 }
 
 /// Resolve the UI params (+ sampled film base) into GPU uniforms, reusing the
@@ -224,6 +228,8 @@ pub fn resolve_to_uniforms(p: &InvertParams, base: [f32; 3]) -> ResolvedInversio
         },
         // Faithful is the sole path (Filmic retired) — always 1, ignore the wire value.
         tone_mode: 1u8,
+        hi_recovery: ip.hi_recovery,
+        lo_recovery: ip.lo_recovery,
     }
 }
 
@@ -482,5 +488,14 @@ mod tests {
         p.tone_mode = "faithful".to_string();
         let u2 = resolve_to_uniforms(&p, [0.8, 0.6, 0.4]);
         assert_eq!(u2.tone_mode, 1u8, "tone_mode stays Faithful (1)");
+    }
+
+    #[test]
+    fn resolve_to_uniforms_carries_recovery() {
+        let mut p = crate::commands_test_support::sample_invert_params();
+        p.highlights = -100.0; p.shadows = -25.0;
+        let u = resolve_to_uniforms(&p, [0.8, 0.6, 0.4]);
+        assert!((u.hi_recovery - 1.0).abs() < 1e-6);
+        assert!((u.lo_recovery - 0.25).abs() < 1e-6);
     }
 }

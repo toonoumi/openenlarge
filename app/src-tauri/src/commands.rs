@@ -263,6 +263,10 @@ pub(crate) fn build_params(p: &InvertParams, base: [f32; 3]) -> InversionParams 
         // Faithful is the sole develop/tune path; ignore any stored `tone_mode` (Filmic
         // is retired from the app). See docs/superpowers/specs/2026-06-21-faithful-look-layer-sole-path-design.md.
         tone_mode: film_core::ToneMode::Faithful,
+        // Negative Highlights/Shadows drive engine-side recovery (the positive half
+        // stays a finish-pass tone move, see finish_from). −100 → full recovery.
+        hi_recovery: (-p.highlights / 100.0).clamp(0.0, 1.0),
+        lo_recovery: (-p.shadows / 100.0).clamp(0.0, 1.0),
         ..Default::default()
     }
 }
@@ -530,8 +534,10 @@ pub(crate) fn finish_from(p: &InvertParams) -> FinishParams {
     );
     FinishParams {
         contrast: p.contrast / 100.0,
-        highlights: p.highlights / 100.0,
-        shadows: p.shadows / 100.0,
+        // Negative half is engine recovery (build_params); finish only sees the
+        // positive half so the slider never darkens AND recovers at once.
+        highlights: (p.highlights / 100.0).max(0.0),
+        shadows: (p.shadows / 100.0).max(0.0),
         whites: p.whites / 100.0,
         blacks: p.blacks / 100.0,
         texture: p.texture / 100.0,
@@ -3473,6 +3479,32 @@ mod tests {
         p.tone_mode = "filmic".to_string();
         let ip = build_params(&p, [0.8, 0.6, 0.4]);
         assert!(matches!(ip.tone_mode, film_core::ToneMode::Faithful), "build_params must force Faithful");
+    }
+
+    #[test]
+    fn build_params_derives_recovery_from_negative_sliders() {
+        let mut p = crate::commands_test_support::sample_invert_params();
+        p.highlights = -100.0; p.shadows = -50.0;
+        let ip = build_params(&p, [0.8, 0.6, 0.4]);
+        assert!((ip.hi_recovery - 1.0).abs() < 1e-6, "hi_recovery={}", ip.hi_recovery);
+        assert!((ip.lo_recovery - 0.5).abs() < 1e-6, "lo_recovery={}", ip.lo_recovery);
+
+        p.highlights = 40.0; p.shadows = 0.0; // positive/zero → no recovery
+        let ip2 = build_params(&p, [0.8, 0.6, 0.4]);
+        assert_eq!(ip2.hi_recovery, 0.0);
+        assert_eq!(ip2.lo_recovery, 0.0);
+    }
+
+    #[test]
+    fn finish_from_suppresses_negative_highlights_shadows() {
+        let mut p = crate::commands_test_support::sample_invert_params();
+        p.highlights = -100.0; p.shadows = -100.0;
+        let f = finish_from(&p);
+        assert_eq!(f.highlights, 0.0, "negative Highlights is engine recovery, not a finish move");
+        assert_eq!(f.shadows, 0.0);
+
+        p.highlights = 50.0; // positive half unchanged
+        assert!((finish_from(&p).highlights - 0.5).abs() < 1e-6);
     }
 
     #[test]
