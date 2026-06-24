@@ -36,15 +36,17 @@ describe("reciprocal slider scale", () => {
   });
 });
 
-// Task 5b: Temp slider centering — 5500 K must sit at visual centre (50%) with
-// the new min/max so the neutral position is unambiguous to the user.
-describe("Temp slider centering at 5500 K (task 5b)", () => {
-  const TEMP_MIN = 3793;
-  const TEMP_MAX = 10000;
+// Temp slider range — widened to the engine's auto-WB CCT bounds (2000–15000 K) so
+// any Auto/gray-pick estimate is representable and fine-tunable (意见1). Neutral 5500 K
+// is no longer geometrically centred: the warm side now reaches 2000 K, pushing 5500 K
+// ~73% along the reciprocal track. The gradient grey stop tracks this same position.
+describe("Temp slider range 2000–15000 K", () => {
+  const TEMP_MIN = 2000;
+  const TEMP_MAX = 15000;
 
-  it("positions 5500 K at exactly 50% of the reciprocal track (within 0.01)", () => {
+  it("positions 5500 K at ~73% of the reciprocal track (off-centre, warm-extended)", () => {
     const frac = reciprocalPos(5500, TEMP_MIN) / reciprocalSpan(TEMP_MIN, TEMP_MAX);
-    expect(frac).toBeCloseTo(0.5, 2); // 2 decimal places → within ±0.005
+    expect(frac).toBeCloseTo(0.734, 2);
   });
 
   it("still pins min to left edge and max to right edge", () => {

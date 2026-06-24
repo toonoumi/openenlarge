@@ -364,11 +364,15 @@
           </button>
         </span>
       </div>
-      <!-- Temp: 3793–10000 K on the reciprocal track so neutral 5500 K sits at the
-           visual centre (50%) of the thumb travel. Label shown as ± offset from 5500.
+      <!-- Temp: 2000–15000 K on the reciprocal track — matches the engine's auto-WB
+           CCT bounds (gains_to_cct, wb.rs) so any Auto/gray-pick estimate is always
+           representable and fine-tunable on the slider (a narrower track pinned the
+           thumb at its bound and snapped away on the first drag — 意见1). The reciprocal
+           scale keeps perceptual travel even; neutral 5500 K sits ~73% along (warm now
+           extends to 2000 K, far past the old 3793). Label shown as ± offset from 5500.
            Tint: range trimmed to ±100 and stepped finely (0.1) to kill the
            banding a coarse 1-unit step produced across a sweep (I2). -->
-      <Slider label={$t('basic.temp')} min={3793} max={10000} step={0.5} scale="reciprocal" scrubStep={10}
+      <Slider label={$t('basic.temp')} min={2000} max={15000} step={0.5} scale="reciprocal" scrubStep={10}
         bind:value={$params.temp} def={TEMP_NEUTRAL} gradient={TEMP_GRADIENT} format={(v) => relKelvin(v - TEMP_NEUTRAL)} on:input={markWbManual} />
       <Slider label={$t('basic.tint')} min={-100} max={100} step={0.1}
         bind:value={$params.tint} def={0} gradient={TINT_GRADIENT} format={signed} on:input={markWbManual} />
