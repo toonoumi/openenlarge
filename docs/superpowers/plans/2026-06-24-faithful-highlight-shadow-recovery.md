@@ -77,8 +77,8 @@ fn highlight_recovery_separates_crushed_highlights() {
 fn shadow_recovery_separates_crushed_shadows() {
     let p0 = faithful_params();
     let mut p1 = p0.clone(); p1.lo_recovery = 1.0;
-    let a = [0.85, 0.85, 0.85]; // thin neg → deep shadow
-    let b = [0.78, 0.78, 0.78];
+    let a = [0.99, 0.99, 0.99]; // very thin neg → deeply crushed shadow (look_s toe, slope<1)
+    let b = [0.96, 0.96, 0.96];
     let sep0 = (invert_d(a, &p0)[0] - invert_d(b, &p0)[0]).abs();
     let sep1 = (invert_d(a, &p1)[0] - invert_d(b, &p1)[0]).abs();
     assert!(sep1 > sep0 + 1e-5, "recovery must separate shadows: sep0={sep0} sep1={sep1}");
@@ -120,7 +120,8 @@ fn recovery_curves_monotonic_and_in_gamut() {
         let s = 1.0 - i as f32 / 2000.0 * 0.999;
         let v = invert_d([s, s, s], &p)[0];
         assert!((0.0..=1.0).contains(&v), "out of gamut at s={s}: {v}");
-        assert!(v >= prev - 1e-5, "non-monotonic at s={s}: {v} < {prev}");
+        // 1e-4 >> f32 tanh/exp noise, << an 8-bit step (1/255≈3.9e-3); guards real folds
+        assert!(v >= prev - 1e-4, "non-monotonic at s={s}: {v} < {prev}");
         prev = v;
     }
 }
@@ -171,12 +172,13 @@ Replace `look_s` (~146-149):
 fn look_s(v: f32, lo_recovery: f32) -> f32 {
     // Shadow recovery softens the toe (v<0.5) via a smoothstep weight that is 1 at
     // deep shadow and 0 by mid-gray, so the shoulder and the mid-gray slope are
-    // untouched (no kink). Normalisation keeps the fixed LOOK_K so white still
-    // anchors to 1.0. lo_recovery=0 → the original symmetric tanh exactly.
+    // untouched (no kink). The per-point normaliser `tanh(k·0.5)` pins look_s(0)=0
+    // and look_s(1)=1 for ANY k, so recovery re-separates crushed darks without
+    // lifting black to milky grey. lo_recovery=0 → k=LOOK_K → the original tanh.
     let s = ((0.5 - v) / 0.5).clamp(0.0, 1.0);
     let w = s * s * (3.0 - 2.0 * s); // smoothstep: 1 (v=0) → 0 (v≥0.5)
     let k = LOOK_K * (1.0 - REC_S_GAIN * lo_recovery * w);
-    let t = (LOOK_K * 0.5).tanh();
+    let t = (k * 0.5).tanh();
     (0.5 + 0.5 * (k * (v - 0.5)).tanh() / t).clamp(0.0, 1.0)
 }
 ```
@@ -433,7 +435,8 @@ float lookS(float v, float lo_recovery) {
   float s = clamp((0.5 - v) / 0.5, 0.0, 1.0);
   float w = s * s * (3.0 - 2.0 * s);
   float k = LOOK_K * (1.0 - REC_S_GAIN * lo_recovery * w);
-  return clamp(0.5 + 0.5 * tanh(k * (v - 0.5)) / tanh(LOOK_K * 0.5), 0.0, 1.0);
+  // Per-point normaliser tanh(k·0.5) pins 0→0 / 1→1 for any k. MUST match engine.rs.
+  return clamp(0.5 + 0.5 * tanh(k * (v - 0.5)) / tanh(k * 0.5), 0.0, 1.0);
 }
 float gammaShoulder(float x, float ceil_val, float hi_recovery) {
   float raw = pow(max(x, 0.0), 1.0 / FAITHFUL_GAMMA);
