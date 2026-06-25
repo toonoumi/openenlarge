@@ -1,3 +1,4 @@
+pub mod autocrop;
 pub mod bench;
 pub mod calibrate;
 pub mod chart;
