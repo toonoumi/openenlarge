@@ -1,104 +1,159 @@
-//! Detect a bright lightbox / scanner border around a film scan and return the
-//! framed content rectangle. Runs on the import-time thumbnail. Conservative by
-//! design: only fires on an unmistakable 4-sided flat-white border, otherwise
-//! returns `None` (leave the image full-frame).
+//! Detect the photographic FRAME on a 35mm film-strip scan and return its
+//! rectangle, so import can crop away the sprocket-hole rebate (top/bottom) and
+//! the dark scan margins (sides). Runs on the import-time thumbnail proxy.
+//!
+//! Signal (see the design doc): on a strip scan the rebate bands that carry the
+//! sprocket holes read as rows/cols with a high BRIGHT fraction — clear film
+//! punches bright lightbox through the holes — while the dark scan border beside
+//! the film reads as near-black rows/cols. The frame is the central region
+//! between them. Conservative: only fires when one axis shows a sprocket band on
+//! BOTH opposite edges (the unmistakable film-strip fingerprint); otherwise
+//! returns `None` and the image is left full-frame.
 
 use crate::image::Image;
 
-// A pixel counts as "white" when all three linear channels are near max.
-const WHITE_THRESH: f32 = 0.90;
-// A border row/column is a "white margin" when this fraction of its pixels are white.
-const WHITE_FRAC: f32 = 0.95;
-// Per-side trim must stay under this fraction of the dimension (rejects runaway crops).
-const MAX_TRIM: f32 = 0.25;
-// The trimmed border must be flat: high mean brightness, low variance.
-const MARGIN_MEAN_MIN: f32 = 0.92;
-const MARGIN_STD_MAX: f32 = 0.02;
+// A pixel is "bright" (sprocket hole / clear film over the lightbox) above this luma.
+const BRIGHT_T: f32 = 0.5;
+// A row/col is part of a sprocket rebate band when at least this fraction is bright.
+const BF_SPROCKET: f32 = 0.45;
+// A row/col is a dark scan margin when its mean luma is at or below this.
+const DARK_T: f32 = 0.06;
+// The rebate is always near the edge: only look this deep (fraction of the axis)
+// from each side for the sprocket band, so bright FRAME content mid-image is not
+// mistaken for rebate.
+const REBATE_ZONE: f32 = 0.35;
+// A sprocket band must be at least this thick (fraction of the axis) to count as
+// the strip fingerprint.
+const MIN_REBATE_FRAC: f32 = 0.03;
+// Each side may trim at most this fraction of its axis.
+const MAX_TRIM: f32 = 0.40;
+// The kept frame must retain at least this fraction of the total area.
+const MIN_KEEP_AREA: f32 = 0.25;
 
-fn is_white(p: [f32; 3]) -> bool {
-    p[0] >= WHITE_THRESH && p[1] >= WHITE_THRESH && p[2] >= WHITE_THRESH
+fn luma(p: [f32; 3]) -> f32 {
+    0.2126 * p[0] + 0.7152 * p[1] + 0.0722 * p[2]
 }
 
-/// Detect a bright lightbox/scanner border. Returns the content rect as
-/// `[x, y, w, h]` normalized 0..1, or `None` if there is no confident 4-sided
-/// flat-white border. See module docs for the conservative guard rules.
-pub fn detect_lightbox_crop(img: &Image) -> Option<[f32; 4]> {
+/// Per-line bright fraction and mean luma along one axis. `lines` is the number
+/// of lines (rows or cols); `along` is the length of each line. `at(line, k)`
+/// returns the pixel at position `k` along `line`.
+fn line_stats(lines: usize, along: usize, at: impl Fn(usize, usize) -> [f32; 3]) -> (Vec<f32>, Vec<f32>) {
+    let mut bf = vec![0.0f32; lines];
+    let mut mean = vec![0.0f32; lines];
+    for l in 0..lines {
+        let mut bright = 0u32;
+        let mut sum = 0.0f32;
+        for k in 0..along {
+            let v = luma(at(l, k));
+            if v > BRIGHT_T {
+                bright += 1;
+            }
+            sum += v;
+        }
+        bf[l] = bright as f32 / along as f32;
+        mean[l] = sum / along as f32;
+    }
+    (bf, mean)
+}
+
+/// Sprocket-band inner edges along one axis. Returns
+/// `(lo_inner, lo_count, hi_inner, hi_count)`: `lo_inner` is just past the
+/// deepest sprocket line in the outer (low-side) zone; `hi_inner` is the
+/// shallowest sprocket line in the outer (high-side) zone; the counts are how
+/// many sprocket lines were seen in each zone. `hi_inner` is exclusive.
+fn sprocket_edges(n: usize, bf: &[f32]) -> (usize, usize, usize, usize) {
+    let zone = ((n as f32 * REBATE_ZONE) as usize).max(1).min(n);
+    let mut lo_inner = 0usize;
+    let mut lo_count = 0usize;
+    for i in 0..zone {
+        if bf[i] >= BF_SPROCKET {
+            lo_inner = i + 1;
+            lo_count += 1;
+        }
+    }
+    let mut hi_inner = n;
+    let mut hi_count = 0usize;
+    for i in (n - zone..n).rev() {
+        if bf[i] >= BF_SPROCKET {
+            hi_inner = i;
+            hi_count += 1;
+        }
+    }
+    (lo_inner, lo_count, hi_inner, hi_count)
+}
+
+/// Depth of the contiguous near-black margin from each edge along one axis.
+/// Returns `(lo, hi)` where `[0, lo)` and `[hi, n)` are dark; `hi` exclusive.
+fn dark_edges(n: usize, mean: &[f32]) -> (usize, usize) {
+    let mut lo = 0usize;
+    while lo < n && mean[lo] <= DARK_T {
+        lo += 1;
+    }
+    let mut hi = n;
+    while hi > 0 && mean[hi - 1] <= DARK_T {
+        hi -= 1;
+    }
+    (lo, hi)
+}
+
+/// Detect the photographic frame on a film-strip scan. Returns `[x, y, w, h]`
+/// normalized 0..1, or `None` when the image is not a recognizable strip scan.
+pub fn detect_film_frame_crop(img: &Image) -> Option<[f32; 4]> {
     let (w, h) = (img.width, img.height);
     if w < 8 || h < 8 {
         return None;
     }
     let px = |x: usize, y: usize| img.pixels[y * w + x];
 
-    let row_is_margin = |y: usize| -> bool {
-        let white = (0..w).filter(|&x| is_white(px(x, y))).count();
-        white as f32 / w as f32 >= WHITE_FRAC
-    };
-    let col_is_margin = |x: usize| -> bool {
-        let white = (0..h).filter(|&y| is_white(px(x, y))).count();
-        white as f32 / h as f32 >= WHITE_FRAC
-    };
+    let (row_bf, row_mean) = line_stats(h, w, |y, x| px(x, y));
+    let (col_bf, col_mean) = line_stats(w, h, |x, y| px(x, y));
 
-    // Scan inward from each edge to the first non-margin line.
-    let top = (0..h).find(|&y| !row_is_margin(y)).unwrap_or(h);
-    let bottom = (0..h).rev().find(|&y| !row_is_margin(y)).unwrap_or(0);
-    let left = (0..w).find(|&x| !col_is_margin(x)).unwrap_or(w);
-    let right = (0..w).rev().find(|&x| !col_is_margin(x)).unwrap_or(0);
-
-    // Closing frame: every side must have at least one white-margin line, and the
-    // content box must be non-degenerate.
-    if top == 0 || left == 0 || bottom + 1 >= h || right + 1 >= w {
-        return None;
-    }
-    if right <= left || bottom <= top {
+    // Sprocket bands per axis, and the strip fingerprint: a sprocket band on BOTH
+    // ends of an axis. Only an axis that passes the fingerprint is allowed to
+    // trim by sprockets — otherwise bright FRAME content near an edge of the
+    // CROSS axis (e.g. a blown sky on one side) would be mistaken for a rebate.
+    let min_rebate = (h.max(w) as f32 * MIN_REBATE_FRAC).ceil() as usize;
+    let (v_lo, v_lo_c, v_hi, v_hi_c) = sprocket_edges(h, &row_bf);
+    let (hz_lo, hz_lo_c, hz_hi, hz_hi_c) = sprocket_edges(w, &col_bf);
+    let v_strip = v_lo_c >= min_rebate && v_hi_c >= min_rebate;
+    let h_strip = hz_lo_c >= min_rebate && hz_hi_c >= min_rebate;
+    if !(v_strip || h_strip) {
         return None;
     }
 
-    // Modest trim: each side keeps the crop reasonable.
+    // Each side trims the deeper of its dark margin and (only on the strip axis)
+    // its sprocket band.
+    let (dark_top, dark_bottom) = dark_edges(h, &row_mean);
+    let (dark_left, dark_right) = dark_edges(w, &col_mean);
+    let top = if v_strip { v_lo.max(dark_top) } else { dark_top };
+    let bottom = if v_strip { v_hi.min(dark_bottom) } else { dark_bottom };
+    let left = if h_strip { hz_lo.max(dark_left) } else { dark_left };
+    let right = if h_strip { hz_hi.min(dark_right) } else { dark_right };
+
+    // Non-degenerate frame.
+    if top + 1 >= bottom || left + 1 >= right {
+        return None;
+    }
+
+    // Trim sanity: no single side eats too much; keep enough area.
     let trim_top = top as f32 / h as f32;
-    let trim_bottom = (h - 1 - bottom) as f32 / h as f32;
+    let trim_bottom = (h - bottom) as f32 / h as f32;
     let trim_left = left as f32 / w as f32;
-    let trim_right = (w - 1 - right) as f32 / w as f32;
-    if trim_top >= MAX_TRIM
-        || trim_bottom >= MAX_TRIM
-        || trim_left >= MAX_TRIM
-        || trim_right >= MAX_TRIM
-    {
+    let trim_right = (w - right) as f32 / w as f32;
+    if trim_top >= MAX_TRIM || trim_bottom >= MAX_TRIM || trim_left >= MAX_TRIM || trim_right >= MAX_TRIM {
+        return None;
+    }
+    let kept = (right - left) as f32 / w as f32 * (bottom - top) as f32 / h as f32;
+    if kept < MIN_KEEP_AREA {
         return None;
     }
 
-    // Flatness: the trimmed border must be uniformly bright (rejects skies/walls).
-    // Accumulate luma over the four margin bands (outside the content box).
-    let mut sum = 0.0f64;
-    let mut sum_sq = 0.0f64;
-    let mut n = 0u64;
-    for y in 0..h {
-        for x in 0..w {
-            let in_content = x >= left && x <= right && y >= top && y <= bottom;
-            if in_content {
-                continue;
-            }
-            let p = px(x, y);
-            let luma = (0.2126 * p[0] + 0.7152 * p[1] + 0.0722 * p[2]) as f64;
-            sum += luma;
-            sum_sq += luma * luma;
-            n += 1;
-        }
-    }
-    if n == 0 {
-        return None;
-    }
-    let mean = sum / n as f64;
-    let var = (sum_sq / n as f64 - mean * mean).max(0.0);
-    let std = var.sqrt();
-    if mean < MARGIN_MEAN_MIN as f64 || std > MARGIN_STD_MAX as f64 {
-        return None;
-    }
-
-    let x = left as f32 / w as f32;
-    let y = top as f32 / h as f32;
-    let rw = (right - left + 1) as f32 / w as f32;
-    let rh = (bottom - top + 1) as f32 / h as f32;
-    Some([x, y, rw, rh])
+    Some([
+        left as f32 / w as f32,
+        top as f32 / h as f32,
+        (right - left) as f32 / w as f32,
+        (bottom - top) as f32 / h as f32,
+    ])
 }
 
 #[cfg(test)]
@@ -106,86 +161,109 @@ mod tests {
     use super::*;
     use crate::image::Image;
 
-    /// Build a `w`×`h` image filled with `bg`, then paint an inner rectangle
-    /// [x0,x1)×[y0,y1) with `fg`.
-    fn boxed(
-        w: usize,
-        h: usize,
-        bg: [f32; 3],
-        fg: [f32; 3],
-        x0: usize,
-        y0: usize,
-        x1: usize,
-        y1: usize,
-    ) -> Image {
+    /// Build a synthetic horizontal film-strip scan:
+    /// - dark scan margins on the left/right (`margin` px each),
+    /// - top & bottom sprocket rebate bands (`rebate` px each): dark film base with
+    ///   periodic bright "holes",
+    /// - a mid-gray photographic frame in the middle.
+    fn strip(w: usize, h: usize, rebate: usize, margin: usize) -> Image {
         let mut img = Image::new(w, h);
+        let dark = [0.02, 0.02, 0.02];
+        let frame = [0.30, 0.25, 0.22];
+        let hole = [0.95, 0.95, 0.95];
         for y in 0..h {
+            let in_rebate = y < rebate || y >= h - rebate;
             for x in 0..w {
-                let inside = x >= x0 && x < x1 && y >= y0 && y < y1;
-                img.pixels[y * w + x] = if inside { fg } else { bg };
+                let p = if x < margin || x >= w - margin {
+                    dark
+                } else if in_rebate {
+                    // periodic holes: ~50% of the rebate width is hole.
+                    if (x / 12) % 2 == 0 {
+                        hole
+                    } else {
+                        dark
+                    }
+                } else {
+                    frame
+                };
+                img.pixels[y * w + x] = p;
             }
         }
         img
     }
 
-    const WHITE: [f32; 3] = [1.0, 1.0, 1.0];
-    const GRAY: [f32; 3] = [0.3, 0.25, 0.2];
-
     #[test]
-    fn detects_white_border_around_content() {
-        // 100×100, white border 10px on every side, gray center [10,90)×[10,90).
-        let img = boxed(100, 100, WHITE, GRAY, 10, 10, 90, 90);
-        let r = detect_lightbox_crop(&img).expect("should detect border");
-        let [x, y, w, h] = r;
-        assert!((x - 0.10).abs() < 0.02, "x={x}");
-        assert!((y - 0.10).abs() < 0.02, "y={y}");
-        assert!((w - 0.80).abs() < 0.02, "w={w}");
-        assert!((h - 0.80).abs() < 0.02, "h={h}");
+    fn detects_frame_between_sprocket_bands() {
+        // 320x214, 24px rebate top/bottom, 20px dark margin each side.
+        let img = strip(320, 214, 24, 20);
+        let [x, y, rw, rh] = detect_film_frame_crop(&img).expect("should detect frame");
+        // top/bottom trimmed to ~24px → y≈0.112, h≈0.776; sides ~20px → x≈0.0625, w≈0.875.
+        assert!((y - 24.0 / 214.0).abs() < 0.04, "y={y}");
+        assert!((rh - (214.0 - 48.0) / 214.0).abs() < 0.06, "rh={rh}");
+        assert!((x - 20.0 / 320.0).abs() < 0.03, "x={x}");
+        assert!((rw - (320.0 - 40.0) / 320.0).abs() < 0.04, "rw={rw}");
     }
 
     #[test]
-    fn no_border_returns_none() {
-        // Solid gray, no white margin anywhere.
-        let img = boxed(100, 100, GRAY, GRAY, 0, 0, 100, 100);
-        assert_eq!(detect_lightbox_crop(&img), None);
+    fn plain_photo_is_not_a_strip() {
+        // Uniform mid-gray: no sprocket bands, no dark margins → None.
+        let mut img = Image::new(320, 214);
+        for p in img.pixels.iter_mut() {
+            *p = [0.3, 0.3, 0.3];
+        }
+        assert_eq!(detect_film_frame_crop(&img), None);
     }
 
     #[test]
-    fn one_bright_edge_is_not_a_frame() {
-        // White only along the top 10 rows; other three sides are gray.
-        // Not a closing frame → None.
-        let img = boxed(100, 100, GRAY, WHITE, 0, 0, 100, 10);
-        assert_eq!(detect_lightbox_crop(&img), None);
-    }
-
-    #[test]
-    fn gradient_border_is_rejected_by_variance() {
-        // Build a frame whose border is a vertical brightness gradient (like a
-        // sky), bright enough to pass the white threshold at the very edge but
-        // high-variance across the margin → rejected.
-        let (w, h) = (100usize, 100usize);
-        let mut img = Image::new(w, h);
-        for y in 0..h {
-            for x in 0..w {
-                let inside = x >= 10 && x < 90 && y >= 10 && y < 90;
-                let v = if inside { 0.3 } else { 0.90 + 0.10 * (x as f32 / w as f32) };
-                img.pixels[y * w + x] = [v, v, v];
+    fn one_bright_edge_is_not_a_strip() {
+        // Bright band only along the top (like a blown sky), gray elsewhere. Only
+        // one end has a sprocket-like band → fails the both-ends fingerprint → None.
+        let mut img = Image::new(320, 214);
+        for y in 0..214 {
+            for x in 0..320 {
+                img.pixels[y * 320 + x] = if y < 24 { [0.95, 0.95, 0.95] } else { [0.3, 0.3, 0.3] };
             }
         }
-        assert_eq!(detect_lightbox_crop(&img), None);
+        assert_eq!(detect_film_frame_crop(&img), None);
     }
 
     #[test]
-    fn runaway_crop_is_rejected() {
-        // White border 40px each side on a 100px image → would trim 40% per
-        // side (> 25% cap) → None.
-        let img = boxed(100, 100, WHITE, GRAY, 40, 40, 60, 60);
-        assert_eq!(detect_lightbox_crop(&img), None);
+    fn bright_frame_content_does_not_overcrop() {
+        // Strip with a bright horizontal band in the MIDDLE of the frame (a window/
+        // sky in the photo). The rebate-zone cap means it is not mistaken for a
+        // sprocket band, so the crop stays at the real rebate edges.
+        let mut img = strip(320, 214, 24, 20);
+        for y in 100..114 {
+            for x in 20..300 {
+                img.pixels[y * 320 + x] = [0.9, 0.9, 0.9];
+            }
+        }
+        let [_, y, _, rh] = detect_film_frame_crop(&img).expect("should still detect");
+        assert!((y - 24.0 / 214.0).abs() < 0.05, "y={y} (should crop at rebate, not the mid band)");
+        assert!(rh > 0.6, "rh={rh} (frame not eaten by the mid bright band)");
     }
 
     #[test]
-    fn ignores_tiny_or_degenerate_images() {
-        let img = Image::new(1, 1);
-        assert_eq!(detect_lightbox_crop(&img), None);
+    fn bright_content_on_one_side_does_not_overcrop_width() {
+        // Horizontal strip (sprockets top/bottom) with a blown-bright region
+        // filling the RIGHT third of the frame (a sky). The horizontal axis has no
+        // sprocket fingerprint, so those bright columns must NOT pull the right
+        // edge in — width stays full to the dark side margins.
+        let mut img = strip(320, 214, 24, 20);
+        for y in 24..(214 - 24) {
+            for x in 210..300 {
+                img.pixels[y * 320 + x] = [0.95, 0.95, 0.95];
+            }
+        }
+        let [x, _, rw, _] = detect_film_frame_crop(&img).expect("should detect");
+        // Right edge stays at the ~20px dark margin (x≈0.0625, w≈0.875), NOT pulled
+        // in to the bright region at x≈210/320≈0.656.
+        assert!((x - 20.0 / 320.0).abs() < 0.03, "x={x}");
+        assert!(rw > 0.82, "rw={rw} (right edge wrongly pulled in by bright content)");
+    }
+
+    #[test]
+    fn rejects_tiny_images() {
+        assert_eq!(detect_film_frame_crop(&Image::new(4, 4)), None);
     }
 }

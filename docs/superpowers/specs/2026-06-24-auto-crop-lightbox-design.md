@@ -1,7 +1,52 @@
-# Auto-trim lightbox border on import — design
+# Auto-crop on import — design
 
 **Date:** 2026-06-24
-**Status:** Approved, ready for implementation plan
+**Status:** Implemented. **Pivoted** from lightbox-border trimming to film-strip
+frame detection (see "Revision" below).
+
+## Revision (2026-06-24): film-strip frame detection
+
+The original design (below) assumed scans are a frame floating in a blown-white
+lightbox/scanner border. GUI testing on the user's real scans (`~/Desktop/kevin`,
+Sony ARW) showed they are **full-strip 35mm scans**: sprocket holes + dark film
+rebate top/bottom, dark scan margins on the sides, and no blown-white border at
+all (0% of pixels reached the white threshold). Per user decision, the
+white-border detector was **replaced** (not augmented) with a film-strip frame
+detector. Everything else (per-image, on-import, toast, `cropById` wiring,
+Roll/Frame semantics) is unchanged from the original design.
+
+**Signal (measured on the real files):** on a strip scan the sprocket rebate
+bands read as rows/cols with a high **bright fraction** (clear holes punch bright
+lightbox through), while the dark scan border beside the film reads as near-black
+rows/cols. The photographic frame is the central region between them.
+
+**Algorithm (`detect_film_frame_crop`, `crates/film-core/src/autocrop.rs`):**
+- Per-row and per-col bright-fraction (luma > 0.5) and mean luma.
+- Sprocket band per side = sprocket lines (bright-fraction ≥ 0.45) within the
+  outer 35% of the axis; crop to the band's inner edge.
+- Dark margin per side = contiguous near-black (mean ≤ 0.06) from the edge.
+- Each side trims the deeper of its dark margin and — **only on an axis whose
+  both ends carry a sprocket band** — its sprocket band. Gating sprocket-trim to
+  the confirmed strip axis prevents bright FRAME content near a cross-axis edge
+  (e.g. a blown sky on one side) from being mistaken for a rebate and
+  over-cropping the width.
+- **Strip fingerprint guard:** fire only when one axis has a sprocket band (each
+  ≥ 3% thick) on BOTH ends — the unmistakable film-strip signature. Plus per-side
+  trim < 40% and kept area ≥ 25%. Otherwise `None` (leave full-frame, no toast).
+- Returns `Option<[f32; 4]>` (`[x,y,w,h]` normalized 0..1). Unchanged wiring:
+  computed on the thumbnail proxy in `import_compute`, returned via
+  `ImageEntry.auto_crop`, applied to `cropById` on the frontend with the
+  `toast.frameTrimmed` toast.
+
+**Validated** against all four `kevin` ARWs by rendering the detected crop: 776
+tight/accurate, 799 & 811 full frame with sprockets+margins excluded, 774 (an odd
+half-blank between-frames exposure) correctly excludes the sprocket bands. Tuning
+knobs if it misfires on other rolls: `BF_SPROCKET`, `DARK_T`, `REBATE_ZONE`,
+`MAX_TRIM`.
+
+---
+
+_Original design (white-border approach — superseded by the revision above):_
 
 ## Problem
 

@@ -476,7 +476,7 @@ export const dict: Record<string, Record<string, string>> = {
     "settings.storage.reset": "Reset all data",
     "settings.storage.resetHint": "Removes all rolls, folders, and edits. Your preferences are kept.",
     "settings.storage.resetConfirm": "Reset all data? This permanently removes every roll, folder, edit, and the image cache. Your preferences (language, API key, shortcuts) are kept. The app will restart.",
-    "toast.lightboxTrimmed": "Lightbox detected, automatically trimming",
+    "toast.frameTrimmed": "Film frame detected, auto-cropping",
   },
   zh: {
     "app.brand": "OpenEnlarge",
@@ -953,7 +953,7 @@ export const dict: Record<string, Record<string, string>> = {
     "settings.storage.reset": "重置所有数据",
     "settings.storage.resetHint": "移除所有胶卷、文件夹和编辑。你的偏好设置会保留。",
     "settings.storage.resetConfirm": "重置所有数据？这会永久移除所有胶卷、文件夹、编辑和图像缓存。你的偏好设置（语言、API 密钥、快捷键）会保留。应用将重启。",
-    "toast.lightboxTrimmed": "检测到灯箱，自动裁切",
+    "toast.frameTrimmed": "检测到画幅，自动裁切",
   },
   ja: {
     "app.brand": "OpenEnlarge",
@@ -1430,7 +1430,7 @@ export const dict: Record<string, Record<string, string>> = {
     "settings.storage.reset": "すべてのデータをリセット",
     "settings.storage.resetHint": "すべてのロール・フォルダ・編集を削除します。設定は保持されます。",
     "settings.storage.resetConfirm": "すべてのデータをリセットしますか？すべてのロール・フォルダ・編集・画像キャッシュが完全に削除されます。設定（言語・API キー・ショートカット）は保持されます。アプリが再起動します。",
-    "toast.lightboxTrimmed": "ライトボックスを検出、自動でトリミングしました",
+    "toast.frameTrimmed": "フレームを検出、自動でトリミングしました",
   },
   ko: {
     "app.brand": "OpenEnlarge",
@@ -1907,6 +1907,6 @@ export const dict: Record<string, Record<string, string>> = {
     "settings.storage.reset": "모든 데이터 초기화",
     "settings.storage.resetHint": "모든 롤, 폴더, 편집을 삭제합니다. 환경설정은 유지됩니다.",
     "settings.storage.resetConfirm": "모든 데이터를 초기화하시겠습니까? 모든 롤, 폴더, 편집, 이미지 캐시가 영구 삭제됩니다. 환경설정(언어, API 키, 단축키)은 유지됩니다. 앱이 재시작됩니다.",
-    "toast.lightboxTrimmed": "라이트박스 감지됨, 자동으로 잘라냄",
+    "toast.frameTrimmed": "필름 프레임 감지됨, 자동으로 자르기",
   },
 };

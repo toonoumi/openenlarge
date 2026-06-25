@@ -105,7 +105,7 @@ export async function importPaths(paths: string[]): Promise<void> {
           angle: 0,
         };
         cropById.update((m) => ({ ...m, [entry.id]: crop }));
-        showToast(translate("toast.lightboxTrimmed"));
+        showToast(translate("toast.frameTrimmed"));
       }
     } catch (e) { console.error("import failed", path, e); }
   }
