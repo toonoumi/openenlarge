@@ -575,7 +575,7 @@ pub async fn import_image(
     // populate progressively. No `Session`/`Catalog` borrow crosses the boundary;
     // the catalog upsert + session insert happen back here on the async side.
     let path_for_compute = path.clone();
-    let (thumbnail, file_name, metadata, metadata_json) =
+    let (thumbnail, file_name, metadata, metadata_json, auto_crop) =
         tauri::async_runtime::spawn_blocking(move || import_compute(path_for_compute))
             .await
             .map_err(|e| e.to_string())??;
@@ -594,16 +594,27 @@ pub async fn import_image(
         developed: None,
         last_access: 0,
     };
-    Ok(session.insert_with_id(id, cached))
+    let mut entry = session.insert_with_id(id, cached);
+    entry.auto_crop = auto_crop.map(|[x, y, w, h]| crate::session::AutoCropRect { x, y, w, h });
+    Ok(entry)
 }
 
 /// CPU-bound half of `import_image`, run on `spawn_blocking`: build the light
 /// thumbnail and extract metadata. Owned in / owned out so no `Session`/`Catalog`
 /// borrow crosses the thread boundary. Returns `(thumbnail, file_name, metadata,
-/// metadata_json)`.
+/// metadata_json, auto_crop)`.
 fn import_compute(
     path: String,
-) -> Result<(String, String, crate::metadata::Metadata, String), String> {
+) -> Result<
+    (
+        String,
+        String,
+        crate::metadata::Metadata,
+        String,
+        Option<[f32; 4]>,
+    ),
+    String,
+> {
     let p = Path::new(&path);
     // Light thumbnail so the Library grid shows a real picture the instant a file is
     // imported, before develop:
@@ -635,6 +646,11 @@ fn import_compute(
                     .flatten()
             }),
     };
+    // Detect a bright lightbox/scanner border on the decoded preview so the
+    // frontend can set the image's initial crop to the framed content.
+    let auto_crop = preview
+        .as_ref()
+        .and_then(film_core::autocrop::detect_lightbox_crop);
     let thumbnail = match preview {
         Some(prev) => to_png_b64(&proxy(&prev, THUMB_EDGE), true)?,
         None => "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==".to_string(),
@@ -646,7 +662,7 @@ fn import_compute(
         .unwrap_or("image")
         .to_string();
     let metadata_json = metadata_to_json(&metadata)?;
-    Ok((thumbnail, file_name, metadata, metadata_json))
+    Ok((thumbnail, file_name, metadata, metadata_json, auto_crop))
 }
 
 /// List the absolute paths of regular files under `dir`, recursing into every
@@ -804,6 +820,7 @@ async fn develop_heavy(
             offline: false,
             positive: c.positive,
             thumb_stale: false,
+            auto_crop: None,
         };
         (entry, metadata_json)
     }; // lock released here
@@ -855,6 +872,7 @@ pub async fn ensure_developed(
             offline: false,
             positive: dev.positive,
             thumb_stale: false,
+            auto_crop: None,
         })
     };
 

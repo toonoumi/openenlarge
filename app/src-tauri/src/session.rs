@@ -233,6 +233,16 @@ fn tone_mode_filmic() -> String {
     "filmic".to_string()
 }
 
+/// Import-time auto-detected lightbox crop, normalized 0..1 on the source image.
+/// Present only on freshly imported entries that had a confident lightbox border.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct AutoCropRect {
+    pub x: f32,
+    pub y: f32,
+    pub w: f32,
+    pub h: f32,
+}
+
 /// What the frontend gets per image.
 #[derive(Debug, Clone, Serialize)]
 pub struct ImageEntry {
@@ -253,6 +263,10 @@ pub struct ImageEntry {
     /// lazily regenerates). A freshly rendered entry is never stale.
     #[serde(default)]
     pub thumb_stale: bool,
+    /// Import-time auto lightbox crop, normalized 0..1. None when no confident
+    /// border was found. Only set on fresh imports; the frontend applies it once.
+    #[serde(default)]
+    pub auto_crop: Option<AutoCropRect>,
 }
 
 /// Decoded working data, present once an image is developed.
@@ -414,6 +428,7 @@ impl Session {
             offline: false,
             positive: false,
             thumb_stale: false,
+            auto_crop: None,
         };
         self.images.lock().unwrap().insert(id, img);
         entry
