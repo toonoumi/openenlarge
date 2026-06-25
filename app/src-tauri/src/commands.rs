@@ -646,13 +646,16 @@ fn import_compute(
                     .flatten()
             }),
     };
-    // Detect a bright lightbox/scanner border on the decoded preview so the
-    // frontend can set the image's initial crop to the framed content.
-    let auto_crop = preview
-        .as_ref()
-        .and_then(film_core::autocrop::detect_lightbox_crop);
+    // Detect the lightbox border on the SAME small THUMB_EDGE proxy we build for
+    // the thumbnail — coordinates are normalized so the result matches the full
+    // image, and we avoid scanning a full-resolution preview (LDR/TIFF can be 24MP).
+    let mut auto_crop = None;
     let thumbnail = match preview {
-        Some(prev) => to_png_b64(&proxy(&prev, THUMB_EDGE), true)?,
+        Some(prev) => {
+            let small = proxy(&prev, THUMB_EDGE);
+            auto_crop = film_core::autocrop::detect_lightbox_crop(&small);
+            to_png_b64(&small, true)?
+        }
         None => "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==".to_string(),
     };
     let metadata = extract(p, 0, 0);
