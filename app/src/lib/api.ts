@@ -22,6 +22,8 @@ export interface ImageEntry {
   positive: boolean;
   /** Baked thumbnail predates the current render engine → grid lazily regenerates. */
   thumb_stale?: boolean;
+  /** Import-time auto-detected lightbox crop, normalized 0..1; applied once by the import loop. */
+  auto_crop?: { x: number; y: number; w: number; h: number } | null;
 }
 /** A tone-curve control point in [0,1]×[0,1] (input → output). */
 export type CurvePoint = [number, number];

@@ -1,6 +1,7 @@
 import { get } from "svelte/store";
 import { images, activeId, module, developProgress, editsById, cropById, dustById, folderImages, invalidatePreview, undevelopableIds } from "./store";
 import { api, defaultParams, type ImageEntry, type InvertParams } from "./api";
+import type { CropRect } from "./crop/types";
 import { dropHistory, reseedActive } from "./develop/historyStore";
 import { track } from "./telemetry";
 import { showToast } from "./toast";
@@ -92,6 +93,20 @@ export async function importPaths(paths: string[]): Promise<void> {
           ? xs.map((i) => (i.id === entry.id ? entry : i))
           : [...xs, entry]);
       activeId.update((id) => id ?? entry.id);
+      if (entry.auto_crop) {
+        const a = entry.auto_crop;
+        const crop: CropRect = {
+          rect: { x: a.x, y: a.y, w: a.w, h: a.h },
+          aspect: "original",
+          orientation: "landscape",
+          rot90: 0,
+          flipH: false,
+          flipV: false,
+          angle: 0,
+        };
+        cropById.update((m) => ({ ...m, [entry.id]: crop }));
+        showToast(translate("toast.lightboxTrimmed"));
+      }
     } catch (e) { console.error("import failed", path, e); }
   }
 }
