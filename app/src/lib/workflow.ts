@@ -169,22 +169,29 @@ export async function seedFrame(id: string, img: ImageEntry, solveExposure: bool
   const dir = imageDir(img);
   const prior = get(editsById)[id];
   const seed: InvertParams = prior ? { ...prior } : { ...defaultParams(), positive: img.positive };
+  // Seed-time analysis must meter the cropped frame, not the full scan — otherwise
+  // the auto-crop's excluded region (sprocket rebate / dark margins) skews exposure
+  // and WB, and the frame only looks right after a manual auto-exp tap in Frame
+  // (which is crop-aware). Mirror Basic.svelte's manual seed: pass crop + geom.
+  const c = get(cropById)[id] ?? null;
+  const crop = c ? ([c.rect.x, c.rect.y, c.rect.w, c.rect.h] as [number, number, number, number]) : null;
+  const geom = c ? { rot90: c.rot90, flip_h: c.flipH, flip_v: c.flipV, angle: c.angle } : {};
   try {
-    const wb = await api.asShotWb(id, withEffectiveBase(seed, dir));
+    const wb = await api.asShotWb(id, withEffectiveBase(seed, dir), crop, geom);
     Object.assign(seed, applyAsShotWb(seed, wb), { wb_manual: false });
   } catch { return; /* not resident — per-image seed retries on activation */ }
   if (solveExposure) {
     try {
-      const { exposure } = await api.autoBrightness(id, withEffectiveBase(seed, dir));
+      const { exposure } = await api.autoBrightness(id, withEffectiveBase(seed, dir), crop, geom);
       seed.exposure = exposure;
     } catch { /* not resident */ }
     try {
-      const wb2 = await api.asShotWb(id, withEffectiveBase(seed, dir));
+      const wb2 = await api.asShotWb(id, withEffectiveBase(seed, dir), crop, geom);
       Object.assign(seed, applyAsShotWb(seed, wb2), { wb_manual: false });
     } catch { /* not resident */ }
   }
   try {
-    const pz = await api.perZoneWb(id, withEffectiveBase(seed, dir));
+    const pz = await api.perZoneWb(id, withEffectiveBase(seed, dir), crop, geom);
     seed.pz_sh = pz.sh; seed.pz_mid = pz.mid; seed.pz_hi = pz.hi;
   } catch { /* keep identity pz on failure */ }
   editsById.update((m) => ({ ...m, [id]: seed }));
