@@ -12,6 +12,26 @@ use std::time::Instant;
 pub const CAP_BYTES: u64 = 10 * 1024 * 1024;
 pub const KEEP_BYTES: usize = 5 * 1024 * 1024;
 
+/// Write a debug line if `$log` (a `DebugLog`) is on. Best-effort.
+#[macro_export]
+macro_rules! dlog {
+    ($log:expr, $level:expr, $($arg:tt)*) => {
+        $log.write("BE", $level, &format!($($arg)*))
+    };
+}
+
+/// Time a block and emit a `PERF <op> <ms>ms` line. Returns the block's value.
+#[macro_export]
+macro_rules! time_op {
+    ($log:expr, $op:expr, $body:block) => {{
+        let __t = std::time::Instant::now();
+        let __r = $body;
+        let __ms = __t.elapsed().as_millis();
+        $log.write("BE", "PERF", &format!("{} {}ms", $op, __ms));
+        __r
+    }};
+}
+
 struct DebugLogInner {
     path: PathBuf,
     start: Instant,
@@ -188,6 +208,11 @@ pub fn install_panic_hook(log: DebugLog) {
         log.write("BE", "PANIC", &format!("{loc} {payload}"));
         prev(info);
     }));
+}
+
+/// Emit a startup-enable log line so the first session message is always visible.
+pub fn dlog_startup(log: &DebugLog) {
+    log.write("BE", "INFO", "debug mode enabled at startup");
 }
 
 /// Parse a debug log and produce a human-readable summary header. Pure function

@@ -567,36 +567,40 @@ pub async fn import_image(
     path: String,
     session: State<'_, Session>,
     catalog: State<'_, crate::catalog::Catalog>,
+    log: tauri::State<'_, crate::debug_log::DebugLog>,
 ) -> Result<ImageEntry, String> {
-    // The preview decode + metadata extraction run for tens of ms (RAW embedded
-    // preview) up to seconds (ORF full decode), and imports are driven serially per
-    // file from the frontend. Keep it off the main thread — which the WKWebView
-    // shares on macOS — like `develop_image`, so the UI stays live and thumbnails
-    // populate progressively. No `Session`/`Catalog` borrow crosses the boundary;
-    // the catalog upsert + session insert happen back here on the async side.
-    let path_for_compute = path.clone();
-    let (thumbnail, file_name, metadata, metadata_json, auto_crop) =
-        tauri::async_runtime::spawn_blocking(move || import_compute(path_for_compute))
-            .await
-            .map_err(|e| e.to_string())??;
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0);
-    let id = catalog
-        .upsert_image(&path, &file_name, &metadata_json, &thumbnail, now)
-        .map_err(|e| e.to_string())?;
-    let cached = CachedImage {
-        path,
-        file_name,
-        metadata,
-        thumbnail,
-        developed: None,
-        last_access: 0,
-    };
-    let mut entry = session.insert_with_id(id, cached);
-    entry.auto_crop = auto_crop.map(|[x, y, w, h]| crate::session::AutoCropRect { x, y, w, h });
-    Ok(entry)
+    let __log = log.inner().clone();
+    crate::time_op!(__log, "import_image", {
+        // The preview decode + metadata extraction run for tens of ms (RAW embedded
+        // preview) up to seconds (ORF full decode), and imports are driven serially per
+        // file from the frontend. Keep it off the main thread — which the WKWebView
+        // shares on macOS — like `develop_image`, so the UI stays live and thumbnails
+        // populate progressively. No `Session`/`Catalog` borrow crosses the boundary;
+        // the catalog upsert + session insert happen back here on the async side.
+        let path_for_compute = path.clone();
+        let (thumbnail, file_name, metadata, metadata_json, auto_crop) =
+            tauri::async_runtime::spawn_blocking(move || import_compute(path_for_compute))
+                .await
+                .map_err(|e| e.to_string())??;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        let id = catalog
+            .upsert_image(&path, &file_name, &metadata_json, &thumbnail, now)
+            .map_err(|e| e.to_string())?;
+        let cached = CachedImage {
+            path,
+            file_name,
+            metadata,
+            thumbnail,
+            developed: None,
+            last_access: 0,
+        };
+        let mut entry = session.insert_with_id(id, cached);
+        entry.auto_crop = auto_crop.map(|[x, y, w, h]| crate::session::AutoCropRect { x, y, w, h });
+        Ok(entry)
+    })
 }
 
 /// CPU-bound half of `import_image`, run on `spawn_blocking`: build the light
@@ -706,8 +710,12 @@ pub async fn develop_image(
     id: String,
     session: State<'_, Session>,
     catalog: State<'_, crate::catalog::Catalog>,
+    log: tauri::State<'_, crate::debug_log::DebugLog>,
 ) -> Result<ImageEntry, String> {
-    develop_heavy(id, &session, &catalog).await
+    let __log = log.inner().clone();
+    crate::time_op!(__log, "develop_image", {
+        develop_heavy(id, &session, &catalog).await
+    })
 }
 
 /// Owned result of the CPU-heavy decode/analysis, computed off the UI thread and
@@ -1105,7 +1113,9 @@ pub async fn render_view(
     params: InvertParams,
     view: ViewSpec,
     session: State<'_, Session>,
+    log: tauri::State<'_, crate::debug_log::DebugLog>,
 ) -> Result<String, String> {
+    let __log = log.inner().clone();
     ensure_resident(&session, &id)?;
     // Snapshot the owned inputs the CPU render needs, then drop the lock so the
     // pipeline (geometry → resize → invert → dust → finish → JPEG) can run off the
@@ -1123,11 +1133,14 @@ pub async fn render_view(
             img.metadata.height,
         )
     };
-    tauri::async_runtime::spawn_blocking(move || {
-        render_view_compute(&working, &thumb, base, d_max, meta_w, meta_h, &params, &view)
+    crate::time_op!(__log, "render_view", {
+        tauri::async_runtime::spawn_blocking(move || {
+            render_view_compute(&working, &thumb, base, d_max, meta_w, meta_h, &params, &view)
+        })
+        .await
+        .map_err(|e| e.to_string())
+        .and_then(|r| r)
     })
-    .await
-    .map_err(|e| e.to_string())?
 }
 
 /// Pure CPU render of one preview frame: geometry (orient → straighten → persistent
@@ -1363,7 +1376,9 @@ pub async fn thumbnail(
     params: InvertParams,
     view: ThumbView,
     session: State<'_, Session>,
+    log: tauri::State<'_, crate::debug_log::DebugLog>,
 ) -> Result<String, String> {
+    let __log = log.inner().clone();
     ensure_resident(&session, &id)?;
     // Snapshot the owned inputs under the lock, then drop it so the render runs
     // off-thread. Cloning `working` is the cost of getting it off the UI thread
@@ -1375,11 +1390,14 @@ pub async fn thumbnail(
         let dev = img.developed.as_ref().ok_or("not developed")?;
         (dev.working.clone(), dev.thumb.clone(), dev.base, dev.d_max)
     };
-    tauri::async_runtime::spawn_blocking(move || {
-        thumbnail_compute(&working, &thumb, base, d_max, &params, &view)
+    crate::time_op!(__log, "thumbnail", {
+        tauri::async_runtime::spawn_blocking(move || {
+            thumbnail_compute(&working, &thumb, base, d_max, &params, &view)
+        })
+        .await
+        .map_err(|e| e.to_string())
+        .and_then(|r| r)
     })
-    .await
-    .map_err(|e| e.to_string())?
 }
 
 /// Pure CPU render of one thumbnail: geometry (orient → straighten → persistent
@@ -1553,32 +1571,36 @@ pub async fn export_image(
     format: ExportFormat,
     meta_override: Option<MetaOverride>,
     session: State<'_, Session>,
+    log: tauri::State<'_, crate::debug_log::DebugLog>,
 ) -> Result<(), String> {
-    let (fin, metadata) = finish_full_res(
-        &id, &params, image_crop, rot90, flip_h, flip_v, angle, &dust, &ir_removal, &session,
-    )?;
-    let fin = downscale_long_edge(fin, format.resize_long_edge);
-    let out = Path::new(&out_path);
-    match format.kind.as_str() {
-        "tiff" => {
-            if format.bit_depth == 16 {
-                film_core::export::write_tiff16(&fin, out).map_err(|e| format!("{e}"))
-            } else {
-                write_tiff8(&fin, out)
+    let __log = log.inner().clone();
+    crate::time_op!(__log, "export_image", {
+        let (fin, metadata) = finish_full_res(
+            &id, &params, image_crop, rot90, flip_h, flip_v, angle, &dust, &ir_removal, &session,
+        )?;
+        let fin = downscale_long_edge(fin, format.resize_long_edge);
+        let out = Path::new(&out_path);
+        match format.kind.as_str() {
+            "tiff" => {
+                if format.bit_depth == 16 {
+                    film_core::export::write_tiff16(&fin, out).map_err(|e| format!("{e}"))
+                } else {
+                    write_tiff8(&fin, out)
+                }
             }
-        }
-        "png" => write_png(&fin, out, format.bit_depth),
-        "jpeg" => write_jpeg(&fin, out, format.quality, format.max_bytes),
-        other => Err(format!("unknown export format: {other}")),
-    }?;
+            "png" => write_png(&fin, out, format.bit_depth),
+            "jpeg" => write_jpeg(&fin, out, format.quality, format.max_bytes),
+            other => Err(format!("unknown export format: {other}")),
+        }?;
 
-    // Best-effort EXIF embed. The pixel file is already written and valid; a
-    // metadata failure is logged but never fails the export.
-    let eff = effective_metadata(&metadata, meta_override.as_ref());
-    if let Err(e) = crate::exif_write::write_exif(out, &eff) {
-        eprintln!("[exif] embed failed for {out_path}: {e}");
-    }
-    Ok(())
+        // Best-effort EXIF embed. The pixel file is already written and valid; a
+        // metadata failure is logged but never fails the export.
+        let eff = effective_metadata(&metadata, meta_override.as_ref());
+        if let Err(e) = crate::exif_write::write_exif(out, &eff) {
+            eprintln!("[exif] embed failed for {out_path}: {e}");
+        }
+        Ok(())
+    })
 }
 
 /// Export a single developed image as a gain-map HDR JPEG. Mirrors `export_image`
@@ -1603,59 +1625,63 @@ pub async fn export_image_hdr(
     format: ExportFormat,
     meta_override: Option<MetaOverride>,
     session: State<'_, Session>,
+    log: tauri::State<'_, crate::debug_log::DebugLog>,
 ) -> Result<(), String> {
-    ensure_resident(&session, &id)?;
-    let (path, base, thumb, metadata, dev_dmax) = {
-        let images = session.images.lock().unwrap();
-        let img = images.get(&id).ok_or("unknown image id")?;
-        let dev = img.developed.as_ref().ok_or("not developed")?;
-        (
-            img.path.clone(),
-            dev.base,
-            dev.thumb.clone(),
-            img.metadata.clone(),
-            dev.d_max,
-        )
-    };
-    let full = decode_cached(&session.decode_cache, Path::new(&path))?;
-    // Match the live proxy's noise floor before inverting at full res, so export
-    // reproduces the tuned preview instead of a noise-induced pink cast (the convex
-    // inversion amplifies per-pixel noise into colour). See convert::match_proxy_noise.
-    let full = crate::convert::match_proxy_noise(&full, PROXY_EDGE);
-    let full = orient(&full, rot90, flip_h, flip_v);
-    let full = rotate(&full, angle);
-    let full = match image_crop {
-        Some(nc) => {
-            let (x, y, w, h) = crop_px(nc, full.width, full.height);
-            crop(&full, x, y, w, h)
+    let __log = log.inner().clone();
+    crate::time_op!(__log, "export_image_hdr", {
+        ensure_resident(&session, &id)?;
+        let (path, base, thumb, metadata, dev_dmax) = {
+            let images = session.images.lock().unwrap();
+            let img = images.get(&id).ok_or("unknown image id")?;
+            let dev = img.developed.as_ref().ok_or("not developed")?;
+            (
+                img.path.clone(),
+                dev.base,
+                dev.thumb.clone(),
+                img.metadata.clone(),
+                dev.d_max,
+            )
+        };
+        let full = decode_cached(&session.decode_cache, Path::new(&path))?;
+        // Match the live proxy's noise floor before inverting at full res, so export
+        // reproduces the tuned preview instead of a noise-induced pink cast (the convex
+        // inversion amplifies per-pixel noise into colour). See convert::match_proxy_noise.
+        let full = crate::convert::match_proxy_noise(&full, PROXY_EDGE);
+        let full = orient(&full, rot90, flip_h, flip_v);
+        let full = rotate(&full, angle);
+        let full = match image_crop {
+            Some(nc) => {
+                let (x, y, w, h) = crop_px(nc, full.width, full.height);
+                crop(&full, x, y, w, h)
+            }
+            None => full,
+        };
+        let full = downscale_long_edge(full, format.resize_long_edge);
+
+        let mut ip = resolve_params(&params, &thumb, effective_base(&params, base));
+        ip.d_max = effective_dmax(&params, dev_dmax);
+        let stamps = export_stamps(&dust, full.width, full.height);
+        let finish = finish_from(&params);
+
+        let bytes = render_and_encode_hdr(
+            &full,
+            &ip,
+            mode_from(&params.mode),
+            &finish,
+            &stamps,
+            &ir_removal,
+            format.quality,
+        )?;
+
+        std::fs::write(&out_path, &bytes).map_err(|e| format!("write {out_path}: {e}"))?;
+
+        // Best-effort EXIF embed, identical policy to export_image (never fails export).
+        let eff = effective_metadata(&metadata, meta_override.as_ref());
+        if let Err(e) = crate::exif_write::write_exif(Path::new(&out_path), &eff) {
+            eprintln!("[exif] embed failed for {out_path}: {e}");
         }
-        None => full,
-    };
-    let full = downscale_long_edge(full, format.resize_long_edge);
-
-    let mut ip = resolve_params(&params, &thumb, effective_base(&params, base));
-    ip.d_max = effective_dmax(&params, dev_dmax);
-    let stamps = export_stamps(&dust, full.width, full.height);
-    let finish = finish_from(&params);
-
-    let bytes = render_and_encode_hdr(
-        &full,
-        &ip,
-        mode_from(&params.mode),
-        &finish,
-        &stamps,
-        &ir_removal,
-        format.quality,
-    )?;
-
-    std::fs::write(&out_path, &bytes).map_err(|e| format!("write {out_path}: {e}"))?;
-
-    // Best-effort EXIF embed, identical policy to export_image (never fails export).
-    let eff = effective_metadata(&metadata, meta_override.as_ref());
-    if let Err(e) = crate::exif_write::write_exif(Path::new(&out_path), &eff) {
-        eprintln!("[exif] embed failed for {out_path}: {e}");
-    }
-    Ok(())
+        Ok(())
+    })
 }
 
 /// Dims + resolved inversion uniforms handed back to the frontend so it can
@@ -2243,39 +2269,43 @@ pub fn gray_point_wb(params: InvertParams, rgb: [f32; 3]) -> AsShotWb {
 pub fn load_catalog(
     session: State<Session>,
     catalog: State<crate::catalog::Catalog>,
+    log: tauri::State<'_, crate::debug_log::DebugLog>,
 ) -> Result<crate::catalog::CatalogSnapshot, String> {
-    let mut snap = catalog
-        .snapshot(&|p| Path::new(p).exists())
-        .map_err(|e| e.to_string())?;
+    let __log = log.inner().clone();
+    crate::time_op!(__log, "load_catalog", {
+        let mut snap = catalog
+            .snapshot(&|p| Path::new(p).exists())
+            .map_err(|e| e.to_string())?;
 
-    // Annotate each image with cache presence (cheap stat) before sending to frontend.
-    for ci in &mut snap.images {
-        let cache_path = session.cache_path(&ci.id);
-        ci.developed = cache_path.exists();
-        ci.has_ir = if ci.developed {
-            crate::cache::read_has_ir(&cache_path).unwrap_or(false)
-        } else {
-            false
-        };
-    }
+        // Annotate each image with cache presence (cheap stat) before sending to frontend.
+        for ci in &mut snap.images {
+            let cache_path = session.cache_path(&ci.id);
+            ci.developed = cache_path.exists();
+            ci.has_ir = if ci.developed {
+                crate::cache::read_has_ir(&cache_path).unwrap_or(false)
+            } else {
+                false
+            };
+        }
 
-    let mut imgs = session.images.lock().unwrap();
-    imgs.clear();
-    for ci in &snap.images {
-        let metadata = serde_json::from_value(ci.metadata.clone()).unwrap_or_default();
-        imgs.insert(
-            ci.id.clone(),
-            CachedImage {
-                path: ci.path.clone(),
-                file_name: ci.file_name.clone(),
-                metadata,
-                thumbnail: ci.thumbnail.clone(),
-                developed: None, // lazy: ensure_resident loads on first view
-                last_access: 0,
-            },
-        );
-    }
-    Ok(snap)
+        let mut imgs = session.images.lock().unwrap();
+        imgs.clear();
+        for ci in &snap.images {
+            let metadata = serde_json::from_value(ci.metadata.clone()).unwrap_or_default();
+            imgs.insert(
+                ci.id.clone(),
+                CachedImage {
+                    path: ci.path.clone(),
+                    file_name: ci.file_name.clone(),
+                    metadata,
+                    thumbnail: ci.thumbnail.clone(),
+                    developed: None, // lazy: ensure_resident loads on first view
+                    last_access: 0,
+                },
+            );
+        }
+        Ok(snap)
+    })
 }
 
 #[tauri::command]
@@ -2913,6 +2943,64 @@ pub fn analyze_white_point(
     Ok(Analysis {
         d_max: dmax_from_white_point(&dev.working, base, Some(Rect { x, y, w, h })),
     })
+}
+
+// ---------------------------------------------------------------------------
+// Debug-log commands (called from api.ts in the frontend debug panel)
+// ---------------------------------------------------------------------------
+
+#[derive(serde::Deserialize)]
+pub struct DebugLine {
+    pub level: String,
+    pub msg: String,
+}
+
+/// Enable or disable the backend debug log. Enabling installs the panic hook and
+/// starts the memory sampler; disabling flushes and closes the writer.
+#[tauri::command]
+pub fn debug_set(enabled: bool, app: tauri::AppHandle) {
+    use tauri::Manager;
+    let log = app.state::<crate::debug_log::DebugLog>().inner().clone();
+    if enabled {
+        log.enable();
+        crate::debug_log::install_panic_hook(log.clone());
+        let app2 = app.clone();
+        crate::debug_log::start_mem_sampler(log.clone(), move || {
+            crate::cache::oecache_bytes(
+                &app2.state::<crate::session::Session>().cache_dir.lock()
+                    .map(|d| d.clone()).unwrap_or_default(),
+            )
+        });
+        crate::dlog!(log, "INFO", "debug mode enabled");
+    } else {
+        crate::dlog!(log, "INFO", "debug mode disabled");
+        log.disable();
+    }
+}
+
+/// Append frontend log lines (batched from the JS side) into the shared log file.
+#[tauri::command]
+pub fn debug_log_append(lines: Vec<DebugLine>, log: tauri::State<crate::debug_log::DebugLog>) {
+    for l in &lines {
+        log.write("FE", &l.level, &l.msg);
+    }
+}
+
+/// Truncate the debug log file (while keeping the writer open if enabled).
+#[tauri::command]
+pub fn debug_clear(log: tauri::State<crate::debug_log::DebugLog>) {
+    log.clear();
+}
+
+/// Write the debug log with a summary header to `out_path` (chosen by the user).
+#[tauri::command]
+pub fn save_log(out_path: String, app: tauri::AppHandle) -> Result<(), String> {
+    use tauri::Manager;
+    let log = app.state::<crate::debug_log::DebugLog>();
+    let body = std::fs::read_to_string(log.path()).unwrap_or_default();
+    let version = app.package_info().version.to_string();
+    let summary = crate::debug_log::build_summary(&body, &version, std::env::consts::OS);
+    std::fs::write(&out_path, format!("{summary}\n{body}")).map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
@@ -3700,8 +3788,15 @@ mod proxy_tests {
 /// `image_base64` is the preview JPEG payload WITHOUT the `data:` URL prefix.
 /// Returns a PNG data URL on success, or a readable error string.
 #[tauri::command]
-pub async fn ai_enhance_image(image_base64: String, api_key: String) -> Result<String, String> {
-    crate::ai_enhance::enhance(&image_base64, &api_key).await
+pub async fn ai_enhance_image(
+    image_base64: String,
+    api_key: String,
+    log: tauri::State<'_, crate::debug_log::DebugLog>,
+) -> Result<String, String> {
+    let __log = log.inner().clone();
+    crate::time_op!(__log, "ai_enhance_image", {
+        crate::ai_enhance::enhance(&image_base64, &api_key).await
+    })
 }
 
 /// Match the current image's color toning to a reference image (fully local).

@@ -105,6 +105,19 @@ pub fn run() {
                 if prefs.get("telemetry").map(|v| v == "on").unwrap_or(false) {
                     app.state::<telemetry::TelemetryState>().set(true);
                 }
+                if prefs.get("debug_mode").map(|v| v == "on").unwrap_or(false) {
+                    let log = app.state::<debug_log::DebugLog>().inner().clone();
+                    log.enable();
+                    debug_log::install_panic_hook(log.clone());
+                    debug_log::dlog_startup(&log);
+                    let app2 = app.handle().clone();
+                    debug_log::start_mem_sampler(log, move || {
+                        cache::oecache_bytes(
+                            &app2.state::<session::Session>().cache_dir.lock()
+                                .map(|d| d.clone()).unwrap_or_default(),
+                        )
+                    });
+                }
             }
             app.manage(catalog);
             Ok(())
@@ -161,6 +174,10 @@ pub fn run() {
             commands::reference_thumb,
             commands::autodust_status,
             commands::download_autodust,
+            commands::debug_set,
+            commands::debug_log_append,
+            commands::debug_clear,
+            commands::save_log,
             telemetry::set_telemetry,
             telemetry::telemetry_event,
             tether::tether_start,
