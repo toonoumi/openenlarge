@@ -154,6 +154,16 @@ export.imagePlural,images,张照片,枚,장,src/lib/export/ExportModal.svelte,pl
 roll.empty,No developed frames in this folder yet.,此文件夹中还没有已显影的胶片。,このフォルダにはまだ現像済みのフレームがありません。,이 폴더에는 아직 현상된 프레임이 없습니다.,src/lib/tabs/Roll.svelte,hint
 roll.filmEdge,Film edge,片边,フィルムエッジ,필름 엣지,src/lib/tabs/Roll.svelte,toggle
 roll.export.button,Export contact sheet,导出印样,コンタクトシートを書き出し,콘택트 시트 내보내기,src/lib/tabs/Roll.svelte,button
+roll.export.title,Export contact sheet,导出印样,コンタクトシートを書き出し,콘택트 시트 내보내기,src/lib/overlay/ExportSheetDialog.svelte,heading
+roll.export.resolution,Resolution,分辨率,解像度,해상도,src/lib/overlay/ExportSheetDialog.svelte,label
+roll.export.resStandard,Standard,标准,標準,표준,src/lib/overlay/ExportSheetDialog.svelte,option
+roll.export.resHigh,High,高清,高画質,고화질,src/lib/overlay/ExportSheetDialog.svelte,option
+roll.export.resPrint,Print,打印,印刷,인쇄,src/lib/overlay/ExportSheetDialog.svelte,option
+roll.export.format,Format,格式,形式,형식,src/lib/overlay/ExportSheetDialog.svelte,label
+roll.export.formatJpeg,JPEG,JPEG,JPEG,JPEG,src/lib/overlay/ExportSheetDialog.svelte,option
+roll.export.formatPng,PNG,PNG,PNG,PNG,src/lib/overlay/ExportSheetDialog.svelte,option
+roll.export.quality,Quality,质量,画質,품질,src/lib/overlay/ExportSheetDialog.svelte,label
+roll.export.confirm,Export,导出,書き出し,내보내기,src/lib/overlay/ExportSheetDialog.svelte,button
 roll.edgeText,Edge text,片边文字,エッジテキスト,엣지 텍스트,src/lib/tabs/Roll.svelte,label
 roll.edgeTextPlaceholder,Film edge marking,片边标记文字,フィルムエッジの文字,필름 엣지 표시 문자,src/lib/tabs/Roll.svelte,placeholder
 roll.close,Close,关闭,閉じる,닫기,src/lib/roll/FramePreview.svelte,button

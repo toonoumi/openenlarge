@@ -18,7 +18,8 @@
   import { rollFilmEdge, rollEdgeText } from "$lib/store";
   import FramePreview from "$lib/roll/FramePreview.svelte";
   import BaseView from "$lib/develop/BaseView.svelte";
-  import { exportContactSheet } from "$lib/roll/exportSheet";
+  import { exportContactSheet, type ExportSheetOpts } from "$lib/roll/exportSheet";
+  import ExportSheetDialog from "$lib/overlay/ExportSheetDialog.svelte";
   import { pickTileAspect } from "$lib/roll/contactSheet";
   import Viewport from "$lib/viewport/Viewport.svelte";
   import CropView from "$lib/crop/CropView.svelte";
@@ -503,6 +504,13 @@
     }
   }
 
+  // Contact-sheet export: open the resolution/format dialog, then render on confirm.
+  let exportOpen = false;
+  function onExportConfirm(opts: ExportSheetOpts) {
+    exportOpen = false;
+    void exportContactSheet(opts);
+  }
+
 </script>
 
 <svelte:window on:keydown={onWindowKeydown} />
@@ -536,7 +544,7 @@
               <span class="knob"></span>
             </span>
           </button>
-          <button class="export-btn" on:click={exportContactSheet} disabled={$developedFolderImages.length === 0}>
+          <button class="export-btn" on:click={() => (exportOpen = true)} disabled={$developedFolderImages.length === 0}>
             {$t('roll.export.button')}
           </button>
         </div>
@@ -722,6 +730,11 @@
     </div>
   </div>
 
+{/if}
+
+{#if exportOpen}
+  <ExportSheetDialog on:cancel={() => (exportOpen = false)}
+                     on:confirm={(e) => onExportConfirm(e.detail)} />
 {/if}
 
 {#if menu && editMode === "crop"}

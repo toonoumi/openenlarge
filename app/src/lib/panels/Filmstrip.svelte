@@ -18,9 +18,21 @@
     }
   }
   $: $activeId, revealActive();
+
+  // The strip is a single horizontal row, but a vertical mouse wheel would otherwise
+  // scroll an ancestor (or nothing) instead of the strip. Translate vertical wheel
+  // delta into horizontal scroll so the wheel moves through the frames.
+  function onWheel(e: WheelEvent) {
+    if (!stripEl) return;
+    if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) return; // trackpad horizontal already works
+    const max = stripEl.scrollWidth - stripEl.clientWidth;
+    if (max <= 0) return; // nothing to scroll
+    e.preventDefault();
+    stripEl.scrollLeft += e.deltaY;
+  }
 </script>
 
-<div class="strip" bind:this={stripEl} role="listbox" aria-label={$t('filmstrip.importedImagesAria')}>
+<div class="strip" bind:this={stripEl} role="listbox" aria-label={$t('filmstrip.importedImagesAria')} on:wheel|nonpassive={onWheel}>
   {#each $folderImages as img}
     <button data-id={img.id} class:active={$activeId === img.id}
       class:multi={$selection.selected.has(img.id)}

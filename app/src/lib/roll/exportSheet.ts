@@ -1,7 +1,7 @@
 // app/src/lib/roll/exportSheet.ts
 import { get } from "svelte/store";
 import { save } from "@tauri-apps/plugin-dialog";
-import { api, defaultParams } from "$lib/api";
+import { api, defaultParams, type ExportFormat } from "$lib/api";
 import { editsById, cropById, rollFilmEdge, rollEdgeText } from "$lib/store";
 import { developedFolderImages } from "$lib/export/eligible";
 import { withEffectiveBase } from "$lib/develop/base";
@@ -79,10 +79,24 @@ function drawBarcode(
   }
 }
 
+/** Resolution + output-format options chosen in the export dialog. `scale`
+ *  uniformly enlarges the whole sheet (canvas + fonts + strokes); `thumbEdge` is
+ *  the long-edge cap requested for each frame render so the tiles stay sharp at
+ *  the larger size; `format` is the on-disk encoding. */
+export interface ExportSheetOpts {
+  scale: number;       // 1 = standard (260px/frame), 2 = high, 4 = print
+  thumbEdge: number;   // per-frame render long-edge cap (px)
+  format: ExportFormat;
+}
+
+const DEFAULT_OPTS: ExportSheetOpts = {
+  scale: 1, thumbEdge: 320, format: { kind: "png", bitDepth: 8 },
+};
+
 /** Render each developed frame at its own stored edits + crop, composite them
  *  into a contact-sheet canvas matching the on-screen film-strip design, and
- *  save the result as a PNG file chosen by the user via the OS save dialog. */
-export async function exportContactSheet(): Promise<void> {
+ *  save the result to a file chosen by the user via the OS save dialog. */
+export async function exportContactSheet(opts: ExportSheetOpts = DEFAULT_OPTS): Promise<void> {
   const frames = get(developedFolderImages);
   if (frames.length === 0) return;
 
@@ -99,7 +113,7 @@ export async function exportContactSheet(): Promise<void> {
         imageDir(frame),
       );
       const crop = crops[frame.id] ?? null;
-      const view = draftThumbView(crop);
+      const view = { ...draftThumbView(crop), edge: opts.thumbEdge };
       const dataUrl = await api.thumbnail(frame.id, params, view);
 
       return new Promise<HTMLImageElement>((resolve, reject) => {
@@ -153,11 +167,16 @@ export async function exportContactSheet(): Promise<void> {
   }
 
   // ── Create canvas ─────────────────────────────────────────────────────────
+  // The layout above is computed in base (1×) coordinates; `scale` enlarges the
+  // backing store and a one-shot ctx.scale() draws everything — frames, fonts,
+  // strokes — proportionally larger for a higher-resolution sheet.
+  const scale = Math.max(1, opts.scale || 1);
   const canvas = document.createElement("canvas");
-  canvas.width = canvasW;
-  canvas.height = canvasH;
+  canvas.width = Math.round(canvasW * scale);
+  canvas.height = Math.round(canvasH * scale);
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Could not get 2D canvas context");
+  ctx.scale(scale, scale);
 
   // Background
   ctx.fillStyle = "#0b0b0c";
@@ -304,18 +323,23 @@ export async function exportContactSheet(): Promise<void> {
     }
   }
 
-  // ── Encode to PNG base64 ──────────────────────────────────────────────────
+  // ── Encode the canvas as a lossless PNG intermediate ──────────────────────
+  // Always hand the backend lossless pixels; it re-encodes to the chosen format
+  // (JPEG quality / PNG) — encoding JPEG here first would double-compress.
   const dataUrl = canvas.toDataURL("image/png");
   const comma = dataUrl.indexOf(",");
   const base64 = comma >= 0 ? dataUrl.slice(comma + 1) : dataUrl;
 
   // ── OS save dialog ────────────────────────────────────────────────────────
+  const isJpeg = opts.format.kind === "jpeg";
+  const ext = isJpeg ? "jpg" : "png";
   const path = await save({
-    defaultPath: "contact-sheet.png",
-    filters: [{ name: "PNG", extensions: ["png"] }],
+    defaultPath: `contact-sheet.${ext}`,
+    filters: [{ name: isJpeg ? "JPEG" : "PNG", extensions: [ext] }],
   });
   if (!path) return; // user cancelled
 
-  // Write via the same Rust command used by AiEnhancePanel for PNG bytes.
-  await api.saveEnhanced(path, base64, { kind: "png", bitDepth: 8 });
+  // Write via the same Rust command used by AiEnhancePanel: it decodes the PNG
+  // and re-encodes to opts.format (JPEG quality or PNG).
+  await api.saveEnhanced(path, base64, opts.format);
 }

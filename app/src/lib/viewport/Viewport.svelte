@@ -232,6 +232,18 @@
   }
   $: if (interactive && scale === 0 && fit > 0) scale = fit;
 
+  // Image geometry changed without an id switch — a 90° rotation swaps width/height,
+  // and applying/clearing a crop changes the effective dims. The old pan/zoom no
+  // longer fits the new aspect, leaving the frame off-centre until a manual "reset
+  // view". Re-fit + re-centre exactly like the id-switch reset above (scale=0 re-arms
+  // the fit on the next flush). Skipped on the very first sizing (prevImg* still 0),
+  // where the id-switch block already centred.
+  let prevImgW = 0, prevImgH = 0;
+  $: if (interactive && (imgW !== prevImgW || imgH !== prevImgH)) {
+    if (prevImgW !== 0 && imgW > 0 && imgH > 0) { scale = 0; cx = imgW / 2; cy = imgH / 2; }
+    prevImgW = imgW; prevImgH = imgH;
+  }
+
   // Decode a JPEG data-URL to an <img> we can upload as a texture.
   function loadImage(url: string): Promise<HTMLImageElement> {
     return new Promise((resolve, reject) => {
