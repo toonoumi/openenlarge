@@ -208,6 +208,10 @@ export const autodustInstalled = writable<boolean>(false);
 export const telemetryEnabled = writable<boolean>(false);
 export const telemetryDecided = writable<boolean>(false);
 
+/** Debug logging consent. When on, FE hooks forward logs/errors/perf to the
+ *  backend log file. Persisted via prefs as `debug_mode` ("on"/"off"). */
+export const debugMode = writable<boolean>(false);
+
 /** When true, importing skips camera-preview jpg/png files that share a folder and
  * base name with a raw/master file. Persisted via prefs as `omit_preview_jpgs`;
  * defaults on. */
