@@ -58,6 +58,10 @@ uniform float u_soft_clip;     // engine highlight soft-clip knee (InversionPara
 // 0 = present to the bound framebuffer (apply clip overlay); 1 = write the plain
 // finished color to an FBO for the texture (USM) pass to consume.
 uniform int u_finish_mode;
+// 1.0 = Faithful-SDR-negative body (finalize at end of tone()); 0.0 = already
+// display-referred (positive passthrough or HDR rendition — use legacy clamp path).
+// Mirrors FinishParams::finalize_body in finish.rs.
+uniform float u_finalize_body;
 
 // Faithful display finalizer — MUST equal engine.rs display_finalize (shoulderOnly + look_s).
 // Recovery retired in finish stage (hi=lo=0), so scale is fixed at (1−k).
@@ -75,19 +79,20 @@ float lookS(float v) {                       // lo_recovery retired → 0
 }
 float displayFinalize(float v) { return lookS(shoulderOnly(v, 1.0)); }
 
-// Input is the Faithful gamma BODY (may exceed 1.0 = super-white). NO leading
-// clamp — the tone tools must see headroom so negative Whites/Contrast can pull
-// blown highlights back below the shoulder and recover detail. Mirrors finish.rs::tone_curve.
+// Mirrors finish.rs::tone_curve. u_finalize_body controls the path:
+//   1.0 → Faithful-SDR-negative body (may exceed 1.0): NO leading clamp; tone tools
+//         see headroom; displayFinalize() applied at the end.
+//   0.0 → already display-referred (positive passthrough / HDR rendition): leading
+//         clamp(0,1) + trailing clamp(0,1), NO displayFinalize. Byte-identical to the
+//         pre-headroom-recovery behavior for those paths.
 float tone(float v) {
+  if (u_finalize_body < 0.5) v = clamp(v, 0.0, 1.0);   // legacy: display value in
   v += u_whites * 0.20 * v * v * v;
   v += u_blacks * 0.20 * pow(1.0 - v, 3.0);
-  // Shelf weights that peak AT the extremes (mirror finish.rs::tone_curve) so
-  // Highlights/Shadows actually reach clipped highlights/shadows; gain 0.18 keeps
-  // the curve monotonic even under opposing endpoint sliders.
   v += u_highlights * 0.18 * smoothstep(0.5, 1.0, v);
   v += u_shadows * 0.18 * (1.0 - smoothstep(0.0, 0.5, v));
   v = 0.5 + (v - 0.5) * (1.0 + u_contrast);
-  return displayFinalize(v);
+  return u_finalize_body > 0.5 ? displayFinalize(v) : clamp(v, 0.0, 1.0);
 }
 
 // Per-zone WB neutralizer — mirrors finish.rs::apply_per_zone_wb EXACTLY.

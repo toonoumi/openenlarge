@@ -151,7 +151,7 @@ export class FinishRenderer {
     for (const u of [
       "u_cm_hue","u_cm_sat","u_cm_lum","u_pc_count","u_pc_hue","u_pc_sat","u_pc_lum",
       "u_pc_hue_shift","u_pc_sat_shift","u_pc_lum_shift","u_pc_variance","u_pc_range",
-      "u_clip_high_on","u_clip_low_on","u_clip_strict","u_soft_clip","u_finish_mode",
+      "u_clip_high_on","u_clip_low_on","u_clip_strict","u_soft_clip","u_finish_mode","u_finalize_body",
     ]) this.loc[u] = gl.getUniformLocation(prog, u);
     gl.uniform1i(this.loc.u_src, 0);
     gl.uniform1i(this.loc.u_lut, 1);
@@ -461,6 +461,10 @@ export class FinishRenderer {
     gl.uniform1f(this.loc.u_clip_low_on, clip ? clip.lowOn : 0);
     gl.uniform1f(this.loc.u_clip_strict, this.clip ? this.clip.strict : 0);
     gl.uniform1f(this.loc.u_soft_clip, this.inv ? this.inv.soft_clip : 0.9);
+    // Positive passthrough → already display-referred → skip display_finalize (0.0).
+    // Negative (Faithful body) → finalize at end of tone() (1.0). Mirrors finalize_body
+    // in finish.rs / finish_from() in commands.rs.
+    gl.uniform1f(this.loc.u_finalize_body, this.inv?.positive ? 0.0 : 1.0);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
 

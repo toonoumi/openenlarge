@@ -464,6 +464,13 @@ pub struct FinishParams {
     pub cg: ColorGrade,
     pub cm: ColorMix,
     pub per_zone: PerZoneWb,
+    /// When `true` (default), input to `tone_curve` is the Faithful gamma BODY
+    /// (may exceed 1.0 = super-white); the function applies `display_finalize` at
+    /// the end. When `false`, input is ALREADY display-referred (positive passthrough
+    /// or HDR rendition) — the function reproduces the pre-headroom behavior (leading
+    /// clamp + sliders + trailing clamp, NO display_finalize) so those paths are
+    /// byte-identical to before the headroom-recovery feature.
+    pub finalize_body: bool,
 }
 
 impl Default for FinishParams {
@@ -484,6 +491,7 @@ impl Default for FinishParams {
             cg: ColorGrade::default(),
             cm: ColorMix::default(),
             per_zone: PerZoneWb::default(),
+            finalize_body: true,
         }
     }
 }
@@ -500,31 +508,34 @@ fn brightness_gain(b: f32) -> f32 {
     10f32.powf(b * BRIGHTNESS_DENSITY_RANGE)
 }
 
-/// Per-channel parametric tone curve: input is the Faithful gamma BODY (may exceed
-/// 1.0 = super-white), output is display [0,1]. NO leading clamp — the tone tools
-/// must see headroom so negative Whites/Contrast can pull blown highlights back below
-/// the shoulder and recover detail. Order: endpoints → regions → contrast → finalise.
+/// Per-channel parametric tone curve. Behavior controlled by `p.finalize_body`:
+///
+/// * `true` (Faithful-SDR-negative default): input is the Faithful gamma BODY (may
+///   exceed 1.0 = super-white). NO leading clamp — the tone tools must see headroom
+///   so negative Whites/Contrast can pull blown highlights back below the shoulder
+///   and recover detail. `display_finalize` is applied at the end.
+///
+/// * `false` (positive passthrough / HDR rendition): input is ALREADY display-referred.
+///   Reproduces the pre-headroom behavior exactly: leading clamp(0,1) + sliders +
+///   trailing clamp(0,1), NO `display_finalize`. Those paths stay byte-identical to
+///   before the headroom-recovery feature.
 fn tone_curve(v: f32, p: &FinishParams) -> f32 {
-    // Input is the Faithful gamma BODY (may exceed 1.0 = super-white). NO leading
-    // clamp — the tone tools must see headroom so negative Whites/Contrast can pull
-    // blown highlights back below the shoulder and recover detail.
-    let mut v = v;
-    // Endpoints: strongest at the extremes.
+    // finalize_body=true: input is the Faithful gamma BODY (may exceed 1.0); the tone
+    // tools get headroom and we display-finalize at the end (highlight recovery).
+    // finalize_body=false: input is ALREADY a display value (positive passthrough / HDR
+    // rendition / non-Faithful) — reproduce the pre-headroom tone_curve EXACTLY (leading
+    // clamp + trailing clamp, no display_finalize) so those paths are byte-identical to before.
+    let mut v = if p.finalize_body { v } else { v.clamp(0.0, 1.0) };
     v += p.whites * 0.20 * v.powi(3);
     v += p.blacks * 0.20 * (1.0 - v).powi(3);
-    // Regions: shelf weights that peak AT the extremes (smoothstep, C1 so skies
-    // stay smooth). The old v²(1−v) / (1−v)²v bumps vanished at v→1 / v→0, so the
-    // Highlights/Shadows sliders couldn't touch the brightest/darkest tones — the
-    // reason "lower contrast" never opened up clipped highlights/shadows. Gain is
-    // capped at 0.18 so even opposing endpoint+region sliders can't fold the curve.
     v += p.highlights * 0.18 * smoothstep(0.5, 1.0, v);
     v += p.shadows * 0.18 * (1.0 - smoothstep(0.0, 0.5, v));
-    // Contrast: linear gain about 0.5.
     v = 0.5 + (v - 0.5) * (1.0 + p.contrast);
-    // Display finalize: the Faithful shoulder + look layer + clamp, MOVED here from
-    // invert_d so the tone tools above operate on the un-clipped body. MUST mirror the
-    // GPU FRAG finalizer. At sliders 0 this reproduces the old invert_d Faithful tail.
-    crate::engine::display_finalize(v)
+    if p.finalize_body {
+        crate::engine::display_finalize(v)
+    } else {
+        v.clamp(0.0, 1.0)
+    }
 }
 
 // --- OKLab perceptual saturation (replaces the display-space cube stretch). ---
@@ -646,8 +657,9 @@ fn apply_saturation(rgb: [f32; 3], p: &FinishParams) -> [f32; 3] {
 /// saturation → Tone Curve LUT → Color Grading. (Texture is a separate spatial
 /// pass in `finish_image`.)
 pub fn finish_pixel(rgb: [f32; 3], p: &FinishParams) -> [f32; 3] {
-    // Per-zone WB correction: applied FIRST, in the same inverted-positive domain
-    // where the estimator (Task 6) measured the gains. Identity gains = no-op.
+    // Per-zone WB runs on the body before tone_curve; the no-[0,1]-clamp keeps super-white
+    // intact (the estimator's display-domain gains are applied here as a small residual
+    // correction — see headroom-tone-recovery known-limitation). Identity gains = no-op.
     let rgb = apply_per_zone_wb(rgb, &p.per_zone);
     // Brightness/density: a log-curve gain applied before everything else, so it
     // reads as an overall lift/density move that Contrast then pivots about.
@@ -1522,6 +1534,38 @@ mod tests {
         let edge = out.pixels[2 * 5 + 2][0];
         let flat = out.pixels[2 * 5 + 4][0];
         assert!(edge > flat, "edge {edge} flat {flat}");
+    }
+
+    #[test]
+    fn tone_curve_unfinalized_matches_legacy_clamped_curve() {
+        // finalize_body=false must reproduce the pre-headroom tone_curve exactly:
+        // leading clamp(0,1) + same slider ops + trailing clamp(0,1), NO display_finalize.
+        let mut p = FinishParams::default();
+        p.finalize_body = false;
+        p.whites = -0.5; p.contrast = 0.3; p.highlights = 0.4; p.shadows = -0.2; p.blacks = 0.1;
+        let legacy = |v: f32, p: &FinishParams| -> f32 {
+            let mut v = v.clamp(0.0, 1.0);
+            v += p.whites * 0.20 * v.powi(3);
+            v += p.blacks * 0.20 * (1.0 - v).powi(3);
+            v += p.highlights * 0.18 * smoothstep(0.5, 1.0, v);
+            v += p.shadows * 0.18 * (1.0 - smoothstep(0.0, 0.5, v));
+            v = 0.5 + (v - 0.5) * (1.0 + p.contrast);
+            v.clamp(0.0, 1.0)
+        };
+        for &v in &[0.0_f32, 0.2, 0.5, 0.8, 1.0, 1.5, 2.5] {
+            assert!((tone_curve(v, &p) - legacy(v, &p)).abs() < 1e-7, "v={v}");
+        }
+    }
+
+    #[test]
+    fn tone_curve_finalized_differs_from_unfinalized_in_highlights() {
+        // The two modes must genuinely differ (else the flag is vacuous): a super-white
+        // input finalizes (rolls off below 1.0) vs. clamps (hard 1.0).
+        // At v=1.1 the Faithful shoulder maps to ~0.991 while the clamped path gives 1.0
+        // (difference ~0.009 >> 1e-3).
+        let mut pf = FinishParams::default(); pf.finalize_body = true;
+        let mut pu = FinishParams::default(); pu.finalize_body = false;
+        assert!((tone_curve(1.1, &pf) - tone_curve(1.1, &pu)).abs() > 1e-3);
     }
 
     #[test]

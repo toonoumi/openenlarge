@@ -556,6 +556,10 @@ pub(crate) fn finish_from(p: &InvertParams) -> FinishParams {
             mid: p.pz_mid,
             hi: p.pz_hi,
         },
+        // Positive scans short-circuit invert_d_core to develop_positive_px (a
+        // display value) — do NOT apply display_finalize a second time. Negatives
+        // carry the Faithful gamma BODY (may exceed 1.0) and need finalization.
+        finalize_body: !p.positive,
     }
 }
 
@@ -1251,7 +1255,7 @@ fn render_and_encode_hdr(
     ir_removal: &IrRemoval,
     quality: u8,
 ) -> Result<Vec<u8>, String> {
-    let render = |ip: &InversionParams| -> film_core::Image {
+    let render = |ip: &InversionParams, fin: &FinishParams| -> film_core::Image {
         let mut inv = invert_image_core(src, ip, mode);
         dust::apply(&mut inv, stamps);
         if ir_removal.enabled {
@@ -1259,12 +1263,14 @@ fn render_and_encode_hdr(
                 dust::apply_ir(&mut inv, ir, ir_removal.sensitivity);
             }
         }
-        finish_image(&inv, finish)
+        finish_image(&inv, fin)
     };
-    let sdr = render(ip);
+    let sdr = render(ip, finish);                       // Faithful SDR body → finalize (as given)
     let mut ip_hdr = ip.clone();
     ip_hdr.hdr = true;
-    let hdr = render(&ip_hdr);
+    let mut finish_hdr = finish.clone();
+    finish_hdr.finalize_body = false;                   // HDR rendition is already display-referred
+    let hdr = render(&ip_hdr, &finish_hdr);
     crate::hdr::encode_gain_map_jpeg(&sdr, &hdr, quality)
 }
 
