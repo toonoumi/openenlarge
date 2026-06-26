@@ -190,6 +190,79 @@ pub fn install_panic_hook(log: DebugLog) {
     }));
 }
 
+/// Parse a debug log and produce a human-readable summary header. Pure function
+/// over the log text so it is unit-testable without any I/O.
+pub fn build_summary(log_text: &str, app_version: &str, os: &str) -> String {
+    use std::collections::BTreeMap;
+    let (mut errors, mut warnings, mut panics) = (0u32, 0u32, 0u32);
+    let mut peak_rss: u64 = 0;
+    let mut final_cache: u64 = 0;
+    // op -> (count, sum_ms, max_ms)
+    let mut perf: BTreeMap<String, (u64, u64, u64)> = BTreeMap::new();
+    let mut entries = 0u32;
+
+    for raw in log_text.lines() {
+        // Strip the `[+...] ` prefix.
+        let rest = match raw.split_once("] ") {
+            Some((_, r)) => r,
+            None => continue,
+        };
+        entries += 1;
+        let mut it = rest.splitn(3, ' ');
+        let _src = it.next().unwrap_or("");
+        let level = it.next().unwrap_or("");
+        let body = it.next().unwrap_or("");
+        match level {
+            "ERROR" => errors += 1,
+            "WARN" => warnings += 1,
+            "PANIC" => panics += 1,
+            "PERF" => {
+                // body = "<op> <ms>ms"
+                if let Some((op, mss)) = body.rsplit_once(' ') {
+                    if let Ok(ms) = mss.trim_end_matches("ms").parse::<u64>() {
+                        let e = perf.entry(op.to_string()).or_insert((0, 0, 0));
+                        e.0 += 1;
+                        e.1 += ms;
+                        e.2 = e.2.max(ms);
+                    }
+                }
+            }
+            "MEM" => {
+                // body = "rss=<MB> cache=<bytes>"
+                for tok in body.split_whitespace() {
+                    if let Some(v) = tok.strip_prefix("rss=") {
+                        if let Ok(n) = v.parse::<u64>() {
+                            peak_rss = peak_rss.max(n);
+                        }
+                    } else if let Some(v) = tok.strip_prefix("cache=") {
+                        if let Ok(n) = v.parse::<u64>() {
+                            final_cache = n;
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let cache_gb = final_cache as f64 / (1024.0 * 1024.0 * 1024.0);
+    let mut out = String::new();
+    out.push_str("=== OpenEnlarge debug log ===\n");
+    out.push_str(&format!("app: {app_version}   os: {os}\n"));
+    if entries == 0 {
+        out.push_str("(no entries — debug mode may have just been enabled)\n");
+    }
+    out.push_str(&format!("errors: {errors}   warnings: {warnings}   panics: {panics}\n"));
+    out.push_str(&format!("peak rss: {peak_rss} MB   final cache: {cache_gb:.2} GB\n"));
+    out.push_str(&format!("{:<24}{:>7}{:>9}{:>9}\n", "operation", "count", "avg ms", "max ms"));
+    for (op, (count, sum, max)) in &perf {
+        let avg = if *count > 0 { sum / count } else { 0 };
+        out.push_str(&format!("{:<24}{:>7}{:>9}{:>9}\n", op, count, avg, max));
+    }
+    out.push_str("=============================\n");
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -280,5 +353,36 @@ mod tests {
         let body = std::fs::read_to_string(&p).unwrap();
         assert!(body.contains("BE MEM rss=128 cache=4096"), "got: {body}");
         std::fs::remove_file(&p).ok();
+    }
+
+    #[test]
+    fn summary_counts_and_perf_table() {
+        let log = "\
+[+00000001ms] BE INFO startup
+[+00000100ms] BE PERF develop_image 1000ms
+[+00000200ms] BE PERF develop_image 3000ms
+[+00000300ms] BE PERF render_view 40ms
+[+00000400ms] FE ERROR boom
+[+00000500ms] BE PANIC src/x.rs:1 kaboom
+[+00000600ms] BE MEM rss=300 cache=1048576
+[+00000700ms] BE MEM rss=512 cache=2097152
+";
+        let s = build_summary(log, "0.1.0", "windows");
+        assert!(s.contains("app: 0.1.0"));
+        assert!(s.contains("os: windows"));
+        assert!(s.contains("errors: 1"));
+        assert!(s.contains("panics: 1"));
+        // develop_image: count 2, avg 2000, max 3000
+        assert!(s.contains("develop_image"));
+        assert!(s.contains("2000"), "avg ms missing in: {s}");
+        assert!(s.contains("3000"), "max ms missing in: {s}");
+        // peak rss = 512 (MB)
+        assert!(s.contains("peak rss: 512"), "peak rss missing in: {s}");
+    }
+
+    #[test]
+    fn summary_handles_empty_log() {
+        let s = build_summary("", "0.1.0", "macos");
+        assert!(s.contains("no entries") || s.contains("errors: 0"));
     }
 }
