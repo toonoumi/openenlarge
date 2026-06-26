@@ -2217,16 +2217,23 @@ fn gray_point_temp_tint(params: &InvertParams, rgb: [f32; 3]) -> (f32, f32) {
 /// sampled at the click. See [`gray_point_temp_tint`].
 #[tauri::command]
 pub fn gray_point_wb(params: InvertParams, rgb: [f32; 3]) -> AsShotWb {
-    // Additional gains (relative to the current WB) that neutralise the clicked pixel.
-    let (gtemp, gtint) = gray_point_temp_tint(&params, rgb);
-    let gp = wb_from_params(gtemp, gtint);
-    // The full WB that makes the picked pixel neutral = current total × gp.
-    let slider = wb_from_params(params.temp, params.tint);
-    let total: [f32; 3] = std::array::from_fn(|c| params.wb_baseline[c] * slider[c] * gp[c]);
-    // Return the ABSOLUTE Temp/Tint of that total WB so the frontend sets the visible
-    // sliders to it (absolute-WB model: the slider IS the white balance, no hidden baseline).
-    let (temp, tint) = gains_to_cct(total);
-    AsShotWb { temp, tint: tint * 150.0, gains: total }
+    // `gray_point_temp_tint` already divides the current WB back out, so (gtemp, gtint)
+    // is the ABSOLUTE white point that makes the clicked pixel gray — not a correction
+    // relative to where the sliders sit. Return it directly (matching `as_shot_wb`).
+    //
+    // Two earlier bugs made the picker creep instead of converge: `gtint` is in the
+    // −1..1 convention but was fed to `wb_from_params` (which divides tint by 150 again),
+    // so the tint correction landed at ~1/150 strength; and the current slider was
+    // multiplied back in, double-counting it. Both are gone — `wb_from_params(_, ·150)`
+    // round-trips `gtint` cleanly, and there is no slider multiply, so re-picking the
+    // same point is idempotent.
+    let (gtemp, gtint) = gray_point_temp_tint(&params, rgb); // gtint in −1..1
+    let gains = wb_from_params(gtemp, gtint * 150.0);
+    AsShotWb {
+        temp: gtemp,
+        tint: gtint * 150.0,
+        gains,
+    }
 }
 
 /// Load the whole catalog at launch: return the snapshot to the frontend AND
@@ -3178,6 +3185,69 @@ mod tests {
         p.tint = 0.0;
         let (temp, _tint) = gray_point_temp_tint(&p, [0.6, 0.5, 0.4]);
         assert!(temp < 5500.0, "warm point should cool temp below neutral, got {temp}");
+    }
+
+    #[test]
+    fn gray_point_wb_converges_no_drift() {
+        // Repeatedly picking the SAME gray point must converge, not creep. This is the
+        // user-reported bug: each pick under-applied tint (~1/150 scale) and re-multiplied
+        // the current slider, so Temp/Tint drifted instead of neutralising the point.
+        //
+        // Model the mode-D render: displayed = underlying P · (wb_baseline · slider).
+        // `underlying` is the wb-neutral scan value at the pixel; a green-heavy, r=b cast.
+        let underlying = [0.50_f32, 0.66, 0.50];
+        let render = |p: &crate::session::InvertParams| -> [f32; 3] {
+            let wb = wb_from_params(p.temp, p.tint);
+            std::array::from_fn(|c| underlying[c] * p.wb_baseline[c] * wb[c])
+        };
+        let chroma_dev = |rgb: [f32; 3]| -> f32 {
+            let mean = (rgb[0] + rgb[1] + rgb[2]) / 3.0;
+            rgb.iter()
+                .map(|c| (c - mean).abs() / mean)
+                .fold(0.0_f32, f32::max)
+        };
+
+        // Start from a deliberately NON-neutral WB so the slider double-count shows.
+        let mut p = crate::commands_test_support::sample_invert_params();
+        p.mode = "d".into();
+        p.temp = 6500.0;
+        p.tint = 0.0;
+        p.wb_baseline = [1.0, 1.0, 1.0];
+
+        let dev0 = chroma_dev(render(&p));
+        assert!(dev0 > 0.15, "test setup: starting point should be visibly tinted, got {dev0}");
+
+        // First pick must SUBSTANTIALLY neutralise the point. Pre-fix the tint correction
+        // landed at ~1/150 strength, so the point stayed ~as tinted as before (dev ~unchanged).
+        let r1 = gray_point_wb(p.clone(), render(&p));
+        p.temp = r1.temp;
+        p.tint = r1.tint;
+        p.wb_baseline = [1.0, 1.0, 1.0]; // frontend resets baseline (absolute-WB model)
+        let dev1 = chroma_dev(render(&p));
+        assert!(
+            dev1 < dev0 * 0.5,
+            "one pick must substantially neutralise the point: dev {dev0} -> {dev1}"
+        );
+
+        // ...and then the picker must be a FIXPOINT: re-picking the SAME (re-rendered)
+        // point returns the same Temp/Tint, so it never creeps in either direction.
+        // This is the reported bug — repeated picks used to drift instead of settling.
+        let mut prev = r1;
+        for i in 0..5 {
+            let r = gray_point_wb(p.clone(), render(&p));
+            assert!(
+                (r.temp - prev.temp).abs() < 1.0 && (r.tint - prev.tint).abs() < 0.1,
+                "re-pick #{i} must not drift: ({},{}) -> ({},{})",
+                prev.temp,
+                prev.tint,
+                r.temp,
+                r.tint
+            );
+            p.temp = r.temp;
+            p.tint = r.tint;
+            p.wb_baseline = [1.0, 1.0, 1.0];
+            prev = r;
+        }
     }
 
     #[test]
