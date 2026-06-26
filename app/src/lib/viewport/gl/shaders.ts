@@ -457,23 +457,6 @@ const float FAITHFUL_SCALE  = 1.0 / 0.700;
 const float LOOK_K = 2.0;
 const float REC_H_GAIN = 3.0; // MUST equal engine.rs REC_H_GAIN
 const float REC_S_GAIN = 0.6; // MUST equal engine.rs REC_S_GAIN
-float lookS(float v, float lo_recovery) {
-  // Shadow recovery softens the toe (v<0.5) via a smoothstep weight (1 deep-shadow
-  // → 0 by mid-gray); shoulder + mid slope untouched. lo_recovery=0 → original.
-  float s = clamp((0.5 - v) / 0.5, 0.0, 1.0);
-  float w = s * s * (3.0 - 2.0 * s);
-  float k = LOOK_K * (1.0 - REC_S_GAIN * lo_recovery * w);
-  // Per-point normaliser tanh(k·0.5) pins 0→0 / 1→1 for any k. MUST match engine.rs.
-  return clamp(0.5 + 0.5 * tanh(k * (v - 0.5)) / tanh(k * 0.5), 0.0, 1.0);
-}
-float gammaShoulder(float x, float ceil_val, float hi_recovery) {
-  float raw = pow(max(x, 0.0), 1.0 / FAITHFUL_GAMMA);
-  if (raw <= FAITHFUL_KNEE) return min(raw, ceil_val);
-  float k = FAITHFUL_KNEE;
-  // Recovery widens the rolloff scale (hi_recovery=0 → (1−k), current curve).
-  float scale = (1.0 - k) * (1.0 + REC_H_GAIN * hi_recovery);
-  return k + (ceil_val - k) * (1.0 - exp(-(raw - k) / scale));
-}
 // Faithful gamma BODY only — no shoulder, no look, no clamp. Super-white body
 // (> 1) is preserved for the finish FRAG to finalize. MUST equal engine.rs gamma_body.
 float gammaBody(float x) { return pow(max(x, 0.0), 1.0 / FAITHFUL_GAMMA); }
@@ -546,12 +529,13 @@ vec3 invert(vec3 rgbIn) {
     //    folding exposure into the same t-multiply; anchored at black (t=0 → 0).
     vec3 v;
     if (u_tone_mode == 1) {
-      // Faithful: gamma body + soft shoulder. INVERT_FRAG is the SDR path (final clamp below),
-      // so ceil = 1.0 here — matches the engine's SDR Faithful; HDR uses the separate gain-map path.
+      // Faithful: gamma body + soft shoulder. The Faithful branch returns the unclamped gamma body;
+      // display-finalize (shoulder + look) happens later in the FRAG finish pass.
       // Exposure is a LINEAR-LIGHT gain on the reconstructed scene, BEFORE the contrast curve —
       // treat the log-inverted negative as a positive and expose it like a TIFF. Black-anchored
       // linear L = 10^d − 1 (d = 0 → 0, black pivots); gain ×2^EV; back to density. EV 0 is the
-      // identity; gammaShoulder supplies the highlight rolloff. Mirror: engine.rs invert_d Faithful.
+      // identity. gammaBody supplies the gamma; shoulder rolloff is applied later in FRAG displayFinalize.
+      // Mirror: engine.rs invert_d Faithful.
       vec3 lScene = max(pow(vec3(10.0), d) - 1.0, 0.0);
       vec3 lit = lScene * exp2(FAITHFUL_EXPO_K * ev);
       vec3 te = log2(lit + 1.0) * LOG10 * FAITHFUL_SCALE;
