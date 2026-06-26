@@ -283,10 +283,10 @@ pub fn develop_positive_px(rgb: [f32; 3], p: &InversionParams) -> [f32; 3] {
     })
 }
 
-/// Kodak Cineon densitometry core: returns the super-white BODY for Faithful SDR (no
-/// shoulder + look layer) and the full display value for all other modes. Callers that
-/// need the display value use `invert_d`; callers that need the body for further tone
-/// tool processing use this function directly.
+/// Shared implementation for `invert_d` and `invert_d_core`. Returns the display value
+/// when `produce_body` is false (analysis / back-compat), or the super-white BODY for
+/// Faithful SDR when `produce_body` is true (display render path). For all other modes
+/// both flags return the same value.
 ///
 /// WB is applied as a gain on the positive `print_lin` (not as a log-space offset
 /// on the negative): `0 * wb == 0`, so deep shadows stay neutral black instead of
@@ -294,7 +294,7 @@ pub fn develop_positive_px(rgb: [f32; 3], p: &InversionParams) -> [f32; 3] {
 /// `print_exposure·(1 − 1/wb[c])`, which drives one channel to black before the
 /// others and reads as a colour cast in the darkest tones (the "yellow shadow"
 /// bug). A positive-domain gain spreads the WB tint evenly across tones instead.
-pub fn invert_d_core(rgb: [f32; 3], p: &InversionParams) -> [f32; 3] {
+fn invert_d_impl(rgb: [f32; 3], p: &InversionParams, produce_body: bool) -> [f32; 3] {
     if p.positive {
         return develop_positive_px(rgb, p);
     }
@@ -401,17 +401,28 @@ pub fn invert_d_core(rgb: [f32; 3], p: &InversionParams) -> [f32; 3] {
                         WbMode::Subtractive =>
                             gamma_shoulder(t_eff * p.wb[c].max(EPS).powf(CMY_STRENGTH), ceil, hr),
                     }
-                } else {
-                    // SDR: emit the GAMMA BODY (super-white preserved). The shoulder + look
-                    // layer + clamp move to `display_finalize`, applied either by `invert_d`
-                    // (analysis / back-compat) or by `finish::tone_curve` (display path) after
-                    // the tone tools. Recovery is retired; the body is free of the old hr/lo
-                    // clamps so the finish layer can apply tone tools on the full dynamic range.
+                } else if produce_body {
+                    // Display path: emit the GAMMA BODY (super-white preserved). The shoulder +
+                    // look layer + clamp move to `display_finalize`, applied by `finish::tone_curve`
+                    // after the tone tools. Gain wb folds into the body here (so finish sees a
+                    // WB'd value); that commutes wb ahead of the shoulder, which is exactly the
+                    // intended highlight change for the DISPLAY pipeline only.
                     match p.wb_mode {
                         WbMode::Gain => gamma_body(t_eff) * p.wb[c],
                         WbMode::Subtractive =>
                             gamma_body(t_eff * p.wb[c].max(EPS).powf(CMY_STRENGTH)),
                     }
+                } else {
+                    // Analysis / back-compat display value: BYTE-IDENTICAL to the original invert_d
+                    // — shoulder BEFORE the gain-wb multiply, then the look layer; honours
+                    // p.hi_recovery / p.lo_recovery.
+                    let hr = p.hi_recovery;
+                    let core = match p.wb_mode {
+                        WbMode::Gain => gamma_shoulder(t_eff, ceil, hr) * p.wb[c],
+                        WbMode::Subtractive =>
+                            gamma_shoulder(t_eff * p.wb[c].max(EPS).powf(CMY_STRENGTH), ceil, hr),
+                    };
+                    look_s(core, p.lo_recovery)
                 }
             }
         };
@@ -419,16 +430,18 @@ pub fn invert_d_core(rgb: [f32; 3], p: &InversionParams) -> [f32; 3] {
     })
 }
 
-/// Display-referred inversion: `invert_d_core` then the SDR display finalize for the
-/// Faithful path (other modes already return a display value). Byte-identical to the
-/// pre-task-2 `invert_d`, so all analysis / back-compat callers are unaffected.
+/// Display-referred inversion — byte-identical to the pre-headroom engine, so all
+/// analysis / back-compat callers (auto-WB, gray-pick, per-zone seed, dust, color-match
+/// stats) are unaffected.
 pub fn invert_d(rgb: [f32; 3], p: &InversionParams) -> [f32; 3] {
-    let core = invert_d_core(rgb, p);
-    if matches!(p.tone_mode, ToneMode::Faithful) && !p.hdr {
-        std::array::from_fn(|c| display_finalize(core[c]))
-    } else {
-        core
-    }
+    invert_d_impl(rgb, p, false)
+}
+
+/// Like `invert_d` but returns the super-white BODY for the Faithful SDR path (no
+/// shoulder/look/clamp); identical to `invert_d` for every other mode. Used only by the
+/// display render path, which finalizes in `finish::tone_curve` after the tone tools.
+pub fn invert_d_core(rgb: [f32; 3], p: &InversionParams) -> [f32; 3] {
+    invert_d_impl(rgb, p, true)
 }
 
 /// Which inversion to run. One engine: Kodak Cineon (negadoctor).
@@ -1531,7 +1544,7 @@ mod tests {
     #[test]
     fn invert_d_equals_display_finalize_of_core_faithful_sdr() {
         let mut p = faithful_params();          // existing test helper (Faithful, SDR)
-        p.hi_recovery = 0.0; p.lo_recovery = 0.0;
+        p.hi_recovery = 0.0; p.lo_recovery = 0.0; p.wb = [1.0, 1.0, 1.0];
         for &s in &[0.05_f32, 0.2, 0.5, 0.8, 0.95] {
             let core = invert_d_core([s, s, s], &p);
             let disp = invert_d([s, s, s], &p);
@@ -1550,5 +1563,29 @@ mod tests {
         let disp = invert_d([0.02, 0.02, 0.02], &p);
         assert!(core[0] > 1.0, "body should exceed 1.0 (super-white), got {}", core[0]);
         assert!(disp[0] <= 1.0 + 1e-6, "display must stay clamped, got {}", disp[0]);
+    }
+
+    #[test]
+    fn invert_d_gain_keeps_shoulder_before_wb() {
+        // invert_d must apply the shoulder BEFORE the gain-wb multiply (original order),
+        // even though invert_d_core (the body) folds wb in first. Guards the byte-identity
+        // the analysis consumers depend on.
+        let mut p = faithful_params();
+        p.wb_mode = WbMode::Gain;
+        p.wb = [1.3, 1.0, 0.7];
+        p.hi_recovery = 0.0; p.lo_recovery = 0.0;
+        let neg = [0.02, 0.05, 0.02]; // bright, above-the-knee highlight
+        let core = invert_d_core(neg, &p);
+        let disp = invert_d(neg, &p);
+        for c in 0..3 {
+            let body_no_wb = core[c] / p.wb[c];                 // = gamma_body(t_eff)
+            let want = look_s(shoulder_only(body_no_wb, 1.0, 0.0) * p.wb[c], 0.0); // OLD order
+            assert!((disp[c] - want).abs() < 1e-5,
+                "c={c}: invert_d must keep shoulder-before-wb: {} vs {}", disp[c], want);
+        }
+        // And confirm the two orders genuinely differ above the knee (else the test is vacuous).
+        let after: [f32; 3] = std::array::from_fn(|c| display_finalize(core[c]));
+        assert!((disp[0] - after[0]).abs() > 1e-4 || (disp[2] - after[2]).abs() > 1e-4,
+            "non-unity gain wb above the knee should differ between shoulder orders");
     }
 }
