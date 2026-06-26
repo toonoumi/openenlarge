@@ -301,6 +301,11 @@ export const api = {
     invoke<void>("save_meta", { id, metaJson }),
   savePref: (key: string, value: string) =>
     invoke<void>("save_pref", { key, value }),
+  debugSet: (enabled: boolean) => invoke<void>("debug_set", { enabled }),
+  debugLogAppend: (lines: { level: string; msg: string }[]) =>
+    invoke<void>("debug_log_append", { lines }),
+  debugClear: () => invoke<void>("debug_clear"),
+  saveLog: (outPath: string) => invoke<void>("save_log", { outPath }),
   aiEnhanceImage: (imageBase64: string, apiKey: string) =>
     invoke<string>("ai_enhance_image", { imageBase64, apiKey }),
   upscalerStatus: () =>
