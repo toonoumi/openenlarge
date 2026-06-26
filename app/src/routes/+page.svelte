@@ -4,7 +4,7 @@
   import { fly } from "svelte/transition";
   import { cubicOut } from "svelte/easing";
   import { hydrate, initPersistence } from "$lib/catalog";
-  import { module, hasImages, images, undevelopedCount, deleteTarget, activeId, selection, copySettingsOpen, telemetryDecided, hotkeyBindings } from "$lib/store";
+  import { module, hasImages, images, undevelopedCount, deleteTarget, activeId, selection, copySettingsOpen, telemetryDecided, hotkeyBindings, debugMode } from "$lib/store";
   import { confirmCopyDevelopSettings, PASTE_DEFAULT_GROUPS } from "$lib/develop/copySettings";
   import { noneSelected } from "$lib/selection";
   import { get } from "svelte/store";
@@ -34,6 +34,10 @@
   import { track } from "$lib/telemetry";
   import { t } from "$lib/i18n";
   import { isMac } from "$lib/keymap/hotkeys";
+  import { api } from "$lib/api";
+  import { save } from "@tauri-apps/plugin-dialog";
+  import { flushDebugQueue } from "$lib/debug";
+  import { showToast } from "$lib/toast";
 
   // The macOS window uses a transparent native title bar (see tauri.conf.json)
   // so its strip paints the app background colour. Offset our content below it
@@ -109,6 +113,21 @@
     e.preventDefault();
     if (action === "undo") undoActive(); else redoActive();
   }
+
+  async function exportDebugLog() {
+    try {
+      await flushDebugQueue();
+      const path = await save({
+        defaultPath: `openenlarge-debug-${Date.now()}.txt`,
+        filters: [{ name: "Text", extensions: ["txt"] }],
+      });
+      if (!path) return; // user cancelled
+      await api.saveLog(path);
+      showToast($t("app.debug.exported"));
+    } catch {
+      showToast($t("app.debug.exportFailed"));
+    }
+  }
 </script>
 
 <!-- Delegated commit trigger: snapshot the active image once a gesture ends.
@@ -143,6 +162,11 @@
       <button disabled={!$hasDeveloped} on:click={() => (exporting = true)}>{$t('app.tab.export')}</button>
     </nav>
     <div class="spacer"></div>
+    {#if $debugMode}
+      <button class="gear" on:click={exportDebugLog} aria-label={$t('app.debug.exportAriaLabel')}>
+        <Icon name="file-text" size={18} />
+      </button>
+    {/if}
     <button class="gear" class:on={settingsOpen} on:click={() => (settingsOpen = !settingsOpen)} aria-label={$t('app.settings.ariaLabel')}>
       <Icon name="settings" size={18} />
     </button>
