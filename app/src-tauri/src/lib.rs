@@ -4,6 +4,7 @@ mod cache;
 mod color_match;
 mod catalog;
 mod commands;
+mod debug_log;
 mod convert;
 mod encode;
 mod exif_write;
@@ -90,6 +91,7 @@ pub fn run() {
             }
             let dir = app.path().app_data_dir().expect("app data dir");
             std::fs::create_dir_all(&dir).map_err(|e| format!("create app data dir: {e}"))?;
+            app.manage(debug_log::DebugLog::new(dir.join("debug.log")));
             let cache_dir = dir.join("cache");
             std::fs::create_dir_all(&cache_dir).map_err(|e| format!("create cache dir: {e}"))?;
             *app.state::<session::Session>().cache_dir.lock().unwrap() = cache_dir;
