@@ -161,7 +161,7 @@ const REC_S_GAIN: f32 = 0.6;
 /// it). `lo_recovery` softens the toe without disturbing the shoulder or mid-gray pivot.
 /// lo_recovery=0 → the original symmetric tanh exactly. MUST equal shaders.ts `lookS`.
 #[inline]
-fn look_s(v: f32, lo_recovery: f32) -> f32 {
+pub(crate) fn look_s(v: f32, lo_recovery: f32) -> f32 {
     // Shadow recovery softens the toe (v<0.5) via a smoothstep weight that is 1 at
     // deep shadow and 0 by mid-gray, so the shoulder and the mid-gray slope are
     // untouched (no kink). The per-point normaliser `t = tanh(k/2)` anchors
@@ -230,23 +230,43 @@ fn filmic_inv(y: f32) -> f32 {
     FILMIC_PIVOT + (big / (1.0 - big)).ln() / FILMIC_K
 }
 
-/// Faithful reconstruction curve: power-law body below the knee, asymptotic shoulder
-/// above. `x` is the effective scaled density (d·FAITHFUL_SCALE·expo_gain);
-/// `ceil` is `1.0` for SDR or `HDR_HEADROOM` for HDR. `hi_recovery` widens the
-/// shoulder rolloff scale to re-separate crushed highlights; 0 = identity (current curve).
-/// Output is in `[0, ceil]`.
+/// Power-law body of the Faithful curve: `x^(1/γ)`, `x` clamped at 0. The shoulder
+/// rolloff is applied separately by `shoulder_only`, so a super-white body (`> 1`)
+/// can be carried into the finish stage and only rolled off at display-encode time.
 #[inline]
-fn gamma_shoulder(x: f32, ceil: f32, hi_recovery: f32) -> f32 {
-    let raw = x.max(0.0).powf(1.0 / FAITHFUL_GAMMA);
+pub(crate) fn gamma_body(x: f32) -> f32 {
+    x.max(0.0).powf(1.0 / FAITHFUL_GAMMA)
+}
+
+/// Shoulder rolloff of the Faithful curve, applied to the gamma body `raw`.
+/// Identity below `FAITHFUL_KNEE`; asymptotic to `ceil` above. `hi_recovery` widens
+/// the rolloff scale (0 = current curve). MUST equal shaders.ts `shoulderOnly`.
+#[inline]
+pub(crate) fn shoulder_only(raw: f32, ceil: f32, hi_recovery: f32) -> f32 {
     if raw <= FAITHFUL_KNEE {
         raw.min(ceil)
     } else {
         let k = FAITHFUL_KNEE;
-        // Recovery widens the rolloff scale: hi_recovery=0 → (1−k) (current curve);
-        // larger → gentler shoulder, brightest densities map further below `ceil`.
         let scale = (1.0 - k) * (1.0 + REC_H_GAIN * hi_recovery);
         k + (ceil - k) * (1.0 - (-(raw - k) / scale).exp())
     }
+}
+
+/// Faithful reconstruction curve: `shoulder_only(gamma_body(x), ceil, hi_recovery)`.
+/// `ceil` is `1.0` for SDR or `HDR_HEADROOM` for HDR. Output is in `[0, ceil]`.
+#[inline]
+fn gamma_shoulder(x: f32, ceil: f32, hi_recovery: f32) -> f32 {
+    shoulder_only(gamma_body(x), ceil, hi_recovery)
+}
+
+/// SDR display finalizer: the shoulder rolloff + clean-punchy look layer + clamp,
+/// applied to a super-white gamma body `v` to produce the display value in `[0,1]`.
+/// Recovery is retired, so the shoulder/toe are fixed (`hi=lo=0`). This is the tail
+/// of the old Faithful SDR path, moved out of `invert_d` so the finish tone tools can
+/// operate on the body first. MUST equal shaders.ts `displayFinalize` (`lookS(shoulderOnly(v,1,0),0)`).
+#[inline]
+pub(crate) fn display_finalize(v: f32) -> f32 {
+    look_s(shoulder_only(v, 1.0, 0.0), 0.0)
 }
 
 /// Positive passthrough: the working buffer is linear, so display-encode it with
@@ -1487,6 +1507,27 @@ mod tests {
             // 1e-4 >> f32 tanh/exp noise, << an 8-bit step (1/255≈3.9e-3); guards real folds
             assert!(v >= prev - 1e-4, "non-monotonic at s={s}: {v} < {prev}");
             prev = v;
+        }
+    }
+
+    #[test]
+    fn gamma_shoulder_factors_into_body_and_shoulder() {
+        // gamma_shoulder(x, ceil, hr) must equal shoulder_only(gamma_body(x), ceil, hr).
+        for &x in &[0.0_f32, 0.1, 0.5, 0.892, 1.0, 1.5, 3.0] {
+            for &hr in &[0.0_f32, 1.0] {
+                let combined = gamma_shoulder(x, 1.0, hr);
+                let split = shoulder_only(gamma_body(x), 1.0, hr);
+                assert!((combined - split).abs() < 1e-6, "x={x} hr={hr}: {combined} vs {split}");
+            }
+        }
+    }
+
+    #[test]
+    fn display_finalize_matches_old_faithful_tail() {
+        // display_finalize(v) == look_s(gamma_shoulder over the body, 0) for hr=lo=0.
+        for &raw in &[0.0_f32, 0.3, 0.8, 0.892, 1.0, 1.4, 2.0] {
+            let want = look_s(shoulder_only(raw, 1.0, 0.0), 0.0);
+            assert!((display_finalize(raw) - want).abs() < 1e-7, "raw={raw}");
         }
     }
 }
