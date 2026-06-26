@@ -96,7 +96,9 @@ pub fn apply_per_zone_wb(rgb: [f32; 3], pz: &PerZoneWb) -> [f32; 3] {
     let w_mid = (1.0 - w_sh - w_hi).clamp(0.0, 1.0);
     std::array::from_fn(|c| {
         let gain = w_sh * pz.sh[c] + w_mid * pz.mid[c] + w_hi * pz.hi[c];
-        (rgb[c] * gain).clamp(0.0, 1.0)
+        // No [0,1] clamp: per-zone WB runs before tone_curve on the super-white body;
+        // clamping here would re-clip the highlight headroom the tone tools recover.
+        (rgb[c] * gain).max(0.0)
     })
 }
 
@@ -498,11 +500,15 @@ fn brightness_gain(b: f32) -> f32 {
     10f32.powf(b * BRIGHTNESS_DENSITY_RANGE)
 }
 
-/// Per-channel parametric tone curve in [0,1] display space. Monotone region
-/// weights; final clamp to [0,1]. Order: endpoints (whites/blacks) → region
-/// (highlights/shadows) → contrast S-gain about mid-gray.
+/// Per-channel parametric tone curve: input is the Faithful gamma BODY (may exceed
+/// 1.0 = super-white), output is display [0,1]. NO leading clamp — the tone tools
+/// must see headroom so negative Whites/Contrast can pull blown highlights back below
+/// the shoulder and recover detail. Order: endpoints → regions → contrast → finalise.
 fn tone_curve(v: f32, p: &FinishParams) -> f32 {
-    let mut v = v.clamp(0.0, 1.0);
+    // Input is the Faithful gamma BODY (may exceed 1.0 = super-white). NO leading
+    // clamp — the tone tools must see headroom so negative Whites/Contrast can pull
+    // blown highlights back below the shoulder and recover detail.
+    let mut v = v;
     // Endpoints: strongest at the extremes.
     v += p.whites * 0.20 * v.powi(3);
     v += p.blacks * 0.20 * (1.0 - v).powi(3);
@@ -515,7 +521,10 @@ fn tone_curve(v: f32, p: &FinishParams) -> f32 {
     v += p.shadows * 0.18 * (1.0 - smoothstep(0.0, 0.5, v));
     // Contrast: linear gain about 0.5.
     v = 0.5 + (v - 0.5) * (1.0 + p.contrast);
-    v.clamp(0.0, 1.0)
+    // Display finalize: the Faithful shoulder + look layer + clamp, MOVED here from
+    // invert_d so the tone tools above operate on the un-clipped body. MUST mirror the
+    // GPU FRAG finalizer. At sliders 0 this reproduces the old invert_d Faithful tail.
+    crate::engine::display_finalize(v)
 }
 
 // --- OKLab perceptual saturation (replaces the display-space cube stretch). ---
@@ -875,13 +884,17 @@ mod tests {
     }
 
     #[test]
-    fn default_is_identity() {
+    fn default_is_display_finalize() {
+        // Input domain changed: finish now operates on the Faithful body (not display space).
+        // Default finish is no longer an identity passthrough — it applies display_finalize
+        // per channel (tone tools are identity at 0, saturation/grade/LUT/mix are all no-ops).
         let p = FinishParams::default();
         for v in [0.0_f32, 0.2, 0.5, 0.8, 1.0] {
             let px = [v, v * 0.5, v * 0.25];
             let out = finish_pixel(px, &p);
             for c in 0..3 {
-                assert!((out[c] - px[c]).abs() < 1e-4, "v={v} c={c} out={}", out[c]);
+                let want = crate::engine::display_finalize(px[c]);
+                assert!((out[c] - want).abs() < 1e-4, "v={v} c={c} out={} want={want}", out[c]);
             }
         }
     }
@@ -889,10 +902,12 @@ mod tests {
     #[test]
     fn brightness_is_a_density_gain_about_zero() {
         // 0 = identity; >0 lifts a mid-gray, <0 lowers it; the move is a log/density
-        // gain (10^(b·RANGE)) applied before the tone curve.
+        // gain (10^(b·RANGE)) applied before the tone curve. Default finish now applies
+        // display_finalize, so the reference is display_finalize of the brightness-scaled body.
         let mid = [0.3_f32, 0.3, 0.3];
         let id = finish_pixel(mid, &FinishParams::default());
-        assert!((id[0] - 0.3).abs() < 1e-4, "0 = identity");
+        // brightness=0 → gain=1 → body is 0.3 → display_finalize(0.3)
+        assert!((id[0] - crate::engine::display_finalize(0.3)).abs() < 1e-4, "0 = display_finalize(0.3)");
         let up = finish_pixel(
             mid,
             &FinishParams {
@@ -910,9 +925,9 @@ mod tests {
         assert!(up[0] > 0.3, "+brightness lifts: {}", up[0]);
         assert!(down[0] < 0.3, "-brightness lowers: {}", down[0]);
         // Density curve: gain at b=0.5 is 10^(0.5·RANGE); check the lifted mid matches
-        // the raw gain (still below the tone-curve clamp at this level).
+        // display_finalize of the brightness-scaled body (the finalizer is now part of tone_curve).
         let g = 10f32.powf(0.5 * BRIGHTNESS_DENSITY_RANGE);
-        assert!((up[0] - 0.3 * g).abs() < 1e-4, "gain {g}: {}", up[0]);
+        assert!((up[0] - crate::engine::display_finalize(0.3 * g)).abs() < 1e-4, "gain {g}: {}", up[0]);
     }
 
     #[test]
@@ -1020,6 +1035,30 @@ mod tests {
     }
 
     #[test]
+    fn tone_curve_default_is_display_finalize() {
+        // At sliders 0, tone_curve must equal the moved display finalize (identity invariant).
+        let p = FinishParams::default();
+        for &v in &[0.0_f32, 0.3, 0.8, 1.0, 1.4, 2.0] {
+            let got = tone_curve(v, &p);
+            let want = crate::engine::display_finalize(v);
+            assert!((got - want).abs() < 1e-6, "v={v}: {got} vs {want}");
+        }
+    }
+
+    #[test]
+    fn lowering_whites_recovers_super_white_detail() {
+        // Two distinct super-white bodies collapse to ~white at sliders 0, but lowering
+        // Whites pulls them apart below the shoulder → recovered, distinct, lower values.
+        let mut lo = FinishParams::default();
+        lo.whites = -1.0;                          // wire range is /100; -1.0 == slider -100
+        let (a, b) = (1.25_f32, 1.45_f32);
+        let da0 = (tone_curve(a, &FinishParams::default()) - tone_curve(b, &FinishParams::default())).abs();
+        let da1 = (tone_curve(a, &lo) - tone_curve(b, &lo)).abs();
+        assert!(tone_curve(a, &lo) < tone_curve(a, &FinishParams::default()), "whites<0 must darken highlights");
+        assert!(da1 > da0 + 1e-4, "lower whites must re-separate detail: {da0} -> {da1}");
+    }
+
+    #[test]
     fn positive_saturation_increases_chroma() {
         let px = [0.6_f32, 0.4, 0.3];
         let p = FinishParams {
@@ -1049,26 +1088,29 @@ mod tests {
     }
 
     #[test]
-    fn finish_image_default_returns_equal_image() {
+    fn finish_image_default_applies_display_finalize() {
+        // Default finish is no longer identity: it applies display_finalize per channel
+        // (saturation/grade/LUT/mix are all no-ops at defaults; tone tools are zero).
         let src = img_from(vec![[0.2, 0.4, 0.6], [0.7, 0.5, 0.3]]);
         let out = finish_image(&src, &FinishParams::default());
         assert_eq!(out.width, src.width);
         assert_eq!(out.height, src.height);
         for (o, s) in out.pixels.iter().zip(src.pixels.iter()) {
             for c in 0..3 {
+                let want = crate::engine::display_finalize(s[c]);
                 assert!(
-                    (o[c] - s[c]).abs() < 1e-4,
-                    "c={c} out={} src={}",
-                    o[c],
-                    s[c]
+                    (o[c] - want).abs() < 1e-4,
+                    "c={c} out={} want={want}",
+                    o[c]
                 );
             }
         }
     }
 
     #[test]
-    fn texture_zero_is_identity() {
-        // A 5x5 ramp; texture=0 must return the same pixels (up to f32 round-trip).
+    fn texture_zero_skips_usm_pass() {
+        // texture=0 must not apply the USM pass; output must equal per-pixel finish_pixel.
+        // Default finish now applies display_finalize, so we compare against that (not source).
         let mut px = Vec::new();
         for i in 0..25 {
             let v = i as f32 / 25.0;
@@ -1080,14 +1122,16 @@ mod tests {
             pixels: px.clone(),
             ir: None,
         };
-        let out = finish_image(&img, &FinishParams::default());
+        let p = FinishParams::default();
+        let out = finish_image(&img, &p);
         for (o, s) in out.pixels.iter().zip(px.iter()) {
             for c in 0..3 {
+                // At default params (neutral input), finish_pixel = display_finalize per channel.
+                let want = crate::engine::display_finalize(s[c]);
                 assert!(
-                    (o[c] - s[c]).abs() < 1e-5,
-                    "c={c} out={} src={}",
-                    o[c],
-                    s[c]
+                    (o[c] - want).abs() < 1e-5,
+                    "c={c} out={} want={want}",
+                    o[c]
                 );
             }
         }
@@ -1245,8 +1289,9 @@ mod tests {
     #[test]
     fn texture_minus_one_equals_blur() {
         // At texture = -1 the unsharp collapses to the blurred image (k = -1 →
-        // v + -1·(v - blur) = blur), i.e. clearly soft. A flat-finish image (no
-        // tone/color ops) lets us compare apply_texture's output against blur().
+        // v + -1·(v - blur) = blur), i.e. clearly soft. finish_image applies
+        // finish_pixel first (which applies display_finalize at defaults), then blurs.
+        // So `want` is blur of the display_finalize-mapped source, not the raw source.
         let p = FinishParams {
             texture: -1.0,
             ..Default::default()
@@ -1265,10 +1310,19 @@ mod tests {
             pixels,
             ir: None,
         };
-        // finish_pixel is identity at defaults, so finished == source here.
         let out = finish_image(&img, &p);
         let (sigma, radius) = texture_blur(w, h);
-        let want = blur(&img, sigma, radius);
+        // finish_pixel at defaults applies display_finalize per channel; the texture
+        // pass then blurs that output. So want = blur(display_finalize(source)).
+        let finished = Image {
+            width: w,
+            height: h,
+            pixels: img.pixels.iter().map(|&px| {
+                std::array::from_fn(|c| crate::engine::display_finalize(px[c]))
+            }).collect(),
+            ir: None,
+        };
+        let want = blur(&finished, sigma, radius);
         for (i, (&got, &exp)) in out.pixels.iter().zip(want.pixels.iter()).enumerate() {
             for c in 0..3 {
                 assert!(
@@ -1428,14 +1482,16 @@ mod tests {
     }
 
     #[test]
-    fn finish_pixel_color_mixer_default_is_identity() {
-        // Default FinishParams (no mixer, no samples) must leave pixels unchanged.
+    fn finish_pixel_color_mixer_default_applies_display_finalize() {
+        // Default FinishParams (no mixer, no samples) must apply display_finalize per channel
+        // (the mixer/saturation/grade/LUT are all identity at defaults; tone tools are zero).
         let p = FinishParams::default();
         for v in [0.1_f32, 0.35, 0.7, 0.95] {
             let px = [v, v * 0.6, v * 0.3];
             let out = finish_pixel(px, &p);
             for c in 0..3 {
-                assert!((out[c] - px[c]).abs() < 1e-4, "v={v} c={c} {out:?}");
+                let want = crate::engine::display_finalize(px[c]);
+                assert!((out[c] - want).abs() < 1e-4, "v={v} c={c} out={} want={want}", out[c]);
             }
         }
     }
