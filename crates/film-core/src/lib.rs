@@ -36,4 +36,8 @@ pub use image::Image;
 /// `L = 10^d − 1`, applied before the contrast curve — "expose the log-inverted negative like a
 /// TIFF") in place of the old density-multiply that scaled contrast. The gamma_shoulder + look_s
 /// core is unchanged and EV 0 is identical; only edits with exposure ≠ 0 re-render (2026-06-22).
-pub const ENGINE_VERSION: u32 = 4;
+/// 5 = Headroom tone recovery: the Faithful shoulder + look layer move from invert_d
+/// to the end of finish::tone_curve, so the tone tools recover clipped highlight/shadow
+/// detail on the super-white body. EV-0/slider-0 is identical except gain-mode highlights
+/// above the knee (WB now precedes the rolloff); those thumbnails regenerate on entry (2026-06-25).
+pub const ENGINE_VERSION: u32 = 5;
