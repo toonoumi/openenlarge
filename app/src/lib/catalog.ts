@@ -5,10 +5,11 @@ import {
   images, editsById, cropById, dustById, metaById,
   selectedFolder, gridZoom, module as moduleStore, activeId, folderBaseByPath,
   updateLastCheck, updateSkipVersion, openaiApiKey, omitPreviewJpgs,
-  telemetryEnabled, telemetryDecided,
+  telemetryEnabled, telemetryDecided, debugMode,
   rollFilmEdge, rollEdgeText, undevelopableIds, hotkeyBindings,
 } from "./store";
 import { locale, LOCALES, type Locale } from "./i18n";
+import { installDebugHooks } from "./debug";
 
 /** A debounced function with a `flush()` that fires any pending call now. */
 export interface Debounced<A extends unknown[]> {
@@ -86,6 +87,14 @@ export function applySnapshot(snap: CatalogSnapshot): void {
   // prompt shows and telemetryEnabled stays false until they answer).
   if (snap.prefs.telemetry === "on") { telemetryEnabled.set(true); telemetryDecided.set(true); }
   else if (snap.prefs.telemetry === "off") telemetryDecided.set(true);
+
+  // Debug logging: install FE hooks immediately when the pref is on so this
+  // session is captured from hydrate onward. Backend was already enabled at
+  // startup via the same pref.
+  if (snap.prefs.debug_mode === "on") {
+    debugMode.set(true);
+    installDebugHooks();
+  }
 
   const st = snap.app_state;
   if (st.selected_folder !== undefined)
