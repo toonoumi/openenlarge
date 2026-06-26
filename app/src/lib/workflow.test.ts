@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { undevelopedIds, omitPreviewSidecars, mergeEnsured, selectImportPaths } from "./workflow";
+import { undevelopedIds, omitPreviewSidecars, mergeEnsured, selectImportPaths, filterImportable } from "./workflow";
 import type { ImageEntry } from "./api";
 
 const mk = (id: string, developed: boolean): ImageEntry => ({
@@ -74,6 +74,23 @@ describe("omitPreviewSidecars", () => {
   it("handles Windows backslash paths and multi-dot names", () => {
     expect(omitPreviewSidecars(["C:\\p\\a.1.arw", "C:\\p\\a.1.jpg"]))
       .toEqual(["C:\\p\\a.1.arw"]);
+  });
+});
+
+describe("filterImportable", () => {
+  it("drops macOS AppleDouble sidecars despite their real extension", () => {
+    const files = ["/r/photo.CR3", "/r/._photo.CR3", "/r/._影棚-062.CR3"];
+    expect(filterImportable(files)).toEqual(["/r/photo.CR3"]);
+  });
+
+  it("drops other dot-prefixed/hidden files", () => {
+    expect(filterImportable(["/r/.DS_Store", "/r/.hidden.jpg", "/r/img.jpg"]))
+      .toEqual(["/r/img.jpg"]);
+  });
+
+  it("handles Windows separators when finding the basename", () => {
+    expect(filterImportable(["C:\\p\\._photo.cr3", "C:\\p\\photo.cr3"]))
+      .toEqual(["C:\\p\\photo.cr3"]);
   });
 });
 

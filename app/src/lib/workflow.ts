@@ -36,10 +36,25 @@ export const IMPORT_EXTENSIONS = [
   "jpg", "jpeg", "png", "dng", "tif", "tiff", "raf", "rw2", "nef", "arw", "cr2", "cr3", "3fr", "orf", "raw",
 ];
 
-/** Keep only paths whose extension we can import (case-insensitive). */
+/** Final path segment, handling both Windows `\` and POSIX `/` separators. */
+function basename(path: string): string {
+  const norm = path.replace(/\\/g, "/");
+  const slash = norm.lastIndexOf("/");
+  return slash >= 0 ? norm.slice(slash + 1) : norm;
+}
+
+/**
+ * Keep only paths whose extension we can import (case-insensitive), and drop
+ * dot-prefixed files. The latter rejects macOS AppleDouble sidecars (`._photo.CR3`)
+ * and other hidden/system files: they carry a real extension so they pass the
+ * extension test, but aren't decodable — each one otherwise costs a wasted full-file
+ * read and a failed-decode retry, which is painfully slow on a mechanical disk.
+ */
 export function filterImportable(paths: string[]): string[] {
   return paths.filter((p) => {
-    const ext = p.split(".").pop()?.toLowerCase();
+    const name = basename(p);
+    if (name.startsWith(".")) return false;
+    const ext = name.split(".").pop()?.toLowerCase();
     return !!ext && IMPORT_EXTENSIONS.includes(ext);
   });
 }
@@ -82,33 +97,53 @@ export function selectImportPaths(paths: string[], omitPreviews: boolean): strin
   return omitPreviews ? omitPreviewSidecars(importable) : importable;
 }
 
-/** Import each path into the catalog, upserting into `images` and making the
- * first import active if nothing is. Shared by the file dialog and drag-drop. */
+/** How many imports run at once. Each `import_image` does a full-file disk read +
+ * decode on a blocking thread, so a serial loop leaves the disk idle between files.
+ * A small pool overlaps reads — crucial on a mechanical HDD where per-file seek
+ * latency dominates — without thrashing the seek head the way unbounded parallelism
+ * would. Kept modest so it stays a net win on spinning disks. */
+const IMPORT_CONCURRENCY = 4;
+
+/** Import one path into the catalog, upserting into `images` and making it active
+ * if nothing is. Failures are logged, not thrown, so one bad file doesn't abort
+ * the batch. */
+async function importOne(path: string): Promise<void> {
+  try {
+    const entry = await api.importImage(path);
+    images.update((xs) =>
+      xs.some((i) => i.id === entry.id)
+        ? xs.map((i) => (i.id === entry.id ? entry : i))
+        : [...xs, entry]);
+    activeId.update((id) => id ?? entry.id);
+    if (entry.auto_crop) {
+      const a = entry.auto_crop;
+      const crop: CropRect = {
+        rect: { x: a.x, y: a.y, w: a.w, h: a.h },
+        aspect: "original",
+        orientation: "landscape",
+        rot90: 0,
+        flipH: false,
+        flipV: false,
+        angle: 0,
+      };
+      cropById.update((m) => ({ ...m, [entry.id]: crop }));
+      showToast(translate("toast.frameTrimmed"));
+    }
+  } catch (e) { console.error("import failed", path, e); }
+}
+
+/** Import each path into the catalog with bounded concurrency, upserting into
+ * `images` and making the first import active if nothing is. Shared by the file
+ * dialog and drag-drop. Store updates are race-free: JS runs them between awaits. */
 export async function importPaths(paths: string[]): Promise<void> {
-  for (const path of paths) {
-    try {
-      const entry = await api.importImage(path);
-      images.update((xs) =>
-        xs.some((i) => i.id === entry.id)
-          ? xs.map((i) => (i.id === entry.id ? entry : i))
-          : [...xs, entry]);
-      activeId.update((id) => id ?? entry.id);
-      if (entry.auto_crop) {
-        const a = entry.auto_crop;
-        const crop: CropRect = {
-          rect: { x: a.x, y: a.y, w: a.w, h: a.h },
-          aspect: "original",
-          orientation: "landscape",
-          rot90: 0,
-          flipH: false,
-          flipV: false,
-          angle: 0,
-        };
-        cropById.update((m) => ({ ...m, [entry.id]: crop }));
-        showToast(translate("toast.frameTrimmed"));
-      }
-    } catch (e) { console.error("import failed", path, e); }
-  }
+  let next = 0;
+  const worker = async (): Promise<void> => {
+    for (let i = next++; i < paths.length; i = next++) {
+      await importOne(paths[i]);
+    }
+  };
+  const lanes = Math.min(IMPORT_CONCURRENCY, paths.length);
+  await Promise.all(Array.from({ length: lanes }, worker));
 }
 
 /** Resolve after the browser has had a chance to paint (two rAFs). Falls back to a
