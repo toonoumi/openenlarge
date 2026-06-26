@@ -132,6 +132,64 @@ impl DebugLog {
     }
 }
 
+/// `MEM` line body. rss in whole MB, cache in raw bytes — both integers so the
+/// summary parser can read them back trivially.
+pub fn format_mem_line(rss_mb: u64, cache_bytes: u64) -> String {
+    format!("rss={} cache={}", rss_mb, cache_bytes)
+}
+
+/// Sample this process's resident memory every 10s while debug logging is on,
+/// writing a `MEM` line each tick. Exits on its own once logging is disabled.
+pub fn start_mem_sampler<F>(log: DebugLog, cache_bytes: F)
+where
+    F: Fn() -> u64 + Send + 'static,
+{
+    std::thread::spawn(move || {
+        use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
+        let pid = Pid::from_u32(std::process::id());
+        let mut sys = System::new();
+        while log.is_on() {
+            sys.refresh_processes_specifics(
+                ProcessesToUpdate::Some(&[pid]),
+                true,
+                ProcessRefreshKind::nothing().with_memory(),
+            );
+            let rss_mb = sys
+                .process(pid)
+                .map(|p| p.memory() / (1024 * 1024))
+                .unwrap_or(0);
+            log.write("BE", "MEM", &format_mem_line(rss_mb, cache_bytes()));
+            // Sleep in short slices so disable() is honored within ~1s.
+            for _ in 0..10 {
+                if !log.is_on() {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_secs(1));
+            }
+        }
+    });
+}
+
+/// Chain a panic hook that records the panic to the debug log (when on) before
+/// delegating to the previous hook (so default crash behavior is unchanged).
+pub fn install_panic_hook(log: DebugLog) {
+    let prev = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let loc = info
+            .location()
+            .map(|l| format!("{}:{}", l.file(), l.line()))
+            .unwrap_or_else(|| "?".into());
+        let payload = info
+            .payload()
+            .downcast_ref::<&str>()
+            .map(|s| s.to_string())
+            .or_else(|| info.payload().downcast_ref::<String>().cloned())
+            .unwrap_or_else(|| "<non-string panic>".into());
+        log.write("BE", "PANIC", &format!("{loc} {payload}"));
+        prev(info);
+    }));
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -204,6 +262,23 @@ mod tests {
         let body = std::fs::read_to_string(&p).unwrap();
         assert!(!body.contains("before clear"));
         assert!(body.contains("after clear"));
+        std::fs::remove_file(&p).ok();
+    }
+
+    #[test]
+    fn mem_line_format() {
+        assert_eq!(format_mem_line(512, 1288490188), "rss=512 cache=1288490188");
+    }
+
+    #[test]
+    fn mem_line_is_written_via_log() {
+        let p = temp_path("mem");
+        let log = DebugLog::new(p.clone());
+        log.enable();
+        log.write("BE", "MEM", &format_mem_line(128, 4096));
+        log.disable();
+        let body = std::fs::read_to_string(&p).unwrap();
+        assert!(body.contains("BE MEM rss=128 cache=4096"), "got: {body}");
         std::fs::remove_file(&p).ok();
     }
 }
