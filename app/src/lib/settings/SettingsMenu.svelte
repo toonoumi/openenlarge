@@ -2,8 +2,9 @@
   import { createEventDispatcher } from "svelte";
   import { fade } from "svelte/transition";
   import { locale, LOCALES, t } from "../i18n";
-  import { openaiApiKey, telemetryEnabled } from "../store";
+  import { openaiApiKey, telemetryEnabled, debugMode } from "../store";
   import { setTelemetryChoice } from "../telemetry";
+  import { setDebugMode } from "../debug";
   import { runManualCheck } from "../update/updater";
   import { openUrl } from "@tauri-apps/plugin-opener";
   import { onMount } from "svelte";
@@ -47,6 +48,14 @@
       await hydrate();
       cacheBytes = await api.cacheSize();
     } finally { busy = false; }
+  }
+
+  async function onDebugToggle(on: boolean) {
+    if (on) { await setDebugMode(true); return; }
+    // Turning off: offer to also clear the log.
+    const clear = await confirm($t("settings.debug.clearLogConfirm"),
+      { title: "OpenEnlarge", kind: "warning" });
+    await setDebugMode(false, clear);
   }
 
   async function onReset() {
@@ -113,6 +122,14 @@
       {$t("settings.storage.reset")}
     </button>
     <div class="hint">{$t("settings.storage.resetHint")}</div>
+  </div>
+  <div class="grp">
+    <div class="head">{$t("settings.debug.heading")}</div>
+    <div class="seg">
+      <button class:on={!$debugMode} on:click={() => onDebugToggle(false)}>{$t("settings.debug.off")}</button>
+      <button class:on={$debugMode} on:click={() => onDebugToggle(true)}>{$t("settings.debug.on")}</button>
+    </div>
+    <div class="hint">{$t("settings.debug.hint")}</div>
   </div>
   <button class="shortcuts" on:click={() => dispatch("shortcuts")}>
     <span class="kbd-icon" aria-hidden="true">⌨</span>
