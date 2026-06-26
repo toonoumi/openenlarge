@@ -492,10 +492,14 @@ mod tests {
 
     #[test]
     fn resolve_to_uniforms_carries_recovery() {
+        // Recovery wiring is retired: hi_recovery and lo_recovery are always 0.0
+        // regardless of the Highlights/Shadows slider sign (see headroom-tone-recovery
+        // design). The uniforms carry 0.0 so the GPU shader's retired recovery path is
+        // a no-op (shoulder at zero recovery = current curve, look layer at zero = current).
         let mut p = crate::commands_test_support::sample_invert_params();
         p.highlights = -100.0; p.shadows = -25.0;
         let u = resolve_to_uniforms(&p, [0.8, 0.6, 0.4]);
-        assert!((u.hi_recovery - 1.0).abs() < 1e-6);
-        assert!((u.lo_recovery - 0.25).abs() < 1e-6);
+        assert_eq!(u.hi_recovery, 0.0);
+        assert_eq!(u.lo_recovery, 0.0);
     }
 }

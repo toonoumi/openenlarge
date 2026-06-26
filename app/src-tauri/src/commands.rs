@@ -13,7 +13,7 @@ use crate::session::{
 use film_core::calibrate::auto_wb_gains;
 use film_core::decode::{decode_ldr, decode_raw, decode_raw_preview, decode_tiff};
 use film_core::dust::{self, Stamp};
-use film_core::engine::{invert_image, InversionParams, Mode};
+use film_core::engine::{invert_image, invert_image_core, InversionParams, Mode};
 use film_core::finish::{finish_image, tone_luts, ColorGrade, ColorMix, FinishParams, PcSample};
 use film_core::wb::{gains_to_cct, wb_from_kelvin};
 use base64::Engine;
@@ -263,10 +263,11 @@ pub(crate) fn build_params(p: &InvertParams, base: [f32; 3]) -> InversionParams 
         // Faithful is the sole develop/tune path; ignore any stored `tone_mode` (Filmic
         // is retired from the app). See docs/superpowers/specs/2026-06-21-faithful-look-layer-sole-path-design.md.
         tone_mode: film_core::ToneMode::Faithful,
-        // Negative Highlights/Shadows drive engine-side recovery (the positive half
-        // stays a finish-pass tone move, see finish_from). −100 → full recovery.
-        hi_recovery: (-p.highlights / 100.0).clamp(0.0, 1.0),
-        lo_recovery: (-p.shadows / 100.0).clamp(0.0, 1.0),
+        // Highlight/shadow recovery is retired — the finish tone tools recover detail
+        // on the super-white body instead (see headroom-tone-recovery design). Keep the
+        // fields (wire contract) but always zero.
+        hi_recovery: 0.0,
+        lo_recovery: 0.0,
         ..Default::default()
     }
 }
@@ -1212,7 +1213,7 @@ fn render_view_compute(
     }
     let mut ip = resolve_params(params, thumb, effective_base(params, base));
     ip.d_max = effective_dmax(params, d_max);
-    let mut inv = invert_image(&scaled, &ip, mode_from(&params.mode));
+    let mut inv = invert_image_core(&scaled, &ip, mode_from(&params.mode));
     let stamps = view_stamps(
         &view.dust,
         base_img.width,
@@ -1251,7 +1252,7 @@ fn render_and_encode_hdr(
     quality: u8,
 ) -> Result<Vec<u8>, String> {
     let render = |ip: &InversionParams| -> film_core::Image {
-        let mut inv = invert_image(src, ip, mode);
+        let mut inv = invert_image_core(src, ip, mode);
         dust::apply(&mut inv, stamps);
         if ir_removal.enabled {
             if let Some(ir) = src.ir.as_ref() {
@@ -1441,7 +1442,7 @@ fn thumbnail_compute(
     let (ow, oh) = (small.width as u32, small.height as u32);
     let mut ip = resolve_params(params, thumb, effective_base(params, base));
     ip.d_max = effective_dmax(params, d_max);
-    let mut inv = invert_image(&small, &ip, mode_from(&params.mode));
+    let mut inv = invert_image_core(&small, &ip, mode_from(&params.mode));
     let stamps = view_stamps(
         &view.dust,
         base_img.width,
@@ -1524,7 +1525,7 @@ pub(crate) fn finish_full_res(
     };
     let mut ip = resolve_params(params, &thumb, effective_base(params, base));
     ip.d_max = effective_dmax(params, dev_dmax);
-    let mut inv = invert_image(&full, &ip, mode_from(&params.mode));
+    let mut inv = invert_image_core(&full, &ip, mode_from(&params.mode));
     let stamps = export_stamps(dust, inv.width, inv.height);
     dust::apply(&mut inv, &stamps);
     if ir_removal.enabled {
@@ -2114,7 +2115,7 @@ pub(crate) fn auto_brightness_value(
         p.exposure = ev;
         let mut ip = resolve_params(&p, src, base); // honors temp/tint WB; print_exposure = 2^ev
         ip.d_max = effective_dmax(params, dev_dmax);
-        let inv = invert_image(src, &ip, mode_from(&params.mode));
+        let inv = invert_image_core(src, &ip, mode_from(&params.mode));
         let pos = finish_image(&inv, &finish_from(params)); // current contrast/curve/brightness
         percentile_luma(&pos, AUTO_PCT)
     };
@@ -2204,7 +2205,7 @@ fn render_grid_thumbnail(
     };
     let mut ip = resolve_params(&params, seed_src, base);
     ip.d_max = effective_dmax(&params, d_max);
-    let inv = invert_image(render_src, &ip, mode_from(&params.mode));
+    let inv = invert_image_core(render_src, &ip, mode_from(&params.mode));
     let inv = finish_image(&inv, &finish_from(&params));
     to_jpeg_b64(&inv, false, 82)
 }
@@ -3136,7 +3137,7 @@ mod tests {
         pc.exposure = evc;
         let mut ip = resolve_params(&pc, &neg, effective_base(&pc, base));
         ip.d_max = effective_dmax(&pc, dmax);
-        let inv = invert_image(&neg, &ip, mode_from(&pc.mode));
+        let inv = invert_image_core(&neg, &ip, mode_from(&pc.mode));
         let pos = finish_image(&inv, &finish_from(&pc));
         let p90 = percentile_luma(&pos, 0.90);
         assert!(
@@ -3665,13 +3666,16 @@ mod tests {
 
     #[test]
     fn build_params_derives_recovery_from_negative_sliders() {
+        // Recovery wiring is retired: hi_recovery and lo_recovery are always 0.0
+        // regardless of the Highlights/Shadows slider sign. The finish tone tools
+        // operate on the super-white body instead (see headroom-tone-recovery design).
         let mut p = crate::commands_test_support::sample_invert_params();
         p.highlights = -100.0; p.shadows = -50.0;
         let ip = build_params(&p, [0.8, 0.6, 0.4]);
-        assert!((ip.hi_recovery - 1.0).abs() < 1e-6, "hi_recovery={}", ip.hi_recovery);
-        assert!((ip.lo_recovery - 0.5).abs() < 1e-6, "lo_recovery={}", ip.lo_recovery);
+        assert_eq!(ip.hi_recovery, 0.0, "hi_recovery must be 0 regardless of highlights slider");
+        assert_eq!(ip.lo_recovery, 0.0, "lo_recovery must be 0 regardless of shadows slider");
 
-        p.highlights = 40.0; p.shadows = 0.0; // positive/zero → no recovery
+        p.highlights = 40.0; p.shadows = 0.0;
         let ip2 = build_params(&p, [0.8, 0.6, 0.4]);
         assert_eq!(ip2.hi_recovery, 0.0);
         assert_eq!(ip2.lo_recovery, 0.0);
@@ -3679,10 +3683,14 @@ mod tests {
 
     #[test]
     fn finish_from_suppresses_negative_highlights_shadows() {
+        // finish_from clamps Highlights/Shadows to the positive half (max(0, slider/100)).
+        // Negative values are not a finish-pass move; only the positive half reaches the
+        // tone curve. Engine-side recovery (hi_recovery/lo_recovery) is retired (zeroed
+        // in build_params) — the finish tone tools operate on the super-white body instead.
         let mut p = crate::commands_test_support::sample_invert_params();
         p.highlights = -100.0; p.shadows = -100.0;
         let f = finish_from(&p);
-        assert_eq!(f.highlights, 0.0, "negative Highlights is engine recovery, not a finish move");
+        assert_eq!(f.highlights, 0.0, "negative Highlights must not reach finish as a tone move");
         assert_eq!(f.shadows, 0.0);
 
         p.highlights = 50.0; // positive half unchanged
@@ -3755,6 +3763,48 @@ mod tests {
         let samples = [([0.40, 0.22, 0.13], hi)];
         let out = aggregate_roll_base(&samples).expect("one frame");
         assert_eq!(out, [0.40, 0.22, 0.13]);
+    }
+
+    #[test]
+    fn build_params_zeroes_retired_recovery() {
+        // Recovery wiring is retired: hi_recovery and lo_recovery must always be 0.0
+        // even when the Highlights/Shadows sliders are pushed negative (where the old
+        // code derived recovery from them). The finish tone tools operate on the
+        // super-white body instead (see headroom-tone-recovery design).
+        let mut p = default_invert_params();
+        p.highlights = -100.0; p.shadows = -100.0;
+        let ip = build_params(&p, [0.18, 0.12, 0.08]);
+        assert_eq!(ip.hi_recovery, 0.0);
+        assert_eq!(ip.lo_recovery, 0.0);
+    }
+
+    #[test]
+    fn headroom_pipeline_identity_at_zero_sliders() {
+        // With all tone sliders at zero AND neutral WB (build_params defaults wb=[1,1,1]),
+        // the new display pipeline (invert_image_core → finish_image, which applies
+        // display_finalize as its last step) must produce the same output as the legacy
+        // display path (invert_image, which already applies display_finalize internally).
+        // This holds for all pixel densities because shoulder_only commutes with a
+        // scalar wb of 1.0.  Use a 2×2 mid-key negative (scan < base).
+        use film_core::Image;
+        let neg = Image {
+            width: 2,
+            height: 2,
+            pixels: vec![[0.09f32, 0.06, 0.04]; 4],
+            ir: None,
+        };
+        let p = default_invert_params();
+        let ip = build_params(&p, [0.18, 0.12, 0.08]);
+        let legacy = invert_image(&neg, &ip, Mode::D);
+        let headroom = finish_image(&invert_image_core(&neg, &ip, Mode::D), &finish_from(&p));
+        for (a, b) in legacy.pixels.iter().zip(headroom.pixels.iter()) {
+            for c in 0..3 {
+                assert!(
+                    (a[c] - b[c]).abs() < 1e-5,
+                    "ch {c}: legacy={a:?} headroom={b:?}"
+                );
+            }
+        }
     }
 }
 

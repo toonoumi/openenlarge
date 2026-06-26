@@ -136,7 +136,7 @@ pub fn loss(cur: &ImageStats, target: &ImageStats) -> f32 {
 use crate::commands::{finish_from, mode_from, resolve_params, effective_base, effective_dmax};
 use crate::session::InvertParams;
 use film_core::finish::finish_image; // film-core does NOT re-export these at crate root
-use film_core::engine::invert_image; // (lib.rs only re-exports `Image`)
+use film_core::engine::invert_image_core; // (lib.rs only re-exports `Image`)
 
 /// Render `src` (a raw-negative thumbnail) to its developed positive under `p`,
 /// reusing the exact live-preview pipeline, and return its toning fingerprint.
@@ -144,7 +144,7 @@ use film_core::engine::invert_image; // (lib.rs only re-exports `Image`)
 pub fn render_stats(p: &InvertParams, src: &Image, dev_base: [f32; 3], dev_d_max: f32) -> ImageStats {
     let mut ip = resolve_params(p, src, effective_base(p, dev_base));
     ip.d_max = effective_dmax(p, dev_d_max);
-    let inv = invert_image(src, &ip, mode_from(&p.mode));
+    let inv = invert_image_core(src, &ip, mode_from(&p.mode));
     let out = finish_image(&inv, &finish_from(p));
     compute_stats(&out)
 }
