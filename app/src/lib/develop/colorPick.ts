@@ -77,6 +77,15 @@ export function sampleRobust(
   return readCanvasPixel(canvas, cssX, cssY);
 }
 
+/** Grow/shrink the gray-point WB sampling ring by one scroll/pinch step and clamp
+ *  it to [min, max]. `deltaY < 0` (scroll up / pinch out) grows; otherwise shrinks.
+ *  Multiplicative so each notch feels even at any size — mirrors the film-base
+ *  picker's `resizePatch`. `step` is the per-notch factor (default 1.12×). */
+export function nextWbRing(current: number, deltaY: number, min: number, max: number, step = 1.12): number {
+  const next = current * (deltaY < 0 ? step : 1 / step);
+  return Math.min(max, Math.max(min, next));
+}
+
 /** Pick the displayed RGB under the cursor. `cssX`/`cssY` are relative to the
  *  CANVAS element's top-left. When a `reader` (the GL renderer) is supplied the
  *  value comes from a no-overlay readback pass, so the clip-warning overlay can

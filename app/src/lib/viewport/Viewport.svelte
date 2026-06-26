@@ -1,3 +1,11 @@
+<script context="module" lang="ts">
+  // Gray-point WB sampling-ring diameter in CSS px, remembered across Viewport
+  // remounts within a session (e.g. a trip through the crop tool, which swaps in
+  // CropView and back). `null` = use the per-canvas default until the user first
+  // resizes the ring.
+  let savedWbRing: number | null = null;
+</script>
+
 <script lang="ts">
   import { onMount, createEventDispatcher } from "svelte";
   import { api, type InvertParams } from "../api";
@@ -11,7 +19,7 @@
   import { screenRadius, strokeCentroid, type DustStroke } from "../develop/dust";
   import { marqueeZoom } from "./marquee";
   import { hiTierAction } from "./hiTier";
-  import { pickPixel, sampleRobust } from "../develop/colorPick";
+  import { pickPixel, sampleRobust, nextWbRing } from "../develop/colorPick";
   import { orientUVMatrix, displayToSourceUV } from "../crop/transforms";
   import { viewWindow, type ViewWindow } from "./view";
   import { t } from "$lib/i18n";
@@ -210,8 +218,30 @@
     }
     const ro = new ResizeObserver(measure);
     if (el) ro.observe(el);
+    // macOS WebKit delivers a trackpad PINCH as non-standard gesture* events (not
+    // ctrl+wheel), so onWheel never sees it. While the WB picker is armed, capture
+    // the pinch and map it to the same ring resize (and own the gesture so the
+    // webview doesn't page-zoom). Outside picking, ignore it (existing behaviour).
+    const opts = { passive: false } as AddEventListenerOptions;
+    let gestureRing = 0;
+    const onGestureStart = (ev: Event) => {
+      if (!pointPick) return;
+      ev.preventDefault();
+      gestureRing = wbRing ?? wbRingDefault;
+    };
+    const onGestureChange = (ev: Event) => {
+      if (!pointPick) return;
+      ev.preventDefault();
+      const scale = (ev as unknown as { scale?: number }).scale ?? 1;
+      wbRing = Math.min(wbRingMax, Math.max(WB_RING_MIN, gestureRing * scale));
+      savedWbRing = wbRing;
+    };
+    el?.addEventListener("gesturestart", onGestureStart, opts);
+    el?.addEventListener("gesturechange", onGestureChange, opts);
     return () => {
       ro.disconnect();
+      el?.removeEventListener("gesturestart", onGestureStart);
+      el?.removeEventListener("gesturechange", onGestureChange);
       if (hiTimer) { clearTimeout(hiTimer); hiTimer = null; }
       if (busyTimer) { clearTimeout(busyTimer); busyTimer = null; }
       // Free the WebGL context on unmount — otherwise every remount leaks one and
@@ -619,8 +649,22 @@
     animating = false;
   }
 
+  // Resize the WB ring one step and remember it across remounts. `deltaSign < 0`
+  // grows, > 0 shrinks (matches wheel deltaY and our pinch mapping).
+  function resizeWbRing(deltaSign: number) {
+    wbRing = nextWbRing(wbRing ?? wbRingDefault, deltaSign, WB_RING_MIN, wbRingMax);
+    savedWbRing = wbRing;
+  }
+
   function onWheel(e: WheelEvent) {
     if (!interactive) return;
+    // Gray-point WB picker: the wheel resizes the sampling ring instead of zooming,
+    // so the user can dial the averaged area on the fly (like the film-base picker).
+    if (pointPick) {
+      e.preventDefault();
+      resizeWbRing(e.deltaY);
+      return;
+    }
     // Eraser mode: the wheel resizes the brush; a trackpad PINCH (ctrlKey) still zooms.
     if (eraser && !e.ctrlKey) {
       e.preventDefault();
@@ -654,6 +698,28 @@
   let mqStartImg: [number, number] = [0, 0];
   let mqCX = 0, mqCY = 0;
   $: cursorR = screenRadius(brush, imgW, eff);
+
+  // ---- Gray-point WB sampling ring -----------------------------------------
+  // The picker medians a window of canvas pixels (sampleRobust). Make that window
+  // user-sizable and visible: a ring on the live preview the user grows/shrinks
+  // (scroll or trackpad pinch) to dial how much area gets averaged — bigger = more
+  // grain stability. Size is in CSS px (an on-screen aiming target); converted to
+  // backbuffer pixels via the canvas DPR at sample time.
+  const WB_RING_MIN = 12;       // px (CSS)
+  let wbRing: number | null = savedWbRing; // CSS-px diameter; null until defaulted
+  let pickHovering = false;     // cursor is over the preview while the picker is armed
+  // Canvas CSS dimensions (matches the inline canvas box; vw0 is the windowed view).
+  $: canvasCssW = vw0 ? vw0.css.width : dispW;
+  $: canvasCssH = vw0 ? vw0.css.height : dispH;
+  $: canvasShort = Math.max(1, Math.min(canvasCssW, canvasCssH));
+  // Default ≈ today's fixed 4%-of-short-edge window; max ≈ 40% so the ring stays
+  // usable but can cover a generous flat patch.
+  $: wbRingMax = Math.max(40, canvasShort * 0.4);
+  $: wbRingDefault = Math.min(wbRingMax, Math.max(WB_RING_MIN, canvasShort * 0.04));
+  // Fill the default once the canvas is sized; clamp a remembered value to this canvas.
+  $: if (pointPick && canvasShort > 1) {
+    wbRing = wbRing == null ? wbRingDefault : Math.min(wbRingMax, Math.max(WB_RING_MIN, wbRing));
+  }
 
   // Marker anchors in normalized [0,1] space, both kinds, for rendering + hit-test.
   $: spotMarkers = [
@@ -707,7 +773,7 @@
     if (painting) pending = [...pending, normPoint(e)];
   }
   function onEnter() { if (eraser) hovering = true; }
-  function onLeave() { hovering = false; painting = false; pending = []; mqActive = false; hoverRGB = null; overSpot = false; }
+  function onLeave() { hovering = false; painting = false; pending = []; mqActive = false; hoverRGB = null; overSpot = false; pickHovering = false; }
 
   function onDown(e: PointerEvent) {
     if (!interactive) return;
@@ -732,7 +798,11 @@
         // value so film grain can't throw Temp/Tint to an extreme (D).
         const rgb = pickPixel(renderer, canvas, px, py);
         if (rgb) {
-          const win = Math.max(15, Math.round(Math.min(canvas.width, canvas.height) * 0.04)) | 1;
+          // The visible ring is a CSS-px diameter; convert to backbuffer pixels via
+          // the canvas DPR so sampleRobust medians exactly the area the user framed.
+          const dpr = rect.width > 0 ? canvas.width / rect.width : 1;
+          const ringCss = wbRing ?? wbRingDefault;
+          const win = Math.max(15, Math.round(ringCss * dpr)) | 1;
           const rob = sampleRobust(renderer, canvas, px, py, win) ?? rgb;
           dispatch("pointpick", { r: rgb[0], g: rgb[1], b: rgb[2], u, v, rr: rob[0], rg: rob[1], rb: rob[2] });
         }
@@ -773,6 +843,14 @@
   function onMove(e: PointerEvent) {
     if (!interactive) return;
     sampleHover(e);
+    if (pointPick) {
+      // Track the cursor so the sampling ring follows it.
+      const rect = el.getBoundingClientRect();
+      curX = e.clientX - rect.left;
+      curY = e.clientY - rect.top;
+      pickHovering = true;
+      return;
+    }
     if (eraser && marquee) {
       if (mqActive) {
         const rect = el.getBoundingClientRect();
@@ -890,6 +968,11 @@
   {#if eraser && hovering && !marquee && !overSpot}
     <div class="brush" style="left:{curX}px; top:{curY}px; width:{cursorR * 2}px; height:{cursorR * 2}px;"></div>
   {/if}
+  {#if pointPick && pickHovering && wbRing != null}
+    <div class="wbring" style="left:{curX}px; top:{curY}px; width:{wbRing}px; height:{wbRing}px;" aria-hidden="true">
+      <span class="wbdot"></span>
+    </div>
+  {/if}
   {#if eraser && marquee && mqActive}
     <div class="marquee" style="left:{Math.min(mqSX, mqCX)}px; top:{Math.min(mqSY, mqCY)}px; width:{Math.abs(mqCX - mqSX)}px; height:{Math.abs(mqCY - mqSY)}px;"></div>
   {/if}
@@ -954,6 +1037,13 @@
   .brush { position: absolute; border-radius: 50%; pointer-events: none; z-index: 3;
     transform: translate(-50%, -50%); border: 1.5px solid rgba(255,255,255,0.9);
     box-shadow: 0 0 0 1px rgba(0,0,0,0.5), inset 0 0 0 1px rgba(0,0,0,0.4); }
+  /* Gray-point WB sampling ring: shows the averaged area; scroll/pinch resizes it. */
+  .wbring { position: absolute; border-radius: 50%; pointer-events: none; z-index: 3;
+    transform: translate(-50%, -50%); display: grid; place-items: center;
+    border: 1.5px solid rgba(120,220,255,0.95);
+    box-shadow: 0 0 0 1px rgba(0,0,0,0.55), inset 0 0 0 1px rgba(0,0,0,0.45); }
+  .wbring .wbdot { width: 3px; height: 3px; border-radius: 50%;
+    background: rgba(120,220,255,0.95); box-shadow: 0 0 0 1px rgba(0,0,0,0.6); }
   .vp.marqueearm { cursor: crosshair; }
   .marquee { position: absolute; z-index: 5; pointer-events: none;
     border: 1px solid #fff; background: rgba(244,157,78,0.15);

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { rgbToHslSample, sampleCoords, pickPixel } from "./colorPick";
+import { rgbToHslSample, sampleCoords, pickPixel, nextWbRing } from "./colorPick";
 
 describe("sampleCoords", () => {
   // A canvas whose backbuffer is 2× its CSS size (HiDPI), origin handling.
@@ -47,6 +47,24 @@ describe("pickPixel", () => {
     const renderer = { readPixel() { touched = true; return [0, 0, 0] as [number, number, number]; } };
     expect(pickPixel(renderer, canvas, -5, 5)).toBeNull();
     expect(touched).toBe(false);
+  });
+});
+
+describe("nextWbRing", () => {
+  it("grows on scroll-up (deltaY < 0) and shrinks on scroll-down", () => {
+    expect(nextWbRing(100, -1, 10, 400)).toBeCloseTo(112, 5); // ×1.12
+    expect(nextWbRing(100, 1, 10, 400)).toBeCloseTo(100 / 1.12, 5);
+  });
+
+  it("clamps to the min and max bounds", () => {
+    expect(nextWbRing(10, 1, 10, 400)).toBe(10); // already at min, can't shrink past
+    expect(nextWbRing(400, -1, 10, 400)).toBe(400); // already at max, can't grow past
+    expect(nextWbRing(5, -1, 10, 400)).toBeGreaterThanOrEqual(10); // below min snaps up into range
+  });
+
+  it("is reversible around a step (grow then shrink ≈ original)", () => {
+    const grown = nextWbRing(120, -1, 10, 400);
+    expect(nextWbRing(grown, 1, 10, 400)).toBeCloseTo(120, 5);
   });
 });
 
