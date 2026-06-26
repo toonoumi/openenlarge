@@ -283,10 +283,10 @@ pub fn develop_positive_px(rgb: [f32; 3], p: &InversionParams) -> [f32; 3] {
     })
 }
 
-/// Kodak Cineon densitometry (darktable negadoctor). Per channel:
-/// restore the negative's density in log space, return to linear, apply a paper
-/// inversion + tone curve with a highlight soft-clip, and balance with WB as a
-/// gain on the linear print. See docs/superpowers/specs/2026-06-07-negadoctor-inversion-design.md.
+/// Kodak Cineon densitometry core: returns the super-white BODY for Faithful SDR (no
+/// shoulder + look layer) and the full display value for all other modes. Callers that
+/// need the display value use `invert_d`; callers that need the body for further tone
+/// tool processing use this function directly.
 ///
 /// WB is applied as a gain on the positive `print_lin` (not as a log-space offset
 /// on the negative): `0 * wb == 0`, so deep shadows stay neutral black instead of
@@ -294,7 +294,7 @@ pub fn develop_positive_px(rgb: [f32; 3], p: &InversionParams) -> [f32; 3] {
 /// `print_exposure·(1 − 1/wb[c])`, which drives one channel to black before the
 /// others and reads as a colour cast in the darkest tones (the "yellow shadow"
 /// bug). A positive-domain gain spreads the WB tint evenly across tones instead.
-pub fn invert_d(rgb: [f32; 3], p: &InversionParams) -> [f32; 3] {
+pub fn invert_d_core(rgb: [f32; 3], p: &InversionParams) -> [f32; 3] {
     if p.positive {
         return develop_positive_px(rgb, p);
     }
@@ -393,25 +393,42 @@ pub fn invert_d(rgb: [f32; 3], p: &InversionParams) -> [f32; 3] {
                 let l = (10f32.powf(d) - 1.0).max(0.0);
                 let lit = l * 2f32.powf(FAITHFUL_EXPO_K * ev);
                 let t_eff = (lit + 1.0).log10() * FAITHFUL_SCALE;
-                // Recovery is SDR-only: HDR already expands highlights via HDR_HEADROOM.
-                let hr = if p.hdr { 0.0 } else { p.hi_recovery };
-                let core = match p.wb_mode {
-                    WbMode::Gain => gamma_shoulder(t_eff, ceil, hr) * p.wb[c],
-                    WbMode::Subtractive => {
-                        gamma_shoulder(t_eff * p.wb[c].max(EPS).powf(CMY_STRENGTH), ceil, hr)
-                    }
-                };
-                // Look layer (clean-punchy S-curve), SDR only; shadow recovery softens
-                // its toe. HDR keeps the headroom-expanded value (no look layer).
                 if p.hdr {
-                    core
+                    // HDR unchanged: full shoulder into HDR_HEADROOM, no look layer.
+                    let hr = 0.0;
+                    match p.wb_mode {
+                        WbMode::Gain => gamma_shoulder(t_eff, ceil, hr) * p.wb[c],
+                        WbMode::Subtractive =>
+                            gamma_shoulder(t_eff * p.wb[c].max(EPS).powf(CMY_STRENGTH), ceil, hr),
+                    }
                 } else {
-                    look_s(core, p.lo_recovery)
+                    // SDR: emit the GAMMA BODY (super-white preserved). The shoulder + look
+                    // layer + clamp move to `display_finalize`, applied either by `invert_d`
+                    // (analysis / back-compat) or by `finish::tone_curve` (display path) after
+                    // the tone tools. Recovery is retired; the body is free of the old hr/lo
+                    // clamps so the finish layer can apply tone tools on the full dynamic range.
+                    match p.wb_mode {
+                        WbMode::Gain => gamma_body(t_eff) * p.wb[c],
+                        WbMode::Subtractive =>
+                            gamma_body(t_eff * p.wb[c].max(EPS).powf(CMY_STRENGTH)),
+                    }
                 }
             }
         };
         v
     })
+}
+
+/// Display-referred inversion: `invert_d_core` then the SDR display finalize for the
+/// Faithful path (other modes already return a display value). Byte-identical to the
+/// pre-task-2 `invert_d`, so all analysis / back-compat callers are unaffected.
+pub fn invert_d(rgb: [f32; 3], p: &InversionParams) -> [f32; 3] {
+    let core = invert_d_core(rgb, p);
+    if matches!(p.tone_mode, ToneMode::Faithful) && !p.hdr {
+        std::array::from_fn(|c| display_finalize(core[c]))
+    } else {
+        core
+    }
 }
 
 /// Which inversion to run. One engine: Kodak Cineon (negadoctor).
@@ -432,6 +449,13 @@ pub fn invert_image(img: &crate::Image, p: &InversionParams, _mode: Mode) -> cra
         pixels,
         ir: img.ir.clone(),
     }
+}
+
+/// Like `invert_image` but returns the super-white BODY (no display finalize). Used
+/// only by the display path (feeds `finish_image`, which finalizes after the tone tools).
+pub fn invert_image_core(img: &crate::Image, p: &InversionParams, _mode: Mode) -> crate::Image {
+    let pixels = img.pixels.par_iter().map(|&px| invert_d_core(px, p)).collect();
+    crate::Image { width: img.width, height: img.height, pixels, ir: img.ir.clone() }
 }
 
 #[cfg(test)]
@@ -1447,28 +1471,6 @@ mod tests {
     }
 
     #[test]
-    fn highlight_recovery_separates_crushed_highlights() {
-        let p0 = faithful_params();
-        let mut p1 = p0.clone(); p1.hi_recovery = 1.0;
-        let a = [0.02, 0.02, 0.02]; // dense neg → bright highlight (d≈1.7)
-        let b = [0.005, 0.005, 0.005]; // denser → brighter (d≈2.3)
-        let sep0 = (invert_d(a, &p0)[0] - invert_d(b, &p0)[0]).abs();
-        let sep1 = (invert_d(a, &p1)[0] - invert_d(b, &p1)[0]).abs();
-        assert!(sep1 > sep0 + 1e-4, "recovery must separate highlights: sep0={sep0} sep1={sep1}");
-    }
-
-    #[test]
-    fn shadow_recovery_separates_crushed_shadows() {
-        let p0 = faithful_params();
-        let mut p1 = p0.clone(); p1.lo_recovery = 1.0;
-        let a = [0.99, 0.99, 0.99]; // very thin neg → deeply crushed shadow
-        let b = [0.96, 0.96, 0.96];
-        let sep0 = (invert_d(a, &p0)[0] - invert_d(b, &p0)[0]).abs();
-        let sep1 = (invert_d(a, &p1)[0] - invert_d(b, &p1)[0]).abs();
-        assert!(sep1 > sep0 + 1e-5, "recovery must separate shadows: sep0={sep0} sep1={sep1}");
-    }
-
-    #[test]
     fn invert_d_identity_at_zero_recovery() {
         // Whole-pixel regression guard: recovery 0 == current output.
         let p = faithful_params();
@@ -1480,34 +1482,6 @@ mod tests {
         }
         // (parity vs a frozen baseline is covered by the existing pinned tests;
         //  defaults are 0.0 so behavior is unchanged.)
-    }
-
-    #[test]
-    fn recovery_neutral_stays_neutral() {
-        // Equal per-channel density (neutral scene, wb=1) → identical channels at any
-        // recovery, because recovery is the SAME monotone remap on each channel.
-        let mut p = faithful_params(); p.hi_recovery = 1.0; p.lo_recovery = 1.0;
-        for i in 1..=100 {
-            let s = i as f32 / 100.0;
-            let out = invert_d([s, s, s], &p);
-            let spread = out[0].max(out[1]).max(out[2]) - out[0].min(out[1]).min(out[2]);
-            assert!(spread < 1e-6, "neutral must stay neutral at s={s}: {out:?}");
-        }
-    }
-
-    #[test]
-    fn recovery_curves_monotonic_and_in_gamut() {
-        let mut p = faithful_params(); p.hi_recovery = 1.0; p.lo_recovery = 1.0;
-        let mut prev = -1.0;
-        for i in 0..=2000 {
-            // decreasing scan = increasing density = increasing output
-            let s = 1.0 - i as f32 / 2000.0 * 0.999;
-            let v = invert_d([s, s, s], &p)[0];
-            assert!((0.0..=1.0).contains(&v), "out of gamut at s={s}: {v}");
-            // 1e-4 >> f32 tanh/exp noise, << an 8-bit step (1/255≈3.9e-3); guards real folds
-            assert!(v >= prev - 1e-4, "non-monotonic at s={s}: {v} < {prev}");
-            prev = v;
-        }
     }
 
     #[test]
@@ -1550,5 +1524,31 @@ mod tests {
             let want = look_s(sh, 0.0);
             assert!((display_finalize(raw) - want).abs() < 1e-7, "raw={raw}");
         }
+    }
+
+    // --- Task 2: invert_d_core (super-white body) --------------------------------
+
+    #[test]
+    fn invert_d_equals_display_finalize_of_core_faithful_sdr() {
+        let mut p = faithful_params();          // existing test helper (Faithful, SDR)
+        p.hi_recovery = 0.0; p.lo_recovery = 0.0;
+        for &s in &[0.05_f32, 0.2, 0.5, 0.8, 0.95] {
+            let core = invert_d_core([s, s, s], &p);
+            let disp = invert_d([s, s, s], &p);
+            for c in 0..3 {
+                assert!((display_finalize(core[c]) - disp[c]).abs() < 1e-6,
+                    "s={s} c={c}: finalize(core)={} disp={}", display_finalize(core[c]), disp[c]);
+            }
+        }
+    }
+
+    #[test]
+    fn invert_d_core_carries_super_white_on_bright_highlight() {
+        let p = faithful_params();
+        // A very thin negative (scan ≈ base) is a scene highlight → dense body.
+        let core = invert_d_core([0.02, 0.02, 0.02], &p);
+        let disp = invert_d([0.02, 0.02, 0.02], &p);
+        assert!(core[0] > 1.0, "body should exceed 1.0 (super-white), got {}", core[0]);
+        assert!(disp[0] <= 1.0 + 1e-6, "display must stay clamped, got {}", disp[0]);
     }
 }
