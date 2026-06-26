@@ -62,9 +62,52 @@ A bright highlight now arrives at `tone_curve` as e.g. `1.3` instead of pre-clam
 
 Both compress super-white *below the shoulder knee* before the finalizer maps to display, so the previously-flat white blob re-separates into detail. Same logic mirrored at the dark end for Shadows/Blacks.
 
+### Confinement: `invert_d` is shared, so split body vs. display
+
+`invert_image`/`invert_d` is consumed well beyond the display path —
+`auto_wb_gains`, the gray-point picker, `color_match.rs`, the proxy
+noise-match calibration (`convert.rs:678`), and direct pixel reads all expect
+the display-referred positive in `[0,1]`. Changing `invert_d`'s output domain
+globally would silently drift those. So confine the change:
+
+- **`invert_d_core(px, p)`** — NEW. Returns the **super-white body** for the
+  Faithful SDR path (`pow(te·wb, 1/γ)`, no shoulder/look/clamp); returns the
+  current display value unchanged for every other mode (Filmic, HDR, naive,
+  B/C). HDR keeps its `HDR_HEADROOM` expansion inside core.
+- **`invert_d(px, p)`** — UNCHANGED signature/behaviour. Defined as
+  `if Faithful && !hdr { core.map(display_finalize) } else { core }`, so it is
+  byte-identical to today. **All existing analysis / back-compat callers stay
+  on `invert_d` / `invert_image` and are untouched.**
+- **`invert_image_core(img, p)`** — NEW. `invert_d_core` mapped over the image.
+- **Display path only** switches to the body: the seven `invert_image → finish_image`
+  pairings in `commands.rs` (`1202→1221`, `1241→1248`, `1426→1444`,
+  `1509→1517`, `2091→2092`, `2181→2182`, `3048→3049`) use `invert_image_core`;
+  `finish_image`/`finish_pixel` apply `display_finalize` at the end of
+  `tone_curve`. The GPU path is display-only already.
+
+`display_finalize(v) = look_s(shoulder_only(v, 1.0, 0.0), 0.0)`, where
+`shoulder_only` is `gamma_shoulder` minus its internal `pow` (now `gamma_body`,
+in core). `gamma_shoulder(x,ceil,hr) ≡ shoulder_only(gamma_body(x),ceil,hr)` —
+refactor it to call both so the HDR caller is unchanged.
+
+**Self-checking:** if a display site is left on `invert_image` by mistake,
+`finish` double-applies `display_finalize` → visibly wrong → the identity test
+(below) fails. The dangerous direction (an analysis site switched to core) is
+avoided by only touching the seven finish-paired sites.
+
+### Production WB mode caveat (gain)
+
+Production default is **gain** WB (subtractive is opt-in, `api.ts:405`). In gain
+mode WB multiplies *after* today's shoulder (`gamma_shoulder(te)·wb`); the split
+folds WB into the body (`gamma_body(te)·wb`) and applies the shoulder in the
+finalizer. Below the shoulder knee `shoulder_only` is identity, so output is
+**bit-identical** there; only highlight channels above the knee differ — WB now
+precedes the rolloff (no post-WB clip), the intended improvement. Subtractive
+mode is exact everywhere (WB lives inside `te`, pre-`gamma_body`).
+
 ## Invariants (the safety contract)
 
-1. **Sliders at 0 ⇒ bit-identical output to today.** `tone_curve` passes the body through untouched (no top clamp to alter it), and the finalizer `look_s(shoulder_only(body, 1, 0), 0)` reproduces the moved `look_s(gamma_shoulder(te·wb, 1, 0))` exactly. The default look does not move; only slider *movement* gains recovery.
+1. **Sliders at 0 ⇒ output identical to today** (subtractive: bit-identical everywhere; gain: bit-identical below the shoulder knee, with the intended highlight change above it — see the gain caveat). `tone_curve` passes the body through untouched (no top clamp to alter it), and the finalizer reproduces the moved `look_s(gamma_shoulder(…))`. The default look does not move (outside gain highlights); only slider *movement* gains recovery.
 2. **CPU/GPU parity.** `engine.rs` + `finish.rs` (CPU export) and `shaders.ts` `INVERT_FRAG`/`FRAG` (GPU preview) stay in lockstep — every constant, function, and order mirrored verbatim, as the existing parity tests require.
 3. **Downstream untouched.** Everything after `tone_curve` still receives display `[0,1]`, so saturation / tone LUT / color grade / color mixer / point color / texture are byte-for-byte unchanged.
 4. **Monotonic under extreme sliders, including headroom.** `tone_curve` must remain monotonic for inputs up to the realistic super-white ceiling (≈ 2.0), so opposing endpoint+region sliders cannot fold the curve.
@@ -72,19 +115,23 @@ Both compress super-white *below the shoulder knee* before the finalizer maps to
 ## Components touched
 
 - **`crates/film-core/src/engine.rs`**
-  - `invert_d` Faithful SDR branch: output `pow(te·wb, 1/γ)` (split out of `gamma_shoulder`), no `look_s`, no clamp. HDR branch unchanged.
-  - Factor `gamma_shoulder` into `pow(...)` + a new `shoulder_only(raw, ceil, hr)` helper (so both call sites share one definition).
-  - `hi_recovery`/`lo_recovery` become inert for SDR (always 0 at the finalizer). Decide in the plan whether to delete the `InversionParams` fields or leave them zeroed for minimal churn — leaning zeroed/unused to keep the wire contract stable.
+  - Add `gamma_body(x)` (`x.max(0).powf(1/γ)`) and `shoulder_only(raw, ceil, hr)`; refactor `gamma_shoulder` to `shoulder_only(gamma_body(x), ceil, hr)` (HDR caller unchanged).
+  - Add `display_finalize(v)` = `look_s(shoulder_only(v, 1.0, 0.0), 0.0)` (`pub(crate)`).
+  - Add `invert_d_core` (Faithful SDR → body via `gamma_body`, no shoulder/look/clamp; other modes unchanged) and `invert_image_core`. Redefine `invert_d` = `if Faithful && !hdr { core.map(display_finalize) } else { core }` so it stays byte-identical.
+  - Make `look_s` / `shoulder_only` / `display_finalize` `pub(crate)` so `finish.rs` can call them.
+  - `hi_recovery`/`lo_recovery` retired: leave the `InversionParams` fields in place (zeroed) to keep the wire contract stable; remove the engine recovery tests (`hi_recovery_separates_highlights` etc.) that assert the old SDR shoulder-widening, since the finalizer is now fixed at `hr=lo=0`.
 - **`crates/film-core/src/finish.rs`**
-  - `tone_curve`: drop the leading `clamp`, run slider ops on headroom, append the display finalizer `look_s(shoulder_only(v, 1, 0), 0)`. Import the engine's `shoulder_only`/`look_s` (or re-host the shared curve in one module to avoid duplication).
-  - `apply_per_zone_wb`: relax the `[0,1]` clamp.
+  - `tone_curve`: drop the leading `clamp`, run slider ops on the headroom value, append `engine::display_finalize(v)` (use `crate::engine::display_finalize`).
+  - `apply_per_zone_wb`: relax the `[0,1]` clamp (headroom-safe).
 - **`app/src/lib/viewport/gl/shaders.ts`**
-  - `INVERT_FRAG` Faithful SDR: output `pow(te·wb, 1/γ)`, no shoulder/look/clamp.
-  - `FRAG` `tone()`: drop the leading `clamp`, append the finalizer (`lookS(shoulderOnly(v))`). Mirror constants.
+  - `INVERT_FRAG` Faithful SDR: output `gammaBody(te·wb)` (gain: `gammaBody(te)·wb`), no shoulder/look/clamp. Add a `gammaBody()` GLSL helper.
+  - `FRAG`: add `shoulderOnly()` + `lookS()` helpers (FRAG is a separate program from INVERT_FRAG and lacks them); `tone()` drops its leading `clamp`, appends `lookS(shoulderOnly(v,1.0,0.0),0.0)`. Mirror all constants.
+  - Clip overlay: `clipCode` currently reads `u_src` (the inverted positive), which is now the super-white body. Switch it to test the **finished display color** `c` from `finishAt` (display `[0,1]`, thresholds `CLIP_HI`/`CLIP_LO` unchanged). Preview-only; no CPU parity needed.
 - **`app/src-tauri/src/commands.rs`**
-  - `build_params`: remove the `hi_recovery: -p.highlights/100` / `lo_recovery: -p.shadows/100` wiring (set 0 / drop).
-  - Update/remove the tests that assert the old recovery mapping (`commands.rs:3508-3522`).
-- **`app/src/lib/viewport/gl/invert.ts` / `uniforms.ts` / `renderer.ts`** — drop or zero the `hi_recovery`/`lo_recovery` uniforms in step with the engine decision.
+  - `build_params`: set `hi_recovery`/`lo_recovery` to `0.0` (remove the `-p.highlights/100` wiring).
+  - Switch the seven display-path `invert_image(...)` calls that feed `finish_image` to `invert_image_core(...)` (`1202`, `1241`, `1426`, `1509`, `2091`, `2181`, `3048`). Leave all other `invert_image` calls (analysis/seed/bake) untouched.
+  - Update/remove the tests asserting the old recovery mapping (`commands.rs:3508-3522`).
+- **GPU uniform plumbing** (`invert.ts` / `uniforms.ts` / `renderer.ts`): the `hi_recovery`/`lo_recovery` uniforms stay wired but are always `0` (the engine zeroes them); no structural change required.
 
 ## Testing
 
