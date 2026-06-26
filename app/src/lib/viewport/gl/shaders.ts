@@ -59,8 +59,26 @@ uniform float u_soft_clip;     // engine highlight soft-clip knee (InversionPara
 // finished color to an FBO for the texture (USM) pass to consume.
 uniform int u_finish_mode;
 
+// Faithful display finalizer — MUST equal engine.rs display_finalize (shoulderOnly + look_s).
+// Recovery retired in finish stage (hi=lo=0), so scale is fixed at (1−k).
+const float FAITHFUL_GAMMA = 1.590;
+const float FAITHFUL_KNEE = 0.892;
+const float LOOK_K = 2.0;
+float shoulderOnly(float raw, float ceil_val) {
+  if (raw <= FAITHFUL_KNEE) return min(raw, ceil_val);
+  float k = FAITHFUL_KNEE;
+  float scale = (1.0 - k);                  // hi_recovery retired → 0
+  return k + (ceil_val - k) * (1.0 - exp(-(raw - k) / scale));
+}
+float lookS(float v) {                       // lo_recovery retired → 0
+  return clamp(0.5 + 0.5 * tanh(LOOK_K * (v - 0.5)) / tanh(LOOK_K * 0.5), 0.0, 1.0);
+}
+float displayFinalize(float v) { return lookS(shoulderOnly(v, 1.0)); }
+
+// Input is the Faithful gamma BODY (may exceed 1.0 = super-white). NO leading
+// clamp — the tone tools must see headroom so negative Whites/Contrast can pull
+// blown highlights back below the shoulder and recover detail. Mirrors finish.rs::tone_curve.
 float tone(float v) {
-  v = clamp(v, 0.0, 1.0);
   v += u_whites * 0.20 * v * v * v;
   v += u_blacks * 0.20 * pow(1.0 - v, 3.0);
   // Shelf weights that peak AT the extremes (mirror finish.rs::tone_curve) so
@@ -69,7 +87,7 @@ float tone(float v) {
   v += u_highlights * 0.18 * smoothstep(0.5, 1.0, v);
   v += u_shadows * 0.18 * (1.0 - smoothstep(0.0, 0.5, v));
   v = 0.5 + (v - 0.5) * (1.0 + u_contrast);
-  return clamp(v, 0.0, 1.0);
+  return displayFinalize(v);
 }
 
 // Per-zone WB neutralizer — mirrors finish.rs::apply_per_zone_wb EXACTLY.
@@ -87,7 +105,7 @@ vec3 applyPerZoneWb(vec3 rgb) {
   float whi = smoothstep(0.41, 0.91, L);
   float wmid = clamp(1.0 - wsh - whi, 0.0, 1.0);
   vec3 gain = wsh * u_pz_sh + wmid * u_pz_mid + whi * u_pz_hi;
-  return clamp(rgb * gain, 0.0, 1.0);
+  return max(rgb * gain, vec3(0.0));
 }
 
 vec3 colorGrade(vec3 rgb) {
@@ -273,11 +291,12 @@ vec3 finishAt(vec2 uv) {
   return pointColor(colorMixer(colorGrade(cu)));
 }
 
-// B1 — output detail-loss detection. With the filmic display curve the engine
+// B1 — output detail-loss detection. With the Faithful display curve the engine
 // reaches true white at 1.0 and rolls off gently through a shoulder, so highlight
 // detail is effectively gone once a channel sits deep in that shoulder (near 1.0);
-// shadows are lost near black. 'src' is the inverted positive — post-engine,
-// PRE-finish (texture(u_src)). Strict mode flags the ONSET (entering the shoulder /
+// shadows are lost near black. Input is the finished DISPLAY color (post-finalize),
+// so CLIP_HI/CLIP_LO correctly reflect post-finish detail loss (lowering Whites/
+// Highlights clears the warning). Strict mode flags the ONSET (entering the shoulder /
 // near-black). Returns a 2-bit code: bit1 (=2) highlight loss, bit0 (=1) shadow loss.
 const float CLIP_LO = 2.0 / 255.0;
 const float CLIP_LO_STRICT = 8.0 / 255.0;
@@ -300,7 +319,7 @@ vec3 clipOverlay(vec3 disp, int code) {
 
 void main() {
   vec3 c = finishAt(v_uv);
-  int code = clipCode(texture(u_src, v_uv).rgb);
+  int code = clipCode(c);                    // test the finished DISPLAY color (was texture(u_src))
   // mode 1: hand the plain finished color to the USM pass, carrying the detail-loss
   // code in alpha (the USM pass can't see the inverted positive). No clip overlay.
   if (u_finish_mode == 1) { o = vec4(c, float(code)); return; }
@@ -450,6 +469,9 @@ float gammaShoulder(float x, float ceil_val, float hi_recovery) {
   float scale = (1.0 - k) * (1.0 + REC_H_GAIN * hi_recovery);
   return k + (ceil_val - k) * (1.0 - exp(-(raw - k) / scale));
 }
+// Faithful gamma BODY only — no shoulder, no look, no clamp. Super-white body
+// (> 1) is preserved for the finish FRAG to finalize. MUST equal engine.rs gamma_body.
+float gammaBody(float x) { return pow(max(x, 0.0), 1.0 / FAITHFUL_GAMMA); }
 
 // Filmic display S-curve — MUST equal engine.rs FILMIC_K/FILMIC_PIVOT/FILMIC_WHITE_T
 // and filmic_s(). Logistic on normalised log-density, rescaled so filmicS(0)==0
@@ -527,16 +549,14 @@ vec3 invert(vec3 rgbIn) {
       // identity; gammaShoulder supplies the highlight rolloff. Mirror: engine.rs invert_d Faithful.
       vec3 lScene = max(pow(vec3(10.0), d) - 1.0, 0.0);
       vec3 lit = lScene * exp2(FAITHFUL_EXPO_K * ev);
-      vec3 te = log2(lit + 1.0) * LOG10 * FAITHFUL_SCALE; // log10(lit+1) = log2(lit+1)·LOG10
-      float ceil_val = 1.0;
+      vec3 te = log2(lit + 1.0) * LOG10 * FAITHFUL_SCALE;
       if (u_wb_mode == 1) {
         vec3 s = pow(max(u_wb, vec3(EPS)), vec3(CMY_STRENGTH));
-        v = vec3(gammaShoulder(te.r * s.r, ceil_val, u_hi_recovery), gammaShoulder(te.g * s.g, ceil_val, u_hi_recovery), gammaShoulder(te.b * s.b, ceil_val, u_hi_recovery));
+        v = vec3(gammaBody(te.r * s.r), gammaBody(te.g * s.g), gammaBody(te.b * s.b));
       } else {
-        v = vec3(gammaShoulder(te.r, ceil_val, u_hi_recovery) * u_wb.r, gammaShoulder(te.g, ceil_val, u_hi_recovery) * u_wb.g, gammaShoulder(te.b, ceil_val, u_hi_recovery) * u_wb.b);
+        v = vec3(gammaBody(te.r) * u_wb.r, gammaBody(te.g) * u_wb.g, gammaBody(te.b) * u_wb.b);
       }
-      // Look layer (SDR; INVERT_FRAG is always SDR). Mirror: engine.rs look_s.
-      v = vec3(lookS(v.r, u_lo_recovery), lookS(v.g, u_lo_recovery), lookS(v.b, u_lo_recovery));
+      return v;   // super-white body, UNCLAMPED — finish FRAG finalizes to display.
     } else {
       // Filmic: logistic S-curve on WB-neutralised log-density.
       if (u_wb_mode == 1) {
