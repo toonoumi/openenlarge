@@ -1511,22 +1511,43 @@ mod tests {
     }
 
     #[test]
-    fn gamma_shoulder_factors_into_body_and_shoulder() {
-        // gamma_shoulder(x, ceil, hr) must equal shoulder_only(gamma_body(x), ceil, hr).
+    fn gamma_shoulder_matches_original_formula() {
+        // Independent reference: the original inlined gamma_shoulder arithmetic with
+        // literal constants (γ=1.590, knee=0.892, REC_H_GAIN=3.0). Guards gamma_body +
+        // shoulder_only against a wrong power, knee, or scale — a self-comparison would not.
+        let reference = |x: f32, ceil: f32, hr: f32| -> f32 {
+            let raw = x.max(0.0).powf(1.0 / 1.590);
+            if raw <= 0.892 {
+                raw.min(ceil)
+            } else {
+                let k = 0.892_f32;
+                let scale = (1.0 - k) * (1.0 + 3.0 * hr);
+                k + (ceil - k) * (1.0 - (-(raw - k) / scale).exp())
+            }
+        };
         for &x in &[0.0_f32, 0.1, 0.5, 0.892, 1.0, 1.5, 3.0] {
             for &hr in &[0.0_f32, 1.0] {
-                let combined = gamma_shoulder(x, 1.0, hr);
-                let split = shoulder_only(gamma_body(x), 1.0, hr);
-                assert!((combined - split).abs() < 1e-6, "x={x} hr={hr}: {combined} vs {split}");
+                let got = gamma_shoulder(x, 1.0, hr);
+                let want = reference(x, 1.0, hr);
+                assert!((got - want).abs() < 1e-6, "x={x} hr={hr}: {got} vs {want}");
             }
         }
     }
 
     #[test]
-    fn display_finalize_matches_old_faithful_tail() {
-        // display_finalize(v) == look_s(gamma_shoulder over the body, 0) for hr=lo=0.
+    fn display_finalize_is_shoulder_then_look_at_zero_recovery() {
+        // Pin the composition + fixed hr=lo=0 against an INDEPENDENT shoulder reference
+        // (literal knee=0.892, ceil=1.0, recovery=0) fed through the real look_s. Catches
+        // a wrong ceil, a nonzero recovery, or a dropped look layer.
         for &raw in &[0.0_f32, 0.3, 0.8, 0.892, 1.0, 1.4, 2.0] {
-            let want = look_s(shoulder_only(raw, 1.0, 0.0), 0.0);
+            let k = 0.892_f32;
+            let sh = if raw <= k {
+                raw.min(1.0)
+            } else {
+                let scale = 1.0 - k; // (1-k)*(1 + 3*0)
+                k + (1.0 - k) * (1.0 - (-(raw - k) / scale).exp())
+            };
+            let want = look_s(sh, 0.0);
             assert!((display_finalize(raw) - want).abs() < 1e-7, "raw={raw}");
         }
     }
