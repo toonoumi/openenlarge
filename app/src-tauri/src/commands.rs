@@ -2962,15 +2962,18 @@ pub fn debug_set(enabled: bool, app: tauri::AppHandle) {
     use tauri::Manager;
     let log = app.state::<crate::debug_log::DebugLog>().inner().clone();
     if enabled {
+        let was_off = !log.is_on();
         log.enable();
-        crate::debug_log::install_panic_hook(log.clone());
-        let app2 = app.clone();
-        crate::debug_log::start_mem_sampler(log.clone(), move || {
-            crate::cache::oecache_bytes(
-                &app2.state::<crate::session::Session>().cache_dir.lock()
-                    .map(|d| d.clone()).unwrap_or_default(),
-            )
-        });
+        if was_off {
+            crate::debug_log::install_panic_hook(log.clone());
+            let app2 = app.clone();
+            crate::debug_log::start_mem_sampler(log.clone(), move || {
+                crate::cache::oecache_bytes(
+                    &app2.state::<crate::session::Session>().cache_dir.lock()
+                        .map(|d| d.clone()).unwrap_or_default(),
+                )
+            });
+        }
         crate::dlog!(log, "INFO", "debug mode enabled");
     } else {
         crate::dlog!(log, "INFO", "debug mode disabled");

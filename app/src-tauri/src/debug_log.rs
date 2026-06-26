@@ -112,7 +112,7 @@ impl DebugLog {
             return;
         }
         let ms = self.0.start.elapsed().as_millis();
-        let line = format!("[+{:08}ms] {} {} {}\n", ms, src, level, msg.replace('\n', " "));
+        let line = format!("[+{:08}ms] {} {} {}\n", ms, src, level, msg.replace('\n', " ").replace('\r', " "));
         if self.0.bytes.load(Ordering::Relaxed) + line.len() as u64 > CAP_BYTES {
             self.rotate(&mut g);
         }
@@ -142,13 +142,15 @@ impl DebugLog {
             } else {
                 data
             };
-            if std::fs::write(&self.0.path, &tail).is_ok() {
-                self.0.bytes.store(tail.len() as u64, Ordering::Relaxed);
-            }
+            let _ = std::fs::write(&self.0.path, &tail);
         }
         if let Ok(f) = OpenOptions::new().create(true).append(true).open(&self.0.path) {
             *g = Some(BufWriter::new(f));
         }
+        // Resync from reality so a failed trim can't leave bytes stuck above the
+        // cap (which would spin-rotate full-file I/O on every subsequent write).
+        let actual = std::fs::metadata(&self.0.path).map(|m| m.len()).unwrap_or(0);
+        self.0.bytes.store(actual, Ordering::Relaxed);
     }
 }
 
@@ -324,6 +326,19 @@ mod tests {
         log.disable();
         let body = std::fs::read_to_string(&p).unwrap();
         assert!(body.contains("FE ERROR line one line two"), "got: {body}");
+        assert_eq!(body.lines().count(), 1);
+        std::fs::remove_file(&p).ok();
+    }
+
+    #[test]
+    fn carriage_returns_in_msg_become_spaces() {
+        let p = temp_path("cr");
+        let log = DebugLog::new(p.clone());
+        log.enable();
+        log.write("BE", "INFO", "win\r\nline");
+        log.disable();
+        let body = std::fs::read_to_string(&p).unwrap();
+        assert!(body.contains("BE INFO win  line") || body.contains("BE INFO win line"), "got: {body}");
         assert_eq!(body.lines().count(), 1);
         std::fs::remove_file(&p).ok();
     }
