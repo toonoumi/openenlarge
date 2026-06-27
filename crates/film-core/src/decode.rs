@@ -23,6 +23,30 @@ pub enum DecodeError {
     Image(#[from] ::image::ImageError),
 }
 
+/// Turn rawler's terse decode error into an actionable `DecodeError`.
+///
+/// The one case worth special-casing: Nikon's "High Efficiency" (HE) and
+/// "High Efficiency★" (HE*) NEF compression. These use intoPIX's patented
+/// TicoRAW codec, which rawler — and every open-source raw library — cannot
+/// decode (the bitstream is proprietary and licensing it is incompatible with
+/// an open-source decoder). rawler reports this as e.g.
+/// `NEF compression Some(HighEfficencyStar) is not supported` (note rawler's
+/// "Efficency" spelling), which reads like a corrupt-file error. Rewrite it
+/// into the only two things the user can actually do about it.
+fn map_decode_err(raw: String) -> DecodeError {
+    if raw.contains("HighEfficency") || raw.contains("HighEfficencyStar") {
+        return DecodeError::Raw(
+            "This is a Nikon High Efficiency (HE/HE★) RAW, which uses a \
+             proprietary, licensed codec that open-source decoders can't read. \
+             To use this scan, either set your camera's RAW recording to \
+             \"Lossless compressed\", or convert the file to DNG with Adobe \
+             DNG Converter (free) and import the .dng."
+                .to_string(),
+        );
+    }
+    DecodeError::Raw(raw)
+}
+
 /// sRGB electro-optical transfer function: gamma-encoded sRGB → linear light.
 /// Input and output are normalized to [0, 1].
 #[inline]
@@ -310,7 +334,7 @@ pub fn decode_raw(path: &Path) -> Result<Image, DecodeError> {
     normalize_ifd_pointer_types(&mut bytes);
     let source = rawler::rawsource::RawSource::new_from_shared_vec(Arc::new(bytes)).with_path(path);
     let raw = rawler::decode(&source, &rawler::decoders::RawDecodeParams::default())
-        .map_err(|e| DecodeError::Raw(e.to_string()))?;
+        .map_err(|e| map_decode_err(e.to_string()))?;
 
     // Step 1.5: sensor-shift HIGH-RES frames need binning, not demosaic.
     //
