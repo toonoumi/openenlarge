@@ -25,6 +25,17 @@ crop-aware measurements identically.
 The core tension: the user wants the spokes in the **output**, but not in the
 **metering**. We must decouple "what is shown" from "what is measured."
 
+**Positives are affected too.** `positive` is a boolean flag (auto-classified by
+`classify::classify_positive` at develop time, or hand-toggled via `togglePositive`), not
+a string mode. On the positive path the per-pixel invert short-circuits to
+`develop_positive_px` (`engine.rs:282`) — a bare `exposure · WB · 1/2.2` passthrough that
+**never reads `base` or `d_max`**. But `auto_brightness_value` measures the *finished*
+positive through the same chokepoint, so it over-brightens spoke-laden positives exactly
+as it does negatives. The catch: the negative-domain "clearer than film base" signal does
+not exist for a positive (its rebate is near-black/opaque, not clear orange base), so the
+detector must branch on `positive`. For positives only auto-exposure and WB consume the
+mask — D_max is computed but inert on the positive render.
+
 ## Goals
 
 - Auto-exposure, D_max, and WB ignore spoke/gap pixels when the crop includes them.
@@ -73,18 +84,31 @@ pub struct PhotoMask {
     pub confidence: f32,        // 0..1
 }
 
-pub fn detect_photo_mask(scan: &Image, base: [f32; 3]) -> PhotoMask;
+pub fn detect_photo_mask(scan: &Image, base: [f32; 3], positive: bool) -> PhotoMask;
 ```
 
-- Operates on the **scan/negative-domain thumb** — the same `dev.thumb` the analyses
-  already use, after orient + crop — where spokes are the clearest pixels.
-- A pixel is a **spoke** when its clearness relative to `base` exceeds `SPOKE_MARGIN`
-  (i.e. it sits below the base's minimum density / brighter than base in the scan domain).
-- **confidence** combines:
-  - (a) the luminance/density gap between the clear (spoke) cluster and the image Dmin —
-    a wide, well-separated gap is a strong signal; a smeared continuum is weak;
-  - (b) **border-adjacency ratio** — the share of masked pixels that touch the crop edge
-    or form a contiguous strip, vs. scattered interior speckle.
+- Operates on the **scan thumb** — the same `dev.thumb` the analyses already use, after
+  orient + crop. The detection signal branches on `positive`.
+
+**Negative path** (`positive == false`): spokes are the clearest pixels.
+  - A pixel is a **spoke** when its clearness relative to `base` exceeds `SPOKE_MARGIN`
+    (it sits below the base's minimum density / brighter than base in the scan domain).
+  - **confidence** combines (a) the luminance/density gap between the clear (spoke)
+    cluster and the image Dmin — a wide, well-separated gap is strong, a smeared continuum
+    weak; and (b) **border-adjacency ratio** — the share of masked pixels touching the
+    crop edge / forming a contiguous strip, vs. scattered interior speckle.
+
+**Positive path** (`positive == true`): `base` is ignored; spokes are an extreme,
+  near-uniform, border-adjacent region at *either* rail — near-black (slide rebate, dense
+  and opaque) or near-white (clear sprocket/perforation). A pixel is a candidate when it
+  is within `POS_RAIL_MARGIN` of black or white; it is confirmed by **local uniformity**
+  (low variance — film rebate and clear gaps are flat) and **border-adjacency**.
+  - **confidence** combines rail extremeness, the uniformity of the candidate region, and
+    border-adjacency. Scattered interior near-black (real scene shadows) or near-white
+    (real speculars) fail the uniformity + border tests and are not masked.
+
+Both paths return the same `PhotoMask`; downstream callers do not care which signal
+produced it.
 
 ### 2. Confidence gate + plausibility
 
@@ -104,10 +128,13 @@ crop. Metering must never run on zero pixels.
 ### 3. Shared plumbing into the three analyses
 
 All three commands already orient + crop the thumb. Each computes the mask **once** from
-`(cropped_thumb, base, meter_border)` and passes it to a mask-aware sampler. The mask is
-recomputed per call rather than cached: it is deterministic on the small thumb, so all
-three callers agree without shared state. (Caching on the developed image is a possible
-later optimization; not in this design.)
+`(cropped_thumb, base, positive, meter_border)` and passes it to a mask-aware sampler. The
+mask is recomputed per call rather than cached: it is deterministic on the small thumb, so
+all three callers agree without shared state. (Caching on the developed image is a
+possible later optimization; not in this design.) `positive` is already available on
+`Developed` / `InvertParams`, so no new plumbing is needed to reach the detector. For a
+positive image the D_max sampler still applies the mask, but its result is inert on the
+positive render — only auto-exposure and WB consume the mask in that case.
 
 - `auto_brightness_value` (`commands.rs:2181`) → `percentile_luma_masked` skips spoke
   pixels when measuring the 90th-percentile luminance.
@@ -142,16 +169,18 @@ consistent with the per-roll base-calibration model.
 
 ### 6. Constants
 
-`SPOKE_MARGIN`, `CONF_THRESH`, `FRAC_MIN`, `FRAC_MAX` live at the top of the relevant
-`film-core` module alongside the existing analysis constants (mirroring `AUTO_TARGET` /
-`AUTO_PCT` in `commands.rs`), so they are tunable in one place.
+`SPOKE_MARGIN` (negative), `POS_RAIL_MARGIN` (positive), `CONF_THRESH`, `FRAC_MIN`,
+`FRAC_MAX` live at the top of the relevant `film-core` module alongside the existing
+analysis constants (mirroring `AUTO_TARGET` / `AUTO_PCT` in `commands.rs`), so they are
+tunable in one place.
 
 ## Data flow
 
 ```
-dev.thumb (negative) ──orient+crop──► cropped scan thumb ─┐
-                                          base ───────────┤
-                            meter_border ─────────────────┤
+dev.thumb ────────────orient+crop──► cropped scan thumb ─┐
+                              base (negative only) ───────┤
+                              positive flag ──────────────┤   negative: clearer-than-base
+                              meter_border ───────────────┤   positive: rail+uniform+border
                                                           ▼
                                             detect_photo_mask → PhotoMask
                                                           │ (confidence + plausibility gate)
@@ -170,14 +199,23 @@ dev.thumb (negative) ──orient+crop──► cropped scan thumb ─┐
 - **Empty or all-masked:** fall back to the full crop.
 - **Orientation-only changes:** unaffected — they do not change the crop coverage and do
   not trigger re-analysis (existing behavior preserved).
+- **Positive/negative flip:** when `classify_positive` or the manual toggle changes the
+  flag, the detector switches signal accordingly on the next analysis. The
+  `meter_border` override is independent of and orthogonal to the positive flag.
+- **Positive D_max:** masking is applied but inert on the positive render; this is
+  intentional and costs nothing (keeps one code path for all three samplers).
 
 ## Testing
 
 `film-core` unit tests for `detect_photo_mask`:
-- synthetic clear-base border → mask detected, high confidence;
-- spoke-free frame → empty mask / low confidence, full-crop fallback;
-- dark night frame (shadows carry base density) → *not* masked;
-- `exclude` forces the mask; `include` never masks.
+- **negative**, synthetic clear-base border → mask detected, high confidence;
+- **negative**, spoke-free frame → empty mask / low confidence, full-crop fallback;
+- **negative**, dark night frame (shadows carry base density) → *not* masked;
+- **positive**, near-black slide rebate border → masked;
+- **positive**, near-white clear sprocket strip → masked;
+- **positive**, spoke-free slide with deep scene shadows / speculars → *not* masked
+  (fails uniformity + border tests);
+- `exclude` forces the mask; `include` never masks (both flag states).
 
 Mask-aware sampler tests:
 - `percentile_luma_masked` and `sample_dmax` exclude exactly the masked pixels;
@@ -188,7 +226,8 @@ coverage for the `meter_border` parameter plumbing if practical.
 
 ## Open questions / tuning
 
-- Exact values for `SPOKE_MARGIN`, `CONF_THRESH`, `FRAC_MIN`, `FRAC_MAX` are tuning work,
-  to be validated against real spoke scans during implementation.
+- Exact values for `SPOKE_MARGIN`, `POS_RAIL_MARGIN`, `CONF_THRESH`, `FRAC_MIN`,
+  `FRAC_MAX` are tuning work, to be validated against real spoke scans (both negative and
+  positive) during implementation.
 - Whether `per_zone_wb` needs the mask in v1 or can follow `as_shot_wb` — default is to
   mask both for consistency.
