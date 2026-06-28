@@ -453,7 +453,8 @@ settings.telemetry.on,On,开启,オン,켜기,src/lib/settings/SettingsMenu.svel
 settings.telemetry.off,Off,关闭,オフ,끄기,src/lib/settings/SettingsMenu.svelte,button
 settings.telemetry.hint,Anonymous usage data only. No images or personal information are ever sent.,仅匿名使用数据。绝不发送任何图像或个人信息。,匿名の使用状況データのみです。画像や個人情報は送信されません。,익명 사용 데이터만 포함됩니다. 이미지나 개인 정보는 전송되지 않습니다.,src/lib/settings/SettingsMenu.svelte,hint
 settings.telemetry.requestAccess,Request dashboard access,申请仪表板访问权限,ダッシュボードアクセスを申請,대시보드 접근 권한 요청,src/lib/settings/SettingsMenu.svelte,link
-basic.inverseBtn,Inverse,反相,反転,반전,src/lib/develop/Basic.svelte,button
+basic.negative,Neg,负,ネガ,네거,src/lib/develop/Basic.svelte,option
+basic.positive,Pos,正,ポジ,포지,src/lib/develop/Basic.svelte,option
 eraser.zoomArea,Zoom to area,缩放到区域,エリアにズーム,영역으로 확대,src/lib/develop/EraserPanel.svelte,button
 eraser.resetView,Reset view,重置视图,ビューをリセット,보기 초기화,src/lib/develop/EraserPanel.svelte,button
 eraser.marqueeHint,Drag a rectangle on the image to zoom in.,在图像上拖动矩形以放大。,画像上で矩形をドラッグして拡大します。,이미지 위에서 사각형을 드래그하여 확대하세요.,src/lib/develop/EraserPanel.svelte,hint

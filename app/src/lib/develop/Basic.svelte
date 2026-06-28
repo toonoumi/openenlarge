@@ -327,6 +327,17 @@
       <span>{$t('basic.title')}</span>
     </button>
     <span class="headbtns">
+      <!-- Negative↔Positive: a two-state segment showing the current classification.
+           Clicking the inactive side flips via togglePositive (same as the old Inverse
+           button, but it shows state and re-meters). -->
+      <span class="negpos">
+        <button class="hdrtoggle" class:on={!$params.positive} disabled={!$activeId}
+                aria-pressed={!$params.positive}
+                on:click={() => { if ($params.positive) togglePositive(); }}>{$t('basic.negative')}</button>
+        <button class="hdrtoggle" class:on={$params.positive} disabled={!$activeId}
+                aria-pressed={$params.positive}
+                on:click={() => { if (!$params.positive) togglePositive(); }}>{$t('basic.positive')}</button>
+      </span>
       <button class="hdrtoggle" class:on={$params.hdr}
               title={$t('basic.hdrTitle')} aria-pressed={$params.hdr}
               on:click={() => { params.update((p) => ({ ...p, hdr: !p.hdr })); commitActive(); }}>
@@ -338,30 +349,37 @@
 
   {#if open}
     <div class="body" transition:slide={{ duration: 280, easing: cubicInOut }}>
-      <!-- Inverse: always available; flips negative↔positive for this image. -->
-      <button class="recal inverse" on:click={togglePositive}>{$t('basic.inverseBtn')}</button>
-
-      <!-- Metering mode: always available; auto-exposure + WB consume the mask on positives too -->
-      <div class="wbhead" title={$t('basic.meterBorderTitle')}>
+      <!-- Metering cluster: the segmented mode (always shown — auto-exposure + WB consume
+           the mask on positives too) with the crop re-analysis / revert actions as compact
+           icons on the label row. The icons are negatives-only (D_max/WB analysis). -->
+      <div class="wbhead metahead" title={$t('basic.meterBorderTitle')}>
         <span>{$t('basic.meterBorder')}</span>
-        <span class="wbbtns">
-          <button class="auto" class:on={$params.meter_border === "auto"}
-                  on:click={() => setMeterBorder("auto")}>{$t('basic.meterBorder.auto')}</button>
-          <button class="auto" class:on={$params.meter_border === "exclude"}
-                  on:click={() => setMeterBorder("exclude")}>{$t('basic.meterBorder.exclude')}</button>
-          <button class="auto" class:on={$params.meter_border === "include"}
-                  on:click={() => setMeterBorder("include")}>{$t('basic.meterBorder.include')}</button>
-        </span>
+        {#if !$params.positive}
+          <span class="metaicons">
+            <button class="iconbtn" on:click={manualReanalyze}
+                    title={$t('base.reanalyze')} aria-label={$t('base.reanalyze')}>
+              <Icon name="rotate-cw" size={14} />
+            </button>
+            {#if $preReanalyze && $preReanalyze.id === $activeId}
+              <button class="iconbtn" on:click={revertReanalyze}
+                      title={$t('base.revertReanalyze')} aria-label={$t('base.revertReanalyze')}>
+                <Icon name="rotate-ccw" size={14} />
+              </button>
+            {/if}
+          </span>
+        {/if}
       </div>
+      <span class="meterseg">
+        <button class="auto" class:on={$params.meter_border === "auto"}
+                on:click={() => setMeterBorder("auto")}>{$t('basic.meterBorder.auto')}</button>
+        <button class="auto" class:on={$params.meter_border === "exclude"}
+                on:click={() => setMeterBorder("exclude")}>{$t('basic.meterBorder.exclude')}</button>
+        <button class="auto" class:on={$params.meter_border === "include"}
+                on:click={() => setMeterBorder("include")}>{$t('basic.meterBorder.include')}</button>
+      </span>
 
       <!-- Inversion-specific controls only apply to negatives. -->
       {#if !$params.positive}
-        <!-- Crop re-analysis (re-derive D_max + WB from the current crop) -->
-        <button class="recal reanalyze" on:click={manualReanalyze}>{$t('base.reanalyze')}</button>
-        {#if $preReanalyze && $preReanalyze.id === $activeId}
-          <button class="recal revert" on:click={revertReanalyze}>{$t('base.revertReanalyze')}</button>
-        {/if}
-
         <!-- Film Base: tap the swatch to pick the rebate; the pick auto-applies to this image -->
         <div class="sub">{$t('base.title')}</div>
         <button class="baseswatch" class:on={$baseSampling} on:click={toggleRecalibrate}
@@ -469,6 +487,9 @@
   .hdrtoggle { background: transparent; border: 1px solid var(--glass-brd); color: var(--text-dim);
     border-radius: 6px; padding: 2px 8px; font-size: 11px; cursor: pointer; font-weight: 600; }
   .hdrtoggle.on { color: #fff; border-color: var(--accent); background: rgba(244,157,78,0.18); }
+  .hdrtoggle:disabled { opacity: 0.4; cursor: not-allowed; }
+  /* Neg|Pos two-state segment in the header (reuses .hdrtoggle styling per side). */
+  .negpos { display: inline-flex; gap: 4px; }
   .sub { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;
     color: var(--text-dim); margin: 12px 0 4px; }
   .wbhead { display: flex; justify-content: space-between; align-items: center;
@@ -481,6 +502,16 @@
   /* Toggle-on state for .auto buttons (e.g. color-head toggle). */
   .auto.on { color: #fff; border-color: var(--accent); background: rgba(244,157,78,0.18); }
   .wbbtns { display: inline-flex; align-items: center; gap: 6px; }
+  /* Metering label row: label left, re-analyze/revert icons right. */
+  .metahead { margin-top: 12px; }
+  .metaicons { display: inline-flex; align-items: center; gap: 2px; }
+  .iconbtn { display: inline-flex; align-items: center; justify-content: center;
+    background: transparent; border: 0; color: var(--text-dim); padding: 3px;
+    border-radius: 4px; cursor: pointer; transition: color 120ms, background 120ms; }
+  .iconbtn:hover { color: var(--text); background: rgba(244,157,78,0.12); }
+  /* Metering segmented control: three equal-width modes filling the panel. */
+  .meterseg { display: flex; gap: 6px; margin: 4px 0 8px; }
+  .meterseg .auto { flex: 1; text-align: center; padding: 5px 4px; }
   .tonehead { display: flex; justify-content: space-between; align-items: center; }
   .wbdrop { display: inline-flex; align-items: center; justify-content: center;
     background: transparent; border: 1px solid var(--glass-brd); color: var(--text-dim);
@@ -505,11 +536,7 @@
     border: 1px solid var(--glass-brd); background: transparent; color: var(--text); margin-bottom: 8px;
     transition: border-color 120ms, background 120ms; }
   .recal:hover { border-color: var(--accent); background: rgba(244,157,78,0.12); }
-  /* Crop re-analysis sits at the top of the panel — breathing room above + below. */
-  .reanalyze { margin: 14px 0 16px; }
   .lowconf { font-size: 11px; color: rgba(244,157,78,0.9); margin: 6px 0 0; }
-  /* Inverse button sits at the top of the panel — breathing room above. */
-  .inverse { margin-top: 14px; }
   /* "Apply to whole roll" separates the per-image film-base block from WB. */
   .rollapply { margin: 14px 0 16px; }
   .recal:disabled { opacity: 0.4; cursor: not-allowed; }
