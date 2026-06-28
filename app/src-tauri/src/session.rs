@@ -451,6 +451,7 @@ mod tests {
             base: [0.0; 3],
             base_confidence: 0.0,
             d_max: 0.0,
+            channel_balance: [1.0; 3],
             positive: false,
             positive_confidence: 0.0,
         };
