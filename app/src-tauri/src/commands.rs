@@ -426,11 +426,14 @@ fn sample_dmax_oriented(
     });
     // Build the mask on the same downscaled grid sample_dmax_spread reduces on.
     // We detect over the cropped region so the mask indexes match the rect sampling.
-    let cropped: film_core::Image = match rect {
-        Some(r) => crate::convert::crop(&geom, r.x, r.y, r.w, r.h),
-        None => geom.clone().into_owned(),
+    let mask = match rect {
+        Some(r) => {
+            let cropped = crate::convert::crop(&geom, r.x, r.y, r.w, r.h);
+            meter_mask(&cropped, base, positive, mode)
+        }
+        None => meter_mask(&*geom, base, positive, mode),
     };
-    match meter_mask(&cropped, base, positive, mode) {
+    match mask {
         // Masked: sample the cropped+downscaled grid directly (rect = None because
         // it's already cropped), excluding spoke/rebate borders.
         Some((small, keep)) => sample_dmax_spread(&small, base, None, Some(&keep)),
