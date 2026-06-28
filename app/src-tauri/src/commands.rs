@@ -403,6 +403,10 @@ fn geom_base(
 /// before mapping the normalized crop, so flipped/rotated frames analyze the correct
 /// image area (a crop in oriented space applied to the un-oriented buffer samples the
 /// wrong region — washing out brightness on horizontally-flipped images).
+///
+/// `mode` / `positive` are forwarded to `meter_mask` so spoke/rebate borders are
+/// excluded from the D_max estimate when the user has chosen "exclude" metering.
+#[allow(clippy::too_many_arguments)]
 fn sample_dmax_oriented(
     working: &film_core::Image,
     base: [f32; 3],
@@ -411,6 +415,8 @@ fn sample_dmax_oriented(
     flip_h: bool,
     flip_v: bool,
     angle: f32,
+    mode: &str,
+    positive: bool,
 ) -> (f32, f32) {
     use film_core::calibrate::{sample_dmax_spread, Rect};
     let geom = geom_base(working, rot90, flip_h, flip_v, angle);
@@ -418,7 +424,18 @@ fn sample_dmax_oriented(
         let (x, y, w, h) = crop_px(nc, geom.width, geom.height);
         Rect { x, y, w, h }
     });
-    sample_dmax_spread(&geom, base, rect, None)
+    // Build the mask on the same downscaled grid sample_dmax_spread reduces on.
+    // We detect over the cropped region so the mask indexes match the rect sampling.
+    let cropped: film_core::Image = match rect {
+        Some(r) => crate::convert::crop(&geom, r.x, r.y, r.w, r.h),
+        None => geom.clone().into_owned(),
+    };
+    match meter_mask(&cropped, base, positive, mode) {
+        // Masked: sample the cropped+downscaled grid directly (rect = None because
+        // it's already cropped), excluding spoke/rebate borders.
+        Some((small, keep)) => sample_dmax_spread(&small, base, None, Some(&keep)),
+        None => sample_dmax_spread(&geom, base, rect, None),
+    }
 }
 
 /// Map normalized strokes → `Stamp`s in OUTPUT pixel space.
@@ -3033,6 +3050,8 @@ pub fn analyze(
         flip_h.unwrap_or(false),
         flip_v.unwrap_or(false),
         angle.unwrap_or(0.0),
+        &params.meter_border,
+        params.positive,
     );
     Ok(Analysis {
         d_max: guard_dmax(estimate, spread, prior),
@@ -3350,11 +3369,35 @@ mod tests {
         let base = [1.0f32; 3];
         let left_half = Some([0.0, 0.0, 0.5, 1.0]);
 
-        let unflipped = sample_dmax_oriented(&img, base, left_half, 0, false, false, 0.0).0;
+        let unflipped = sample_dmax_oriented(&img, base, left_half, 0, false, false, 0.0, "include", false).0;
         assert!(unflipped < 1.5, "un-flipped left crop should be bright: {unflipped}");
 
-        let flipped = sample_dmax_oriented(&img, base, left_half, 0, true, false, 0.0).0;
+        let flipped = sample_dmax_oriented(&img, base, left_half, 0, true, false, 0.0, "include", false).0;
         assert!(flipped > 2.5, "flipped left crop should sample the dark region: {flipped}");
+    }
+
+    #[test]
+    fn sample_dmax_oriented_masks_border() {
+        use film_core::Image;
+        // Positive film: dark (near-black) sprocket holes around the border inflate
+        // D_max when included. "exclude" mode detects them via positive_candidates
+        // (luma ≤ POS_RAIL_MARGIN) and masks them out, lowering D_max to the true
+        // image-content level.  The interior is mid-tone (not near either rail) so
+        // it is never flagged as a spoke candidate and always stays in the mask.
+        let base = [0.5, 0.4, 0.3];
+        let spoke = [0.02, 0.02, 0.02]; // near-black → positive candidate → border
+        let inner = [0.4, 0.4, 0.4]; // mid-tone → not a rail candidate → kept
+        let mut img = Image::new(60, 60);
+        for y in 0..60 {
+            for x in 0..60 {
+                let border = x < 8 || y < 8 || x >= 52 || y >= 52;
+                img.pixels[y * 60 + x] = if border { spoke } else { inner };
+            }
+        }
+        // No crop, no rotation. "include" = full; "exclude" = mask the dark spokes.
+        let (d_full, _) = sample_dmax_oriented(&img, base, None, 0, false, false, 0.0, "include", true);
+        let (d_excl, _) = sample_dmax_oriented(&img, base, None, 0, false, false, 0.0, "exclude", true);
+        assert!(d_excl < d_full, "excl={d_excl} full={d_full}");
     }
 
     #[test]
