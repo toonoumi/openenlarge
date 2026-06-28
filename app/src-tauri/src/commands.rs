@@ -2149,8 +2149,8 @@ fn meter_mask(
     let pm = detect_photo_mask(cropped, base, positive);
     // detect_photo_mask downscales internally to SAMPLE_CAP; reproduce that grid so
     // the returned mask aligns to the image we hand the sampler.
-    let small = film_core::calibrate::detect_grid(cropped);
-    gate_photo_mask(pm, mode).map(|keep| (small, keep))
+    // Compute detect_grid lazily inside the map so we skip the downscale when the gate rejects.
+    gate_photo_mask(pm, mode).map(|keep| (film_core::calibrate::detect_grid(cropped), keep))
 }
 
 /// Auto-brightness for one image: solve the EXPOSURE (EV) that lands the image's
@@ -2190,7 +2190,11 @@ pub fn auto_brightness(
         }
         None => thumb,
     };
-    let exposure = auto_brightness_value(&thumb, &params, effective_base(&params, base), dev_dmax);
+    let eff_base = effective_base(&params, base);
+    let exposure = match meter_mask(&thumb, eff_base, params.positive, &params.meter_border) {
+        Some((small, keep)) => auto_brightness_value(&small, &params, eff_base, dev_dmax, Some(&keep)),
+        None => auto_brightness_value(&thumb, &params, eff_base, dev_dmax, None),
+    };
     Ok(AutoBrightness { exposure })
 }
 
@@ -2206,6 +2210,7 @@ pub(crate) fn auto_brightness_value(
     params: &InvertParams,
     base: [f32; 3],
     dev_dmax: f32,
+    mask: Option<&[bool]>,
 ) -> f32 {
     const AUTO_TARGET: f32 = 0.80; // display [0,1] anchor for bright content ("balanced")
     const AUTO_PCT: f32 = 0.90; // 90th-pct luminance — below speculars / rebate bleed
@@ -2221,7 +2226,7 @@ pub(crate) fn auto_brightness_value(
         ip.d_max = effective_dmax(params, dev_dmax);
         let inv = invert_image_core(src, &ip, mode_from(&params.mode));
         let pos = finish_image(&inv, &finish_from(params)); // current contrast/curve/brightness
-        percentile_luma(&pos, AUTO_PCT, None)
+        percentile_luma(&pos, AUTO_PCT, mask)
     };
 
     // Bracket the achievable range at the EV clamp. `measure` is monotonic in EV, so
@@ -3241,7 +3246,7 @@ mod tests {
 
         let mut pc = default_invert_params();
         pc.contrast = 100.0; // maximum contrast
-        let evc = auto_brightness_value(&neg, &pc, base, dmax);
+        let evc = auto_brightness_value(&neg, &pc, base, dmax, None);
 
         // Render the full finish (with the contrast) at the solved EV and check the
         // 90th-pct lands near target — i.e. neither frozen-bright nor crushed-dark.
@@ -4234,5 +4239,29 @@ mod meter_tests {
         let full = percentile_luma(&img, 0.90, None);
         let masked = percentile_luma(&img, 0.90, Some(&keep));
         assert!(masked < full, "masked={masked} full={full}");
+    }
+
+    #[test]
+    fn auto_brightness_value_mask_lowers_exposure_drop() {
+        // Adding a clear (dark-inverting) border drags the percentile down and pushes
+        // exposure up; masking the border must yield a LOWER exposure than including it.
+        use film_core::Image;
+        let base = [0.5, 0.4, 0.3];
+        let clear = [0.95, 0.95, 0.95];
+        let scene = [0.2, 0.2, 0.2];
+        let mut img = Image::new(40, 40);
+        for y in 0..40 {
+            for x in 0..40 {
+                let border = x < 6 || y < 6 || x >= 34 || y >= 34;
+                img.pixels[y * 40 + x] = if border { clear } else { scene };
+            }
+        }
+        let params = default_invert_params();
+        let keep: Vec<bool> = (0..1600)
+            .map(|i| { let (x, y) = (i % 40, i / 40); !(x < 6 || y < 6 || x >= 34 || y >= 34) })
+            .collect();
+        let ev_full = auto_brightness_value(&img, &params, base, 2.0, None);
+        let ev_masked = auto_brightness_value(&img, &params, base, 2.0, Some(&keep));
+        assert!(ev_masked <= ev_full, "masked={ev_masked} full={ev_full}");
     }
 }
