@@ -42,7 +42,7 @@ fn decode_any(path: &Path) -> Image {
     let r = match ext.as_str() {
         "tif" | "tiff" => decode_tiff(path),
         "jpg" | "jpeg" | "png" => decode_ldr(path),
-        _ => decode_raw(path),
+        _ => decode_raw(path, false),
     };
     r.unwrap_or_else(|e| panic!("decode {}: {e}", path.display()))
 }
