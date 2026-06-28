@@ -413,6 +413,42 @@ pub fn sample_dmax_spread(img: &Image, base: [f32; 3], rect: Option<Rect>) -> (f
     (d_max.clamp(1.0, 4.0), spread)
 }
 
+/// Per-channel density-neutralisation factors for camera-matrix mode. Equalises each
+/// channel's MEAN optical density (over a subsampled frame) so a colour cast — the orange
+/// mask plus the camera-matrix decode — self-corrects WITHOUT a manual white balance. This
+/// is FreeCCR's optical-density mean-equalisation, adapted to the engine's density domain:
+/// `d_c = log10(base_c/scan_c)`, factor `= target/mean(d_c)` with `target = mean of the
+/// three channel means`. `[1,1,1]` when already balanced (identity → no effect). The
+/// Faithful arm multiplies the raw density `d` by these per channel (see engine::invert_d).
+/// Gray-world assumption (scene average is neutral); clamped so a strongly-tinted scene
+/// can't drive an extreme correction.
+pub fn sample_channel_balance(img: &Image, base: [f32; 3]) -> [f32; 3] {
+    let small = downscale_for_detect(img, SAMPLE_CAP);
+    let mut sum = [0.0f64; 3];
+    let mut n = 0u64;
+    for px in &small.pixels {
+        for c in 0..3 {
+            let dmin = base[c].max(1e-5);
+            let scan = px[c].max(1e-5);
+            sum[c] += (dmin / scan).log10().max(0.0) as f64;
+        }
+        n += 1;
+    }
+    if n == 0 {
+        return [1.0, 1.0, 1.0];
+    }
+    let mean_d = [
+        (sum[0] / n as f64) as f32,
+        (sum[1] / n as f64) as f32,
+        (sum[2] / n as f64) as f32,
+    ];
+    let target = (mean_d[0] + mean_d[1] + mean_d[2]) / 3.0;
+    if target <= 1e-4 {
+        return [1.0, 1.0, 1.0];
+    }
+    std::array::from_fn(|c| (target / mean_d[c].max(1e-4)).clamp(0.6, 1.7))
+}
+
 /// Cineon `D_max` from a **measured white-point**: the fully-exposed leader,
 /// sampled in `rect`. The leader is the densest film (max light recorded), hence
 /// the darkest region of the scan, so per channel we take a robust low value (5th

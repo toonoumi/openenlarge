@@ -283,6 +283,9 @@ pub struct Developed {
     pub positive: bool,
     /// Classifier confidence 0..1 (diagnostic; not currently surfaced in UI).
     pub positive_confidence: f32,
+    /// Per-channel density-neutralisation factors for camera-matrix mode
+    /// (calibrate::sample_channel_balance). `[1,1,1]` in the normal path (identity).
+    pub channel_balance: [f32; 3],
 }
 
 /// A session image: always has path/metadata/thumbnail; `developed` is lazy.

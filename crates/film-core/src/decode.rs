@@ -318,7 +318,7 @@ fn crop_image(
     (cw, ch, out)
 }
 
-pub fn decode_raw(path: &Path) -> Result<Image, DecodeError> {
+pub fn decode_raw(path: &Path, apply_camera_matrix: bool) -> Result<Image, DecodeError> {
     use rawler::imgop::develop::Intermediate;
     use rawler::imgop::develop::{ProcessingStep, RawDevelop};
     use std::sync::Arc;
@@ -389,7 +389,9 @@ pub fn decode_raw(path: &Path) -> Result<Image, DecodeError> {
         }
     }
 
-    // Step 2: develop with only linear steps (no WB, no colour matrix, no gamma).
+    // Step 2: develop with only linear steps — always camera-native (no WB; no rawler
+    // `Calibrate`, which is sRGB-only; no gamma). The optional camera matrix is applied
+    // MANUALLY below (Adobe RGB target). See fn docs.
     let develop = RawDevelop {
         steps: vec![
             ProcessingStep::Rescale,
@@ -402,9 +404,28 @@ pub fn decode_raw(path: &Path) -> Result<Image, DecodeError> {
         .develop_intermediate(&raw)
         .map_err(|e| DecodeError::Raw(e.to_string()))?;
 
-    // Step 3: extract the three-channel f32 pixel data.
+    // Camera-matrix mode: a manual camera-native → Adobe-RGB-linear 3×3 (see `cam_to_adobe`).
+    // Adobe RGB is a wide working space, so the matrix is gentle (no sRGB over-saturation);
+    // NO white balance is baked in — the inversion engine's per-channel neutralisation
+    // balances the channels. `None` when off / no usable matrix → camera-native passthrough.
+    let cam2adobe: Option<[[f32; 3]; 3]> = if apply_camera_matrix {
+        cam_to_adobe(&raw)
+    } else {
+        None
+    };
+    let px = |r: f32, g: f32, b: f32| -> [f32; 3] {
+        match &cam2adobe {
+            Some(m) => [
+                (m[0][0] * r + m[0][1] * g + m[0][2] * b).clamp(0.0, 1.0),
+                (m[1][0] * r + m[1][1] * g + m[1][2] * b).clamp(0.0, 1.0),
+                (m[2][0] * r + m[2][1] * g + m[2][2] * b).clamp(0.0, 1.0),
+            ],
+            None => [r.clamp(0.0, 1.0), g.clamp(0.0, 1.0), b.clamp(0.0, 1.0)],
+        }
+    };
+
+    // Step 3: extract the three-channel f32 pixel data (applying the matrix if present).
     // After Rescale the data is in [0,1]; after Demosaic it stays in [0,1].
-    // Clamp to guard against hot pixels that exceed white level.
     let (width, height, pixels) = match intermediate {
         Intermediate::ThreeColor(color2d) => {
             let w = color2d.width;
@@ -413,7 +434,7 @@ pub fn decode_raw(path: &Path) -> Result<Image, DecodeError> {
             let clamped: Vec<[f32; 3]> = color2d
                 .data
                 .into_iter()
-                .map(|[r, g, b]| [r.clamp(0.0, 1.0), g.clamp(0.0, 1.0), b.clamp(0.0, 1.0)])
+                .map(|[r, g, b]| px(r, g, b))
                 .collect();
             (w, h, clamped)
         }
@@ -426,15 +447,15 @@ pub fn decode_raw(path: &Path) -> Result<Image, DecodeError> {
             let clamped: Vec<[f32; 3]> = color2d
                 .data
                 .into_iter()
-                .map(|[r, g, b, _]| [r.clamp(0.0, 1.0), g.clamp(0.0, 1.0), b.clamp(0.0, 1.0)])
+                .map(|[r, g, b, _]| px(r, g, b))
                 .collect();
             (w, h, clamped)
         }
-        Intermediate::Monochrome(pix) => {
-            // Monochrome sensor: replicate the single channel into R=G=B.
-            let w = pix.width;
-            let h = pix.height;
-            let clamped: Vec<[f32; 3]> = pix
+        Intermediate::Monochrome(pix_data) => {
+            // Monochrome sensor: replicate the single channel into R=G=B (no matrix).
+            let w = pix_data.width;
+            let h = pix_data.height;
+            let clamped: Vec<[f32; 3]> = pix_data
                 .data
                 .into_iter()
                 .map(|v| {
@@ -452,6 +473,50 @@ pub fn decode_raw(path: &Path) -> Result<Image, DecodeError> {
         pixels,
         ir: None,
     })
+}
+
+/// Build a camera-native → Adobe-RGB-linear 3×3 from the RAW's embedded color matrix.
+///
+/// Targets Adobe RGB (1998) D65 — a WIDE working space, so the matrix is gentle (unlike a
+/// camera→sRGB matrix, which has large negative terms to fit the camera gamut into narrow
+/// sRGB and over-saturates). NO white balance is applied; the inversion engine's per-channel
+/// neutralisation balances the channels downstream. Each row is normalised so a neutral Adobe
+/// white maps to the camera neutral. Returns `None` when the RAW exposes no finite color
+/// matrix → the caller falls back to camera-native.
+fn cam_to_adobe(raw: &rawler::RawImage) -> Option<[[f32; 3]; 3]> {
+    use nalgebra::Matrix3;
+    // `xyz_to_cam` rows = camera channels, cols = XYZ. Use the first 3 rows.
+    let x2c = &raw.xyz_to_cam;
+    let xyz2cam = Matrix3::new(
+        x2c[0][0], x2c[0][1], x2c[0][2],
+        x2c[1][0], x2c[1][1], x2c[1][2],
+        x2c[2][0], x2c[2][1], x2c[2][2],
+    );
+    if !xyz2cam.iter().all(|v| v.is_finite()) || xyz2cam.iter().all(|&v| v == 0.0) {
+        return None;
+    }
+    // Adobe RGB (1998), D65 linear → XYZ (D65).
+    let adobe2xyz = Matrix3::new(
+        0.576_730_9, 0.185_554_0, 0.188_185_2,
+        0.297_376_9, 0.627_349_1, 0.075_274_1,
+        0.027_034_3, 0.070_687_2, 0.991_108_5,
+    );
+    // Adobe-linear → camera, then normalise each row to sum 1 (neutral white → camera neutral).
+    let mut rgb2cam = xyz2cam * adobe2xyz;
+    for i in 0..3 {
+        let s = rgb2cam[(i, 0)] + rgb2cam[(i, 1)] + rgb2cam[(i, 2)];
+        if s.abs() > 1e-6 {
+            for j in 0..3 {
+                rgb2cam[(i, j)] /= s;
+            }
+        }
+    }
+    let m = rgb2cam.try_inverse()?; // camera → Adobe-linear
+    Some([
+        [m[(0, 0)], m[(0, 1)], m[(0, 2)]],
+        [m[(1, 0)], m[(1, 1)], m[(1, 2)]],
+        [m[(2, 0)], m[(2, 1)], m[(2, 2)]],
+    ])
 }
 
 /// Extract a camera RAW file's EMBEDDED preview as a linear-light RGB `Image`,

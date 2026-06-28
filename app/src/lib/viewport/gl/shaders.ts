@@ -423,6 +423,7 @@ uniform bool u_positive;      // true → positive passthrough (no inversion), W
 uniform int u_wb_mode;        // 0 = gain (post-curve), 1 = subtractive (pre-curve)
 uniform int u_tone_mode;      // 0 = filmic (default), 1 = faithful (gamma+shoulder)
 uniform float u_hi_recovery, u_lo_recovery; // [0,1] SDR Faithful highlight/shadow recovery
+uniform vec3 u_cam_balance;   // per-channel density neutralise (camera-matrix); [1,1,1]=identity
 // Geometry: output→source UV mapping. The output is the crop sub-rect of the
 // (straightened) oriented image, so we invert the backend's source→output order
 // (orient → straighten → crop) by going crop → un-straighten → un-orient.
@@ -536,7 +537,8 @@ vec3 invert(vec3 rgbIn) {
       // linear L = 10^d − 1 (d = 0 → 0, black pivots); gain ×2^EV; back to density. EV 0 is the
       // identity. gammaBody supplies the gamma; shoulder rolloff is applied later in FRAG displayFinalize.
       // Mirror: engine.rs invert_d Faithful.
-      vec3 lScene = max(pow(vec3(10.0), d) - 1.0, 0.0);
+      // Per-channel density neutralise (camera-matrix mode); [1,1,1] → d·1 == d (identity).
+      vec3 lScene = max(pow(vec3(10.0), d * u_cam_balance) - 1.0, 0.0);
       vec3 lit = lScene * exp2(FAITHFUL_EXPO_K * ev);
       vec3 te = log2(lit + 1.0) * LOG10 * FAITHFUL_SCALE;
       if (u_wb_mode == 1) {

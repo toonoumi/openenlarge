@@ -19,8 +19,24 @@ use film_core::wb::{gains_to_cct, wb_from_kelvin};
 use base64::Engine;
 use serde::Deserialize;
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use tauri::State;
+
+/// Global toggle: apply the camera's default color matrix during RAW decode (stays
+/// linear, unity WB — the inversion engine keeps its own white balance). Read by
+/// `decode_any`/the import fallback; set at startup from the `camera_matrix` pref and
+/// by the `set_decode_color_matrix` command. Process-global because it affects every
+/// RAW decode regardless of which image/path triggers it.
+static DECODE_COLOR_MATRIX: AtomicBool = AtomicBool::new(false);
+
+/// Set the global RAW camera-matrix flag (called at startup from the persisted pref).
+pub fn set_decode_color_matrix_flag(enabled: bool) {
+    DECODE_COLOR_MATRIX.store(enabled, Ordering::Relaxed);
+}
+fn decode_color_matrix_enabled() -> bool {
+    DECODE_COLOR_MATRIX.load(Ordering::Relaxed)
+}
 
 fn default_bits() -> u8 {
     16
@@ -188,7 +204,7 @@ fn decode_any(path: &Path) -> Result<film_core::Image, String> {
     match ext.as_str() {
         "tif" | "tiff" => decode_tiff(path).map_err(|e| format!("{e}")),
         "jpg" | "jpeg" | "png" => decode_ldr(path).map_err(|e| format!("{e}")),
-        _ => decode_raw(path).map_err(|e| format!("{e}")),
+        _ => decode_raw(path, decode_color_matrix_enabled()).map_err(|e| format!("{e}")),
     }
 }
 
@@ -650,7 +666,9 @@ fn import_compute(
             .or_else(|| {
                 // decode_raw can panic on malformed RAW; guard it so one bad file
                 // degrades to the placeholder instead of failing the whole import.
-                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| decode_raw(p).ok()))
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    decode_raw(p, decode_color_matrix_enabled()).ok()
+                }))
                     .ok()
                     .flatten()
             }),
@@ -733,12 +751,25 @@ struct DevelopComputed {
     positive: bool,
     positive_confidence: f32,
     d_max: f32,
+    channel_balance: [f32; 3],
     has_ir: bool,
     w: u32,
     h: u32,
     thumbnail: String,
     cache_working: film_core::Image,
     cache_thumb: film_core::Image,
+}
+
+/// Per-channel density-neutralisation factors for the current decode: the camera-matrix
+/// auto-equaliser when the global flag is on, else identity (normal path unchanged).
+/// Computed from an already-decoded working buffer so the cache-rehydrate path can recompute
+/// it without re-decoding.
+fn channel_balance_for(working: &film_core::Image, base: [f32; 3]) -> [f32; 3] {
+    if decode_color_matrix_enabled() {
+        film_core::calibrate::sample_channel_balance(working, base)
+    } else {
+        [1.0, 1.0, 1.0]
+    }
 }
 
 /// Pure CPU work: decode the RAW, build the quality-capped working image + auto-WB
@@ -752,6 +783,7 @@ fn develop_compute(path: String) -> Result<DevelopComputed, String> {
     let (base, base_confidence) = auto_base(&working);
     let (positive, positive_confidence) = film_core::classify::classify_positive(&working);
     let d_max = film_core::calibrate::sample_dmax(&working, base, None);
+    let channel_balance = channel_balance_for(&working, base);
     let (w, h) = (full.width as u32, full.height as u32);
     drop(full);
 
@@ -760,7 +792,7 @@ fn develop_compute(path: String) -> Result<DevelopComputed, String> {
     // frontend `as_shot_wb`) into the develop-time grid thumbnail, so the contact
     // sheet / grid / filmstrip show the correct look immediately on import instead
     // of a neutral-WB render that only snaps right once you open Develop.
-    let thumbnail = render_grid_thumbnail(&small, &thumb, base, d_max, None, positive)?;
+    let thumbnail = render_grid_thumbnail(&small, &thumb, base, d_max, channel_balance, None, positive)?;
 
     // Build a cache-bounded copy of working (≤CACHE_WORKING_CAP long edge) for the sidecar.
     // Clone thumb too before the move into Developed.
@@ -779,6 +811,7 @@ fn develop_compute(path: String) -> Result<DevelopComputed, String> {
         positive,
         positive_confidence,
         d_max,
+        channel_balance,
         has_ir,
         w,
         h,
@@ -822,6 +855,7 @@ async fn develop_heavy(
             d_max: c.d_max,
             positive: c.positive,
             positive_confidence: c.positive_confidence,
+            channel_balance: c.channel_balance,
         });
         img.last_access = session.next_tick();
         let metadata_json = metadata_to_json(&img.metadata)?;
@@ -958,6 +992,33 @@ pub fn reset_all_data(
     Ok(())
 }
 
+/// Global setting: turn the RAW camera-color-matrix decode on/off. Because it changes
+/// the DECODED pixels (not just the render), every decode-derived cache is busted so
+/// images re-decode through the new flag: the export decode slot, all resident working
+/// buffers, and the on-disk decode sidecars. The frontend re-develops the active image
+/// immediately; the rest re-decode lazily (Grid sweep / on view). Persistence of the
+/// `camera_matrix` pref is handled by the frontend store.
+#[tauri::command]
+pub fn set_decode_color_matrix(enabled: bool, session: State<Session>) -> Result<(), String> {
+    set_decode_color_matrix_flag(enabled);
+    // Export full-res decode slot.
+    *session.decode_cache.lock().unwrap() = None;
+    // Drop resident working buffers + delete on-disk sidecars so the next develop/
+    // thumbnail for each image re-decodes through the new flag instead of serving the
+    // previously-decoded (stale) pixels.
+    let ids: Vec<String> = {
+        let mut images = session.images.lock().unwrap();
+        for img in images.values_mut() {
+            img.developed = None;
+        }
+        images.keys().cloned().collect()
+    };
+    for id in &ids {
+        let _ = std::fs::remove_file(session.cache_path(id));
+    }
+    Ok(())
+}
+
 /// A brush stroke from the UI: a polyline of points normalized to the DISPLAYED
 /// image ([0,1] each), with radius `r` normalized to the displayed image WIDTH.
 #[derive(Debug, Clone, Deserialize)]
@@ -1046,6 +1107,7 @@ fn ensure_resident(session: &Session, id: &str) -> Result<(), String> {
     let base_confidence = film_core::calibrate::detect_rebate_base(&working).confidence;
     let (positive, positive_confidence) = film_core::classify::classify_positive(&working);
     let d_max = film_core::calibrate::sample_dmax(&working, base, None);
+    let channel_balance = channel_balance_for(&working, base);
     {
         let mut images = session.images.lock().unwrap();
         if let Some(c) = images.get_mut(id) {
@@ -1058,6 +1120,7 @@ fn ensure_resident(session: &Session, id: &str) -> Result<(), String> {
                     d_max,
                     positive,
                     positive_confidence,
+                    channel_balance,
                 });
                 c.last_access = session.next_tick();
             }
@@ -1125,7 +1188,7 @@ pub async fn render_view(
     // Snapshot the owned inputs the CPU render needs, then drop the lock so the
     // pipeline (geometry → resize → invert → dust → finish → JPEG) can run off the
     // UI thread. The working clone is the cost of getting it off the main thread.
-    let (working, thumb, base, d_max, meta_w, meta_h) = {
+    let (working, thumb, base, d_max, channel_balance, meta_w, meta_h) = {
         let images = session.images.lock().unwrap();
         let img = images.get(&id).ok_or("unknown image id")?;
         let dev = img.developed.as_ref().ok_or("not developed")?;
@@ -1134,13 +1197,14 @@ pub async fn render_view(
             dev.thumb.clone(),
             dev.base,
             dev.d_max,
+            dev.channel_balance,
             img.metadata.width,
             img.metadata.height,
         )
     };
     crate::time_op!(__log, "render_view", {
         tauri::async_runtime::spawn_blocking(move || {
-            render_view_compute(&working, &thumb, base, d_max, meta_w, meta_h, &params, &view)
+            render_view_compute(&working, &thumb, base, d_max, channel_balance, meta_w, meta_h, &params, &view)
         })
         .await
         .map_err(|e| e.to_string())
@@ -1157,6 +1221,7 @@ fn render_view_compute(
     thumb: &film_core::Image,
     base: [f32; 3],
     d_max: f32,
+    channel_balance: [f32; 3],
     meta_w: u32,
     meta_h: u32,
     params: &InvertParams,
@@ -1217,6 +1282,7 @@ fn render_view_compute(
     }
     let mut ip = resolve_params(params, thumb, effective_base(params, base));
     ip.d_max = effective_dmax(params, d_max);
+    ip.channel_balance = channel_balance;
     let mut inv = invert_image_core(&scaled, &ip, mode_from(&params.mode));
     let stamps = view_stamps(
         &view.dust,
@@ -1322,6 +1388,7 @@ pub fn encode_hdr(
     // Develop params identical to `render_view`'s construction.
     let mut ip = resolve_params(&params, &dev.thumb, effective_base(&params, dev.base));
     ip.d_max = effective_dmax(&params, dev.d_max);
+    ip.channel_balance = dev.channel_balance;
     let mode = mode_from(&params.mode);
     let finish = finish_from(&params);
     let stamps = view_stamps(
@@ -1391,15 +1458,15 @@ pub async fn thumbnail(
     // off-thread. Cloning `working` is the cost of getting it off the UI thread
     // (mirrors render_view); the borrow-skips in the compute fn avoid a *second*
     // copy when geometry is identity (the common contact-sheet case).
-    let (working, thumb, base, d_max) = {
+    let (working, thumb, base, d_max, channel_balance) = {
         let images = session.images.lock().unwrap();
         let img = images.get(&id).ok_or("unknown image id")?;
         let dev = img.developed.as_ref().ok_or("not developed")?;
-        (dev.working.clone(), dev.thumb.clone(), dev.base, dev.d_max)
+        (dev.working.clone(), dev.thumb.clone(), dev.base, dev.d_max, dev.channel_balance)
     };
     crate::time_op!(__log, "thumbnail", {
         tauri::async_runtime::spawn_blocking(move || {
-            thumbnail_compute(&working, &thumb, base, d_max, &params, &view)
+            thumbnail_compute(&working, &thumb, base, d_max, channel_balance, &params, &view)
         })
         .await
         .map_err(|e| e.to_string())
@@ -1413,11 +1480,13 @@ pub async fn thumbnail(
 /// the previous buffer when it would be a no-op, so identity geometry (no
 /// rot/flip/straighten/crop — the usual roll case) skips re-copying the whole
 /// working image before the downscale.
+#[allow(clippy::too_many_arguments)]
 fn thumbnail_compute(
     working: &film_core::Image,
     thumb: &film_core::Image,
     base: [f32; 3],
     d_max: f32,
+    channel_balance: [f32; 3],
     params: &InvertParams,
     view: &ThumbView,
 ) -> Result<String, String> {
@@ -1448,6 +1517,7 @@ fn thumbnail_compute(
     let (ow, oh) = (small.width as u32, small.height as u32);
     let mut ip = resolve_params(params, thumb, effective_base(params, base));
     ip.d_max = effective_dmax(params, d_max);
+    ip.channel_balance = channel_balance;
     let mut inv = invert_image_core(&small, &ip, mode_from(&params.mode));
     let stamps = view_stamps(
         &view.dust,
@@ -1503,7 +1573,7 @@ pub(crate) fn finish_full_res(
     session: &Session,
 ) -> Result<(film_core::Image, crate::metadata::Metadata), String> {
     ensure_resident(session, id)?;
-    let (path, base, thumb, metadata, dev_dmax) = {
+    let (path, base, thumb, metadata, dev_dmax, dev_balance) = {
         let images = session.images.lock().unwrap();
         let img = images.get(id).ok_or("unknown image id")?;
         let dev = img.developed.as_ref().ok_or("not developed")?;
@@ -1513,6 +1583,7 @@ pub(crate) fn finish_full_res(
             dev.thumb.clone(),
             img.metadata.clone(),
             dev.d_max,
+            dev.channel_balance,
         )
     };
     let full = decode_cached(&session.decode_cache, Path::new(&path))?;
@@ -1531,6 +1602,7 @@ pub(crate) fn finish_full_res(
     };
     let mut ip = resolve_params(params, &thumb, effective_base(params, base));
     ip.d_max = effective_dmax(params, dev_dmax);
+    ip.channel_balance = dev_balance;
     let mut inv = invert_image_core(&full, &ip, mode_from(&params.mode));
     let stamps = export_stamps(dust, inv.width, inv.height);
     dust::apply(&mut inv, &stamps);
@@ -1637,7 +1709,7 @@ pub async fn export_image_hdr(
     let __log = log.inner().clone();
     crate::time_op!(__log, "export_image_hdr", {
         ensure_resident(&session, &id)?;
-        let (path, base, thumb, metadata, dev_dmax) = {
+        let (path, base, thumb, metadata, dev_dmax, dev_balance) = {
             let images = session.images.lock().unwrap();
             let img = images.get(&id).ok_or("unknown image id")?;
             let dev = img.developed.as_ref().ok_or("not developed")?;
@@ -1647,6 +1719,7 @@ pub async fn export_image_hdr(
                 dev.thumb.clone(),
                 img.metadata.clone(),
                 dev.d_max,
+                dev.channel_balance,
             )
         };
         let full = decode_cached(&session.decode_cache, Path::new(&path))?;
@@ -1667,6 +1740,7 @@ pub async fn export_image_hdr(
 
         let mut ip = resolve_params(&params, &thumb, effective_base(&params, base));
         ip.d_max = effective_dmax(&params, dev_dmax);
+        ip.channel_balance = dev_balance;
         let stamps = export_stamps(&dust, full.width, full.height);
         let finish = finish_from(&params);
 
@@ -1712,11 +1786,11 @@ pub async fn export_begin(
     session: State<'_, Session>,
 ) -> Result<ExportPrep, String> {
     ensure_resident(&session, &id)?;
-    let (path, base, dev_dmax) = {
+    let (path, base, dev_dmax, dev_balance) = {
         let images = session.images.lock().unwrap();
         let img = images.get(&id).ok_or("unknown image id")?;
         let dev = img.developed.as_ref().ok_or("not developed")?;
-        (img.path.clone(), dev.base, dev.d_max)
+        (img.path.clone(), dev.base, dev.d_max, dev.channel_balance)
     };
     // Decode + bake (full-res) off the UI thread so batch export can overlap this
     // with other images' GPU render + encode. When the baked image exceeds the GPU
@@ -1744,6 +1818,7 @@ pub async fn export_begin(
     .map_err(|e| e.to_string())??;
     let mut uniforms = resolve_to_uniforms(&params, effective_base(&params, base));
     uniforms.d_max = effective_dmax(&params, dev_dmax);
+    uniforms.channel_balance = dev_balance;
     if let Some(bytes) = bytes {
         session
             .pending_export
@@ -2185,11 +2260,13 @@ fn percentile_luma(img: &film_core::Image, pct: f32) -> f32 {
 /// Without them (never opened), the per-image auto-WB seed is baked in so the
 /// thumbnail still matches what opening Develop would show. Shared by
 /// `develop_compute` (fresh develop) and the on-load thumbnail regeneration.
+#[allow(clippy::too_many_arguments)]
 fn render_grid_thumbnail(
     render_src: &film_core::Image,
     seed_src: &film_core::Image,
     base: [f32; 3],
     d_max: f32,
+    channel_balance: [f32; 3],
     saved: Option<&InvertParams>,
     positive: bool,
 ) -> Result<String, String> {
@@ -2211,6 +2288,7 @@ fn render_grid_thumbnail(
     };
     let mut ip = resolve_params(&params, seed_src, base);
     ip.d_max = effective_dmax(&params, d_max);
+    ip.channel_balance = channel_balance;
     let inv = invert_image_core(render_src, &ip, mode_from(&params.mode));
     let inv = finish_image(&inv, &finish_from(&params));
     to_jpeg_b64(&inv, false, 82)
@@ -2780,6 +2858,7 @@ pub fn resolved_inversion(
     let dev = img.developed.as_ref().ok_or("not developed")?;
     let mut u = resolve_to_uniforms(&params, effective_base(&params, dev.base));
     u.d_max = effective_dmax(&params, dev.d_max);
+    u.channel_balance = dev.channel_balance;
     Ok(u)
 }
 

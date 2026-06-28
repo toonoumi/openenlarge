@@ -68,6 +68,12 @@ pub struct InversionParams {
     /// scan directly (display-encoded), applying only exposure (`print_exposure`)
     /// and white balance (`wb`). For already-positive sources (slides/prints).
     pub positive: bool,
+    /// Per-channel density neutralisation (camera-matrix mode). The Faithful arm scales the
+    /// raw density `d` by this before exposure/tone, so an auto-computed per-channel factor
+    /// (calibrate::sample_channel_balance) equalises the channels and removes the orange/matrix
+    /// cast WITHOUT a manual WB. Default `[1,1,1]` = identity (matrix-off path unchanged).
+    /// MUST equal shaders.ts u_cam_balance.
+    pub channel_balance: [f32; 3],
     /// Highlight recovery [0,1] (from −Highlights). Widens the Faithful shoulder
     /// rolloff to re-separate crushed highlights. SDR Faithful only; 0 = identity.
     pub hi_recovery: f32,
@@ -95,6 +101,7 @@ impl Default for InversionParams {
             soft_clip: 0.9,
             hdr: false,
             positive: false,
+            channel_balance: [1.0, 1.0, 1.0],
             hi_recovery: 0.0,
             lo_recovery: 0.0,
         }
@@ -390,7 +397,13 @@ fn invert_d_impl(rgb: [f32; 3], p: &InversionParams, produce_body: bool) -> [f32
                 // identity `d' = d`, so the EV-0 look is unchanged, and `gamma_shoulder` supplies
                 // the highlight rolloff (no hard clip). (The old code MULTIPLIED density by 2^EV,
                 // which scales contrast, not exposure.) MUST be mirrored in shaders.ts.
-                let l = (10f32.powf(d) - 1.0).max(0.0);
+                //
+                // Per-channel density neutralisation (camera-matrix mode): scale `d` per channel
+                // by `channel_balance[c]` before the exposure round-trip. Default `[1,1,1]` →
+                // `d·1 == d` exactly, so the matrix-off path is byte-identical; in camera-matrix
+                // mode the auto-computed factor equalises the channels (FreeCCR's OD equalisation).
+                let dn = d * p.channel_balance[c];
+                let l = (10f32.powf(dn) - 1.0).max(0.0);
                 let lit = l * 2f32.powf(FAITHFUL_EXPO_K * ev);
                 let t_eff = (lit + 1.0).log10() * FAITHFUL_SCALE;
                 if p.hdr {
