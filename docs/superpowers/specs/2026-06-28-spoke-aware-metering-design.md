@@ -162,12 +162,42 @@ consistent with the per-roll base-calibration model.
   (they already pass `crop` + `geom`).
 - Toggling `meter_border` re-runs `reanalyze()` (D_max + WB reseed) **and**
   `autoExposure()` for the active frame, then mirrors to the roll.
+- Toggling `positive` (`togglePositive`) runs the same re-derivation path, so a manual
+  inverse re-meters under the corrected flag (see §6).
 - The crop-change reactive trigger (`Basic.svelte:215`) is unchanged in *when* it fires;
   it simply meters with the mask now. Exposure still does not auto-rerun on crop change
   (consistent with the current design) — but `seedExposure` and `autoExposure` use the
   mask when they do run.
 
-### 6. Constants
+### 6. Misclassification & manual inverse (positive flip)
+
+Classification can be wrong, and the user corrects it with the manual inverse toggle
+(`togglePositive`, `Basic.svelte:272`). The detector branches on the **live `positive`
+flag**, so the mask follows whatever the render is doing. Two safeguards:
+
+**Graceful degradation under `auto`.** A wrong-branch detection almost always fails the
+confidence/plausibility gate (§2), so it falls back to **full-crop metering — exactly
+today's behavior** — rather than producing a wrong mask:
+- *Positive shown as negative:* `auto_base` is negative-domain and yields a garbage base
+  on a positive, so the "clearer than base" mask is incoherent/scattered → low
+  border-adjacency → gated off.
+- *Negative shown as positive:* the rail + uniformity + border test rarely fires cleanly
+  on an un-inverted negative's interior → gated off.
+
+The only path to a *forced* bad mask is `meter_border = "exclude"`, a deliberate action
+the user takes after viewing the image (by which point they would also fix the flag).
+
+**Re-derive on flip.** `togglePositive` today only flips the flag and re-renders; it does
+not re-meter. Under this design, flipping `positive` (via the manual toggle or a
+`classify_positive` change) triggers the **same re-analysis path as the `meter_border`
+toggle** — `reanalyze()` (D_max + WB reseed) plus an exposure re-seed — so the mask,
+exposure, WB, and D_max all re-derive under the corrected flag. This re-derivation
+**respects existing manual stickiness**: WB is not reseeded when `wb_manual` is set, and
+exposure re-seeds only when it has not been hand-set (the existing `seedExposure` guard),
+so a deliberate cross-process flip does not clobber user-set values. Net: a manual inverse
+becomes a single click that corrects render *and* metering together.
+
+### 7. Constants
 
 `SPOKE_MARGIN` (negative), `POS_RAIL_MARGIN` (positive), `CONF_THRESH`, `FRAC_MIN`,
 `FRAC_MAX` live at the top of the relevant `film-core` module alongside the existing
