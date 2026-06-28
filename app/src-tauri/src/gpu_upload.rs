@@ -192,6 +192,14 @@ pub struct ResolvedInversion {
     /// InversionParams.hi_recovery/lo_recovery; consumed by INVERT_FRAG.
     pub hi_recovery: f32,
     pub lo_recovery: f32,
+    /// Per-channel density neutralisation (camera-matrix mode); `[1,1,1]` = identity.
+    /// Mirrors InversionParams.channel_balance; set per-frame by the caller (like d_max).
+    #[serde(default = "unit_balance")]
+    pub channel_balance: [f32; 3],
+}
+
+fn unit_balance() -> [f32; 3] {
+    [1.0, 1.0, 1.0]
 }
 
 /// Resolve the UI params (+ sampled film base) into GPU uniforms, reusing the
@@ -216,6 +224,7 @@ pub fn resolve_to_uniforms(p: &InvertParams, base: [f32; 3]) -> ResolvedInversio
         black: ip.black,
         gamma: ip.gamma,
         d_max: ip.d_max,
+        channel_balance: ip.channel_balance,
         print_exposure: ip.print_exposure,
         paper_black: ip.paper_black,
         paper_grade: ip.paper_grade,

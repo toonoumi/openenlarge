@@ -18,6 +18,7 @@ export interface ResolvedInversion {
   tone_mode: number; // 0 = filmic (default), 1 = faithful
   hi_recovery: number; // [0,1] highlight recovery (SDR Faithful shoulder widening)
   lo_recovery: number; // [0,1] shadow recovery (SDR Faithful toe softening)
+  channel_balance: [number, number, number]; // per-channel density neutralise; [1,1,1]=identity
 }
 
 /** GL-ready uniform buffers for the INVERT pass. */
@@ -40,6 +41,7 @@ export interface InversionUniforms {
   tone_mode: number; // 0 = filmic (default), 1 = faithful
   hi_recovery: number; // [0,1] highlight recovery (SDR Faithful shoulder widening)
   lo_recovery: number; // [0,1] shadow recovery (SDR Faithful toe softening)
+  cam_balance: Float32Array; // 3 (u_cam_balance)
 }
 
 export function toInversionUniforms(r: ResolvedInversion): InversionUniforms {
@@ -62,5 +64,6 @@ export function toInversionUniforms(r: ResolvedInversion): InversionUniforms {
     tone_mode: 1, // Faithful is the sole path (Filmic retired) — ignore stored value
     hi_recovery: r.hi_recovery,
     lo_recovery: r.lo_recovery,
+    cam_balance: new Float32Array(r.channel_balance ?? [1, 1, 1]),
   };
 }

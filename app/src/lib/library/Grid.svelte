@@ -61,6 +61,10 @@
     if (!img.developed || !img.thumb_stale || inFlight.has(img.id)) return;
     inFlight.add(img.id);
     try {
+      // Ensure the decoded working buffer is resident: re-decodes if it was invalidated
+      // (e.g. a camera-matrix toggle drops resident buffers + sidecars). Cheap when the
+      // buffer is still cached — the engine-version sweep case, where decode is unchanged.
+      await api.ensureDeveloped(img.id);
       const dir = imageDir(img);
       const saved = get(editsById)[img.id];
       let params;
