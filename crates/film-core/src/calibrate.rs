@@ -99,6 +99,11 @@ const MASK_UNIF_K: f32 = 3.0;
 /// A pixel is a spoke "candidate" (positive) when its luma is within this of either
 /// rail — near-black (slide rebate) or near-white (clear sprocket).
 const POS_RAIL_MARGIN: f32 = 0.06;
+/// Minimum detection confidence for `auto` to apply the mask.
+const CONF_THRESH: f32 = 0.45;
+/// Plausible spoke coverage band; outside this `auto` treats the frame as spoke-free.
+const FRAC_MIN: f32 = 0.02;
+const FRAC_MAX: f32 = 0.60;
 
 /// Map a source-coord `rect` onto a downscaled image. `None` → the whole small
 /// image. Widths/heights floor at 1px so a tiny crop never yields an empty band.
@@ -717,7 +722,7 @@ fn positive_candidates(small: &Image) -> Vec<bool> {
 
 /// Detect the spoke/gap region. `positive` selects the value predicate; the spatial
 /// confirmation (border flood-fill + uniformity) is shared. The negative predicate
-/// flags pixels at-or-clearer-than the film base; the positive predicate (Task 2)
+/// flags pixels at-or-clearer-than the film base; the positive predicate
 /// flags pixels near either rail.
 pub fn detect_photo_mask(scan: &Image, base: [f32; 3], positive: bool) -> PhotoMask {
     let small = downscale_for_detect(scan, SAMPLE_CAP);
@@ -726,7 +731,7 @@ pub fn detect_photo_mask(scan: &Image, base: [f32; 3], positive: bool) -> PhotoM
         return PhotoMask { mask: Vec::new(), excluded_fraction: 0.0, confidence: 0.0 };
     }
     let cand: Vec<bool> = if positive {
-        positive_candidates(&small) // Task 2
+        positive_candidates(&small)
     } else {
         let base_l = luma3(base).max(1e-4);
         let thresh = base_l * (1.0 - SPOKE_MARGIN);
@@ -739,6 +744,49 @@ pub fn detect_photo_mask(scan: &Image, base: [f32; 3], positive: bool) -> PhotoM
     let uniformity = excluded_uniformity(&small, &keep);
     let confidence = if n_excl == 0 { 0.0 } else { border_ratio * uniformity };
     PhotoMask { mask: keep, excluded_fraction, confidence }
+}
+
+/// How the user's `meter_border` choice maps onto masking.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MeterBorder {
+    Auto,
+    Exclude,
+    Include,
+}
+
+impl MeterBorder {
+    /// Parse the wire string; unknown values default to `Auto`.
+    pub fn from_str_lenient(s: &str) -> MeterBorder {
+        match s {
+            "exclude" => MeterBorder::Exclude,
+            "include" => MeterBorder::Include,
+            _ => MeterBorder::Auto,
+        }
+    }
+}
+
+/// Decide whether to apply `pm`'s keep-mask given the user's mode. Returns the
+/// keep-mask (`true` = image pixel) to hand the samplers, or `None` to meter the
+/// full region. Never returns an all-excluded mask (degenerate guard).
+pub fn gate_photo_mask(pm: PhotoMask, mode: MeterBorder) -> Option<Vec<bool>> {
+    let kept = pm.mask.iter().filter(|&&m| m).count();
+    if kept == 0 {
+        return None; // never meter zero pixels
+    }
+    let apply = match mode {
+        MeterBorder::Include => false,
+        MeterBorder::Exclude => pm.excluded_fraction > 0.0,
+        MeterBorder::Auto => {
+            pm.confidence >= CONF_THRESH
+                && pm.excluded_fraction >= FRAC_MIN
+                && pm.excluded_fraction <= FRAC_MAX
+        }
+    };
+    if apply {
+        Some(pm.mask)
+    } else {
+        None
+    }
 }
 
 #[cfg(test)]
@@ -1272,6 +1320,58 @@ mod tests {
             spread2 > 0.5,
             "ranged crop spread should be substantial: {spread2}"
         );
+    }
+
+    fn high_conf_mask() -> PhotoMask {
+        // 100 px, 30 excluded, confident.
+        let mut mask = vec![true; 100];
+        for i in 0..30 { mask[i] = false; }
+        PhotoMask { mask, excluded_fraction: 0.30, confidence: 0.9 }
+    }
+
+    #[test]
+    fn gate_include_never_masks() {
+        assert!(gate_photo_mask(high_conf_mask(), MeterBorder::Include).is_none());
+    }
+
+    #[test]
+    fn gate_auto_applies_when_confident() {
+        assert!(gate_photo_mask(high_conf_mask(), MeterBorder::Auto).is_some());
+    }
+
+    #[test]
+    fn gate_auto_rejects_low_confidence() {
+        let mut pm = high_conf_mask();
+        pm.confidence = 0.1;
+        assert!(gate_photo_mask(pm, MeterBorder::Auto).is_none());
+    }
+
+    #[test]
+    fn gate_auto_rejects_implausible_fraction() {
+        let mut pm = high_conf_mask();
+        pm.excluded_fraction = 0.85; // > FRAC_MAX
+        assert!(gate_photo_mask(pm, MeterBorder::Auto).is_none());
+    }
+
+    #[test]
+    fn gate_exclude_forces_even_low_confidence() {
+        let mut pm = high_conf_mask();
+        pm.confidence = 0.0;
+        assert!(gate_photo_mask(pm, MeterBorder::Exclude).is_some());
+    }
+
+    #[test]
+    fn gate_rejects_all_masked() {
+        let pm = PhotoMask { mask: vec![false; 100], excluded_fraction: 1.0, confidence: 1.0 };
+        assert!(gate_photo_mask(pm, MeterBorder::Exclude).is_none());
+    }
+
+    #[test]
+    fn meter_border_parse() {
+        assert!(matches!(MeterBorder::from_str_lenient("exclude"), MeterBorder::Exclude));
+        assert!(matches!(MeterBorder::from_str_lenient("include"), MeterBorder::Include));
+        assert!(matches!(MeterBorder::from_str_lenient("auto"), MeterBorder::Auto));
+        assert!(matches!(MeterBorder::from_str_lenient("garbage"), MeterBorder::Auto));
     }
 }
 
