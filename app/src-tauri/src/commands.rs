@@ -417,7 +417,7 @@ fn sample_dmax_oriented(
         let (x, y, w, h) = crop_px(nc, geom.width, geom.height);
         Rect { x, y, w, h }
     });
-    sample_dmax_spread(&geom, base, rect)
+    sample_dmax_spread(&geom, base, rect, None)
 }
 
 /// Map normalized strokes → `Stamp`s in OUTPUT pixel space.

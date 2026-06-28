@@ -391,22 +391,32 @@ pub fn per_zone_wb_gains(img: &Image, strength: f32) -> [[f32; 3]; 3] {
 /// so no channel clips past print white. Clamped to a sane `[1.0, 4.0]`. Sampling
 /// within `rect` lets the caller exclude borders (the image-area crop).
 pub fn sample_dmax(img: &Image, base: [f32; 3], rect: Option<Rect>) -> f32 {
-    sample_dmax_spread(img, base, rect).0
+    sample_dmax_spread(img, base, rect, None).0
 }
 
 /// Like [`sample_dmax`] but also returns the crop's **density spread**: the max
 /// across channels of `log10(i_high / i_low)` (99th vs 1st percentile transmission).
 /// A flat crop (no real blacks — e.g. cropping into sky/highlights, the B3 trigger)
 /// yields a tiny spread; callers use it to reject a range-destroying d_max estimate.
-pub fn sample_dmax_spread(img: &Image, base: [f32; 3], rect: Option<Rect>) -> (f32, f32) {
+pub fn sample_dmax_spread(
+    img: &Image,
+    base: [f32; 3],
+    rect: Option<Rect>,
+    mask: Option<&[bool]>,
+) -> (f32, f32) {
     const LOW_PCT: f32 = 0.01; // 1st percentile transmission (densest neg)
     const HIGH_PCT: f32 = 0.99; // 99th percentile (brightest transmission = base-ish)
     let small = downscale_for_detect(img, SAMPLE_CAP);
     let r = scaled_rect(rect, img, &small);
+    let mask_ok = |idx: usize| mask.map_or(true, |m| m.get(idx).copied().unwrap_or(true));
     let mut chans: [Vec<f32>; 3] = [Vec::new(), Vec::new(), Vec::new()];
     for yy in r.y..(r.y + r.h).min(small.height) {
         for xx in r.x..(r.x + r.w).min(small.width) {
-            let px = small.pixels[yy * small.width + xx];
+            let idx = yy * small.width + xx;
+            if !mask_ok(idx) {
+                continue;
+            }
+            let px = small.pixels[idx];
             for c in 0..3 {
                 chans[c].push(px[c]);
             }
@@ -1304,7 +1314,7 @@ mod tests {
             pixels: vec![[0.85, 0.85, 0.85]; 64],
             ir: None,
         };
-        let (_d, spread) = sample_dmax_spread(&flat, base, None);
+        let (_d, spread) = sample_dmax_spread(&flat, base, None, None);
         assert!(spread < 0.1, "flat crop spread should be tiny: {spread}");
         // Spans blacks → brights → substantial density range.
         let mut px = vec![[0.9, 0.9, 0.9]; 32];
@@ -1315,11 +1325,37 @@ mod tests {
             pixels: px,
             ir: None,
         };
-        let (_d2, spread2) = sample_dmax_spread(&ranged, base, None);
+        let (_d2, spread2) = sample_dmax_spread(&ranged, base, None, None);
         assert!(
             spread2 > 0.5,
             "ranged crop spread should be substantial: {spread2}"
         );
+    }
+
+    #[test]
+    fn dmax_mask_excludes_clear_border() {
+        // 30x30 negative thumb (<= SAMPLE_CAP so no internal downscale): dark/dense
+        // border pixels (low transmission) inflate d_max; masking them out must lower
+        // the estimate. The interior is "clear" (high transmission = low density).
+        let base = [0.5, 0.4, 0.3];
+        let clear = [0.95, 0.95, 0.95]; // high transmission → low/negative density
+        let dark = [0.02, 0.02, 0.02]; // very low transmission → high density → inflates d_max
+        let mut img = Image::new(30, 30);
+        for y in 0..30 {
+            for x in 0..30 {
+                let border = x < 4 || y < 4 || x >= 26 || y >= 26;
+                img.pixels[y * 30 + x] = if border { dark } else { clear };
+            }
+        }
+        let keep: Vec<bool> = (0..900)
+            .map(|i| {
+                let (x, y) = (i % 30, i / 30);
+                !(x < 4 || y < 4 || x >= 26 || y >= 26)
+            })
+            .collect();
+        let (d_full, _) = sample_dmax_spread(&img, base, None, None);
+        let (d_masked, _) = sample_dmax_spread(&img, base, None, Some(&keep));
+        assert!(d_masked < d_full, "masked={d_masked} full={d_full}");
     }
 
     fn high_conf_mask() -> PhotoMask {
