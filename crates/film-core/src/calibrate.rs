@@ -288,7 +288,8 @@ pub fn auto_wb_gains_strength_masked(img: &Image, strength: f32, mask: Option<&[
 
     // Need a meaningful sample. If a strong global cast desaturates too few pixels,
     // relax saturation; if still empty (e.g. all clipped), fall back to everything.
-    let min_keep = (img.pixels.len() / 20).max(1); // ≥5% (conservative floor, unmasked count)
+    let kept_total = (0..img.pixels.len()).filter(|i| mask_ok(*i)).count();
+    let min_keep = (kept_total / 20).max(1);
     let mut chans = collect(0.25, hi, lo);
     if chans[0].len() < min_keep {
         chans = collect(0.6, hi, lo);
@@ -1227,6 +1228,17 @@ mod tests {
         // Masked estimate sees only neutral pixels → gains near [1,1,1], R ≈ B.
         let diff = (gains_masked[0] - gains_masked[2]).abs();
         assert!(diff < 0.05, "masked: expected near-equal R/B, got {gains_masked:?}");
+    }
+
+    #[test]
+    fn auto_wb_gains_masked_none_equals_unmasked() {
+        // Delegate contract: passing None must be byte-identical to auto_wb_gains.
+        let mut img = Image::new(8, 8);
+        for (i, px) in img.pixels.iter_mut().enumerate() {
+            let v = 0.2 + 0.01 * (i % 7) as f32;
+            *px = [v * 1.1, v, v * 0.9]; // mild non-neutral content
+        }
+        assert_eq!(auto_wb_gains_masked(&img, None), auto_wb_gains(&img));
     }
 
     #[test]

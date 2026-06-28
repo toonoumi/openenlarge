@@ -2143,15 +2143,16 @@ pub fn per_zone_wb(
     };
     // Invert with the CURRENT resolved WB so per-zone measures the RESIDUAL cast.
     // Route through meter_mask so spoke/border regions don't bias the per-zone estimate.
-    let z = match meter_mask(&thumb, effective_base(&params, base), params.positive, &params.meter_border) {
+    let eff_base = effective_base(&params, base);
+    let z = match meter_mask(&thumb, eff_base, params.positive, &params.meter_border) {
         Some((small, keep)) => {
-            let mut ip = resolve_params(&params, &small, effective_base(&params, base));
+            let mut ip = resolve_params(&params, &small, eff_base);
             ip.d_max = effective_dmax(&params, dev_dmax);
             let positive = invert_image(&small, &ip, mode_from(&params.mode));
             per_zone_seed(&positive, params.pz_strength, Some(&keep))
         }
         None => {
-            let mut ip = resolve_params(&params, &thumb, effective_base(&params, base));
+            let mut ip = resolve_params(&params, &thumb, eff_base);
             ip.d_max = effective_dmax(&params, dev_dmax);
             let positive = invert_image(&thumb, &ip, mode_from(&params.mode));
             per_zone_seed(&positive, params.pz_strength, None)
