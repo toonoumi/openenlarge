@@ -232,6 +232,11 @@ basic.reset,Reset,重置,リセット,재설정,src/lib/develop/Basic.svelte,but
 basic.applyToRoll,Apply to whole roll…,应用到整卷…,ロール全体に適用…,롤 전체에 적용…,src/lib/develop/Basic.svelte,button
 basic.hdr,HDR,HDR,HDR,HDR,src/lib/develop/Basic.svelte,toggle
 basic.hdrTitle,Preview in HDR (toggle),以 HDR 预览（切换）,HDRでプレビュー（トグル）,HDR로 미리 보기 (토글),src/lib/develop/Basic.svelte,tooltip
+basic.meterBorder,Metering,测光,測光,측광,src/lib/develop/Basic.svelte,label
+basic.meterBorder.auto,Auto,自动,自動,자동,src/lib/develop/Basic.svelte,option
+basic.meterBorder.exclude,Exclude border,排除边框,枠を除外,테두리 제외,src/lib/develop/Basic.svelte,option
+basic.meterBorder.include,Whole crop,整个裁剪,クロップ全体,전체 크롭,src/lib/develop/Basic.svelte,option
+basic.meterBorderTitle,How auto-exposure / WB meter when the crop includes film spokes,当裁剪包含片孔时自动曝光/白平衡的测光方式,クロップにフィルムの送り穴が含まれる場合の自動露出/WBの測光方法,크롭에 필름 스프로킷이 포함될 때 자동 노출/화이트 밸런스 측광 방식,src/lib/develop/Basic.svelte,tooltip
 basic.filmProfile,Film Profile,胶片配置文件,フィルムプロファイル,필름 프로파일,src/lib/develop/Basic.svelte,label
 basic.noFilmProfile,No film profile,无胶片配置文件,フィルムプロファイルなし,필름 프로파일 없음,src/lib/develop/Basic.svelte,option
 basic.stock.portra400,Kodak Portra 400,柯达 Portra 400,Kodak Portra 400,Kodak Portra 400,src/lib/develop/Basic.svelte,option
