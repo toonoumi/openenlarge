@@ -333,17 +333,21 @@ fn pz_smoothstep(e0: f32, e1: f32, x: f32) -> f32 {
 /// computes a damped, clamped gray-world correction per zone, and returns identity
 /// for any zone with too few neutral pixels. With a uniform cast all zones agree, so
 /// the result collapses to a global correction (faithfulness invariant).
-pub fn per_zone_wb_gains(img: &Image, strength: f32) -> [[f32; 3]; 3] {
+pub fn per_zone_wb_gains(img: &Image, strength: f32, mask: Option<&[bool]>) -> [[f32; 3]; 3] {
     let identity = [1.0f32, 1.0, 1.0];
     if img.pixels.is_empty() {
         return [identity; 3];
     }
     let k = strength.clamp(0.0, 1.0);
+    let mask_ok = |idx: usize| mask.map_or(true, |m| m.get(idx).copied().unwrap_or(true));
     // Accumulate a saturation-gated, weighted channel sum per zone.
     // weights: [shadow, mid, highlight] from the luma smoothstep masks.
     let mut sum = [[0.0f64; 3]; 3];
     let mut wsum = [0.0f64; 3];
-    for &p in &img.pixels {
+    for (idx, &p) in img.pixels.iter().enumerate() {
+        if !mask_ok(idx) {
+            continue;
+        }
         let mx = p[0].max(p[1]).max(p[2]);
         let mn = p[0].min(p[1]).min(p[2]);
         let sat = if mx > 1e-6 { (mx - mn) / mx } else { 0.0 };
@@ -1433,7 +1437,7 @@ mod per_zone_tests {
             pixels,
             ir: None,
         };
-        let z = per_zone_wb_gains(&img, 1.0);
+        let z = per_zone_wb_gains(&img, 1.0, None);
         for c in 0..3 {
             assert!((z[0][c] - z[1][c]).abs() < 0.06, "sh vs mid ch{c}: {z:?}");
             assert!((z[1][c] - z[2][c]).abs() < 0.06, "mid vs hi ch{c}: {z:?}");
@@ -1459,7 +1463,7 @@ mod per_zone_tests {
             pixels,
             ir: None,
         };
-        let z = per_zone_wb_gains(&img, 1.0);
+        let z = per_zone_wb_gains(&img, 1.0, None);
         for c in 0..3 {
             assert!(
                 (z[1][c] - 1.0).abs() < 0.08,
@@ -1482,7 +1486,7 @@ mod per_zone_tests {
             ir: None,
         };
         assert_eq!(
-            per_zone_wb_gains(&bright, 1.0)[0],
+            per_zone_wb_gains(&bright, 1.0, None)[0],
             [1.0, 1.0, 1.0],
             "empty shadow zone must be identity"
         );
@@ -1494,7 +1498,7 @@ mod per_zone_tests {
             ir: None,
         };
         assert_eq!(
-            per_zone_wb_gains(&dark, 1.0)[2],
+            per_zone_wb_gains(&dark, 1.0, None)[2],
             [1.0, 1.0, 1.0],
             "empty highlight zone must be identity"
         );
@@ -1517,7 +1521,7 @@ mod per_zone_tests {
             pixels,
             ir: None,
         };
-        let z = per_zone_wb_gains(&img, 1.0);
+        let z = per_zone_wb_gains(&img, 1.0, None);
         for zone in &z {
             for &g in zone {
                 assert!(
@@ -1614,5 +1618,29 @@ mod per_zone_tests {
         }
         let pm = detect_photo_mask(&img, base, false);
         assert!(pm.confidence < 0.5 || pm.excluded_fraction < 0.02, "frac={} conf={}", pm.excluded_fraction, pm.confidence);
+    }
+
+    #[test]
+    fn per_zone_mask_changes_estimate() {
+        // A developed positive with a strongly-tinted border; masking it should change
+        // the per-zone gains vs. including it.
+        let tint = [0.6f32, 0.5, 0.5]; // subtle red border (sat≈0.17 < 0.25 gate → accumulates)
+        let neutral = [0.5, 0.5, 0.5];
+        let mut img = Image::new(20, 20);
+        for y in 0..20 {
+            for x in 0..20 {
+                let border = x < 3 || y < 3 || x >= 17 || y >= 17;
+                img.pixels[y * 20 + x] = if border { tint } else { neutral };
+            }
+        }
+        let keep: Vec<bool> = (0..400)
+            .map(|i| {
+                let (x, y) = (i % 20, i / 20);
+                !(x < 3 || y < 3 || x >= 17 || y >= 17)
+            })
+            .collect();
+        let full = per_zone_wb_gains(&img, 0.7, None);
+        let masked = per_zone_wb_gains(&img, 0.7, Some(&keep));
+        assert!(full != masked, "mask had no effect");
     }
 }

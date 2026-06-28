@@ -2067,7 +2067,7 @@ pub(crate) fn auto_seed_wb(
 /// (a developed positive) to estimate residual per-zone gray-world gains.
 /// Factored out like `auto_seed_wb` so it can be tested independently.
 pub(crate) fn per_zone_seed(src: &film_core::Image, strength: f32) -> [[f32; 3]; 3] {
-    film_core::calibrate::per_zone_wb_gains(src, strength)
+    film_core::calibrate::per_zone_wb_gains(src, strength, None)
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
