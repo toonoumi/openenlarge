@@ -96,9 +96,9 @@ const SAMPLE_CAP: usize = 512;
 const SPOKE_MARGIN: f32 = 0.25;
 /// Strictness of the masked-region uniformity term in the confidence score.
 const MASK_UNIF_K: f32 = 3.0;
-/// Positive-path rail margin (Task 2 uses this; declared here to keep constants together).
-#[allow(dead_code)]
-const POS_RAIL_MARGIN: f32 = 0.10;
+/// A pixel is a spoke "candidate" (positive) when its luma is within this of either
+/// rail — near-black (slide rebate) or near-white (clear sprocket).
+const POS_RAIL_MARGIN: f32 = 0.06;
 
 /// Map a source-coord `rect` onto a downscaled image. `None` → the whole small
 /// image. Widths/heights floor at 1px so a tiny crop never yields an empty band.
@@ -704,13 +704,15 @@ fn excluded_uniformity(small: &Image, keep: &[bool]) -> f32 {
     (1.0 - MASK_UNIF_K * cv).clamp(0.0, 1.0)
 }
 
-/// Temporary stub — Task 2 replaces this with the real positive-path predicate.
-/// Must return a length-correct vec so border_connected_exclude does not index
-/// out of bounds. All-false means no pixel is a candidate (nothing excluded).
 fn positive_candidates(small: &Image) -> Vec<bool> {
-    // Temporary stub (Task 2 implements the real positive predicate). Must be
-    // length-correct so border_connected_exclude does not index out of bounds.
-    vec![false; small.pixels.len()]
+    small
+        .pixels
+        .iter()
+        .map(|p| {
+            let l = luma3(*p);
+            l <= POS_RAIL_MARGIN || l >= 1.0 - POS_RAIL_MARGIN
+        })
+        .collect()
 }
 
 /// Detect the spoke/gap region. `positive` selects the value predicate; the spatial
@@ -1388,6 +1390,55 @@ mod per_zone_tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn pos_black_rebate_border_is_masked() {
+        // Positive slide: outer ring near-black (dense rebate), interior mid-tone scene.
+        let black = [0.01, 0.01, 0.01];
+        let scene = [0.5, 0.45, 0.4];
+        let mut img = Image::new(20, 20);
+        for y in 0..20 {
+            for x in 0..20 {
+                let border = x < 3 || y < 3 || x >= 17 || y >= 17;
+                img.pixels[y * 20 + x] = if border { black } else { scene };
+            }
+        }
+        let pm = detect_photo_mask(&img, [0.0; 3], true);
+        assert!(pm.excluded_fraction > 0.30, "frac={}", pm.excluded_fraction);
+        assert!(pm.confidence > 0.5, "conf={}", pm.confidence);
+    }
+
+    #[test]
+    fn pos_white_sprocket_border_is_masked() {
+        let white = [0.99, 0.99, 0.99];
+        let scene = [0.5, 0.45, 0.4];
+        let mut img = Image::new(20, 20);
+        for y in 0..20 {
+            for x in 0..20 {
+                let border = x < 3 || y < 3 || x >= 17 || y >= 17;
+                img.pixels[y * 20 + x] = if border { white } else { scene };
+            }
+        }
+        let pm = detect_photo_mask(&img, [0.0; 3], true);
+        assert!(pm.excluded_fraction > 0.30, "frac={}", pm.excluded_fraction);
+    }
+
+    #[test]
+    fn pos_interior_shadow_not_masked() {
+        // A spoke-free slide with a deep-shadow BLOB in the interior (not border-connected).
+        let scene = [0.5, 0.45, 0.4];
+        let shadow = [0.01, 0.01, 0.01];
+        let mut img = Image::new(20, 20);
+        for y in 0..20 {
+            for x in 0..20 {
+                let interior_blob = (8..12).contains(&x) && (8..12).contains(&y);
+                img.pixels[y * 20 + x] = if interior_blob { shadow } else { scene };
+            }
+        }
+        let pm = detect_photo_mask(&img, [0.0; 3], true);
+        // The blob doesn't touch the border, so nothing is excluded.
+        assert!(pm.excluded_fraction < 0.02, "frac={}", pm.excluded_fraction);
     }
 
     #[test]
