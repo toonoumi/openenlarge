@@ -92,6 +92,8 @@ export interface InvertParams {
   pc_samples: PointColorSample[];
   /** Positive passthrough: render the scan without inversion (slide/print). */
   positive: boolean;
+  /** Spoke/border metering mode: "auto" | "exclude" | "include". */
+  meter_border: string; // "auto" | "exclude" | "include"
 
   // --- Per-zone white-balance neutralizer (Task 7 apply layer) ---
   /** Enable/disable per-zone WB correction. */
@@ -438,6 +440,7 @@ export const defaultParams = (): InvertParams => ({
   cm_magenta_hue: 0, cm_magenta_sat: 0, cm_magenta_lum: 0,
   pc_samples: [],
   positive: false,
+  meter_border: "auto",
   pz_enabled: true, pz_strength: 0.7,
   pz_sh: [1, 1, 1], pz_mid: [1, 1, 1], pz_hi: [1, 1, 1],
 });

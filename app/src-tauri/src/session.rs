@@ -66,6 +66,12 @@ pub struct InvertParams {
     /// exposure + WB only. Seeded by the develop-time classifier; user-overridable.
     #[serde(default)]
     pub positive: bool,
+    /// Spoke/border metering mode for auto-exposure, D_max, and WB: "auto"
+    /// (confidence-gated detection), "exclude" (force), or "include" (meter the
+    /// full crop — today's behavior). Defaults to "auto" for edits saved before
+    /// this key existed.
+    #[serde(default = "default_meter_border")]
+    pub meter_border: String,
     // Creative finishing (UI −100..100; 0 = identity).
     pub contrast: f32,
     pub highlights: f32,
@@ -216,6 +222,9 @@ pub fn identity_curve() -> Vec<[f32; 2]> {
 }
 fn default_wb_baseline() -> [f32; 3] {
     [1.0, 1.0, 1.0]
+}
+fn default_meter_border() -> String {
+    "auto".to_string()
 }
 fn pz_default_enabled() -> bool {
     true
@@ -565,5 +574,16 @@ mod tests {
         assert_eq!(p.pz_mid, [1.0, 1.0, 1.0]);
         assert_eq!(p.pz_hi, [1.0, 1.0, 1.0]);
         assert!((p.pz_strength - 0.7).abs() < 1e-6);
+    }
+
+    #[test]
+    fn meter_border_defaults_to_auto() {
+        // An old saved edit with no meter_border key must load as "auto".
+        let json = r#"{"mode":"c","stock":"none","exposure":0.0,"black":0.0,"gamma":1.0,
+            "auto_wb":false,"temp":5500.0,"tint":0.0,"contrast":0.0,"highlights":0.0,
+            "shadows":0.0,"whites":0.0,"blacks":0.0,"texture":0.0,"vibrance":0.0,
+            "saturation":0.0}"#;
+        let p: InvertParams = serde_json::from_str(json).expect("parse");
+        assert_eq!(p.meter_border, "auto");
     }
 }

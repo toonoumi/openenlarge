@@ -125,6 +125,7 @@ pub(crate) fn default_invert_params() -> InvertParams {
         wb_manual: false,
         hdr: false,
         positive: false,
+        meter_border: "auto".to_string(),
         contrast: 0.0,
         highlights: 0.0,
         shadows: 0.0,
