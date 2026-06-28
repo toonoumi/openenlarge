@@ -1486,6 +1486,21 @@ mod tests {
     }
 
     #[test]
+    fn gate_auto_rejects_tiny_fraction() {
+        // excluded_fraction = 0.005 is below FRAC_MIN=0.02 → Auto gates out even when confident.
+        let mut pm = high_conf_mask();
+        pm.excluded_fraction = 0.005;
+        assert!(gate_photo_mask(pm, MeterBorder::Auto).is_none());
+    }
+
+    #[test]
+    fn gate_exclude_no_border_returns_none() {
+        // Exclude applies only when excluded_fraction > 0.0; a no-border mask returns None.
+        let pm = PhotoMask { mask: vec![true; 100], excluded_fraction: 0.0, confidence: 0.9 };
+        assert!(gate_photo_mask(pm, MeterBorder::Exclude).is_none());
+    }
+
+    #[test]
     fn meter_border_parse() {
         assert!(matches!(MeterBorder::from_str_lenient("exclude"), MeterBorder::Exclude));
         assert!(matches!(MeterBorder::from_str_lenient("include"), MeterBorder::Include));

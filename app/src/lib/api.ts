@@ -93,7 +93,7 @@ export interface InvertParams {
   /** Positive passthrough: render the scan without inversion (slide/print). */
   positive: boolean;
   /** Spoke/border metering mode: "auto" | "exclude" | "include". */
-  meter_border: string; // "auto" | "exclude" | "include"
+  meter_border: string;
 
   // --- Per-zone white-balance neutralizer (Task 7 apply layer) ---
   /** Enable/disable per-zone WB correction. */

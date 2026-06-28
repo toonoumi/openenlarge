@@ -175,7 +175,7 @@
   // ---- Crop-aware D_max analysis ----
   // Derive D_max from the image area (the persistent crop) and apply it to THIS
   // image, then reseed WB so the white point matches the new dynamic range.
-  async function reanalyze(pinnedAtStart?: boolean) {
+  async function reanalyze(pinnedAtStart?: boolean, softWb = false) {
     const id = get(activeId); if (!id) return;
     // Snapshot the pre-reanalyze state so this is always one-click revertible (B3).
     // `pinnedAtStart` lets a caller record the pin as it was BEFORE the caller
@@ -185,7 +185,11 @@
       const { d_max } = await api.analyze(id, withEffectiveBase(get(params), dir), imageCrop, geom);
       params.update((p) => ({ ...p, d_max_override: d_max }));
       commitActive();
-      autoWb();
+      // softWb: re-meter paths (positive flip / border change) must not clobber a
+      // deliberate gray-point WB (spec §6). Skip autoWb when wb_manual is set.
+      if (!softWb || !get(params).wb_manual) {
+        autoWb();
+      }
     } catch { preReanalyze.set(null); /* not developed yet */ }
   }
   // Restore the d_max_override + pin captured before the last re-analyze (B3).
@@ -276,11 +280,12 @@
   }
 
   // Re-derive metering (D_max + WB + exposure) under the current border/positive
-  // state. WB respects wb_manual (autoWb/seed already guards it); exposure re-seeds
-  // only when untouched unless `force` (an explicit metering choice by the user).
+  // state. WB reseeds only when wb_manual is unset (spec §6: a deliberate
+  // gray-point WB must survive a positive flip or border change). Exposure
+  // re-seeds only when untouched unless `force` (an explicit metering choice).
   function remeterActiveExposure(force: boolean) {
     const id = get(activeId); if (!id) return;
-    reanalyze(); // D_max + WB reseed (guards wb_manual internally)
+    reanalyze(undefined, /*softWb*/ true); // re-derive D_max; WB respects wb_manual (spec §6)
     if (force || get(params).exposure === defaultParams().exposure) {
       autoExposure();
     }
