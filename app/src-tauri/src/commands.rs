@@ -10,7 +10,7 @@ use crate::metadata::extract;
 use crate::session::{
     CachedImage, DecodeCacheEntry, Developed, ImageEntry, InvertParams, PreparedExport, Session,
 };
-use film_core::calibrate::auto_wb_gains;
+use film_core::calibrate::auto_wb_gains_masked;
 use film_core::decode::{decode_ldr, decode_raw, decode_raw_preview, decode_tiff};
 use film_core::dust::{self, Stamp};
 use film_core::engine::{invert_image, invert_image_core, InversionParams, Mode};
@@ -2061,7 +2061,12 @@ pub fn as_shot_wb(
     // Estimate WB against the user's ACTUAL stock/mode so the gains neutralise the
     // colour space the image is actually rendered in. `build_params` leaves `wb` at
     // [1,1,1], so the estimate is independent of any temp/tint already on the sliders.
-    let (temp, tint) = auto_seed_wb(&thumb, &params, base, dev_dmax);
+    // Route through meter_mask so spoke/border regions don't bias the gray-world.
+    let eff_base = effective_base(&params, base);
+    let (temp, tint) = match meter_mask(&thumb, eff_base, params.positive, &params.meter_border) {
+        Some((small, keep)) => auto_seed_wb(&small, &params, base, dev_dmax, Some(&keep)),
+        None => auto_seed_wb(&thumb, &params, base, dev_dmax, None),
+    };
     Ok(AsShotWb { temp, tint, gains: as_shot_gains(temp, tint) })
 }
 
@@ -2075,11 +2080,12 @@ pub(crate) fn auto_seed_wb(
     params: &InvertParams,
     base: [f32; 3],
     dev_dmax: f32,
+    mask: Option<&[bool]>,
 ) -> (f32, f32) {
     let mut ip = build_params(params, effective_base(params, base));
     ip.d_max = effective_dmax(params, dev_dmax);
     let first = invert_image(src, &ip, mode_from(&params.mode));
-    let gains = auto_wb_gains(&first);
+    let gains = auto_wb_gains_masked(&first, mask);
     let (temp, tint) = gains_to_cct(gains);
     (temp, tint * 150.0) // tint back to UI −150..150
 }
@@ -2087,8 +2093,8 @@ pub(crate) fn auto_seed_wb(
 /// Per-zone WB seed: run `film_core::calibrate::per_zone_wb_gains` on `src`
 /// (a developed positive) to estimate residual per-zone gray-world gains.
 /// Factored out like `auto_seed_wb` so it can be tested independently.
-pub(crate) fn per_zone_seed(src: &film_core::Image, strength: f32) -> [[f32; 3]; 3] {
-    film_core::calibrate::per_zone_wb_gains(src, strength, None)
+pub(crate) fn per_zone_seed(src: &film_core::Image, strength: f32, mask: Option<&[bool]>) -> [[f32; 3]; 3] {
+    film_core::calibrate::per_zone_wb_gains(src, strength, mask)
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -2136,10 +2142,21 @@ pub fn per_zone_wb(
         None => thumb,
     };
     // Invert with the CURRENT resolved WB so per-zone measures the RESIDUAL cast.
-    let mut ip = resolve_params(&params, &thumb, effective_base(&params, base));
-    ip.d_max = effective_dmax(&params, dev_dmax);
-    let positive = invert_image(&thumb, &ip, mode_from(&params.mode));
-    let z = per_zone_seed(&positive, params.pz_strength);
+    // Route through meter_mask so spoke/border regions don't bias the per-zone estimate.
+    let z = match meter_mask(&thumb, effective_base(&params, base), params.positive, &params.meter_border) {
+        Some((small, keep)) => {
+            let mut ip = resolve_params(&params, &small, effective_base(&params, base));
+            ip.d_max = effective_dmax(&params, dev_dmax);
+            let positive = invert_image(&small, &ip, mode_from(&params.mode));
+            per_zone_seed(&positive, params.pz_strength, Some(&keep))
+        }
+        None => {
+            let mut ip = resolve_params(&params, &thumb, effective_base(&params, base));
+            ip.d_max = effective_dmax(&params, dev_dmax);
+            let positive = invert_image(&thumb, &ip, mode_from(&params.mode));
+            per_zone_seed(&positive, params.pz_strength, None)
+        }
+    };
     Ok(PerZoneWbResult { sh: z[0], mid: z[1], hi: z[2] })
 }
 
@@ -2325,14 +2342,14 @@ fn render_grid_thumbnail(
         Some(p) => p.clone(),
         None => {
             let mut p = InvertParams { positive, ..default_invert_params() };
-            let (temp, tint) = auto_seed_wb(seed_src, &p, base, d_max);
+            let (temp, tint) = auto_seed_wb(seed_src, &p, base, d_max, None);
             p.temp = temp;
             p.tint = tint;
             // Bake per-zone WB the same way Develop seeds it, so the thumbnail matches.
             let mut ip_seed = resolve_params(&p, seed_src, effective_base(&p, base));
             ip_seed.d_max = effective_dmax(&p, d_max);
             let positive_seed = invert_image(seed_src, &ip_seed, mode_from(&p.mode));
-            let z = per_zone_seed(&positive_seed, p.pz_strength);
+            let z = per_zone_seed(&positive_seed, p.pz_strength, None);
             p.pz_sh = z[0]; p.pz_mid = z[1]; p.pz_hi = z[2];
             p
         }
@@ -3231,7 +3248,7 @@ mod tests {
         let neg = Image { width: 8, height: 8, pixels: vec![[0.30, 0.15, 0.30]; 64], ir: None };
         let base = [1.0, 1.0, 1.0];
         let dmax = 1.5;
-        let (temp, tint) = auto_seed_wb(&neg, &default_invert_params(), base, dmax);
+        let (temp, tint) = auto_seed_wb(&neg, &default_invert_params(), base, dmax, None);
         let render = |p: &InvertParams| {
             let mut ip = resolve_params(p, &neg, base);
             ip.d_max = dmax;
@@ -3300,7 +3317,7 @@ mod tests {
             pixels.push([0.6 * s, 0.5 * s, 0.45 * s]);
         }
         let src = Image { width: 300, height: 1, pixels, ir: None };
-        let z = per_zone_seed(&src, 1.0);
+        let z = per_zone_seed(&src, 1.0, None);
         // Blue is the dimmest channel of the cast → blue gain > 1 in every populated zone.
         for zone in &z {
             if *zone != [1.0, 1.0, 1.0] {
@@ -3329,13 +3346,13 @@ mod tests {
         let d_max = 2.0f32;
         // Replicate the None branch of render_grid_thumbnail exactly as patched.
         let mut p = InvertParams { positive: true, ..default_invert_params() };
-        let (temp, tint) = auto_seed_wb(&src, &p, base, d_max);
+        let (temp, tint) = auto_seed_wb(&src, &p, base, d_max, None);
         p.temp = temp;
         p.tint = tint;
         let mut ip_seed = resolve_params(&p, &src, effective_base(&p, base));
         ip_seed.d_max = effective_dmax(&p, d_max);
         let positive_seed = invert_image(&src, &ip_seed, mode_from(&p.mode));
-        let z = per_zone_seed(&positive_seed, p.pz_strength);
+        let z = per_zone_seed(&positive_seed, p.pz_strength, None);
         p.pz_sh = z[0]; p.pz_mid = z[1]; p.pz_hi = z[2];
         // At least one zone must deviate from identity — proves per-zone was baked.
         let identity = [[1.0f32; 3]; 3];

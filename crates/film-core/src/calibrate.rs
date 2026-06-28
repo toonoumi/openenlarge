@@ -219,9 +219,24 @@ pub fn auto_wb_gains(img: &Image) -> [f32; 3] {
 /// [`auto_wb_gains`] with an explicit damping `strength` in 0..=1 (1 = full
 /// gray-world correction, 0 = no correction / `[1,1,1]`).
 pub fn auto_wb_gains_strength(img: &Image, strength: f32) -> [f32; 3] {
+    auto_wb_gains_strength_masked(img, strength, None)
+}
+
+/// Like [`auto_wb_gains`] but restricts the gray-world estimate to pixels
+/// whose mask entry is `true`. `None` = include all (identical to the
+/// unmasked variant). Pixel indices align to `img.pixels` order.
+pub fn auto_wb_gains_masked(img: &Image, mask: Option<&[bool]>) -> [f32; 3] {
+    auto_wb_gains_strength_masked(img, AUTO_WB_STRENGTH, mask)
+}
+
+/// Like [`auto_wb_gains_strength`] but restricts the gray-world estimate to
+/// pixels whose mask entry is `true`. `None` = include all (identical to
+/// [`auto_wb_gains_strength`]).
+pub fn auto_wb_gains_strength_masked(img: &Image, strength: f32, mask: Option<&[bool]>) -> [f32; 3] {
     if img.pixels.is_empty() {
         return [1.0, 1.0, 1.0];
     }
+    let mask_ok = |idx: usize| mask.map_or(true, |m| m.get(idx).copied().unwrap_or(true));
     // Exposure-invariant brightness gates. The gray-world gains are channel
     // ratios, so a uniform exposure nudge cancels out — *except* through which
     // pixels survive the bright/dark gate. Deriving the gate from the image's own
@@ -230,7 +245,14 @@ pub fn auto_wb_gains_strength(img: &Image, strength: f32) -> [f32; 3] {
     // which is what made auto-WB jump on small exposure changes (B4). Computed
     // once, deterministically (a total sort), so re-runs are bit-identical.
     let percentile = |key: &dyn Fn(&[f32; 3]) -> f32, q: f32| -> f32 {
-        let mut v: Vec<f32> = img.pixels.iter().map(key).collect();
+        let mut v: Vec<f32> = img.pixels.iter().enumerate()
+            .filter(|(idx, _)| mask_ok(*idx))
+            .map(|(_, p)| key(p))
+            .collect();
+        if v.is_empty() {
+            // No masked pixels: return sentinel values that let collect fall through.
+            return if q > 0.5 { f32::INFINITY } else { 0.0 };
+        }
         v.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
         let idx = (((v.len() - 1) as f32) * q).round() as usize;
         v[idx.min(v.len() - 1)]
@@ -243,7 +265,10 @@ pub fn auto_wb_gains_strength(img: &Image, strength: f32) -> [f32; 3] {
     // highlights and shadow noise.
     let collect = |sat_max: f32, hi: f32, lo: f32| -> [Vec<f32>; 3] {
         let mut chans: [Vec<f32>; 3] = [Vec::new(), Vec::new(), Vec::new()];
-        for p in &img.pixels {
+        for (idx, p) in img.pixels.iter().enumerate() {
+            if !mask_ok(idx) {
+                continue;
+            }
             let mx = p[0].max(p[1]).max(p[2]);
             let mn = p[0].min(p[1]).min(p[2]);
             let luma = (p[0] + p[1] + p[2]) / 3.0;
@@ -263,7 +288,7 @@ pub fn auto_wb_gains_strength(img: &Image, strength: f32) -> [f32; 3] {
 
     // Need a meaningful sample. If a strong global cast desaturates too few pixels,
     // relax saturation; if still empty (e.g. all clipped), fall back to everything.
-    let min_keep = (img.pixels.len() / 20).max(1); // ≥5%
+    let min_keep = (img.pixels.len() / 20).max(1); // ≥5% (conservative floor, unmasked count)
     let mut chans = collect(0.25, hi, lo);
     if chans[0].len() < min_keep {
         chans = collect(0.6, hi, lo);
@@ -1166,6 +1191,42 @@ mod tests {
             ir: None,
         };
         assert_eq!(auto_wb_gains(&img), auto_wb_gains(&img));
+    }
+
+    #[test]
+    fn auto_wb_gains_masked_excludes_region() {
+        // A neutral center surrounded by a subtle blue-cast border that passes the
+        // saturation gate (sat≈0.20 < 0.25). With mask=None the border pixels
+        // contribute and the gains correct toward warm (R>B). With mask=Some
+        // excluding the border pixels the estimate sees only the neutral center
+        // and returns gains close to [1,1,1].
+        use super::{auto_wb_gains, auto_wb_gains_masked};
+        let (w, h) = (20usize, 20usize);
+        let neutral = [0.50f32, 0.50, 0.50];
+        // blue_cast: sat = (0.40-0.32)/0.40 = 0.20 < 0.25 → passes gate; R<B so
+        // the full image mean has R<B, which drives a warm (R-boost) correction.
+        let blue_cast = [0.32f32, 0.32, 0.40];
+        let mut img = Image::new(w, h);
+        for y in 0..h {
+            for x in 0..w {
+                let border = x < 4 || y < 4 || x >= 16 || y >= 16;
+                img.pixels[y * w + x] = if border { blue_cast } else { neutral };
+            }
+        }
+        // Mask: exclude the border (border pixels → false, interior → true)
+        let keep: Vec<bool> = (0..w * h)
+            .map(|i| {
+                let (x, y) = (i % w, i / w);
+                !(x < 4 || y < 4 || x >= 16 || y >= 16)
+            })
+            .collect();
+        let gains_full = auto_wb_gains(&img);
+        let gains_masked = auto_wb_gains_masked(&img, Some(&keep));
+        // Full estimate is skewed by the blue border: R gain > B gain (warm correction).
+        assert!(gains_full[0] > gains_full[2], "full: expected R>B gains, got {gains_full:?}");
+        // Masked estimate sees only neutral pixels → gains near [1,1,1], R ≈ B.
+        let diff = (gains_masked[0] - gains_masked[2]).abs();
+        assert!(diff < 0.05, "masked: expected near-equal R/B, got {gains_masked:?}");
     }
 
     #[test]
