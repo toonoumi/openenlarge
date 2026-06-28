@@ -286,7 +286,7 @@
     }
   }
 
-  function setMeterBorder(mode: string) {
+  function setMeterBorder(mode: "auto" | "exclude" | "include") {
     params.update((p) => ({ ...p, meter_border: mode }));
     commitActive();
     remeterActiveExposure(true);
@@ -336,6 +336,19 @@
       <!-- Inverse: always available; flips negative↔positive for this image. -->
       <button class="recal inverse" on:click={togglePositive}>{$t('basic.inverseBtn')}</button>
 
+      <!-- Metering mode: always available; auto-exposure + WB consume the mask on positives too -->
+      <div class="wbhead" title={$t('basic.meterBorderTitle')}>
+        <span>{$t('basic.meterBorder')}</span>
+        <span class="wbbtns">
+          <button class="auto" class:on={$params.meter_border === "auto"}
+                  on:click={() => setMeterBorder("auto")}>{$t('basic.meterBorder.auto')}</button>
+          <button class="auto" class:on={$params.meter_border === "exclude"}
+                  on:click={() => setMeterBorder("exclude")}>{$t('basic.meterBorder.exclude')}</button>
+          <button class="auto" class:on={$params.meter_border === "include"}
+                  on:click={() => setMeterBorder("include")}>{$t('basic.meterBorder.include')}</button>
+        </span>
+      </div>
+
       <!-- Inversion-specific controls only apply to negatives. -->
       {#if !$params.positive}
         <!-- Crop re-analysis (re-derive D_max + WB from the current crop) -->
@@ -343,19 +356,6 @@
         {#if $preReanalyze && $preReanalyze.id === $activeId}
           <button class="recal revert" on:click={revertReanalyze}>{$t('base.revertReanalyze')}</button>
         {/if}
-
-        <!-- Metering mode: how auto-exposure / WB samples when the crop includes the border -->
-        <div class="wbhead" title={$t('basic.meterBorderTitle')}>
-          <span>{$t('basic.meterBorder')}</span>
-          <span class="wbbtns">
-            <button class="auto" class:on={$params.meter_border === "auto"}
-                    on:click={() => setMeterBorder("auto")}>{$t('basic.meterBorder.auto')}</button>
-            <button class="auto" class:on={$params.meter_border === "exclude"}
-                    on:click={() => setMeterBorder("exclude")}>{$t('basic.meterBorder.exclude')}</button>
-            <button class="auto" class:on={$params.meter_border === "include"}
-                    on:click={() => setMeterBorder("include")}>{$t('basic.meterBorder.include')}</button>
-          </span>
-        </div>
 
         <!-- Film Base: tap the swatch to pick the rebate; the pick auto-applies to this image -->
         <div class="sub">{$t('base.title')}</div>
