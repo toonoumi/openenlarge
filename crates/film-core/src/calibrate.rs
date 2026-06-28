@@ -90,6 +90,16 @@ pub const BASE_BAND_AUTO: (f32, f32) = (0.90, 0.99);
 /// 11–24 MP) on every develop / image-switch / export was the perf regression.
 const SAMPLE_CAP: usize = 512;
 
+/// A pixel is a spoke "candidate" (negative) when its luma is at least the base
+/// luma scaled by `(1 - SPOKE_MARGIN)` — i.e. as clear as the rebate or clearer.
+/// Catches the orange rebate band AND the clear sprocket holes.
+const SPOKE_MARGIN: f32 = 0.25;
+/// Strictness of the masked-region uniformity term in the confidence score.
+const MASK_UNIF_K: f32 = 3.0;
+/// Positive-path rail margin (Task 2 uses this; declared here to keep constants together).
+#[allow(dead_code)]
+const POS_RAIL_MARGIN: f32 = 0.10;
+
 /// Map a source-coord `rect` onto a downscaled image. `None` → the whole small
 /// image. Widths/heights floor at 1px so a tiny crop never yields an empty band.
 fn scaled_rect(rect: Option<Rect>, src: &Image, small: &Image) -> Rect {
@@ -622,6 +632,106 @@ pub fn detect_rebate_base(img: &Image) -> RebateBase {
     scan_region(&small, 0, 0, bw, h, &mut best); // left
     scan_region(&small, w.saturating_sub(bw), 0, bw, h, &mut best); // right
     best
+}
+
+/// A per-pixel mask flagging the film "spokes" (sprocket holes / rebate / frame
+/// lines) so metering can exclude them. `mask[i] == true` means pixel `i` is image
+/// (keep); `false` means spoke/gap (exclude). Aligned to a `SAMPLE_CAP`-downscaled
+/// copy of the input — the same grid the masked samplers reduce on.
+#[derive(Debug, Clone)]
+pub struct PhotoMask {
+    pub mask: Vec<bool>,
+    pub excluded_fraction: f32,
+    pub confidence: f32,
+}
+
+fn luma3(p: [f32; 3]) -> f32 {
+    0.2126 * p[0] + 0.7152 * p[1] + 0.0722 * p[2]
+}
+
+/// Border-connected flood fill over a candidate grid: returns the keep-mask
+/// (true = image) and the count of excluded (spoke) pixels. Only candidates
+/// reachable from the image edge through other candidates are excluded, so
+/// interior speckle (real shadows/speculars) is kept.
+fn border_connected_exclude(cand: &[bool], w: usize, h: usize) -> (Vec<bool>, usize) {
+    let mut excluded = vec![false; w * h];
+    let mut stack: Vec<usize> = Vec::new();
+    let push = |i: usize, stack: &mut Vec<usize>, excluded: &mut Vec<bool>| {
+        if cand[i] && !excluded[i] {
+            excluded[i] = true;
+            stack.push(i);
+        }
+    };
+    for x in 0..w {
+        push(x, &mut stack, &mut excluded); // top row
+        push((h - 1) * w + x, &mut stack, &mut excluded); // bottom row
+    }
+    for y in 0..h {
+        push(y * w, &mut stack, &mut excluded); // left col
+        push(y * w + (w - 1), &mut stack, &mut excluded); // right col
+    }
+    while let Some(i) = stack.pop() {
+        let (x, y) = (i % w, i / w);
+        if x > 0 { push(i - 1, &mut stack, &mut excluded); }
+        if x + 1 < w { push(i + 1, &mut stack, &mut excluded); }
+        if y > 0 { push(i - w, &mut stack, &mut excluded); }
+        if y + 1 < h { push(i + w, &mut stack, &mut excluded); }
+    }
+    let n_excl = excluded.iter().filter(|&&e| e).count();
+    let keep: Vec<bool> = excluded.iter().map(|&e| !e).collect();
+    (keep, n_excl)
+}
+
+/// Coefficient-of-variation of luma over the excluded (spoke) pixels — spokes are
+/// flat, so low CV → high uniformity. Returns 1.0 (max uniform) for an empty set.
+fn excluded_uniformity(small: &Image, keep: &[bool]) -> f32 {
+    let (mut sum, mut sumsq, mut n) = (0.0f64, 0.0f64, 0u64);
+    for (i, p) in small.pixels.iter().enumerate() {
+        if !keep[i] {
+            let l = luma3(*p) as f64;
+            sum += l;
+            sumsq += l * l;
+            n += 1;
+        }
+    }
+    if n == 0 {
+        return 1.0;
+    }
+    let mean = sum / n as f64;
+    let var = (sumsq / n as f64 - mean * mean).max(0.0);
+    let cv = (var.sqrt() / mean.max(1e-4)) as f32;
+    (1.0 - MASK_UNIF_K * cv).clamp(0.0, 1.0)
+}
+
+/// Temporary stub — Task 2 replaces this with the real positive-path predicate.
+fn positive_candidates(_small: &Image) -> Vec<bool> {
+    Vec::new()
+}
+
+/// Detect the spoke/gap region. `positive` selects the value predicate; the spatial
+/// confirmation (border flood-fill + uniformity) is shared. The negative predicate
+/// flags pixels at-or-clearer-than the film base; the positive predicate (Task 2)
+/// flags pixels near either rail.
+pub fn detect_photo_mask(scan: &Image, base: [f32; 3], positive: bool) -> PhotoMask {
+    let small = downscale_for_detect(scan, SAMPLE_CAP);
+    let n = small.pixels.len();
+    if n == 0 {
+        return PhotoMask { mask: Vec::new(), excluded_fraction: 0.0, confidence: 0.0 };
+    }
+    let cand: Vec<bool> = if positive {
+        positive_candidates(&small) // Task 2
+    } else {
+        let base_l = luma3(base).max(1e-4);
+        let thresh = base_l * (1.0 - SPOKE_MARGIN);
+        small.pixels.iter().map(|p| luma3(*p) >= thresh).collect()
+    };
+    let cand_count = cand.iter().filter(|&&c| c).count();
+    let (keep, n_excl) = border_connected_exclude(&cand, small.width, small.height);
+    let excluded_fraction = n_excl as f32 / n as f32;
+    let border_ratio = if cand_count == 0 { 0.0 } else { n_excl as f32 / cand_count as f32 };
+    let uniformity = excluded_uniformity(&small, &keep);
+    let confidence = if n_excl == 0 { 0.0 } else { border_ratio * uniformity };
+    PhotoMask { mask: keep, excluded_fraction, confidence }
 }
 
 #[cfg(test)]
@@ -1273,5 +1383,42 @@ mod per_zone_tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn neg_clear_border_is_masked() {
+        // 20x20: outer 2px ring = clear sprocket/rebate (brighter than base),
+        // interior 16x16 = darker scene content. Negative.
+        let base = [0.40, 0.30, 0.20]; // orange mask, luma ~0.30
+        let clear = [0.95, 0.95, 0.95];
+        let scene = [0.10, 0.10, 0.10];
+        let mut img = Image::new(20, 20);
+        for y in 0..20 {
+            for x in 0..20 {
+                let border = x < 2 || y < 2 || x >= 18 || y >= 18;
+                img.pixels[y * 20 + x] = if border { clear } else { scene };
+            }
+        }
+        let pm = detect_photo_mask(&img, base, false);
+        // border band excluded ≈ 0.36; interior (16x16=256 of 400) stays kept.
+        assert!(pm.excluded_fraction > 0.30, "frac={}", pm.excluded_fraction);
+        assert!(pm.confidence > 0.5, "conf={}", pm.confidence);
+        let kept = pm.mask.iter().filter(|&&m| m).count();
+        assert!(kept * 2 > pm.mask.len(), "kept={kept} of {}", pm.mask.len());
+    }
+
+    #[test]
+    fn neg_spoke_free_frame_low_confidence() {
+        // A gradient scene with NO clear border: nothing should mask out.
+        let base = [0.40, 0.30, 0.20];
+        let mut img = Image::new(20, 20);
+        for y in 0..20 {
+            for x in 0..20 {
+                let v = 0.05 + 0.02 * x as f32; // 0.05..0.43, all darker-or-near base, no clear ring
+                img.pixels[y * 20 + x] = [v, v, v];
+            }
+        }
+        let pm = detect_photo_mask(&img, base, false);
+        assert!(pm.confidence < 0.5 || pm.excluded_fraction < 0.02, "frac={} conf={}", pm.excluded_fraction, pm.confidence);
     }
 }
