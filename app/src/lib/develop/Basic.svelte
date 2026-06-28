@@ -272,6 +272,24 @@
   function togglePositive() {
     params.update((p) => ({ ...p, positive: !p.positive }));
     commitActive();
+    remeterActiveExposure(false);
+  }
+
+  // Re-derive metering (D_max + WB + exposure) under the current border/positive
+  // state. WB respects wb_manual (autoWb/seed already guards it); exposure re-seeds
+  // only when untouched unless `force` (an explicit metering choice by the user).
+  function remeterActiveExposure(force: boolean) {
+    const id = get(activeId); if (!id) return;
+    reanalyze(); // D_max + WB reseed (guards wb_manual internally)
+    if (force || get(params).exposure === defaultParams().exposure) {
+      autoExposure();
+    }
+  }
+
+  function setMeterBorder(mode: string) {
+    params.update((p) => ({ ...p, meter_border: mode }));
+    commitActive();
+    remeterActiveExposure(true);
   }
 
   // "Apply to whole roll": open the shared picker, then push the active frame's
@@ -325,6 +343,19 @@
         {#if $preReanalyze && $preReanalyze.id === $activeId}
           <button class="recal revert" on:click={revertReanalyze}>{$t('base.revertReanalyze')}</button>
         {/if}
+
+        <!-- Metering mode: how auto-exposure / WB samples when the crop includes the border -->
+        <div class="wbhead" title={$t('basic.meterBorderTitle')}>
+          <span>{$t('basic.meterBorder')}</span>
+          <span class="wbbtns">
+            <button class="auto" class:on={$params.meter_border === "auto"}
+                    on:click={() => setMeterBorder("auto")}>{$t('basic.meterBorder.auto')}</button>
+            <button class="auto" class:on={$params.meter_border === "exclude"}
+                    on:click={() => setMeterBorder("exclude")}>{$t('basic.meterBorder.exclude')}</button>
+            <button class="auto" class:on={$params.meter_border === "include"}
+                    on:click={() => setMeterBorder("include")}>{$t('basic.meterBorder.include')}</button>
+          </span>
+        </div>
 
         <!-- Film Base: tap the swatch to pick the rebate; the pick auto-applies to this image -->
         <div class="sub">{$t('base.title')}</div>
