@@ -654,6 +654,7 @@ fn luma3(p: [f32; 3]) -> f32 {
 /// reachable from the image edge through other candidates are excluded, so
 /// interior speckle (real shadows/speculars) is kept.
 fn border_connected_exclude(cand: &[bool], w: usize, h: usize) -> (Vec<bool>, usize) {
+    debug_assert_eq!(cand.len(), w * h, "cand length must equal w*h");
     let mut excluded = vec![false; w * h];
     let mut stack: Vec<usize> = Vec::new();
     let push = |i: usize, stack: &mut Vec<usize>, excluded: &mut Vec<bool>| {
@@ -704,8 +705,12 @@ fn excluded_uniformity(small: &Image, keep: &[bool]) -> f32 {
 }
 
 /// Temporary stub — Task 2 replaces this with the real positive-path predicate.
-fn positive_candidates(_small: &Image) -> Vec<bool> {
-    Vec::new()
+/// Must return a length-correct vec so border_connected_exclude does not index
+/// out of bounds. All-false means no pixel is a candidate (nothing excluded).
+fn positive_candidates(small: &Image) -> Vec<bool> {
+    // Temporary stub (Task 2 implements the real positive predicate). Must be
+    // length-correct so border_connected_exclude does not index out of bounds.
+    vec![false; small.pixels.len()]
 }
 
 /// Detect the spoke/gap region. `positive` selects the value predicate; the spatial
@@ -1414,7 +1419,9 @@ mod per_zone_tests {
         let mut img = Image::new(20, 20);
         for y in 0..20 {
             for x in 0..20 {
-                let v = 0.05 + 0.02 * x as f32; // 0.05..0.43, all darker-or-near base, no clear ring
+                // A gentle dark gradient that stays well below the base-clear threshold
+                // (base luma ~0.31, threshold ~0.236) — no pixel is a spoke candidate.
+                let v = 0.05 + 0.006 * x as f32; // luma 0.05..0.164, all < threshold
                 img.pixels[y * 20 + x] = [v, v, v];
             }
         }
