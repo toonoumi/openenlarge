@@ -803,6 +803,12 @@ pub fn gate_photo_mask(pm: PhotoMask, mode: MeterBorder) -> Option<Vec<bool>> {
     }
 }
 
+/// The `SAMPLE_CAP`-downscaled grid `detect_photo_mask` runs on, exposed so callers
+/// can run masked samplers on the same pixel grid the mask is aligned to.
+pub fn detect_grid(img: &Image) -> Image {
+    downscale_for_detect(img, SAMPLE_CAP)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

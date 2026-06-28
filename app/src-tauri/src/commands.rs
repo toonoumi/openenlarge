@@ -2130,6 +2130,28 @@ pub struct AutoBrightness {
     pub exposure: f32,
 }
 
+/// Build the spoke-exclusion keep-mask for a cropped analysis thumb, honoring the
+/// `meter_border` mode + confidence gate. Returns the downscaled measurement image
+/// plus an aligned keep-mask when masking applies, or `None` to meter `cropped`
+/// directly (today's behavior). `base` is ignored on the positive path.
+fn meter_mask(
+    cropped: &film_core::Image,
+    base: [f32; 3],
+    positive: bool,
+    mode: &str,
+) -> Option<(film_core::Image, Vec<bool>)> {
+    use film_core::calibrate::{detect_photo_mask, gate_photo_mask, MeterBorder};
+    let mode = MeterBorder::from_str_lenient(mode);
+    if mode == MeterBorder::Include {
+        return None;
+    }
+    let pm = detect_photo_mask(cropped, base, positive);
+    // detect_photo_mask downscales internally to SAMPLE_CAP; reproduce that grid so
+    // the returned mask aligns to the image we hand the sampler.
+    let small = film_core::calibrate::detect_grid(cropped);
+    gate_photo_mask(pm, mode).map(|keep| (small, keep))
+}
+
 /// Auto-brightness for one image: solve the EXPOSURE (EV) that lands the image's
 /// bright-content luminance on a target, measured on the FINISHED display positive.
 /// Per-image (each frame measures its own), crop/orient-aware like `as_shot_wb`.
@@ -2198,7 +2220,7 @@ pub(crate) fn auto_brightness_value(
         ip.d_max = effective_dmax(params, dev_dmax);
         let inv = invert_image_core(src, &ip, mode_from(&params.mode));
         let pos = finish_image(&inv, &finish_from(params)); // current contrast/curve/brightness
-        percentile_luma(&pos, AUTO_PCT)
+        percentile_luma(&pos, AUTO_PCT, None)
     };
 
     // Bracket the achievable range at the EV clamp. `measure` is monotonic in EV, so
@@ -2237,15 +2259,18 @@ pub(crate) fn auto_brightness_value(
 }
 
 /// The `pct` (0..1) percentile of BT.709 luminance over an image's pixels.
-fn percentile_luma(img: &film_core::Image, pct: f32) -> f32 {
-    if img.pixels.is_empty() {
-        return 0.0;
-    }
+/// If `mask` is supplied, only pixels whose index has `true` in the mask are counted.
+fn percentile_luma(img: &film_core::Image, pct: f32, mask: Option<&[bool]>) -> f32 {
     let mut ys: Vec<f32> = img
         .pixels
         .iter()
-        .map(|p| 0.2126 * p[0] + 0.7152 * p[1] + 0.0722 * p[2])
+        .enumerate()
+        .filter(|(i, _)| mask.map_or(true, |m| m.get(*i).copied().unwrap_or(true)))
+        .map(|(_, p)| 0.2126 * p[0] + 0.7152 * p[1] + 0.0722 * p[2])
         .collect();
+    if ys.is_empty() {
+        return 0.0;
+    }
     ys.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
     let idx = (((ys.len() - 1) as f32) * pct.clamp(0.0, 1.0)).round() as usize;
     ys[idx.min(ys.len() - 1)]
@@ -3224,7 +3249,7 @@ mod tests {
         ip.d_max = effective_dmax(&pc, dmax);
         let inv = invert_image_core(&neg, &ip, mode_from(&pc.mode));
         let pos = finish_image(&inv, &finish_from(&pc));
-        let p90 = percentile_luma(&pos, 0.90);
+        let p90 = percentile_luma(&pos, 0.90, None);
         assert!(
             (p90 - 0.80).abs() < 0.05,
             "final 90th-pct {p90} should sit near the 0.80 target (evc={evc})"
@@ -4189,5 +4214,24 @@ mod as_shot_gains_tests {
         for c in 0..3 {
             assert!((g[c] - want[c]).abs() < 1e-6, "ch {c}: {g:?} vs {want:?}");
         }
+    }
+}
+
+#[cfg(test)]
+mod meter_tests {
+    use super::*;
+
+    #[test]
+    fn percentile_luma_mask_skips_excluded() {
+        let mut img = film_core::Image::new(10, 1); // 10 px row
+        for i in 0..10 {
+            let v = i as f32 / 9.0; // 0.0 .. 1.0
+            img.pixels[i] = [v, v, v];
+        }
+        // Exclude the 5 brightest; the 90th pct of the remaining {0..0.444} is low.
+        let keep: Vec<bool> = (0..10).map(|i| i < 5).collect();
+        let full = percentile_luma(&img, 0.90, None);
+        let masked = percentile_luma(&img, 0.90, Some(&keep));
+        assert!(masked < full, "masked={masked} full={full}");
     }
 }
