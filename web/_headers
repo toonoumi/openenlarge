@@ -6,3 +6,8 @@
 
 /releases.js
   Cache-Control: public, max-age=60
+
+# Images are content-stable (new art ships under new names), so cache them hard
+# at the edge and in the browser for a year.
+/img/*
+  Cache-Control: public, max-age=31536000, immutable

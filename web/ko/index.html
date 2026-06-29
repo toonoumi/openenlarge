@@ -6,7 +6,19 @@
 <title data-i18n="meta.title">OpenEnlarge — 오픈소스 필름 스캔 편집기</title>
 <meta name="description" content="OpenEnlarge는 실제 필름과 인화지의 화학 과정을 기반으로 필름 스캔을 반전하여, 하나의 빠른 워크플로우에서 진짜 같은 결과물을 만들어냅니다. 무료 오픈소스.">
 <meta name="theme-color" content="#0a0a0c">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="OpenEnlarge">
+<meta property="og:title" content="OpenEnlarge — 오픈소스 필름 스캔 편집기">
+<meta property="og:description" content="OpenEnlarge는 실제 필름과 인화지의 화학 과정을 기반으로 필름 스캔을 반전하여, 하나의 빠른 워크플로우에서 진짜 같은 결과물을 만들어냅니다. 무료 오픈소스.">
+<meta property="og:url" content="https://openenlarge.io/ko/">
+<meta property="og:locale" content="ko_KR">
+<meta property="og:image" content="https://openenlarge.io/img/og-cover.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://openenlarge.io/img/og-cover.jpg">
 <link rel="icon" href="/img/favicon.png">
+<link rel="preload" as="image" href="/img/tune.avif" type="image/avif" fetchpriority="high">
 <link rel="canonical" href="https://openenlarge.io/ko/">
 <link rel="alternate" hreflang="en" href="https://openenlarge.io/">
 <link rel="alternate" hreflang="zh-Hans" href="https://openenlarge.io/zh/">
@@ -183,7 +195,7 @@
 
   <nav><div class="navbar glass">
     <a class="brand" href="#top">
-      <img class="mark" src="/img/app-logo.jpg" alt="OpenEnlarge logo">
+      <img class="mark" src="/img/app-logo.webp" alt="OpenEnlarge logo">
       OpenEnlarge
     </a>
     <div class="navlinks">
@@ -210,27 +222,27 @@
       </div>
       <div class="meta" id="release-meta" data-i18n="hero.metaLine">무료 · MIT 라이선스 · macOS, Windows &amp; Linux</div>
     </div>
-    <img class="hero-shot" src="/img/tune.png" alt="OpenEnlarge develop view" data-lightbox title="Click to view fullscreen">
+    <picture><source type="image/avif" srcset="/img/tune.avif"><source type="image/webp" srcset="/img/tune.webp"><img class="hero-shot" src="/img/tune.jpg" alt="OpenEnlarge develop view" data-lightbox title="Click to view fullscreen" width="1600" height="1069" fetchpriority="high" decoding="async"></picture>
   </section>
 
   <section style="padding:34px 0 10px;">
     <div class="featured-label" data-i18n="featured.label">소개된 곳</div>
     <div class="marquee">
       <div class="logo-track">
-        <img src="https://cdn.simpleicons.org/github/9a9aa2" alt="GitHub">
-        <img src="https://cdn.simpleicons.org/medium/9a9aa2" alt="Medium">
-        <img src="https://cdn.simpleicons.org/xiaohongshu/9a9aa2" alt="Xiaohongshu">
-        <img src="https://cdn.simpleicons.org/instagram/9a9aa2" alt="Instagram">
-        <img src="https://cdn.simpleicons.org/x/9a9aa2" alt="X" style="height:22px;">
-        <img src="https://cdn.simpleicons.org/reddit/9a9aa2" alt="Reddit">
-        <img src="https://cdn.simpleicons.org/discord/9a9aa2" alt="Discord">
-        <img src="https://cdn.simpleicons.org/github/9a9aa2" alt="" aria-hidden="true">
-        <img src="https://cdn.simpleicons.org/medium/9a9aa2" alt="" aria-hidden="true">
-        <img src="https://cdn.simpleicons.org/xiaohongshu/9a9aa2" alt="" aria-hidden="true">
-        <img src="https://cdn.simpleicons.org/instagram/9a9aa2" alt="" aria-hidden="true">
-        <img src="https://cdn.simpleicons.org/x/9a9aa2" alt="" aria-hidden="true" style="height:22px;">
-        <img src="https://cdn.simpleicons.org/reddit/9a9aa2" alt="" aria-hidden="true">
-        <img src="https://cdn.simpleicons.org/discord/9a9aa2" alt="" aria-hidden="true">
+        <img src="/img/icons/github.svg" alt="GitHub">
+        <img src="/img/icons/medium.svg" alt="Medium">
+        <img src="/img/icons/xiaohongshu.svg" alt="Xiaohongshu">
+        <img src="/img/icons/instagram.svg" alt="Instagram">
+        <img src="/img/icons/x.svg" alt="X" style="height:22px;">
+        <img src="/img/icons/reddit.svg" alt="Reddit">
+        <img src="/img/icons/discord.svg" alt="Discord">
+        <img src="/img/icons/github.svg" alt="" aria-hidden="true">
+        <img src="/img/icons/medium.svg" alt="" aria-hidden="true">
+        <img src="/img/icons/xiaohongshu.svg" alt="" aria-hidden="true">
+        <img src="/img/icons/instagram.svg" alt="" aria-hidden="true">
+        <img src="/img/icons/x.svg" alt="" aria-hidden="true" style="height:22px;">
+        <img src="/img/icons/reddit.svg" alt="" aria-hidden="true">
+        <img src="/img/icons/discord.svg" alt="" aria-hidden="true">
       </div>
     </div>
   </section>
@@ -239,52 +251,52 @@
     <div class="marquee">
       <div class="quote-track">
         <div class="quote-card glass">
-          <div class="av" style="background:linear-gradient(135deg,#3aa6a0,#2b7d86);"><img src="/img/av/a1.jpg" alt=""></div>
-          <div><div class="quote-head"><span class="name">BaBoBeBo</span><span class="handle">@maradev</span></div><p data-i18n="quote.1">“OpenEnlarge의 필름 베이스 컬러 피커 UI는 최고의 디자인이다.”</p><img class="qimg" src="/img/gallery/g1.jpg" alt="" data-lightbox></div>
+          <div class="av" style="background:linear-gradient(135deg,#3aa6a0,#2b7d86);"><img src="/img/av/a1.webp" alt=""></div>
+          <div><div class="quote-head"><span class="name">BaBoBeBo</span><span class="handle">@maradev</span></div><p data-i18n="quote.1">“OpenEnlarge의 필름 베이스 컬러 피커 UI는 최고의 디자인이다.”</p><img class="qimg" src="/img/gallery/g1-thumb.webp" data-full="/img/gallery/g1.webp" alt="" data-lightbox loading="lazy" decoding="async"></div>
         </div>
         <div class="quote-card glass">
-          <div class="av" style="background:linear-gradient(135deg,#f49d4e,#df7136);"><img src="/img/av/a2.jpg" alt=""></div>
-          <div><div class="quote-head"><span class="name">Jose G.</span><span class="handle">@theoshoots</span></div><p data-i18n="quote.2">“색감이 정말 제대로다.”</p><img class="qimg" src="/img/gallery/g5.jpg" alt="" data-lightbox></div>
+          <div class="av" style="background:linear-gradient(135deg,#f49d4e,#df7136);"><img src="/img/av/a2.webp" alt=""></div>
+          <div><div class="quote-head"><span class="name">Jose G.</span><span class="handle">@theoshoots</span></div><p data-i18n="quote.2">“색감이 정말 제대로다.”</p><img class="qimg" src="/img/gallery/g5-thumb.webp" data-full="/img/gallery/g5.webp" alt="" data-lightbox loading="lazy" decoding="async"></div>
         </div>
         <div class="quote-card glass">
-          <div class="av" style="background:linear-gradient(135deg,#8a7bd8,#6a5cc0);"><img src="/img/av/a3.jpg" alt=""></div>
-          <div><div class="quote-head"><span class="name">Kevin P.</span><span class="handle">@jiahao.film</span></div><p data-i18n="quote.3">“Lightroom보다 훨씬 빠르다.”</p><img class="qimg" src="/img/created/c8.jpg" alt="" data-lightbox></div>
+          <div class="av" style="background:linear-gradient(135deg,#8a7bd8,#6a5cc0);"><img src="/img/av/a3.webp" alt=""></div>
+          <div><div class="quote-head"><span class="name">Kevin P.</span><span class="handle">@jiahao.film</span></div><p data-i18n="quote.3">“Lightroom보다 훨씬 빠르다.”</p><img class="qimg" src="/img/created/c8-thumb.webp" data-full="/img/created/c8.webp" alt="" data-lightbox loading="lazy" decoding="async"></div>
         </div>
         <div class="quote-card glass">
-          <div class="av" style="background:linear-gradient(135deg,#d87b9a,#c05c7e);"><img src="/img/av/a4.jpg" alt=""></div>
-          <div><div class="quote-head"><span class="name">Suki</span><span class="handle">@lin.xy</span></div><p data-i18n="quote.4">“드디어 실제 필름 베이스를 존중하는 반전 툴이 나왔다.”</p><img class="qimg" src="/img/created/c9.jpg" alt="" data-lightbox></div>
+          <div class="av" style="background:linear-gradient(135deg,#d87b9a,#c05c7e);"><img src="/img/av/a4.webp" alt=""></div>
+          <div><div class="quote-head"><span class="name">Suki</span><span class="handle">@lin.xy</span></div><p data-i18n="quote.4">“드디어 실제 필름 베이스를 존중하는 반전 툴이 나왔다.”</p><img class="qimg" src="/img/created/c9-thumb.webp" data-full="/img/created/c9.webp" alt="" data-lightbox loading="lazy" decoding="async"></div>
         </div>
         <div class="quote-card glass">
-          <div class="av" style="background:linear-gradient(135deg,#5fa6e8,#3f7fd0);"><img src="/img/av/a5.jpg" alt=""></div>
-          <div><div class="quote-head"><span class="name">Zhang Wei</span><span class="handle">@zhangwei</span></div><p data-i18n="quote.5">“한 번에 롤 전체를 일괄 현상했다. 믿기지 않는다.”</p><img class="qimg" src="/img/created/c1.jpg" alt="" data-lightbox></div>
+          <div class="av" style="background:linear-gradient(135deg,#5fa6e8,#3f7fd0);"><img src="/img/av/a5.webp" alt=""></div>
+          <div><div class="quote-head"><span class="name">Zhang Wei</span><span class="handle">@zhangwei</span></div><p data-i18n="quote.5">“한 번에 롤 전체를 일괄 현상했다. 믿기지 않는다.”</p><img class="qimg" src="/img/created/c1-thumb.webp" data-full="/img/created/c1.webp" alt="" data-lightbox loading="lazy" decoding="async"></div>
         </div>
         <div class="quote-card glass">
-          <div class="av" style="background:linear-gradient(135deg,#7bb86a,#5c9a4e);"><img src="/img/av/a6.jpg" alt=""></div>
-          <div><div class="quote-head"><span class="name">Yasushi</span><span class="handle">@chenmei</span></div><p data-i18n="quote.6">“오픈소스인데 유료 툴보다 색이 더 잘 나온다.”</p><img class="qimg" src="/img/created/c2.jpg" alt="" data-lightbox></div>
+          <div class="av" style="background:linear-gradient(135deg,#7bb86a,#5c9a4e);"><img src="/img/av/a6.webp" alt=""></div>
+          <div><div class="quote-head"><span class="name">Yasushi</span><span class="handle">@chenmei</span></div><p data-i18n="quote.6">“오픈소스인데 유료 툴보다 색이 더 잘 나온다.”</p><img class="qimg" src="/img/created/c2-thumb.webp" data-full="/img/created/c2.webp" alt="" data-lightbox loading="lazy" decoding="async"></div>
         </div>
         <div class="quote-card glass" aria-hidden="true">
-          <div class="av" style="background:linear-gradient(135deg,#3aa6a0,#2b7d86);"><img src="/img/av/a1.jpg" alt=""></div>
-          <div><div class="quote-head"><span class="name">BaBoBeBo</span><span class="handle">@maradev</span></div><p data-i18n="quote.1">“OpenEnlarge의 필름 베이스 컬러 피커 UI는 최고의 디자인이다.”</p><img class="qimg" src="/img/gallery/g1.jpg" alt="" data-lightbox></div>
+          <div class="av" style="background:linear-gradient(135deg,#3aa6a0,#2b7d86);"><img src="/img/av/a1.webp" alt=""></div>
+          <div><div class="quote-head"><span class="name">BaBoBeBo</span><span class="handle">@maradev</span></div><p data-i18n="quote.1">“OpenEnlarge의 필름 베이스 컬러 피커 UI는 최고의 디자인이다.”</p><img class="qimg" src="/img/gallery/g1-thumb.webp" data-full="/img/gallery/g1.webp" alt="" data-lightbox loading="lazy" decoding="async"></div>
         </div>
         <div class="quote-card glass" aria-hidden="true">
-          <div class="av" style="background:linear-gradient(135deg,#f49d4e,#df7136);"><img src="/img/av/a2.jpg" alt=""></div>
-          <div><div class="quote-head"><span class="name">Jose G.</span><span class="handle">@theoshoots</span></div><p data-i18n="quote.2">“색감이 정말 제대로다.”</p><img class="qimg" src="/img/gallery/g5.jpg" alt="" data-lightbox></div>
+          <div class="av" style="background:linear-gradient(135deg,#f49d4e,#df7136);"><img src="/img/av/a2.webp" alt=""></div>
+          <div><div class="quote-head"><span class="name">Jose G.</span><span class="handle">@theoshoots</span></div><p data-i18n="quote.2">“색감이 정말 제대로다.”</p><img class="qimg" src="/img/gallery/g5-thumb.webp" data-full="/img/gallery/g5.webp" alt="" data-lightbox loading="lazy" decoding="async"></div>
         </div>
         <div class="quote-card glass" aria-hidden="true">
-          <div class="av" style="background:linear-gradient(135deg,#8a7bd8,#6a5cc0);"><img src="/img/av/a3.jpg" alt=""></div>
-          <div><div class="quote-head"><span class="name">Kevin P.</span><span class="handle">@jiahao.film</span></div><p data-i18n="quote.3">“Lightroom보다 훨씬 빠르다.”</p><img class="qimg" src="/img/created/c8.jpg" alt="" data-lightbox></div>
+          <div class="av" style="background:linear-gradient(135deg,#8a7bd8,#6a5cc0);"><img src="/img/av/a3.webp" alt=""></div>
+          <div><div class="quote-head"><span class="name">Kevin P.</span><span class="handle">@jiahao.film</span></div><p data-i18n="quote.3">“Lightroom보다 훨씬 빠르다.”</p><img class="qimg" src="/img/created/c8-thumb.webp" data-full="/img/created/c8.webp" alt="" data-lightbox loading="lazy" decoding="async"></div>
         </div>
         <div class="quote-card glass" aria-hidden="true">
-          <div class="av" style="background:linear-gradient(135deg,#d87b9a,#c05c7e);"><img src="/img/av/a4.jpg" alt=""></div>
-          <div><div class="quote-head"><span class="name">Suki</span><span class="handle">@lin.xy</span></div><p data-i18n="quote.4">“드디어 실제 필름 베이스를 존중하는 반전 툴이 나왔다.”</p><img class="qimg" src="/img/created/c9.jpg" alt="" data-lightbox></div>
+          <div class="av" style="background:linear-gradient(135deg,#d87b9a,#c05c7e);"><img src="/img/av/a4.webp" alt=""></div>
+          <div><div class="quote-head"><span class="name">Suki</span><span class="handle">@lin.xy</span></div><p data-i18n="quote.4">“드디어 실제 필름 베이스를 존중하는 반전 툴이 나왔다.”</p><img class="qimg" src="/img/created/c9-thumb.webp" data-full="/img/created/c9.webp" alt="" data-lightbox loading="lazy" decoding="async"></div>
         </div>
         <div class="quote-card glass" aria-hidden="true">
-          <div class="av" style="background:linear-gradient(135deg,#5fa6e8,#3f7fd0);"><img src="/img/av/a5.jpg" alt=""></div>
-          <div><div class="quote-head"><span class="name">Zhang Wei</span><span class="handle">@zhangwei</span></div><p data-i18n="quote.5">“한 번에 롤 전체를 일괄 현상했다. 믿기지 않는다.”</p><img class="qimg" src="/img/created/c1.jpg" alt="" data-lightbox></div>
+          <div class="av" style="background:linear-gradient(135deg,#5fa6e8,#3f7fd0);"><img src="/img/av/a5.webp" alt=""></div>
+          <div><div class="quote-head"><span class="name">Zhang Wei</span><span class="handle">@zhangwei</span></div><p data-i18n="quote.5">“한 번에 롤 전체를 일괄 현상했다. 믿기지 않는다.”</p><img class="qimg" src="/img/created/c1-thumb.webp" data-full="/img/created/c1.webp" alt="" data-lightbox loading="lazy" decoding="async"></div>
         </div>
         <div class="quote-card glass" aria-hidden="true">
-          <div class="av" style="background:linear-gradient(135deg,#7bb86a,#5c9a4e);"><img src="/img/av/a6.jpg" alt=""></div>
-          <div><div class="quote-head"><span class="name">Yasushi</span><span class="handle">@chenmei</span></div><p data-i18n="quote.6">“오픈소스인데 유료 툴보다 색이 더 잘 나온다.”</p><img class="qimg" src="/img/created/c2.jpg" alt="" data-lightbox></div>
+          <div class="av" style="background:linear-gradient(135deg,#7bb86a,#5c9a4e);"><img src="/img/av/a6.webp" alt=""></div>
+          <div><div class="quote-head"><span class="name">Yasushi</span><span class="handle">@chenmei</span></div><p data-i18n="quote.6">“오픈소스인데 유료 툴보다 색이 더 잘 나온다.”</p><img class="qimg" src="/img/created/c2-thumb.webp" data-full="/img/created/c2.webp" alt="" data-lightbox loading="lazy" decoding="async"></div>
         </div>
       </div>
     </div>
@@ -296,7 +308,7 @@
 
     <!-- 01 Import -->
     <div class="step-row left">
-      <img class="step-shot" src="/img/library.png" alt="OpenEnlarge library and import" data-lightbox title="Click to view fullscreen">
+      <picture><source type="image/avif" srcset="/img/library.avif"><source type="image/webp" srcset="/img/library.webp"><img class="step-shot" src="/img/library.jpg" alt="OpenEnlarge library and import" data-lightbox title="Click to view fullscreen" width="1600" height="1082" loading="lazy" decoding="async"></picture>
       <div>
         <div class="step-no" data-i18n="step.import.no">01 · 가져오기</div>
         <h3 data-i18n="step.import.h3">모든 소재를 불러온다.</h3>
@@ -331,12 +343,12 @@
           <span class="tag" data-i18n="tag.rebate">프린트 리베이트</span>
         </div>
       </div>
-      <img class="step-shot" src="/img/develop.png" alt="OpenEnlarge develop contact sheet" data-lightbox title="Click to view fullscreen">
+      <picture><source type="image/avif" srcset="/img/develop.avif"><source type="image/webp" srcset="/img/develop.webp"><img class="step-shot" src="/img/develop.jpg" alt="OpenEnlarge develop contact sheet" data-lightbox title="Click to view fullscreen" width="1600" height="1077" loading="lazy" decoding="async"></picture>
     </div>
 
     <!-- 03 Fine-tune -->
     <div class="step-row left">
-      <img class="step-shot" src="/img/tune.png" alt="OpenEnlarge fine-tune view" data-lightbox title="Click to view fullscreen">
+      <picture><source type="image/avif" srcset="/img/tune.avif"><source type="image/webp" srcset="/img/tune.webp"><img class="step-shot" src="/img/tune.jpg" alt="OpenEnlarge fine-tune view" data-lightbox title="Click to view fullscreen" width="1600" height="1069" loading="lazy" decoding="async"></picture>
       <div>
         <div class="step-no" data-i18n="step.tune.no">03 · 미세 조정</div>
         <h3 data-i18n="step.tune.h3">그다음 프레임별로 완성.</h3>
@@ -370,7 +382,7 @@
           <span class="tag" data-i18n="tag.batchcrop">일괄 크롭</span>
         </div>
       </div>
-      <img class="step-shot" src="/img/export.png" alt="OpenEnlarge export dialog" data-lightbox title="Click to view fullscreen">
+      <picture><source type="image/avif" srcset="/img/export.avif"><source type="image/webp" srcset="/img/export.webp"><img class="step-shot" src="/img/export.jpg" alt="OpenEnlarge export dialog" data-lightbox title="Click to view fullscreen" width="1600" height="1078" loading="lazy" decoding="async"></picture>
     </div>
   </section>
 
@@ -415,47 +427,47 @@
 
   <div class="marquee tight" style="margin-bottom:16px;">
     <div class="gal-track">
-      <img src="/img/created/c1.jpg" alt="Made with OpenEnlarge" data-lightbox title="Click to view fullscreen">
-      <img src="/img/created/c2.jpg" alt="Made with OpenEnlarge" data-lightbox title="Click to view fullscreen">
-      <img src="/img/created/c3.jpg" alt="Made with OpenEnlarge" data-lightbox title="Click to view fullscreen">
-      <img src="/img/created/c4.jpg" alt="Made with OpenEnlarge" data-lightbox title="Click to view fullscreen">
-      <img src="/img/created/c5.jpg" alt="Made with OpenEnlarge" data-lightbox title="Click to view fullscreen">
-      <img src="/img/created/c6.jpg" alt="Made with OpenEnlarge" data-lightbox title="Click to view fullscreen">
-      <img src="/img/created/c7.jpg" alt="Made with OpenEnlarge" data-lightbox title="Click to view fullscreen">
-      <img src="/img/created/c8.jpg" alt="Made with OpenEnlarge" data-lightbox title="Click to view fullscreen">
-      <img src="/img/created/c9.jpg" alt="Made with OpenEnlarge" data-lightbox title="Click to view fullscreen">
-      <img src="/img/created/c1.jpg" alt="" aria-hidden="true" data-lightbox>
-      <img src="/img/created/c2.jpg" alt="" aria-hidden="true" data-lightbox>
-      <img src="/img/created/c3.jpg" alt="" aria-hidden="true" data-lightbox>
-      <img src="/img/created/c4.jpg" alt="" aria-hidden="true" data-lightbox>
-      <img src="/img/created/c5.jpg" alt="" aria-hidden="true" data-lightbox>
-      <img src="/img/created/c6.jpg" alt="" aria-hidden="true" data-lightbox>
-      <img src="/img/created/c7.jpg" alt="" aria-hidden="true" data-lightbox>
-      <img src="/img/created/c8.jpg" alt="" aria-hidden="true" data-lightbox>
-      <img src="/img/created/c9.jpg" alt="" aria-hidden="true" data-lightbox>
+      <img src="/img/created/c1-thumb.webp" data-full="/img/created/c1.webp" alt="Made with OpenEnlarge" data-lightbox title="Click to view fullscreen" loading="lazy" decoding="async">
+      <img src="/img/created/c2-thumb.webp" data-full="/img/created/c2.webp" alt="Made with OpenEnlarge" data-lightbox title="Click to view fullscreen" loading="lazy" decoding="async">
+      <img src="/img/created/c3-thumb.webp" data-full="/img/created/c3.webp" alt="Made with OpenEnlarge" data-lightbox title="Click to view fullscreen" loading="lazy" decoding="async">
+      <img src="/img/created/c4-thumb.webp" data-full="/img/created/c4.webp" alt="Made with OpenEnlarge" data-lightbox title="Click to view fullscreen" loading="lazy" decoding="async">
+      <img src="/img/created/c5-thumb.webp" data-full="/img/created/c5.webp" alt="Made with OpenEnlarge" data-lightbox title="Click to view fullscreen" loading="lazy" decoding="async">
+      <img src="/img/created/c6-thumb.webp" data-full="/img/created/c6.webp" alt="Made with OpenEnlarge" data-lightbox title="Click to view fullscreen" loading="lazy" decoding="async">
+      <img src="/img/created/c7-thumb.webp" data-full="/img/created/c7.webp" alt="Made with OpenEnlarge" data-lightbox title="Click to view fullscreen" loading="lazy" decoding="async">
+      <img src="/img/created/c8-thumb.webp" data-full="/img/created/c8.webp" alt="Made with OpenEnlarge" data-lightbox title="Click to view fullscreen" loading="lazy" decoding="async">
+      <img src="/img/created/c9-thumb.webp" data-full="/img/created/c9.webp" alt="Made with OpenEnlarge" data-lightbox title="Click to view fullscreen" loading="lazy" decoding="async">
+      <img src="/img/created/c1-thumb.webp" data-full="/img/created/c1.webp" alt="" aria-hidden="true" data-lightbox loading="lazy" decoding="async">
+      <img src="/img/created/c2-thumb.webp" data-full="/img/created/c2.webp" alt="" aria-hidden="true" data-lightbox loading="lazy" decoding="async">
+      <img src="/img/created/c3-thumb.webp" data-full="/img/created/c3.webp" alt="" aria-hidden="true" data-lightbox loading="lazy" decoding="async">
+      <img src="/img/created/c4-thumb.webp" data-full="/img/created/c4.webp" alt="" aria-hidden="true" data-lightbox loading="lazy" decoding="async">
+      <img src="/img/created/c5-thumb.webp" data-full="/img/created/c5.webp" alt="" aria-hidden="true" data-lightbox loading="lazy" decoding="async">
+      <img src="/img/created/c6-thumb.webp" data-full="/img/created/c6.webp" alt="" aria-hidden="true" data-lightbox loading="lazy" decoding="async">
+      <img src="/img/created/c7-thumb.webp" data-full="/img/created/c7.webp" alt="" aria-hidden="true" data-lightbox loading="lazy" decoding="async">
+      <img src="/img/created/c8-thumb.webp" data-full="/img/created/c8.webp" alt="" aria-hidden="true" data-lightbox loading="lazy" decoding="async">
+      <img src="/img/created/c9-thumb.webp" data-full="/img/created/c9.webp" alt="" aria-hidden="true" data-lightbox loading="lazy" decoding="async">
     </div>
   </div>
 
   <div class="marquee tight">
     <div class="gal-track rev">
-      <img src="/img/created/c10.jpg" alt="Made with OpenEnlarge" data-lightbox title="Click to view fullscreen">
-      <img src="/img/created/c11.jpg" alt="Made with OpenEnlarge" data-lightbox title="Click to view fullscreen">
-      <img src="/img/created/c12.jpg" alt="Made with OpenEnlarge" data-lightbox title="Click to view fullscreen">
-      <img src="/img/gallery/g1.jpg" alt="Made with OpenEnlarge" data-lightbox title="Click to view fullscreen">
-      <img src="/img/gallery/g2.jpg" alt="Made with OpenEnlarge" data-lightbox title="Click to view fullscreen">
-      <img src="/img/gallery/g3.jpg" alt="Made with OpenEnlarge" data-lightbox title="Click to view fullscreen">
-      <img src="/img/gallery/g4.jpg" alt="Made with OpenEnlarge" data-lightbox title="Click to view fullscreen">
-      <img src="/img/gallery/g5.jpg" alt="Made with OpenEnlarge" data-lightbox title="Click to view fullscreen">
-      <img src="/img/gallery/g6.jpg" alt="Made with OpenEnlarge" data-lightbox title="Click to view fullscreen">
-      <img src="/img/created/c10.jpg" alt="" aria-hidden="true" data-lightbox>
-      <img src="/img/created/c11.jpg" alt="" aria-hidden="true" data-lightbox>
-      <img src="/img/created/c12.jpg" alt="" aria-hidden="true" data-lightbox>
-      <img src="/img/gallery/g1.jpg" alt="" aria-hidden="true" data-lightbox>
-      <img src="/img/gallery/g2.jpg" alt="" aria-hidden="true" data-lightbox>
-      <img src="/img/gallery/g3.jpg" alt="" aria-hidden="true" data-lightbox>
-      <img src="/img/gallery/g4.jpg" alt="" aria-hidden="true" data-lightbox>
-      <img src="/img/gallery/g5.jpg" alt="" aria-hidden="true" data-lightbox>
-      <img src="/img/gallery/g6.jpg" alt="" aria-hidden="true" data-lightbox>
+      <img src="/img/created/c10-thumb.webp" data-full="/img/created/c10.webp" alt="Made with OpenEnlarge" data-lightbox title="Click to view fullscreen" loading="lazy" decoding="async">
+      <img src="/img/created/c11-thumb.webp" data-full="/img/created/c11.webp" alt="Made with OpenEnlarge" data-lightbox title="Click to view fullscreen" loading="lazy" decoding="async">
+      <img src="/img/created/c12-thumb.webp" data-full="/img/created/c12.webp" alt="Made with OpenEnlarge" data-lightbox title="Click to view fullscreen" loading="lazy" decoding="async">
+      <img src="/img/gallery/g1-thumb.webp" data-full="/img/gallery/g1.webp" alt="Made with OpenEnlarge" data-lightbox title="Click to view fullscreen" loading="lazy" decoding="async">
+      <img src="/img/gallery/g2-thumb.webp" data-full="/img/gallery/g2.webp" alt="Made with OpenEnlarge" data-lightbox title="Click to view fullscreen" loading="lazy" decoding="async">
+      <img src="/img/gallery/g3-thumb.webp" data-full="/img/gallery/g3.webp" alt="Made with OpenEnlarge" data-lightbox title="Click to view fullscreen" loading="lazy" decoding="async">
+      <img src="/img/gallery/g4-thumb.webp" data-full="/img/gallery/g4.webp" alt="Made with OpenEnlarge" data-lightbox title="Click to view fullscreen" loading="lazy" decoding="async">
+      <img src="/img/gallery/g5-thumb.webp" data-full="/img/gallery/g5.webp" alt="Made with OpenEnlarge" data-lightbox title="Click to view fullscreen" loading="lazy" decoding="async">
+      <img src="/img/gallery/g6-thumb.webp" data-full="/img/gallery/g6.webp" alt="Made with OpenEnlarge" data-lightbox title="Click to view fullscreen" loading="lazy" decoding="async">
+      <img src="/img/created/c10-thumb.webp" data-full="/img/created/c10.webp" alt="" aria-hidden="true" data-lightbox loading="lazy" decoding="async">
+      <img src="/img/created/c11-thumb.webp" data-full="/img/created/c11.webp" alt="" aria-hidden="true" data-lightbox loading="lazy" decoding="async">
+      <img src="/img/created/c12-thumb.webp" data-full="/img/created/c12.webp" alt="" aria-hidden="true" data-lightbox loading="lazy" decoding="async">
+      <img src="/img/gallery/g1-thumb.webp" data-full="/img/gallery/g1.webp" alt="" aria-hidden="true" data-lightbox loading="lazy" decoding="async">
+      <img src="/img/gallery/g2-thumb.webp" data-full="/img/gallery/g2.webp" alt="" aria-hidden="true" data-lightbox loading="lazy" decoding="async">
+      <img src="/img/gallery/g3-thumb.webp" data-full="/img/gallery/g3.webp" alt="" aria-hidden="true" data-lightbox loading="lazy" decoding="async">
+      <img src="/img/gallery/g4-thumb.webp" data-full="/img/gallery/g4.webp" alt="" aria-hidden="true" data-lightbox loading="lazy" decoding="async">
+      <img src="/img/gallery/g5-thumb.webp" data-full="/img/gallery/g5.webp" alt="" aria-hidden="true" data-lightbox loading="lazy" decoding="async">
+      <img src="/img/gallery/g6-thumb.webp" data-full="/img/gallery/g6.webp" alt="" aria-hidden="true" data-lightbox loading="lazy" decoding="async">
     </div>
   </div>
 
@@ -465,7 +477,7 @@
     <div class="community">
       <p class="sub" data-i18n="road.sub">Discord에서 스캔을 공유하고 개발 방향을 함께 논의하거나, 필요한 기능을 issue로 보내거나, 앞으로의 방향을 읽어보세요.</p>
       <div class="links">
-        <a class="btn-discord" href="https://discord.gg/KmQaEJfsrq"><img src="https://cdn.simpleicons.org/discord/1a1206" alt="Discord"><span data-i18n="road.discord">Discord 참여</span></a>
+        <a class="btn-discord" href="https://discord.gg/KmQaEJfsrq"><img src="/img/icons/discord-dark.svg" alt="Discord"><span data-i18n="road.discord">Discord 참여</span></a>
         <a class="btn-outline" href="https://github.com/mohaelder/openenlarge/issues/new" data-i18n="road.issue">issue 열기</a>
         <a class="btn-outline" href="https://github.com/mohaelder/openenlarge/blob/main/ROADMAP.md" data-i18n="road.roadmap">ROADMAP.md 읽기</a>
         <a class="btn-outline" href="https://github.com/mohaelder/openenlarge" data-i18n="road.github">GitHub</a>
@@ -488,7 +500,7 @@
           <a class="os-link" data-os="linux" href="https://github.com/mohaelder/openenlarge/releases/latest">Linux</a>
         </div>
       </div>
-      <img class="dl-logo" src="/img/app-logo.jpg" alt="OpenEnlarge app icon">
+      <img class="dl-logo" src="/img/app-logo.webp" alt="OpenEnlarge app icon">
     </div>
     <div id="alpha-block" class="dl-card" style="display:none;margin-top:18px;">
       <div>
@@ -522,13 +534,13 @@
     function close() { box.classList.remove("open"); box.setAttribute("aria-hidden", "true"); boxImg.src = ""; }
     document.addEventListener("click", function (e) {
       var t = e.target.closest && e.target.closest("[data-lightbox]");
-      if (t && t.getAttribute("src")) { open(t.getAttribute("src")); }
+      if (t) { var s = t.getAttribute("data-full") || t.currentSrc || t.getAttribute("src"); if (s) open(s); }
     });
     box.addEventListener("click", close);
     document.addEventListener("keydown", function (e) { if (e.key === "Escape") close(); });
   })();
 </script>
-<script src="/i18n.js"></script>
-<script src="/releases.js"></script>
+<script defer src="/i18n.js"></script>
+<script defer src="/releases.js"></script>
 </body>
 </html>
