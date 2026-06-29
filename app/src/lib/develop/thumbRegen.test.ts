@@ -87,4 +87,19 @@ describe("markThumbsStale + pump", () => {
     await flush(); await flush();
     expect(api.thumbnail).toHaveBeenCalledTimes(3);
   });
+
+  it("pump() terminates when every frame persistently fails — no hot-loop", async () => {
+    images.set([frame("a") as any, frame("b") as any]);
+    editsById.set({ a: {} as any, b: {} as any });
+    (api.thumbnail as any).mockRejectedValue(new Error("always fail"));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    pump();
+    await flush(); await flush(); await flush();
+    // Each frame attempted exactly once per drain — not looping
+    expect(api.thumbnail).toHaveBeenCalledTimes(2);
+    // Failed frames stay stale so they retry on the next pump
+    expect(get(images).every((i) => i.thumb_stale === true)).toBe(true);
+    warn.mockRestore();
+    (api.thumbnail as any).mockResolvedValue("data:new"); // restore default impl
+  });
 });

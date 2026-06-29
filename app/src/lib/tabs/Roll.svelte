@@ -269,7 +269,7 @@
     for (const id of ids) {
       const url = snap[id];
       if (url) {
-        images.update((xs) => xs.map((i) => i.id === id ? { ...i, thumbnail: url } : i));
+        images.update((xs) => xs.map((i) => i.id === id ? { ...i, thumbnail: url, thumb_stale: false } : i));
         api.saveThumbnail(id, url);
       } else {
         missing.push(id);

@@ -64,11 +64,11 @@ export function applySnapshot(snap: CatalogSnapshot): void {
     positive: ci.positive ?? false, thumb_stale: ci.thumb_stale ?? false,
   }));
   images.set(entries);
-  startThumbRegen(); // rebake any engine-version-stale thumbnails in the background
   editsById.set(editsMap);
   cropById.set(cropMap);
   dustById.set(dustMap);
   metaById.set(metaMap);
+  startThumbRegen(); // rebake any engine-version-stale thumbnails in the background
 
   if (LOCALES.some((l) => l.id === snap.prefs.locale))
     locale.set(snap.prefs.locale as Locale);

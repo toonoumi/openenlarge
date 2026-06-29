@@ -17,9 +17,11 @@ let pumping = false;
 
 /** Rebake one developed frame's catalog thumbnail and clear its thumb_stale flag.
  *  Reuses saved edits if present, else the develop-time auto-WB seed (matching the
- *  look the frame opens with). saveThumbnail stamps the current engine version. */
-export async function regenOne(img: ImageEntry): Promise<void> {
-  if (!img.developed || inFlight.has(img.id)) return;
+ *  look the frame opens with). saveThumbnail stamps the current engine version.
+ *  Returns true on successful rebake, false on skip (undeveloped/offline/in-flight)
+ *  or caught failure (so pump() can avoid re-queueing the same frame in one drain). */
+export async function regenOne(img: ImageEntry): Promise<boolean> {
+  if (!img.developed || img.offline || inFlight.has(img.id)) return false;
   inFlight.add(img.id);
   try {
     // Ensure the decoded working buffer is resident (rehydrates from the .oecache
@@ -44,23 +46,32 @@ export async function regenOne(img: ImageEntry): Promise<void> {
     await api.saveThumbnail(img.id, url);
     images.update((list) =>
       list.map((i) => (i.id === img.id ? { ...i, thumbnail: url, thumb_stale: false } : i)));
+    return true;
   } catch (e) {
     // Leave thumb_stale set so the frame is retried on the next pump / next session.
     console.warn(`thumbRegen: regenOne failed for ${img.id}`, e);
+    return false;
   } finally {
     inFlight.delete(img.id);
   }
 }
 
 /** Drain every developed+stale frame with bounded concurrency. Singleton: a second
- *  call while running is a no-op; marks added mid-drain are picked up by the re-read. */
+ *  call while running is a no-op; marks added mid-drain are picked up by the re-read.
+ *  A per-drain `claimed` set (shared across all workers) ensures each frame is attempted
+ *  at most once per pump() invocation, preventing hot-loops on a persistently-failing
+ *  frame. Claimed synchronously before the first await so no two workers race for the
+ *  same frame. A fresh pump() (from a later markThumbsStale/startThumbRegen) starts with
+ *  an empty claimed, so frames that failed are retried on the next drain. */
 export function pump(): void {
   if (pumping) return;
   pumping = true;
+  const claimed = new Set<string>(); // per-drain: claim before any await to avoid inter-worker races
   const worker = async () => {
     for (;;) {
-      const next = get(images).find((i) => i.developed && i.thumb_stale && !inFlight.has(i.id));
+      const next = get(images).find((i) => i.developed && i.thumb_stale && !inFlight.has(i.id) && !claimed.has(i.id));
       if (!next) return;
+      claimed.add(next.id); // synchronous: blocks other workers from picking the same frame
       await regenOne(next);
     }
   };
@@ -68,13 +79,18 @@ export function pump(): void {
 }
 
 /** Mark frames as needing a rebake (look change) and kick the worker. When persist,
- *  also invalidate the DB thumb_version so the mark survives a crash mid-regen. */
+ *  also invalidate the DB thumb_version so the mark survives a crash mid-regen.
+ *  Only developed frames are marked and persisted; undeveloped ids are silently ignored. */
 export function markThumbsStale(ids: string[], opts: { persist?: boolean } = {}): void {
   if (!ids.length) return;
-  const set = new Set(ids);
-  images.update((list) =>
-    list.map((i) => (set.has(i.id) && i.developed ? { ...i, thumb_stale: true } : i)));
-  if (opts.persist) api.invalidateThumbnails(ids).catch(() => { /* best-effort durability */ });
+  const developedSet = new Set(get(images).filter((i) => i.developed).map((i) => i.id));
+  const filteredIds = ids.filter((id) => developedSet.has(id));
+  if (filteredIds.length) {
+    const toMark = new Set(filteredIds);
+    images.update((list) =>
+      list.map((i) => (toMark.has(i.id) ? { ...i, thumb_stale: true } : i)));
+    if (opts.persist) api.invalidateThumbnails(filteredIds).catch(() => { /* best-effort durability */ });
+  }
   pump();
 }
 

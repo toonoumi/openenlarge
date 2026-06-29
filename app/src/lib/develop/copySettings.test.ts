@@ -1,11 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { get } from "svelte/store";
 
 vi.mock("./thumbRegen", () => ({ markThumbsStale: vi.fn() }));
 vi.mock("../toast", () => ({ showToast: vi.fn() }));
 vi.mock("./historyStore", () => ({ commitActive: vi.fn() }));
 
-import { activeId, editsById, cropById, images, invalidatePreview } from "../store";
+import { activeId, editsById, cropById, images } from "../store";
 import { markThumbsStale } from "./thumbRegen";
 import { applySelectedTo } from "./copySettings";
 import { PASTE_DEFAULT_GROUPS } from "./copySettings";
