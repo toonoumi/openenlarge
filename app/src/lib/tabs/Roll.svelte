@@ -29,6 +29,7 @@
   import { presetNormAspect } from "$lib/crop/presets";
   import type { Rect, CropRect } from "$lib/crop/types";
   import { emptyDust } from "$lib/develop/dust";
+  import { markThumbsStale } from "$lib/develop/thumbRegen";
   import { developRev, dustById } from "$lib/store";
   import Icon from "$lib/icons/Icon.svelte";
   import QualityMenu from "$lib/viewport/QualityMenu.svelte";
@@ -218,6 +219,7 @@
   }
 
   const schedulePreview = debounce((draft: typeof $rollDraft) => {
+    if (!get(rollDraftTouched)) return; // entry/re-entry: show cached thumbnails, don't re-render
     if (previewRunning) {
       // Queue the latest draft; an in-flight batch will pick it up on completion.
       previewPending = draft;
@@ -260,15 +262,20 @@
     // Persist crop to all frames when the draft has a crop set (null-guarded).
     if (draft.crop != null) cropById.set(applyCropToAll(get(cropById), ids, draft.crop));
 
-    // Persist thumbnail for each frame — reuse previewMap renders, no re-render.
+    // Persist thumbnail for each frame — reuse previewMap renders (no re-render); for
+    // any frame without a preview yet, mark it stale so the shared worker rebakes it.
     const snap = previewMap;
+    const missing: string[] = [];
     for (const id of ids) {
       const url = snap[id];
       if (url) {
         images.update((xs) => xs.map((i) => i.id === id ? { ...i, thumbnail: url } : i));
         api.saveThumbnail(id, url);
+      } else {
+        missing.push(id);
       }
     }
+    if (missing.length) markThumbsStale(missing, { persist: true });
   }, 600);
 
   // Mirror every rollDraft change (tone/color/base/dmax/crop) to all frames. Inert until
