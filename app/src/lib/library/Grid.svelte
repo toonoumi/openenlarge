@@ -2,12 +2,12 @@
   import { tick, onMount } from "svelte";
   import { get } from "svelte/store";
   import { activeId, selectedFolder, gridZoom, folderImages, selection, selectClick,
-    editsById, cropById, dustById, images } from "../store";
+    editsById, cropById, dustById } from "../store";
   import { api, defaultParams, type ImageEntry } from "../api";
   import { withEffectiveBase } from "../develop/base";
-  import { applyAsShotWb } from "../develop/wb";
   import { imageDir } from "./folderScope";
-  import { gridColumns, gridThumbView, GRID_HIRES_EDGE, GRID_STATIC_EDGE, GRID_HIRES_MAX_COLS } from "./gridHiRes";
+  import { gridColumns, gridThumbView, GRID_HIRES_EDGE, GRID_HIRES_MAX_COLS } from "./gridHiRes";
+  import { regenOne } from "../develop/thumbRegen";
   import { t } from "$lib/i18n";
 
   const mods = (e: MouseEvent) => ({ meta: e.metaKey || e.ctrlKey, shift: e.shiftKey });
@@ -52,80 +52,17 @@
     finally { inFlight.delete(id); }
   }
 
-  // Lazily regenerate a stale static thumbnail (baked by an older render engine, e.g.
-  // pre-filmic) the first time its cell is visible — reusing the proven render path
-  // (resident-LRU bounded). For never-opened images we bake the same auto-WB seed the
-  // develop-time thumbnail uses; opened images render from their saved edits. One
-  // regen per image: saveThumbnail stamps the engine version, clearing thumb_stale.
-  async function regenStale(img: ImageEntry) {
-    if (!img.developed || !img.thumb_stale || inFlight.has(img.id)) return;
-    inFlight.add(img.id);
-    try {
-      // Ensure the decoded working buffer is resident: re-decodes if it was invalidated
-      // (e.g. a camera-matrix toggle drops resident buffers + sidecars). Cheap when the
-      // buffer is still cached — the engine-version sweep case, where decode is unchanged.
-      await api.ensureDeveloped(img.id);
-      const dir = imageDir(img);
-      const saved = get(editsById)[img.id];
-      let params;
-      if (saved) {
-        params = withEffectiveBase(saved, dir);
-      } else {
-        const seed = withEffectiveBase({ ...defaultParams(), positive: img.positive }, dir);
-        const wb = await api.asShotWb(img.id, seed, null, { rot90: 0, flip_h: false, flip_v: false, angle: 0 });
-        params = applyAsShotWb(seed, wb);
-        try {
-          const pz = await api.perZoneWb(img.id, params, null, { rot90: 0, flip_h: false, flip_v: false, angle: 0 });
-          params = { ...params, pz_sh: pz.sh, pz_mid: pz.mid, pz_hi: pz.hi };
-        } catch { /* keep identity pz on failure */ }
-      }
-      const view = gridThumbView(get(cropById)[img.id], get(dustById)[img.id], GRID_STATIC_EDGE);
-      const url = await api.thumbnail(img.id, params, view);
-      await api.saveThumbnail(img.id, url);
-      images.update((list) =>
-        list.map((i) => (i.id === img.id ? { ...i, thumbnail: url, thumb_stale: false } : i)));
-    } catch { /* not developed yet / decode failed → leave stale, retry on next view */ }
-    finally { inFlight.delete(img.id); }
-  }
-
-  // Eager force-refresh on app entry: regenerate EVERY developed+stale thumbnail (not just
-  // visible cells) so a render-engine bump (ENGINE_VERSION) re-bakes the whole catalog to the
-  // current look immediately. Runs once per session; reuses regenStale (which stamps the
-  // version + clears thumb_stale). Bounded concurrency keeps the UI responsive.
-  let sweptStale = false;
-  async function sweepStale() {
-    if (sweptStale) return;
-    const list = get(images).filter((i) => i.developed && i.thumb_stale);
-    sweptStale = true;
-    if (!list.length) return;
-    const POOL = 3;
-    let idx = 0;
-    const worker = async () => {
-      while (idx < list.length) {
-        const next = list[idx++];
-        const cur = get(images).find((i) => i.id === next.id); // re-read latest (observer may have done it)
-        if (cur?.developed && cur.thumb_stale) await regenStale(cur);
-      }
-    };
-    try {
-      await Promise.all(Array.from({ length: Math.min(POOL, list.length) }, worker));
-    } catch (e) {
-      console.error('sweepStale failed', e);
-    }
-  }
-
-  // For every visible developed cell: refresh a stale static thumbnail first, else
-  // (when zoomed) render the hi-res boost.
+  // For every visible developed cell: rebake a stale static thumbnail first (jumping
+  // the shared worker's queue for on-screen frames), else (when zoomed) hi-res boost.
   function ensureVisible() {
     for (const id of visible) {
       const img = shown.find((i) => i.id === id);
       if (!img?.developed) continue;
-      if (img.thumb_stale) { regenStale(img); continue; }
+      if (img.thumb_stale) { regenOne(img); continue; }
       if (boost && hiRes[id]?.key !== img.thumbnail) renderHiRes(img);
     }
   }
   $: boost, shown, ensureVisible(); // re-check when zoom crosses the threshold or list changes
-  $: if ($images.length) sweepStale(); // once-per-session eager refresh after the catalog loads
 
   // (Re)observe cells so we only render what's on screen; rootMargin pre-warms a little.
   async function reobserve() {

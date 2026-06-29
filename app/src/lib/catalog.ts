@@ -12,6 +12,7 @@ import {
 } from "./store";
 import { locale, LOCALES, type Locale } from "./i18n";
 import { installDebugHooks } from "./debug";
+import { startThumbRegen } from "./develop/thumbRegen";
 
 /** A debounced function with a `flush()` that fires any pending call now. */
 export interface Debounced<A extends unknown[]> {
@@ -63,6 +64,7 @@ export function applySnapshot(snap: CatalogSnapshot): void {
     positive: ci.positive ?? false, thumb_stale: ci.thumb_stale ?? false,
   }));
   images.set(entries);
+  startThumbRegen(); // rebake any engine-version-stale thumbnails in the background
   editsById.set(editsMap);
   cropById.set(cropMap);
   dustById.set(dustMap);
