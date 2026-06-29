@@ -6,12 +6,9 @@
 import { get } from "svelte/store";
 import {
   activeId, editsById, cropById, settingsClipboard, copySettingsOpen,
-  deleteSelectionIds, invalidatePreview, images,
+  deleteSelectionIds, invalidatePreview,
 } from "../store";
-import { api, defaultParams } from "../api";
-import { withEffectiveBase } from "./base";
-import { imageDir } from "../library/folderScope";
-import { draftThumbView } from "../roll/livePreview";
+import { defaultParams } from "../api";
 import {
   applyToneColorToAll, applyCropToAll, applyBaseToAll,
   applyExposureToAll,
@@ -20,6 +17,7 @@ import {
 import { commitActive } from "./historyStore";
 import { showToast } from "../toast";
 import { translate } from "../i18n";
+import { markThumbsStale } from "./thumbRegen";
 
 // Phase 1 re-zero: temp=5500 is the universal neutral on every image.
 // Each image's actual auto-WB correction lives in the hidden wb_baseline gains
@@ -100,28 +98,8 @@ export async function applySelectedTo(
     ? translate("toast.settingsApplied")
     : translate("toast.settingsAppliedN", { count: n }));
 
-  // Re-bake the filmstrip/contact-sheet thumbnails for the background targets.
-  // invalidatePreview only clears the in-memory preview overlay; the persisted
-  // `img.thumbnail` shown in the strip stays stale until each frame is reopened.
-  // The active frame re-bakes via Develop's own refreshThumb, so skip it here.
-  void regenAppliedThumbs(ids, active);
-}
-
-/** Render fresh thumbnails for the applied (non-active) frames so the bottom strip
- *  and contact sheet reflect the new look immediately, then persist them. Runs in
- *  the background, updating each frame's thumbnail as it completes. */
-async function regenAppliedThumbs(ids: string[], active: string | null): Promise<void> {
-  const byId = new Map(get(images).map((i) => [i.id, i]));
-  for (const id of ids) {
-    if (id === active) continue; // active re-bakes via Develop.refreshThumb
-    const img = byId.get(id);
-    if (!img) continue;
-    try {
-      const params = withEffectiveBase(get(editsById)[id] ?? defaultParams(), imageDir(img));
-      const view = draftThumbView(get(cropById)[id] ?? null);
-      const t = await api.thumbnail(id, params, view);
-      images.update((xs) => xs.map((i) => (i.id === id ? { ...i, thumbnail: t } : i)));
-      api.saveThumbnail(id, t).catch(() => { /* best-effort persist */ });
-    } catch { /* skip frames that fail to render */ }
-  }
+  // Mark the applied background frames stale; the shared worker rebakes them (bounded
+  // concurrency, persisted, retried). The active frame rebakes via Develop.refreshThumb.
+  const others = ids.filter((id) => id !== active);
+  if (others.length) markThumbsStale(others, { persist: true });
 }
