@@ -1,7 +1,7 @@
 <script lang="ts">
   import { open as openDialog } from "@tauri-apps/plugin-dialog";
   import { images, selectedFolder, selectFolder, omitPreviewJpgs } from "../store";
-  import { importPaths, deleteImage, IMPORT_EXTENSIONS, omitPreviewSidecars, selectImportPaths } from "../workflow";
+  import { importPaths, deleteImage, IMPORT_EXTENSIONS, omitPreviewSidecars, selectImportPaths, mergeFolderFiles } from "../workflow";
   import { api } from "../api";
   import { buildTree, countImages, type FolderNode } from "./folderTree";
   import { scopeToFolder } from "./folderScope";
@@ -15,6 +15,7 @@
   import { scale } from "svelte/transition";
 
   let importing = false;
+  let importProgress: { done: number; total: number } | null = null;
   let menuOpen = false;
   $: filterFilmScans = $t("folderNav.filterFilmScans");
   $: tree = buildTree($images);
@@ -31,22 +32,40 @@
     let paths = (Array.isArray(sel) ? sel : [sel]) as string[];
     if ($omitPreviewJpgs) paths = omitPreviewSidecars(paths);
     importing = true;
-    await importPaths(paths);
+    importProgress = null;
+    await importPaths(paths, (done, total) => (importProgress = { done, total }));
     importing = false;
+    importProgress = null;
   }
 
   async function pickFolderAndImport() {
     menuOpen = false;
-    const dir = await openDialog({ directory: true });
-    if (!dir || Array.isArray(dir)) return;
+    const sel = await openDialog({ directory: true, multiple: true });
+    if (!sel) return;
+    const dirs = Array.isArray(sel) ? sel : [sel];
+    if (dirs.length === 0) return;
     importing = true;
+    importProgress = null;
     try {
-      const files = await api.listDirFiles(dir);
-      await importPaths(selectImportPaths(files, $omitPreviewJpgs));
+      // Each listDirFiles recurses into subfolders; dedupe across dirs in case a
+      // parent and one of its children were both selected.
+      const lists = await Promise.all(
+        dirs.map(async (dir) => {
+          try {
+            return await api.listDirFiles(dir);
+          } catch (e) {
+            console.error("folder scan failed", dir, e);
+            return [];
+          }
+        }),
+      );
+      const files = selectImportPaths(mergeFolderFiles(lists), $omitPreviewJpgs);
+      await importPaths(files, (done, total) => (importProgress = { done, total }));
     } catch (e) {
-      console.error("folder import failed", dir, e);
+      console.error("folder import failed", dirs, e);
     }
     importing = false;
+    importProgress = null;
   }
 
   // Right-click a folder → context menu → confirm popup → remove its images.
@@ -81,7 +100,7 @@
     </div>
     <div class="import-wrap">
       <button class="import" on:click={() => (menuOpen = !menuOpen)} disabled={importing} aria-haspopup="menu" aria-expanded={menuOpen}>
-        <Icon name="plus" /> {importing ? $t('folderNav.importing') : $t('folderNav.import')}
+        <Icon name="plus" /> {importing ? (importProgress ? $t('folderNav.importingCount', importProgress) : $t('folderNav.importing')) : $t('folderNav.import')}
         <span class="caret">▾</span>
       </button>
       {#if menuOpen && !importing}

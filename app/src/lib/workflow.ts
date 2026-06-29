@@ -97,6 +97,23 @@ export function selectImportPaths(paths: string[], omitPreviews: boolean): strin
   return omitPreviews ? omitPreviewSidecars(importable) : importable;
 }
 
+/** Flatten per-folder file listings into one import list, deduping paths.
+ * `list_dir_files` recurses, so selecting both a parent and one of its children
+ * surfaces the child's files twice — keep the first occurrence, drop later dupes.
+ * Order-preserving + pure (testable without the dialog). */
+export function mergeFolderFiles(lists: string[][]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const list of lists) {
+    for (const p of list) {
+      if (seen.has(p)) continue;
+      seen.add(p);
+      out.push(p);
+    }
+  }
+  return out;
+}
+
 /** How many imports run at once. Each `import_image` does a full-file disk read +
  * decode on a blocking thread, so a serial loop leaves the disk idle between files.
  * A small pool overlaps reads — crucial on a mechanical HDD where per-file seek
@@ -134,12 +151,19 @@ async function importOne(path: string): Promise<void> {
 
 /** Import each path into the catalog with bounded concurrency, upserting into
  * `images` and making the first import active if nothing is. Shared by the file
- * dialog and drag-drop. Store updates are race-free: JS runs them between awaits. */
-export async function importPaths(paths: string[]): Promise<void> {
+ * dialog and drag-drop. Store updates are race-free: JS runs them between awaits.
+ * `onProgress` (optional) fires after each import completes with the running
+ * done/total count — used by the folder picker's live counter. */
+export async function importPaths(
+  paths: string[],
+  onProgress?: (done: number, total: number) => void,
+): Promise<void> {
   let next = 0;
+  let done = 0;
   const worker = async (): Promise<void> => {
     for (let i = next++; i < paths.length; i = next++) {
       await importOne(paths[i]);
+      onProgress?.(++done, paths.length);
     }
   };
   const lanes = Math.min(IMPORT_CONCURRENCY, paths.length);

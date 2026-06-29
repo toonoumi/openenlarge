@@ -180,6 +180,7 @@ quality.deleteImage,Delete image…,删除照片…,画像を削除…,이미지
 folderNav.imported,Imported,已导入,読み込み済み,가져온 항목,src/lib/library/FolderNav.svelte,heading
 folderNav.noImages,No images yet,还没有照片,画像がありません,이미지 없음,src/lib/library/FolderNav.svelte,emptyState
 folderNav.importing,Importing…,导入中…,読み込み中…,가져오는 중…,src/lib/library/FolderNav.svelte,button
+folderNav.importingCount,Importing {done}/{total}…,导入中 {done}/{total}…,読み込み中 {done}/{total}…,가져오는 중 {done}/{total}…,src/lib/library/FolderNav.svelte,button
 folderNav.import,Import,导入,読み込む,가져오기,src/lib/library/FolderNav.svelte,button
 folderNav.importFiles,Import Files…,导入文件…,ファイルを読み込む…,파일 가져오기…,src/lib/library/FolderNav.svelte,menuItem
 folderNav.importFolder,Import Folder…,导入文件夹…,フォルダを読み込む…,폴더 가져오기…,src/lib/library/FolderNav.svelte,menuItem

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { undevelopedIds, omitPreviewSidecars, mergeEnsured, selectImportPaths, filterImportable } from "./workflow";
+import { undevelopedIds, omitPreviewSidecars, mergeEnsured, selectImportPaths, filterImportable, mergeFolderFiles } from "./workflow";
 import type { ImageEntry } from "./api";
 
 const mk = (id: string, developed: boolean): ImageEntry => ({
@@ -91,6 +91,23 @@ describe("filterImportable", () => {
   it("handles Windows separators when finding the basename", () => {
     expect(filterImportable(["C:\\p\\._photo.cr3", "C:\\p\\photo.cr3"]))
       .toEqual(["C:\\p\\photo.cr3"]);
+  });
+});
+
+describe("mergeFolderFiles", () => {
+  it("flattens multiple folder listings, preserving order", () => {
+    expect(mergeFolderFiles([["/a/1.raf", "/a/2.raf"], ["/b/3.raf"]]))
+      .toEqual(["/a/1.raf", "/a/2.raf", "/b/3.raf"]);
+  });
+
+  it("dedupes files listed twice (parent + child both selected)", () => {
+    // selecting /a and /a/sub both surface /a/sub's files via recursion
+    expect(mergeFolderFiles([["/a/sub/x.raf", "/a/y.raf"], ["/a/sub/x.raf"]]))
+      .toEqual(["/a/sub/x.raf", "/a/y.raf"]);
+  });
+
+  it("handles an empty input", () => {
+    expect(mergeFolderFiles([])).toEqual([]);
   });
 });
 
