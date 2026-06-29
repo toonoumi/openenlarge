@@ -26,6 +26,9 @@ pub struct PointColorSample {
 #[derive(Debug, Clone, Deserialize)]
 pub struct InvertParams {
     pub mode: String,
+    /// Deserialized from the UI but not consumed by the current engine path; kept on
+    /// the wire contract (the frontend's params blob carries it).
+    #[allow(dead_code)]
     pub stock: String,
     /// Per-image film-base override. When set, used verbatim as the orange-mask
     /// base; when None, the develop-time auto base (`Developed.base`) is used.
@@ -38,7 +41,11 @@ pub struct InvertParams {
     pub d_max_override: Option<f32>,
     /// Exposure in EV stops (−5..5); converted to a multiplier (2^ev) downstream.
     pub exposure: f32,
+    /// black/gamma: legacy Cineon knobs still sent by the UI but not consumed by the
+    /// current engine path; kept on the wire contract.
+    #[allow(dead_code)]
     pub black: f32,
+    #[allow(dead_code)]
     pub gamma: f32,
     /// Vestigial: WB is now absolute (Kelvin); the UI "Auto" button reseeds via
     /// the `as_shot_wb` command instead. Kept in the wire contract for now.
@@ -57,10 +64,12 @@ pub struct InvertParams {
     /// reseed (which fires on base/profile changes) must not clobber it. The Auto
     /// button clears it. Backend never reads it; carried for persistence.
     #[serde(default)]
+    #[allow(dead_code)]
     pub wb_manual: bool,
     /// HDR preview toggle (per image). Frontend trigger for the gain-map overlay +
     /// encode_hdr; the live render stays SDR regardless.
     #[serde(default)]
+    #[allow(dead_code)]
     pub hdr: bool,
     /// Positive passthrough (slide/print): skip inversion, render the scan with
     /// exposure + WB only. Seeded by the develop-time classifier; user-overridable.
@@ -198,7 +207,10 @@ pub struct InvertParams {
     pub wb_mode: String,
     /// Display tone path: "filmic" (legacy S-curve, default) or "faithful" (gamma+shoulder).
     /// Serde default "filmic" so pre-existing saved edits load exactly as before.
+    /// Deserialized for the wire/persistence contract; the GPU path reads its own
+    /// numeric tone_mode (ResolvedInversion), not this string.
     #[serde(default = "tone_mode_filmic")]
+    #[allow(dead_code)]
     pub tone_mode: String,
 
     // Per-zone white-balance neutralizer. Gains are stored already damped by pz_strength
@@ -291,6 +303,7 @@ pub struct Developed {
     /// Develop-time classification: true = positive scan (no inversion).
     pub positive: bool,
     /// Classifier confidence 0..1 (diagnostic; not currently surfaced in UI).
+    #[allow(dead_code)]
     pub positive_confidence: f32,
     /// Per-channel density-neutralisation factors for camera-matrix mode
     /// (calibrate::sample_channel_balance). `[1,1,1]` in the normal path (identity).
@@ -313,7 +326,10 @@ pub struct CachedImage {
 /// export, plus the dims the frontend uploads at. Held between export_begin and
 /// export_pixels so the file is decoded+baked exactly once per export.
 pub struct PreparedExport {
+    /// Source dims at bake time (diagnostic); the frontend uploads at its own dims.
+    #[allow(dead_code)]
     pub w: u32,
+    #[allow(dead_code)]
     pub h: u32,
     pub bytes: Vec<u8>, // half-float RGBA, full-res
 }

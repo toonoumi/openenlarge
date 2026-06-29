@@ -1093,7 +1093,11 @@ pub struct ViewSpec {
     pub dust: Vec<DustStroke>,
     #[serde(default)]
     pub ir_removal: IrRemoval,
+    /// Frontend sends auto-dust settings on the view spec, but the live view/preview
+    /// render does not apply them (auto-dust is baked separately into the heal cache).
+    /// Deserialized for the wire contract; never read on this path.
     #[serde(default)]
+    #[allow(dead_code)]
     pub auto_dust: AutoDust,
 }
 

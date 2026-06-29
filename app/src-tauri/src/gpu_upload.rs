@@ -194,12 +194,7 @@ pub struct ResolvedInversion {
     pub lo_recovery: f32,
     /// Per-channel density neutralisation (camera-matrix mode); `[1,1,1]` = identity.
     /// Mirrors InversionParams.channel_balance; set per-frame by the caller (like d_max).
-    #[serde(default = "unit_balance")]
     pub channel_balance: [f32; 3],
-}
-
-fn unit_balance() -> [f32; 3] {
-    [1.0, 1.0, 1.0]
 }
 
 /// Resolve the UI params (+ sampled film base) into GPU uniforms, reusing the

@@ -17,8 +17,14 @@ pub struct RegionStats {
 #[derive(Clone, Copy, Debug, Default)]
 pub struct ImageStats {
     pub glob: RegionStats,
+    // Per-region tone fingerprint: filled by compute_stats and asserted in tests, but
+    // loss() currently matches globally (glob cast + l_std + chroma). Kept for
+    // region-aware matching and the compute_stats test coverage.
+    #[allow(dead_code)]
     pub sh: RegionStats,
+    #[allow(dead_code)]
     pub mid: RegionStats,
+    #[allow(dead_code)]
     pub hi: RegionStats,
     pub l_std: f32,
     pub chroma: f32,
