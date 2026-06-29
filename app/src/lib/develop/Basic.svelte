@@ -1,7 +1,7 @@
 <script lang="ts">
   import { get } from "svelte/store";
   import { t } from "$lib/i18n";
-  import { params, activeId, images, cropById, folderBaseByPath, baseSampling, sampledBase, sampledDmax, whitePointPinned, preReanalyze } from "../store";
+  import { params, activeId, images, cropById, folderBaseByPath, baseSampling, sampledBase, sampledDmax, whitePointPinned } from "../store";
   import { developedFolderImages } from "../export/eligible";
   import { applySelectedTo } from "./copySettings";
   import type { GroupSelection, SettingsSnapshot } from "../roll/apply";
@@ -63,7 +63,7 @@
 
   // Reset any in-progress sampling when the active image changes.
   // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-  $: { $activeId; sampledBase.set(null); baseSampling.set(false); sampledDmax.set(null); preReanalyze.set(null); }
+  $: { $activeId; sampledBase.set(null); baseSampling.set(false); sampledDmax.set(null); }
   // 8-bit swatch preview of a linear base (display gamma ~1/2.2).
   const baseCss = (b: [number, number, number] | null) =>
     b ? `rgb(${b.map((v) => Math.round(255 * Math.min(1, Math.max(0, v ** (1 / 2.2))))).join(",")})` : "transparent";
@@ -173,14 +173,11 @@
   const TEMP_NEUTRAL = 5500;
 
   // ---- Crop-aware D_max analysis ----
-  // Derive D_max from the image area (the persistent crop) and apply it to THIS
-  // image, then reseed WB so the white point matches the new dynamic range.
-  async function reanalyze(pinnedAtStart?: boolean, softWb = false) {
+  // Re-derive D_max from the image area (the persistent crop) and apply it to THIS
+  // image, then reseed WB so the white point matches the new dynamic range. Fires
+  // automatically when the crop's coverage changes (see the reactive block below).
+  async function reanalyze(softWb = false) {
     const id = get(activeId); if (!id) return;
-    // Snapshot the pre-reanalyze state so this is always one-click revertible (B3).
-    // `pinnedAtStart` lets a caller record the pin as it was BEFORE the caller
-    // mutated it (manualReanalyze unpins first); defaults to the live pin state.
-    preReanalyze.set({ id, d_max_override: get(params).d_max_override ?? null, pinned: pinnedAtStart ?? isPinned(id) });
     try {
       const { d_max } = await api.analyze(id, withEffectiveBase(get(params), dir), imageCrop, geom);
       params.update((p) => ({ ...p, d_max_override: d_max }));
@@ -190,26 +187,7 @@
       if (!softWb || !get(params).wb_manual) {
         autoWb();
       }
-    } catch { preReanalyze.set(null); /* not developed yet */ }
-  }
-  // Restore the d_max_override + pin captured before the last re-analyze (B3).
-  function revertReanalyze() {
-    const snap = get(preReanalyze); if (!snap) return;
-    const id = get(activeId);
-    if (id && id === snap.id) {
-      setPinned(id, snap.pinned);
-      params.update((p) => ({ ...p, d_max_override: snap.d_max_override }));
-      commitActive();
-    }
-    preReanalyze.set(null);
-  }
-  function manualReanalyze() {
-    const id = get(activeId);
-    // Capture the real pin state before unpinning, so revert restores the
-    // true pre-reanalyze state (B3) rather than the just-cleared pin.
-    const wasPinned = !!id && isPinned(id);
-    if (id) setPinned(id, false);
-    reanalyze(wasPinned);
+    } catch { /* not developed yet */ }
   }
 
   // Re-derive D_max only when the crop CHANGES on the current image — not on image
@@ -285,7 +263,7 @@
   // re-seeds only when untouched unless `force` (an explicit metering choice).
   function remeterActiveExposure(force: boolean) {
     const id = get(activeId); if (!id) return;
-    reanalyze(undefined, /*softWb*/ true); // re-derive D_max; WB respects wb_manual (spec §6)
+    reanalyze(/*softWb*/ true); // re-derive D_max; WB respects wb_manual (spec §6)
     if (force || get(params).exposure === defaultParams().exposure) {
       autoExposure();
     }
@@ -349,34 +327,20 @@
 
   {#if open}
     <div class="body" transition:slide={{ duration: 280, easing: cubicInOut }}>
-      <!-- Metering cluster: the segmented mode (always shown — auto-exposure + WB consume
-           the mask on positives too) with the crop re-analysis / revert actions as compact
-           icons on the label row. The icons are negatives-only (D_max/WB analysis). -->
+      <!-- Metering: Auto (confidence-gated spoke exclusion) is the applied default and has
+           no button. The two pills are overrides ON TOP of Auto — clicking the active one
+           returns to Auto. Shown for both neg/pos (exposure + WB consume the mask). -->
       <div class="wbhead metahead" title={$t('basic.meterBorderTitle')}>
         <span>{$t('basic.meterBorder')}</span>
-        {#if !$params.positive}
-          <span class="metaicons">
-            <button class="iconbtn" on:click={manualReanalyze}
-                    title={$t('base.reanalyze')} aria-label={$t('base.reanalyze')}>
-              <Icon name="rotate-cw" size={14} />
-            </button>
-            {#if $preReanalyze && $preReanalyze.id === $activeId}
-              <button class="iconbtn" on:click={revertReanalyze}
-                      title={$t('base.revertReanalyze')} aria-label={$t('base.revertReanalyze')}>
-                <Icon name="rotate-ccw" size={14} />
-              </button>
-            {/if}
-          </span>
-        {/if}
+        <span class="wbbtns">
+          <button class="auto" class:on={$params.meter_border === "exclude"}
+                  on:click={() => setMeterBorder($params.meter_border === "exclude" ? "auto" : "exclude")}
+                  >{$t('basic.meterBorder.exclude')}</button>
+          <button class="auto" class:on={$params.meter_border === "include"}
+                  on:click={() => setMeterBorder($params.meter_border === "include" ? "auto" : "include")}
+                  >{$t('basic.meterBorder.include')}</button>
+        </span>
       </div>
-      <span class="meterseg">
-        <button class="auto" class:on={$params.meter_border === "auto"}
-                on:click={() => setMeterBorder("auto")}>{$t('basic.meterBorder.auto')}</button>
-        <button class="auto" class:on={$params.meter_border === "exclude"}
-                on:click={() => setMeterBorder("exclude")}>{$t('basic.meterBorder.exclude')}</button>
-        <button class="auto" class:on={$params.meter_border === "include"}
-                on:click={() => setMeterBorder("include")}>{$t('basic.meterBorder.include')}</button>
-      </span>
 
       <!-- Inversion-specific controls only apply to negatives. -->
       {#if !$params.positive}
@@ -502,16 +466,8 @@
   /* Toggle-on state for .auto buttons (e.g. color-head toggle). */
   .auto.on { color: #fff; border-color: var(--accent); background: rgba(244,157,78,0.18); }
   .wbbtns { display: inline-flex; align-items: center; gap: 6px; }
-  /* Metering label row: label left, re-analyze/revert icons right. */
+  /* Metering label row: label left, the two override pills right. */
   .metahead { margin-top: 12px; }
-  .metaicons { display: inline-flex; align-items: center; gap: 2px; }
-  .iconbtn { display: inline-flex; align-items: center; justify-content: center;
-    background: transparent; border: 0; color: var(--text-dim); padding: 3px;
-    border-radius: 4px; cursor: pointer; transition: color 120ms, background 120ms; }
-  .iconbtn:hover { color: var(--text); background: rgba(244,157,78,0.12); }
-  /* Metering segmented control: three equal-width modes filling the panel. */
-  .meterseg { display: flex; gap: 6px; margin: 4px 0 8px; }
-  .meterseg .auto { flex: 1; text-align: center; padding: 5px 4px; }
   .tonehead { display: flex; justify-content: space-between; align-items: center; }
   .wbdrop { display: inline-flex; align-items: center; justify-content: center;
     background: transparent; border: 1px solid var(--glass-brd); color: var(--text-dim);
