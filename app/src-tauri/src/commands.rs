@@ -1577,6 +1577,17 @@ pub fn save_thumbnail(
     catalog.update_thumbnail(&id, &thumbnail).map_err(|e| format!("{e}"))
 }
 
+/// Stamp the given images' thumbnails as stale (thumb_version below the engine
+/// version) so the frontend regen worker rebakes them. Called when a look-change
+/// (apply-to-roll, roll commit) touches frames the active view won't itself rebake.
+#[tauri::command]
+pub fn invalidate_thumbnails(
+    ids: Vec<String>,
+    catalog: State<crate::catalog::Catalog>,
+) -> Result<(), String> {
+    catalog.invalidate_thumbnails(&ids).map_err(|e| format!("{e}"))
+}
+
 /// Decode the full-res file, apply geometry + inversion + dust/IR + finishing, and
 /// return the finished image and its source metadata. Shared by `export_image` and
 /// the upscaler so both produce identical pixels.

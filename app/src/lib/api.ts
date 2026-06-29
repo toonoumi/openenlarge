@@ -239,6 +239,10 @@ export const api = {
   /** Persist the edited-look thumbnail data URL so it survives relaunch. */
   saveThumbnail: (id: string, thumbnail: string) =>
     invoke<void>("save_thumbnail", { id, thumbnail }),
+  /** Invalidate the persisted thumb_version for these frames so they load stale
+   *  next session — makes an in-session look-change durable across a crash. */
+  invalidateThumbnails: (ids: string[]) =>
+    invoke<void>("invalidate_thumbnails", { ids }),
   asShotWb: (
     id: string, params: InvertParams,
     crop: [number, number, number, number] | null = null,

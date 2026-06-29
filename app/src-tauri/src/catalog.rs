@@ -139,6 +139,20 @@ impl Catalog {
         Ok(())
     }
 
+    /// Invalidate the baked thumbnails for `ids` by stamping a version below the
+    /// current engine version, so `load_images` reports them `thumb_stale` and the
+    /// frontend regen worker rebakes them — even after a relaunch that interrupts an
+    /// in-session regen. Mirror of `update_thumbnail` (which stamps the current version).
+    pub fn invalidate_thumbnails(&self, ids: &[String]) -> rusqlite::Result<()> {
+        let conn = self.conn.lock().unwrap();
+        let tx = conn.unchecked_transaction()?;
+        for id in ids {
+            tx.execute("UPDATE images SET thumb_version = 0 WHERE id = ?1", [id])?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
     /// Remove an image and its edits (atomically).
     pub fn delete_image(&self, id: &str) -> rusqlite::Result<()> {
         let conn = self.conn.lock().unwrap();
@@ -648,6 +662,22 @@ mod tests {
         let imgs = cat.load_images(&|_| true).unwrap();
         let me = imgs.iter().find(|i| i.id == id).unwrap();
         assert!(me.thumb_stale, "thumbnail rendered by an older engine must load stale");
+    }
+
+    #[test]
+    fn invalidate_thumbnails_marks_stale() {
+        let cat = Catalog::open_in_memory().unwrap();
+        let id = cat.upsert_image("/x/a.dng", "a.dng", "{}", "thumb", 0).unwrap();
+        // A render stamps the current engine version → not stale.
+        cat.update_thumbnail(&id, "data:fresh").unwrap();
+        assert!(!cat.load_images(&|_| true).unwrap()[0].thumb_stale);
+        // Invalidation drops it below the current version → loads stale again.
+        cat.invalidate_thumbnails(&[id.clone()]).unwrap();
+        let imgs = cat.load_images(&|_| true).unwrap();
+        assert!(
+            imgs.iter().find(|i| i.id == id).unwrap().thumb_stale,
+            "invalidated thumbnail must load stale"
+        );
     }
 
     #[test]
